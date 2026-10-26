@@ -22,6 +22,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import com.jm3.app.Jm3Graph
+import com.jm3.core.history.HistoryEntry
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +51,22 @@ fun ReaderScreen(photoId: String, onBack: () -> Unit) {
     when (val s = state) {
         is ReaderUiState.Loading -> LoadingScreen()
         is ReaderUiState.Failed -> ErrorScreen("章节加载失败：${s.message}")
-        is ReaderUiState.Loaded -> ReaderPages(photo = s.photo, onBack = onBack)
+        is ReaderUiState.Loaded -> {
+            LaunchedEffect(s.photo.photoId) {
+                runCatching {
+                    Jm3Graph.history.upsert(
+                        HistoryEntry(
+                            photoId = s.photo.photoId,
+                            albumId = s.photo.albumId,
+                            title = s.photo.title,
+                            coverUrl = null,
+                            updatedAt = 0L,
+                        ),
+                    )
+                }
+            }
+            ReaderPages(photo = s.photo, onBack = onBack)
+        }
     }
 }
 

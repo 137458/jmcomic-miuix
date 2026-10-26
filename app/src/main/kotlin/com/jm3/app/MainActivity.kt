@@ -8,6 +8,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Jm3Graph.init(applicationContext)
         setContent {
             Jm3App()
         }

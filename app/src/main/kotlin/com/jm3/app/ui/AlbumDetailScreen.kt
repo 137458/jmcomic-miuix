@@ -1,5 +1,6 @@
 package com.jm3.app.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -14,13 +15,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.Jm3Graph
+import com.jm3.core.mergedWith
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
@@ -33,6 +37,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -44,7 +49,7 @@ sealed interface AlbumUiState {
 
 private sealed interface CommentsUiState {
     data object Loading : CommentsUiState
-    data class Loaded(val page: CommentPage) : CommentsUiState
+    data class Loaded(val page: CommentPage, val lastPage: Int) : CommentsUiState
     data object Failed : CommentsUiState
 }
 
@@ -52,6 +57,37 @@ private sealed interface CommentsUiState {
 fun AlbumDetailScreen(albumId: String, onBack: () -> Unit, onOpenReader: (String) -> Unit) {
     var state by remember(albumId) { mutableStateOf<AlbumUiState>(AlbumUiState.Loading) }
     var comments by remember(albumId) { mutableStateOf<CommentsUiState>(CommentsUiState.Loading) }
+    var favoriteBusy by remember(albumId) { mutableStateOf(false) }
+    var favorited by remember(albumId) { mutableStateOf<Boolean?>(null) }
+    var commentsLoadingMore by remember(albumId) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun toggleFavorite() {
+        if (favoriteBusy) return
+        favoriteBusy = true
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.toggleFavorite(albumId) }.isSuccess
+            }
+            favoriteBusy = false
+            if (ok) favorited = !(favorited ?: false)
+        }
+    }
+
+    fun loadMoreComments() {
+        val loaded = comments as? CommentsUiState.Loaded ?: return
+        if (commentsLoadingMore || loaded.page.items.size >= loaded.page.total) return
+        commentsLoadingMore = true
+        scope.launch {
+            val next = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.comments(albumId, loaded.lastPage + 1) }.getOrNull()
+            }
+            commentsLoadingMore = false
+            if (next != null) {
+                comments = CommentsUiState.Loaded(loaded.page.mergedWith(next), loaded.lastPage + 1)
+            }
+        }
+    }
 
     LaunchedEffect(albumId) {
         coroutineScope {
@@ -63,7 +99,7 @@ fun AlbumDetailScreen(albumId: String, onBack: () -> Unit, onOpenReader: (String
             }
             launch {
                 comments = withContext(Dispatchers.IO) {
-                    runCatching { CommentsUiState.Loaded(Jm3Graph.gateway.comments(albumId, 1)) }
+                    runCatching { CommentsUiState.Loaded(Jm3Graph.gateway.comments(albumId, 1), 1) }
                         .getOrDefault(CommentsUiState.Failed)
                 }
             }
@@ -80,6 +116,12 @@ fun AlbumDetailScreen(albumId: String, onBack: () -> Unit, onOpenReader: (String
                     TopAppBar(
                         title = detail.title,
                         navigationIcon = { BackButton(onBack = onBack) },
+                        actions = {
+                            TextButton(
+                                text = if (favorited == true) "取消收藏" else "收藏",
+                                onClick = ::toggleFavorite,
+                            )
+                        },
                     )
                 },
             ) { innerPadding ->
@@ -138,8 +180,24 @@ fun AlbumDetailScreen(albumId: String, onBack: () -> Unit, onOpenReader: (String
                         is CommentsUiState.Failed -> item(key = "comments-failed") {
                             Text(text = "评论加载失败", modifier = Modifier.fillMaxWidth().padding(16.dp))
                         }
-                        is CommentsUiState.Loaded -> items(cs.page.items, key = { "c" + it.id }) { item ->
-                            CommentColumn(item)
+                        is CommentsUiState.Loaded -> {
+                            items(cs.page.items, key = { "c" + it.id }) { item ->
+                                CommentColumn(item)
+                            }
+                            if (cs.page.items.size < cs.page.total) {
+                                item(key = "comments-more") {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        if (commentsLoadingMore) {
+                                            Text(text = "加载中…")
+                                        } else {
+                                            TextButton(text = "加载更多评论", onClick = ::loadMoreComments)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
