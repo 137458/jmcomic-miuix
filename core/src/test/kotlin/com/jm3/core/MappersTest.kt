@@ -100,6 +100,7 @@ class MappersTest {
         )
         val got = photo.toPhotoPages()
         assertEquals("p1", got.photoId)
+        assertEquals("9", got.albumId)
         assertEquals(2, got.images.size)
         assertEquals(
             listOf(

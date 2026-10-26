@@ -3,12 +3,18 @@ package com.jm3.core
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.CommentPage
+import com.jm3.core.model.CookieSnapshot
+import com.jm3.core.model.FavoritePage
+import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import io.github.jukomu.jmcomic.api.enums.ForumMode
+import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.ForumQuery
+import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
+import io.github.jukomu.jmcomic.api.model.JmFavoritePage
 import io.github.jukomu.jmcomic.api.model.SearchQuery
 import io.github.jukomu.jmcomic.core.JmComic
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
@@ -35,6 +41,21 @@ interface Jm3Gateway {
 
     /** 封面地址；域名未就绪等场景返回 null。 */
     fun coverUrl(albumId: String, size: String = ""): String?
+
+    /** 登录并返回会话（含 AVS Cookie 快照）。阻塞调用。 */
+    fun login(username: String, password: String): Jm3Session
+
+    /** 登出并清空库内会话。阻塞调用。 */
+    fun logout()
+
+    /** 恢复已持久化的会话：把 Cookie 注回库内 CookieJar。阻塞调用。 */
+    fun restoreSession(session: Jm3Session)
+
+    /** 收藏列表（folderId=0 全部收藏）。阻塞调用。 */
+    fun favorites(page: Int): FavoritePage
+
+    /** 切换收藏状态（已收藏则取消）。阻塞调用。 */
+    fun toggleFavorite(albumId: String)
 }
 
 class Jm3GatewayImpl(
@@ -72,16 +93,49 @@ class Jm3GatewayImpl(
     override fun coverUrl(albumId: String, size: String): String? =
         runCatching { client.getAlbumCoverUrl(albumId, size) }.getOrNull()
 
+    override fun login(username: String, password: String): Jm3Session {
+        val info = client.login(username, password)
+        return Jm3Session(user = info.toUser(), cookies = client.cookies.map { it.toSnapshot() })
+    }
+
+    override fun logout() = client.logout()
+
+    override fun restoreSession(session: Jm3Session) {
+        client.setCookies(session.cookies.map { it.toOkhttpCookie() })
+    }
+
+    override fun favorites(page: Int): FavoritePage =
+        client.getFavorites(FavoriteQuery.Builder().folderId(0).page(page).build()).toFavoritePage()
+
+    override fun toggleFavorite(albumId: String) = client.toggleAlbumFavorite(albumId, "0")
+
     /** 域名解析只做一次：借库的域名裁决取首个封面地址，解析出图片域名后全部走纯构造器，消除逐项调用。 */
     private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(): SearchPage {
         val metas = content().orEmpty()
-        val imageDomain = metas.firstOrNull()
+        return SearchPage(currentPage = currentPage(), totalPages = totalPages(), items = metas.toSearchResults())
+    }
+
+    private fun JmFavoritePage.toFavoritePage(): FavoritePage {
+        val metas = content.orEmpty()
+        return FavoritePage(currentPage = currentPage, totalPages = totalPages, items = metas.toSearchResults())
+    }
+
+    private fun List<JmAlbumMeta>.toSearchResults(): List<SearchResult> {
+        val imageDomain = firstOrNull()
             ?.let { runCatching { client.getAlbumCoverUrl(it.id(), "_3x4") }.getOrNull() }
             ?.let { it.removePrefix("https://").substringBefore("/") }
             .orEmpty()
-        val items = metas.map { meta ->
-            meta.toSearchResult(coverUrl = CoverUrls.build(meta.id(), imageDomain, "_3x4"))
-        }
-        return SearchPage(currentPage = currentPage(), totalPages = totalPages(), items = items)
+        return map { meta -> meta.toSearchResult(coverUrl = CoverUrls.build(meta.id(), imageDomain, "_3x4")) }
     }
+
+    private fun okhttp3.Cookie.toSnapshot(): CookieSnapshot =
+        CookieSnapshot(name = name, value = value, domain = domain, path = path)
+
+    private fun CookieSnapshot.toOkhttpCookie(): okhttp3.Cookie =
+        okhttp3.Cookie.Builder()
+            .name(name)
+            .value(value)
+            .domain(domain)
+            .path(path.ifBlank { "/" })
+            .build()
 }

@@ -5,6 +5,7 @@ import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
+import com.jm3.core.model.Jm3User
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchResult
@@ -18,9 +19,27 @@ import io.github.jukomu.jmcomic.api.model.JmCommentList
 import io.github.jukomu.jmcomic.api.model.JmImage
 import io.github.jukomu.jmcomic.api.model.JmPhoto
 import io.github.jukomu.jmcomic.api.model.JmPhotoMeta
+import io.github.jukomu.jmcomic.api.model.JmUserInfo
 import io.github.jukomu.jmcomic.api.model.SearchQuery
+import kotlin.math.roundToInt
 
 // 库为 Java record，组件访问器无 get 前缀，统一函数调用语法。
+
+fun JmUserInfo.toUser(): Jm3User = Jm3User(
+    uid = uid,
+    username = username,
+    email = email,
+    emailVerified = emailVerified,
+    photoUrl = avatarUrl,
+    coin = coin,
+    albumFavorites = albumFavorites,
+    maxAlbumFavorites = maxAlbumFavorites,
+    level = level,
+    levelName = levelName,
+    nextLevelExp = nextLevelExp,
+    currentExp = currentExp,
+    expPercent = expPercent.roundToInt(),
+)
 fun JmAlbumMeta.toSearchResult(coverUrl: String? = null): SearchResult = SearchResult(
     id = id(),
     title = title() ?: "",
@@ -51,6 +70,7 @@ fun JmAlbum.toAlbumDetail(coverUrl: String? = null): AlbumDetail = AlbumDetail(
 
 fun JmPhoto.toPhotoPages(): PhotoPages = PhotoPages(
     photoId = id(),
+    albumId = albumId() ?: id(),
     title = title() ?: "",
     images = images().orEmpty().mapIndexed { index, image ->
         PageImage(

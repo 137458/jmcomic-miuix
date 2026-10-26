@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -18,7 +19,9 @@ dependencies {
     implementation(libs.jmcomic.core) {
         exclude(group = "io.github.darkxanter", module = "webp-imageio")
     }
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 tasks.withType<Test>().configureEach {

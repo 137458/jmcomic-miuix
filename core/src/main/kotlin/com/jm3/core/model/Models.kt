@@ -1,5 +1,7 @@
 package com.jm3.core.model
 
+import kotlinx.serialization.Serializable
+
 data class SearchResult(
     val id: String,
     val title: String,
@@ -44,8 +46,49 @@ data class PageImage(
 
 data class PhotoPages(
     val photoId: String,
+    val albumId: String,
     val title: String,
     val images: List<PageImage>,
+)
+
+@Serializable
+data class Jm3User(
+    val uid: String,
+    val username: String,
+    val email: String?,
+    val emailVerified: Boolean,
+    val photoUrl: String?,
+    val coin: Int,
+    val albumFavorites: Int,
+    val maxAlbumFavorites: Int,
+    val level: Int,
+    val levelName: String?,
+    val nextLevelExp: Long,
+    val currentExp: Long,
+    val expPercent: Int,
+)
+
+/** 会话 Cookie 快照，用于本地持久化与恢复注入。 */
+@Serializable
+data class CookieSnapshot(
+    val name: String,
+    val value: String,
+    val domain: String,
+    val path: String,
+)
+
+/** 登录会话：用户信息 + 会话 Cookie。 */
+@Serializable
+data class Jm3Session(
+    val user: Jm3User,
+    val cookies: List<CookieSnapshot>,
+)
+
+/** 收藏列表页（folderId=0 全部收藏）。 */
+data class FavoritePage(
+    val currentPage: Int,
+    val totalPages: Int,
+    val items: List<SearchResult>,
 )
 
 /** 筛选选项公共形态，供 UI 泛型渲染。 */
