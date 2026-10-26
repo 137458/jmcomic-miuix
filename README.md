@@ -1,26 +1,67 @@
 # JM3
 
-JM Comic 第三方 Android 客户端，无广告，使用 Jetpack Compose + Miuix 构建。
+JM Comic 第三方 Android 客户端。无广告，基于 Jetpack Compose 与 Miuix 构建。
 
-## 特性
+## 功能
 
-- 搜索与车号直达
-- 相册详情与章节浏览
-- 内置阅读器（自动还原服务端分割图片）
+- 搜索：关键词搜索与车号直达
+- 浏览：分类筛选、榜单排序、时间范围过滤，列表分页加载
+- 详情：章节列表、收藏与取消收藏、只读评论区
+- 阅读：分割图片自动还原、内存缓存与邻页预加载、已下载页离线直读
+- 账号：登录、会话持久化与启动恢复、收藏列表、阅读历史
+- 下载：章节离线下载（并发队列、断点续传、失败重试）、本地书架管理
+- 设置：主题三选（跟随系统/浅色/深色）、自定义 API 线路、数据管理、关于页
+
+## 技术栈
+
+- Kotlin / Jetpack Compose / Miuix（HyperOS 风格组件库）
+- 协议层：jmcomic-api v1.1.12
+- 图片：Coil 3（自定义 Fetcher）
+- 存储：Room（历史与下载元数据）、DataStore（会话与设置）
+- Gradle 9.8.2 / AGP 9.4.1 / Kotlin 2.4.21
 
 ## 构建
 
-依赖 Android SDK（API 36）与 JDK 17+。
+要求：JDK 21+，Android SDK（命令行工具或 Android Studio），`local.properties` 中配置 `sdk.dir`。
 
 ```
+# 调试包
 ./gradlew :app:assembleDebug
+
+# 发布包（R8 压缩 + 资源收缩）
+./gradlew :app:assembleRelease
+
+# 单元测试
+./gradlew :core:test
 ```
 
-## 开源依赖
+### 发布签名
 
-- [jmcomic-api-java](https://github.com/JUKOMU/jmcomic-api-java)（协议层）
-- [Miuix](https://github.com/miuix-kotlin-multiplatform/miuix)（UI 框架）
-- [Coil](https://coil-kt.github.io/coil/)（图片加载）
+签名信息只从 `local.properties` 读取，绝不入库。配置以下四项即启用 release 签名：
+
+```properties
+storeFile=path/to/keystore.jks
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+任一项缺失时，`assembleRelease` 自动回退 debug 签名，产物仍可直接侧载安装，但不可用于正式分发。
+
+## 模块结构
+
+- `:core`：协议封装与纯 JVM 业务逻辑（网关、下载引擎、搜索合并、封面 URL 构造），JUnit 测试覆盖
+- `:app`：Compose UI 与 Android 实现（Room、DataStore、文件存储）
+
+## 致谢
+
+- [hect0x7/JMComic-Crawler-Python](https://github.com/hect0x7/JMComic-Crawler-Python)：协议事实标准参考
+- [JUKOMU/JMComic-Api-Java](https://github.com/JUKOMU/JMComic-Api-Java)：Java 协议实现（MIT）
+- [Miuix](https://github.com/miuix-kotlin-multiplatform/miuix)：UI 组件库
+
+## 免责声明
+
+本项目仅供学习交流，内容来自第三方站点，与本项目无关。您应当已年满 18 周岁（或所在地区法定年龄）方可使用。请遵守当地法律法规，因使用本项目产生的任何后果由使用者自行承担。
 
 ## 许可证
 
