@@ -20,6 +20,7 @@ dependencies {
         exclude(group = "io.github.darkxanter", module = "webp-imageio")
     }
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
 }

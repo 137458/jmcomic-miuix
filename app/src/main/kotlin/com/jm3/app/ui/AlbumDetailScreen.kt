@@ -121,6 +121,20 @@ fun AlbumDetailScreen(albumId: String, onBack: () -> Unit, onOpenReader: (String
                                 text = if (favorited == true) "取消收藏" else "收藏",
                                 onClick = ::toggleFavorite,
                             )
+                            if (detail.chapters.size > 1) {
+                                TextButton(
+                                    text = "下载全部",
+                                    onClick = {
+                                        detail.chapters.forEach { chapter ->
+                                            Jm3Graph.downloadManager.enqueueChapter(
+                                                photoId = chapter.id,
+                                                albumId = detail.id,
+                                                title = chapter.title,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
                         },
                     )
                 },
@@ -167,6 +181,18 @@ fun AlbumDetailScreen(albumId: String, onBack: () -> Unit, onOpenReader: (String
                             title = chapter.title,
                             summary = null,
                             onClick = { onOpenReader(chapter.id) },
+                            endActions = {
+                                TextButton(
+                                    text = "下载",
+                                    onClick = {
+                                        Jm3Graph.downloadManager.enqueueChapter(
+                                            photoId = chapter.id,
+                                            albumId = detail.id,
+                                            title = chapter.title,
+                                        )
+                                    },
+                                )
+                            },
                         )
                     }
                     item(key = "comments-title") {

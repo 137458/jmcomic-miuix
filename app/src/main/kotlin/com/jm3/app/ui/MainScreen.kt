@@ -35,6 +35,7 @@ fun MainScreen(
     onOpenLogin: () -> Unit,
     onOpenFavorites: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenShelf: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Scaffold(
@@ -66,6 +67,7 @@ fun MainScreen(
                     onOpenLogin = onOpenLogin,
                     onOpenFavorites = onOpenFavorites,
                     onOpenHistory = onOpenHistory,
+                    onOpenShelf = onOpenShelf,
                 )
             }
         }

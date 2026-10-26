@@ -3,6 +3,10 @@
 ## [未发布]
 
 ### 新增
+- 离线下载引擎（:core 纯 JVM）：章节任务状态机（非法状态转移拒绝）、并发上限 2 的下载队列（同话去重、断点续传、单页重试 2 次后标记失败不阻塞队列、开跑前自动补齐章节元数据），配套页存储与元数据仓储接口，12 个单元测试覆盖并发/暂停恢复/重试/边界。
+- 本地书架：下载元数据 Room 持久化（jm3.db v1→v2 正规迁移新增 downloads 表，含离线页列表缓存），支持进度查看、暂停/继续/重试、删除与离线阅读。
+- 相册详情页章节行「下载」入口与多话「下载全部」（走同一队列）；「我的」页新增「本地书架」入口。
+- 阅读器本地优先取数：已下载页直接读本地文件，未下载页走在线网关。
 
 - 账号体系：登录/登出、会话 Cookie 持久化（DataStore Preferences）与启动自动恢复注回，账号状态以 StateFlow 驱动 UI。
 - 底部导航新增「我的」页：账号卡片（等级/经验/硬币、退出登录）、收藏与历史入口。
@@ -17,7 +21,7 @@
 
 ### 依赖
 
-- `:app` 新增 androidx.room（runtime/compiler，KSP）、androidx.datastore-preferences；`:core` 测试新增 kotlinx-coroutines-test。
+- `:app` 新增 androidx.room（runtime/compiler，KSP）、androidx.datastore-preferences；`:core` 新增 kotlinx-coroutines-core（下载队列协程驱动），测试新增 kotlinx-coroutines-test。
 
 ### 修复
 

@@ -36,6 +36,7 @@ data class AlbumDetail(
     val chapters: List<Chapter>,
 )
 
+@Serializable
 data class PageImage(
     val photoId: String,
     val scrambleId: String,
@@ -44,6 +45,7 @@ data class PageImage(
     val url: String,
 )
 
+@Serializable
 data class PhotoPages(
     val photoId: String,
     val albumId: String,
