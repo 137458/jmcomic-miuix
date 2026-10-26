@@ -33,6 +33,9 @@ interface HistoryDao {
 
     @Query("SELECT * FROM history ORDER BY updatedAt DESC LIMIT :pageSize OFFSET :offset")
     suspend fun page(pageSize: Int, offset: Int): List<HistoryEntity>
+
+    @Query("DELETE FROM history")
+    suspend fun clear()
 }
 
 /** 本地书架记录；pagesJson 缓存已完成章节的页列表，供离线阅读。 */
@@ -102,6 +105,10 @@ class RoomHistoryRepository(
     override suspend fun page(page: Int, pageSize: Int): List<HistoryEntry> {
         if (page < 1) return emptyList()
         return dao.page(pageSize = pageSize, offset = (page - 1) * pageSize).map { it.toEntry() }
+    }
+
+    override suspend fun clear() {
+        dao.clear()
     }
 }
 

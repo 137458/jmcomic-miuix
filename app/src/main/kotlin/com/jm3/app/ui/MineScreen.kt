@@ -32,6 +32,7 @@ fun MineScreen(
     onOpenFavorites: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenShelf: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val user by account.user.collectAsState()
     val scope = rememberCoroutineScope()
@@ -67,6 +68,7 @@ fun MineScreen(
                 BasicComponent(title = "我的收藏", summary = null, onClick = onOpenFavorites)
                 BasicComponent(title = "阅读历史", summary = null, onClick = onOpenHistory)
                 BasicComponent(title = "本地书架", summary = null, onClick = onOpenShelf)
+                BasicComponent(title = "设置", summary = null, onClick = onOpenSettings)
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
