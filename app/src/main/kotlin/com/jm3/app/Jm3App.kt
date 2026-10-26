@@ -3,7 +3,7 @@ package com.jm3.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.jm3.app.ui.AlbumDetailScreen
-import com.jm3.app.ui.HomeScreen
+import com.jm3.app.ui.MainScreen
 import com.jm3.app.ui.ReaderScreen
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.Jm3GatewayImpl
@@ -23,7 +23,7 @@ object Jm3Graph {
 @Serializable
 sealed interface Route : NavKey {
     @Serializable
-    data object Home : Route
+    data object Main : Route
 
     @Serializable
     data class AlbumDetail(val albumId: String) : Route
@@ -34,14 +34,14 @@ sealed interface Route : NavKey {
 
 @Composable
 fun Jm3App() {
-    val backStack = rememberNavBackStack(Route.Home)
+    val backStack = rememberNavBackStack(Route.Main)
     MiuixTheme(controller = remember { ThemeController(colorSchemeMode = ColorSchemeMode.System) }) {
         NavDisplay(
             backStack = backStack,
             onBack = { backStack.removeLastOrNull() },
         ) {
-            entry<Route.Home> {
-                HomeScreen(
+            entry<Route.Main> {
+                MainScreen(
                     gateway = Jm3Graph.gateway,
                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                 )

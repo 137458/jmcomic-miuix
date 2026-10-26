@@ -1,10 +1,16 @@
 package com.jm3.core
 
+import com.jm3.core.model.BrowseCategory
+import com.jm3.core.model.BrowseFilter
+import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.SearchResult
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
 import io.github.jukomu.jmcomic.api.model.JmCategoryMeta
+import io.github.jukomu.jmcomic.api.model.JmComment
+import io.github.jukomu.jmcomic.api.model.JmCommentList
 import io.github.jukomu.jmcomic.api.model.JmImage
 import io.github.jukomu.jmcomic.api.model.JmPhoto
 import io.github.jukomu.jmcomic.api.model.JmPhotoMeta
@@ -36,6 +42,21 @@ class MappersTest {
         id, "T", "D", "220980", "1700000000", 2, likes, views, 5, "cover.jpg",
         cat, subCat, listOf("A"), emptyList(), emptyList(), listOf("t"), emptyList(), photoMetas, "",
         false, false, false, emptyList(), "", "",
+    )
+
+    /** JmComment 记录组件顺序：id,userId,username,nickname,content,contentHtml,postDate,photo,expinfo,expinfoData,aid,bid,nid,ncid,name,likes,gender,updateAt,parentCommentId,spoiler,replys,voteUp,voteDown */
+    private fun comment(
+        id: String,
+        username: String? = null,
+        nickname: String? = null,
+        content: String? = null,
+        postDate: String? = null,
+        likes: Int = 0,
+        name: String? = null,
+        replys: List<JmComment> = emptyList(),
+    ): JmComment = JmComment(
+        id, "u", username, nickname, content, null, postDate, null, null, null,
+        null, null, null, null, name, likes, null, null, null, false, replys, 0, 0,
     )
 
     @Test
@@ -93,5 +114,93 @@ class MappersTest {
     fun 章节空图_映射_空列表不崩溃() {
         val photo = JmPhoto("p2", "t", "9", "1", 0, null, null, emptyList(), true)
         assertEquals(0, photo.toPhotoPages().images.size)
+    }
+
+    @Test
+    fun 筛选条件_转库查询_映射分类排序时间与页码() {
+        val q = BrowseFilter(
+            category = BrowseCategory.KOREAN,
+            order = BrowseOrder.MOST_LIKED,
+            time = BrowseTime.WEEK,
+        ).toSearchQuery(3)
+        assertEquals("hanman", q.category.value)
+        assertEquals("tf", q.orderBy.value)
+        assertEquals("w", q.timeOption.value)
+        assertEquals(3, q.page)
+        assertEquals("", q.searchQuery)
+    }
+
+    @Test
+    fun 筛选条件_默认值_全部分类最新排序全部时间() {
+        val q = BrowseFilter().toSearchQuery(1)
+        assertEquals("0", q.category.value)
+        assertEquals("mr", q.orderBy.value)
+        assertEquals("a", q.timeOption.value)
+        assertEquals(1, q.page)
+    }
+
+    @Test
+    fun 评论_映射_昵称优先且回复递归() {
+        val reply = comment(id = "r1", nickname = "昵称二", content = "回复", postDate = "2026-01-01")
+        val parent = comment(
+            id = "c1",
+            username = "user1",
+            content = "内容",
+            postDate = "2026-01-02",
+            likes = 3,
+            name = "JM123",
+            replys = listOf(reply),
+        )
+        val got = parent.toCommentItem()
+        assertEquals("c1", got.id)
+        assertEquals("user1", got.author)
+        assertEquals("内容", got.content)
+        assertEquals("2026-01-02", got.postDate)
+        assertEquals(3, got.likes)
+        assertEquals(1, got.replies.size)
+        assertEquals("昵称二", got.replies[0].author)
+        assertEquals("回复", got.replies[0].content)
+    }
+
+    @Test
+    fun 评论_映射_无昵称回退用户名再回退匿名() {
+        assertEquals("userX", comment(id = "a", username = "userX").toCommentItem().author)
+        assertEquals("JM9", comment(id = "b", name = "JM9").toCommentItem().author)
+        assertEquals("匿名", comment(id = "c").toCommentItem().author)
+    }
+
+    @Test
+    fun 评论空内容_映射_内容为空串() {
+        val got = comment(id = "c2", content = null).toCommentItem()
+        assertEquals("", got.content)
+        assertNull(got.postDate)
+    }
+
+    @Test
+    fun 评论列表_映射_含总数() {
+        val got = JmCommentList(5, listOf(comment(id = "c1"))).toCommentPage()
+        assertEquals(5, got.total)
+        assertEquals(listOf("c1"), got.items.map { it.id })
+    }
+
+    @Test
+    fun 章节_映射_图片地址含下载查询参数() {
+        val photo = JmPhoto(
+            "p3", "t", "9", "220980", 0, null, null,
+            listOf(JmImage("p3", "220980", "00001.jpg", "http://x/1.jpg", "file=b10c01.jpg", 0)),
+            true,
+        )
+        val got = photo.toPhotoPages()
+        assertEquals("http://x/1.jpg?file=b10c01.jpg", got.images[0].url)
+    }
+
+    @Test
+    fun 页面图片_转库图片_序号从1起且下载地址透传() {
+        val got = PageImage("p1", "220980", 0, "00001.jpg", "http://x/1.jpg?file=a.jpg").toJmImage()
+        assertEquals(1, got.sortOrder())
+        assertEquals("http://x/1.jpg?file=a.jpg", got.getDownloadUrl())
+        assertEquals("p1", got.photoId())
+        assertEquals("220980", got.scrambleId())
+        assertEquals("00001.jpg", got.filename())
     }
 }

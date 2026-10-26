@@ -1,14 +1,24 @@
 package com.jm3.core
 
 import com.jm3.core.model.AlbumDetail
+import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.Chapter
+import com.jm3.core.model.CommentItem
+import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchResult
+import io.github.jukomu.jmcomic.api.enums.Category
+import io.github.jukomu.jmcomic.api.enums.OrderBy
+import io.github.jukomu.jmcomic.api.enums.TimeOption
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
+import io.github.jukomu.jmcomic.api.model.JmComment
+import io.github.jukomu.jmcomic.api.model.JmCommentList
+import io.github.jukomu.jmcomic.api.model.JmImage
 import io.github.jukomu.jmcomic.api.model.JmPhoto
 import io.github.jukomu.jmcomic.api.model.JmPhotoMeta
+import io.github.jukomu.jmcomic.api.model.SearchQuery
 
 // 库为 Java record，组件访问器无 get 前缀，统一函数调用语法。
 fun JmAlbumMeta.toSearchResult(coverUrl: String? = null): SearchResult = SearchResult(
@@ -48,7 +58,44 @@ fun JmPhoto.toPhotoPages(): PhotoPages = PhotoPages(
             scrambleId = image.scrambleId() ?: scrambleId() ?: "",
             index = index,
             filename = image.filename() ?: "",
-            url = image.url() ?: "",
+            url = image.getDownloadUrl() ?: "",
         )
     },
+)
+
+fun BrowseFilter.toSearchQuery(page: Int): SearchQuery {
+    val category = Category.entries.firstOrNull { it.value == category.apiValue } ?: Category.ALL
+    val orderBy = OrderBy.entries.firstOrNull { it.value == order.apiValue } ?: OrderBy.LATEST
+    val time = TimeOption.entries.firstOrNull { it.value == time.apiValue } ?: TimeOption.ALL
+    return SearchQuery.Builder()
+        .text("")
+        .category(category)
+        .orderBy(orderBy)
+        .time(time)
+        .page(page)
+        .build()
+}
+
+fun PageImage.toJmImage(): JmImage = JmImage(
+    photoId,
+    scrambleId,
+    filename,
+    url,
+    "",
+    index + 1,
+)
+
+// 评论字段可能缺失，逐级回退；回复列表递归映射。
+fun JmComment.toCommentItem(): CommentItem = CommentItem(
+    id = commentId() ?: "",
+    author = nickname() ?: username() ?: name() ?: "匿名",
+    content = content() ?: "",
+    postDate = postDate(),
+    likes = likes(),
+    replies = replys().orEmpty().map { it.toCommentItem() },
+)
+
+fun JmCommentList.toCommentPage(): CommentPage = CommentPage(
+    total = total(),
+    items = list().orEmpty().map { it.toCommentItem() },
 )
