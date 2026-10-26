@@ -46,4 +46,24 @@ class HistoryRepositoryTest {
         assertTrue(r.page(3, 3).isEmpty())
         assertTrue(r.page(0, 3).isEmpty())
     }
+
+    @Test
+    fun 清空后分页返回空() = runTest {
+        val r = repo()
+        for (i in 1..3) {
+            now = i.toLong()
+            r.upsert(entry("p$i"))
+        }
+        r.clear()
+        assertTrue(r.page(1, 10).isEmpty())
+    }
+
+    @Test
+    fun 清空后可继续写入() = runTest {
+        val r = repo()
+        now = 1L; r.upsert(entry("p1"))
+        r.clear()
+        now = 2L; r.upsert(entry("p2"))
+        assertEquals(listOf("p2"), r.page(1, 10).map { it.photoId })
+    }
 }

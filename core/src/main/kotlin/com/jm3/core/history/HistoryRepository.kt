@@ -16,6 +16,9 @@ interface HistoryRepository {
 
     /** 页码从 1 起；非法页码或越界返回空列表。 */
     suspend fun page(page: Int, pageSize: Int = 20): List<HistoryEntry>
+
+    /** 清空全部历史。 */
+    suspend fun clear()
 }
 
 /** 纯内存实现，供测试与后续替换。 */
@@ -33,5 +36,9 @@ class InMemoryHistoryRepository(private val clock: () -> Long = System::currentT
         val from = (page - 1) * pageSize
         if (from >= all.size) return emptyList()
         return all.subList(from, minOf(from + pageSize, all.size))
+    }
+
+    override suspend fun clear() {
+        entries.clear()
     }
 }

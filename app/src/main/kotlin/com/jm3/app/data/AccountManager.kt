@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 
 /** 账号状态：登录/登出/启动恢复，向 UI 暴露只读 StateFlow。 */
 class AccountManager(
-    private val gateway: Jm3Gateway,
+    private val gatewayProvider: () -> Jm3Gateway,
     private val store: SessionStore,
 ) {
 
@@ -23,14 +23,14 @@ class AccountManager(
     suspend fun restore() {
         if (_user.value != null) return
         val session = store.load() ?: return
-        withContext(Dispatchers.IO) { runCatching { gateway.restoreSession(session) } }
+        withContext(Dispatchers.IO) { runCatching { gatewayProvider().restoreSession(session) } }
         _user.value = session.user
     }
 
     /** 登录成功返回 null 并持久化会话；失败返回错误消息。 */
     suspend fun login(username: String, password: String): String? =
         withContext(Dispatchers.IO) {
-            runCatching { gateway.login(username, password) }
+            runCatching { gatewayProvider().login(username, password) }
                 .onSuccess { session ->
                     store.save(session)
                     _user.value = session.user
@@ -39,7 +39,7 @@ class AccountManager(
         }
 
     suspend fun logout() {
-        withContext(Dispatchers.IO) { runCatching { gateway.logout() } }
+        withContext(Dispatchers.IO) { runCatching { gatewayProvider().logout() } }
         store.clear()
         _user.value = null
     }

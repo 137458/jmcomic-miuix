@@ -95,4 +95,14 @@ class DownloadManager(
         fileStore.delete(photoId)
         appScope.launch { recordStore.delete(photoId) }
     }
+
+    /** 清空全部下载：取消在途任务 + 删文件 + 删记录（文件与记录双清）。 */
+    suspend fun clearAll() {
+        val all = recordStore.all()
+        all.forEach { queue.cancel(it.photoId) }
+        all.forEach { record ->
+            fileStore.delete(record.photoId)
+            recordStore.delete(record.photoId)
+        }
+    }
 }

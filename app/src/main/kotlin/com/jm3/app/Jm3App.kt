@@ -3,10 +3,16 @@ package com.jm3.app
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.room.Room
 import com.jm3.app.data.AccountManager
 import com.jm3.app.data.SessionStore
+import com.jm3.app.data.SettingsStore
 import com.jm3.app.data.download.DownloadManager
 import com.jm3.app.data.download.DownloadRecordStore
 import com.jm3.app.data.download.FileDownloadStore
@@ -22,16 +28,20 @@ import com.jm3.app.ui.HistoryScreen
 import com.jm3.app.ui.LoginScreen
 import com.jm3.app.ui.MainScreen
 import com.jm3.app.ui.ReaderScreen
+import com.jm3.app.ui.SettingsScreen
 import com.jm3.app.ui.ShelfScreen
+import com.jm3.core.GatewayFactory
 import com.jm3.core.Jm3Gateway
-import com.jm3.core.Jm3GatewayImpl
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
+import com.jm3.core.settings.SettingsRepository
+import com.jm3.core.settings.ThemeMode
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavKey
@@ -40,15 +50,26 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 
-/** 轻量依赖图：协议网关/账号/阅读历史/本地书架全应用单例。 */
+/** 轻量依赖图：协议网关/账号/设置/阅读历史/本地书架全应用单例。 */
 object Jm3Graph {
 
     @Volatile
     private var contextRef: Context? = null
 
-    val gateway: Jm3Gateway by lazy { Jm3GatewayImpl() }
+    /** 线路切换后的网关实例；组合内读取可感知切换并重组。 */
+    private var gatewayOverride by mutableStateOf<Jm3Gateway?>(null)
 
-    val account: AccountManager by lazy { AccountManager(gateway, SessionStore(appContext())) }
+    /** 当前生效网关：线路覆盖优先，否则库默认解析。 */
+    val gateway: Jm3Gateway
+        get() = gatewayOverride ?: defaultGateway
+
+    private val defaultGateway: Jm3Gateway by lazy { GatewayFactory.create(emptyList()) }
+
+    val sessionStore: SessionStore by lazy { SessionStore(appContext()) }
+
+    val settings: SettingsRepository by lazy { SettingsStore(appContext()) }
+
+    val account: AccountManager by lazy { AccountManager({ gateway }, sessionStore) }
 
     /** 历史与下载共用一个 Room 库（jm3.db），v2 起含 downloads 表。 */
     private val db: HistoryDb by lazy {
@@ -69,18 +90,27 @@ object Jm3Graph {
     val appScope: CoroutineScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
 
     val downloadManager: DownloadManager by lazy {
-        val pageSource = GatewayPageFetcher(gateway)
+        val pageSource = GatewayPageFetcher { gateway }
         DownloadManager(
             queue = DownloadQueue(
                 fetcher = pageSource,
                 store = downloadFiles,
-                resolver = GatewayTaskResolver(gateway),
+                resolver = GatewayTaskResolver { gateway },
             ),
             fileStore = downloadFiles,
             recordStore = downloadStore,
             pageSource = pageSource,
             appScope = appScope,
         )
+    }
+
+    /** 应用自定义 API 线路：重建网关并把已持久化会话迁移过去；空表回库默认解析。 */
+    suspend fun applyDomains(apiDomains: List<String>) {
+        val next = GatewayFactory.create(apiDomains)
+        runCatching { sessionStore.load() }.getOrNull()?.let { session ->
+            runCatching { next.restoreSession(session) }
+        }
+        gatewayOverride = next
     }
 
     private fun appContext(): Context =
@@ -109,17 +139,41 @@ sealed interface Route : NavKey {
     data object Shelf : Route
 
     @Serializable
+    data object Settings : Route
+
+    @Serializable
     data class AlbumDetail(val albumId: String) : Route
 
     @Serializable
     data class Reader(val photoId: String) : Route
 }
 
+/** :core 不依赖 Miuix，主题映射收敛在应用层。 */
+private fun ThemeMode.toColorSchemeMode(): ColorSchemeMode = when (this) {
+    ThemeMode.SYSTEM -> ColorSchemeMode.System
+    ThemeMode.LIGHT -> ColorSchemeMode.Light
+    ThemeMode.DARK -> ColorSchemeMode.Dark
+}
+
 @Composable
 fun Jm3App() {
     val backStack = rememberNavBackStack(Route.Main)
-    LaunchedEffect(Unit) { Jm3Graph.account.restore() }
-    MiuixTheme(controller = remember { ThemeController(colorSchemeMode = ColorSchemeMode.System) }) {
+    val scope = rememberCoroutineScope()
+    // colorSchemeMode 是 val 不可赋值：主题切换通过重建 controller 完成。
+    var themeModeName by rememberSaveable { mutableStateOf(ThemeMode.SYSTEM.name) }
+    val themeMode = remember(themeModeName) {
+        runCatching { ThemeMode.valueOf(themeModeName) }.getOrDefault(ThemeMode.SYSTEM)
+    }
+    val controller = remember(themeMode) { ThemeController(colorSchemeMode = themeMode.toColorSchemeMode()) }
+
+    // 启动顺序：先恢复主题与线路，最后 restore 会话——保证 Cookie 注入到切换后的网关。
+    LaunchedEffect(Unit) {
+        themeModeName = Jm3Graph.settings.themeMode().name
+        Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
+        Jm3Graph.account.restore()
+    }
+
+    MiuixTheme(controller = controller) {
         NavDisplay(
             backStack = backStack,
             onBack = { backStack.removeLastOrNull() },
@@ -133,6 +187,7 @@ fun Jm3App() {
                     onOpenFavorites = { backStack.add(Route.Favorites) },
                     onOpenHistory = { backStack.add(Route.History) },
                     onOpenShelf = { backStack.add(Route.Shelf) },
+                    onOpenSettings = { backStack.add(Route.Settings) },
                 )
             }
             entry<Route.Login> {
@@ -154,6 +209,16 @@ fun Jm3App() {
                 ShelfScreen(
                     onBack = { backStack.removeLastOrNull() },
                     onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                )
+            }
+            entry<Route.Settings> {
+                SettingsScreen(
+                    themeMode = themeMode,
+                    onThemeModeChange = { mode ->
+                        themeModeName = mode.name
+                        scope.launch { Jm3Graph.settings.setThemeMode(mode) }
+                    },
+                    onBack = { backStack.removeLastOrNull() },
                 )
             }
             entry<Route.AlbumDetail> { route ->

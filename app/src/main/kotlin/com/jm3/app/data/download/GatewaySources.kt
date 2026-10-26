@@ -10,13 +10,14 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 在线页取数：拉取 photo 页列表后按页号定位，逐页走 [Jm3Gateway.imageBytes]。
  * 会话内缓存 photoId -> 页列表，避免每次重试都重拉元数据。
+ * 通过 provider 取网关：线路切换重建网关后自动跟随，不持旧实例。
  */
-class GatewayPageFetcher(private val gateway: Jm3Gateway) : PageFetcher {
+class GatewayPageFetcher(private val gatewayProvider: () -> Jm3Gateway) : PageFetcher {
 
     private val pagesCache = ConcurrentHashMap<String, List<PageImage>>()
 
     suspend fun pages(photoId: String): List<PageImage> =
-        pagesCache[photoId] ?: gateway.photo(photoId).images.also { pagesCache[photoId] = it }
+        pagesCache[photoId] ?: gatewayProvider().photo(photoId).images.also { pagesCache[photoId] = it }
 
     /** 页列表 JSON；仅当会话内已拉取过该 photo 时可序列化，供离线阅读缓存。 */
     fun pagesJsonOrNull(photoId: String): String? {
@@ -27,14 +28,14 @@ class GatewayPageFetcher(private val gateway: Jm3Gateway) : PageFetcher {
     override suspend fun fetch(photoId: String, index: Int): ByteArray {
         val image = pages(photoId).firstOrNull { it.index == index }
             ?: error("页号越界：photoId=$photoId index=$index")
-        return gateway.imageBytes(image)
+        return gatewayProvider().imageBytes(image)
     }
 }
 
 /** 补齐章节元数据：photoId -> albumId/title/总页数。 */
-class GatewayTaskResolver(private val gateway: Jm3Gateway) : TaskResolver {
+class GatewayTaskResolver(private val gatewayProvider: () -> Jm3Gateway) : TaskResolver {
     override suspend fun resolve(photoId: String): ResolvedChapter {
-        val photo = gateway.photo(photoId)
+        val photo = gatewayProvider().photo(photoId)
         return ResolvedChapter(albumId = photo.albumId, title = photo.title, total = photo.images.size)
     }
 }
