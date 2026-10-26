@@ -13,6 +13,7 @@ import coil3.fetch.SourceFetchResult
 import coil3.key.Keyer
 import coil3.request.Options
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.download.DownloadStore
 import com.jm3.core.model.PageImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,30 +23,47 @@ import okio.FileSystem
 /** 阅读页图片模型直接复用 PageImage；键 = photoId/index，翻回旧页可命中内存缓存。 */
 class ReaderKeyer : Keyer<PageImage> {
     override fun key(data: PageImage, options: Options): String? =
-        "jm3-reader/${data.photoId}/${data.index}"
+        "jm3-reader/" + data.photoId + "/" + data.index
 }
 
-/** 经网关取图（含分割还原字节），交给 Coil 解码与缓存。 */
-class ReaderFetcherFactory(private val gateway: Jm3Gateway) : Fetcher.Factory<PageImage> {
+/** 取图：已下载页读本地文件，否则经网关在线取（含分割还原字节）。 */
+class ReaderFetcherFactory(
+    private val gateway: Jm3Gateway,
+    private val store: DownloadStore?,
+) : Fetcher.Factory<PageImage> {
     override fun create(data: PageImage, options: Options, imageLoader: ImageLoader): Fetcher = Fetcher {
-        val bytes = withContext(Dispatchers.IO) { gateway.imageBytes(data) }
-        SourceFetchResult(
-            source = ImageSource(Buffer().apply { write(bytes) }, FileSystem.SYSTEM),
-            mimeType = null,
-            dataSource = DataSource.NETWORK,
-        )
+        val local = store
+            ?.takeIf { it.exists(data.photoId, data.index) }
+            ?.let { withContext(Dispatchers.IO) { it.read(data.photoId, data.index) } }
+        if (local != null) {
+            SourceFetchResult(
+                source = ImageSource(Buffer().apply { write(local) }, FileSystem.SYSTEM),
+                mimeType = null,
+                dataSource = DataSource.DISK,
+            )
+        } else {
+            val bytes = withContext(Dispatchers.IO) { gateway.imageBytes(data) }
+            SourceFetchResult(
+                source = ImageSource(Buffer().apply { write(bytes) }, FileSystem.SYSTEM),
+                mimeType = null,
+                dataSource = DataSource.NETWORK,
+            )
+        }
     }
 }
 
 @Composable
-fun rememberReaderImageLoader(gateway: Jm3Gateway): ImageLoader {
+fun rememberReaderImageLoader(
+    gateway: Jm3Gateway,
+    store: DownloadStore? = null,
+): ImageLoader {
     val context = LocalPlatformContext.current
-    val loader = remember(gateway) {
+    val loader = remember(gateway, store) {
         ImageLoader.Builder(context)
             .components(
                 ComponentRegistry.Builder()
                     .add(ReaderKeyer())
-                    .add(ReaderFetcherFactory(gateway))
+                    .add(ReaderFetcherFactory(gateway, store))
                     .build(),
             )
             .build()

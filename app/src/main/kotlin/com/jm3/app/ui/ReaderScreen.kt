@@ -22,6 +22,8 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import com.jm3.app.Jm3Graph
+import com.jm3.app.data.download.decodePhotoPages
+import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
@@ -43,8 +45,17 @@ fun ReaderScreen(photoId: String, onBack: () -> Unit) {
 
     LaunchedEffect(photoId) {
         state = withContext(Dispatchers.IO) {
-            runCatching { ReaderUiState.Loaded(Jm3Graph.gateway.photo(photoId)) }
-                .getOrElse { ReaderUiState.Failed(it.message ?: "章节加载失败") }
+            val local = runCatching { Jm3Graph.downloadManager.find(photoId) }.getOrNull()
+                ?.takeIf { it.record.status == DownloadStatus.DONE }
+                ?.pagesJson
+                ?.let { decodePhotoPages(it) }
+                ?.takeIf { it.images.isNotEmpty() }
+            if (local != null) {
+                ReaderUiState.Loaded(local)
+            } else {
+                runCatching { ReaderUiState.Loaded(Jm3Graph.gateway.photo(photoId)) }
+                    .getOrElse { ReaderUiState.Failed(it.message ?: "章节加载失败") }
+            }
         }
     }
 
@@ -53,13 +64,16 @@ fun ReaderScreen(photoId: String, onBack: () -> Unit) {
         is ReaderUiState.Failed -> ErrorScreen("章节加载失败：${s.message}")
         is ReaderUiState.Loaded -> {
             LaunchedEffect(s.photo.photoId) {
+                val coverUrl = withContext(Dispatchers.IO) {
+                    runCatching { Jm3Graph.gateway.coverUrl(s.photo.albumId) }.getOrNull()
+                }
                 runCatching {
                     Jm3Graph.history.upsert(
                         HistoryEntry(
                             photoId = s.photo.photoId,
                             albumId = s.photo.albumId,
                             title = s.photo.title,
-                            coverUrl = null,
+                            coverUrl = coverUrl,
                             updatedAt = 0L,
                         ),
                     )
@@ -72,7 +86,7 @@ fun ReaderScreen(photoId: String, onBack: () -> Unit) {
 
 @Composable
 private fun ReaderPages(photo: PhotoPages, onBack: () -> Unit) {
-    val imageLoader = rememberReaderImageLoader(Jm3Graph.gateway)
+    val imageLoader = rememberReaderImageLoader(Jm3Graph.gateway, Jm3Graph.downloadFiles)
     val listState = rememberLazyListState()
     val context = LocalPlatformContext.current
     // 已发起预加载的页号；翻页向前向后都只发一次
