@@ -240,12 +240,21 @@ data class CommentItem(
     val postDate: String?,
     val likes: Int,
     val replies: List<CommentItem>,
+    /** 所属作品 ID；闲聊帖为 0/空，回复时需要它定位接口实体。 */
+    val albumId: String? = null,
 )
 
 data class CommentPage(
     val total: Int,
     val items: List<CommentItem>,
 )
+
+/** 论坛范围：对应原版 ForumTabItems 的三档（显示全部 / 漫画评论 / 闲聊大厅）。 */
+enum class ForumScope(val label: String) {
+    ALL("全部"),
+    MANHUA("漫画评论"),
+    CHAT("闲聊"),
+}
 
 /** 分类条目：slug 用于标签检索，children 为子分类（原版「更多分类」弹窗）。 */
 data class CategoryNode(

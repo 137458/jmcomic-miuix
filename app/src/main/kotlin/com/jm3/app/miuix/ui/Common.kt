@@ -3,6 +3,7 @@ package com.jm3.app.miuix.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +14,11 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,15 +28,76 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.core.model.SearchPage
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/** 评论回复面板：显示被回复作者、200 字上限与发送状态；换目标时清空草稿。 */
+@Composable
+fun CommentReplySheet(
+    show: Boolean,
+    targetAuthor: String?,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onSend: (String) -> Unit,
+) {
+    var text by rememberSaveable { mutableStateOf("") }
+    // 每次重新展开时清掉上一次草稿，避免把回复 A 的内容发到 B
+    LaunchedEffect(show, targetAuthor) {
+        if (show) text = ""
+    }
+    OverlayBottomSheet(
+        show = show,
+        title = targetAuthor?.let { "回复 $it" } ?: "回复",
+        onDismissRequest = onDismiss,
+    ) {
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                TextField(
+                    value = text,
+                    onValueChange = { text = it.take(COMMENT_REPLY_MAX_LENGTH) },
+                    label = "写下你的回复（最多 $COMMENT_REPLY_MAX_LENGTH 字）",
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "${text.length}/$COMMENT_REPLY_MAX_LENGTH",
+                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Button(
+                        onClick = { onSend(text.trim()) },
+                        enabled = !busy && text.isNotBlank(),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) {
+                        Text(text = if (busy) "发送中…" else "发送")
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+    }
+}
+
+/** 评论字数上限与原版一致（发帖/评论/回复共用 200）。 */
+const val COMMENT_REPLY_MAX_LENGTH = 200
 
 /** 标题栏返回键。 */
 @Composable

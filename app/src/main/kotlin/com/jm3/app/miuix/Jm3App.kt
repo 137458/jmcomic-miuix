@@ -29,6 +29,7 @@ import com.jm3.app.miuix.data.history.RoomDownloadRepository
 import com.jm3.app.miuix.data.history.RoomHistoryRepository
 import com.jm3.app.miuix.ui.AlbumDetailScreen
 import com.jm3.app.miuix.ui.FavoritesScreen
+import com.jm3.app.miuix.ui.ForumScreen
 import com.jm3.app.miuix.ui.HistoryScreen
 import com.jm3.app.miuix.ui.LoginScreen
 import com.jm3.app.miuix.ui.MainScreen
@@ -205,6 +206,10 @@ sealed interface Route : NavKey {
     @Serializable
     data object WatchHistory : Route
 
+    /** 社区论坛（全部/漫画评论/闲聊三档）。 */
+    @Serializable
+    data object Forum : Route
+
     @Serializable
     data class AlbumDetail(val albumId: String) : Route
 
@@ -296,6 +301,7 @@ fun Jm3App() {
                     onOpenProfile = { backStack.add(Route.Profile) },
                     onOpenTasks = { backStack.add(Route.Tasks) },
                     onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
+                    onOpenForum = { backStack.add(Route.Forum) },
                 )
             }
             entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -371,6 +377,13 @@ fun Jm3App() {
                 WatchHistoryScreen(
                     onBack = { backStack.removeLastOrNull() },
                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.Forum>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                ForumScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenLogin = { backStack.add(Route.Login) },
                     snackbarHostState = snackbarHostState,
                 )
             }

@@ -31,6 +31,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -80,6 +83,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private const val CHAPTER_GROUP_SIZE = 10
 private const val COMMENT_MAX_LENGTH = 200
+/** 折叠态默认展示的回复条数；超出部分由「展开 N 条回复」控制。 */
+private const val COMMENT_VISIBLE_REPLIES = 2
 
 sealed interface AlbumUiState {
     data object Loading : AlbumUiState
@@ -124,6 +129,9 @@ fun AlbumDetailScreen(
     var expandedGroups by remember(albumId) { mutableStateOf(setOf(0)) }
     var commentText by remember(albumId) { mutableStateOf("") }
     var commentBusy by remember(albumId) { mutableStateOf(false) }
+    // 回复目标与发送态：选中某条评论后由底部回复面板接管输入
+    var replyTarget by remember(albumId) { mutableStateOf<CommentItem?>(null) }
+    var replyBusy by remember(albumId) { mutableStateOf(false) }
     var commentsLoadingMore by remember(albumId) { mutableStateOf(false) }
     var pullRefreshing by remember(albumId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -314,6 +322,25 @@ fun AlbumDetailScreen(
                     loadComments()
                 }
                 .onFailure { snackbarHostState.showSnackbar("发表失败：" + (it.message ?: "请稍后重试")) }
+        }
+    }
+
+    fun sendReply(text: String) {
+        val target = replyTarget ?: return
+        if (text.isBlank() || replyBusy) return
+        replyBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.replyComment(albumId, text, target.id) }
+            }
+            replyBusy = false
+            result
+                .onSuccess {
+                    replyTarget = null
+                    snackbarHostState.showSnackbar("回复已发送")
+                    loadComments()
+                }
+                .onFailure { snackbarHostState.showSnackbar("回复失败：" + (it.message ?: "请稍后重试")) }
         }
     }
 
@@ -601,7 +628,12 @@ fun AlbumDetailScreen(
                                                 )
                                             }
                                             for (comment in cs.page.items) {
-                                                CommentRow(item = comment)
+                                                CommentRow(
+                                                    item = comment,
+                                                    onReply = {
+                                                        if (user == null) onOpenLogin() else replyTarget = comment
+                                                    },
+                                                )
                                             }
                                             if (cs.page.items.size < cs.page.total) {
                                                 Box(
@@ -659,6 +691,14 @@ fun AlbumDetailScreen(
                         }
                     }
                 }
+                // 回复面板：标题带被回复作者，发送后刷新评论列表以显示新回复
+                CommentReplySheet(
+                    show = replyTarget != null,
+                    targetAuthor = replyTarget?.author,
+                    busy = replyBusy,
+                    onDismiss = { replyTarget = null },
+                    onSend = ::sendReply,
+                )
             }
         }
     }
@@ -997,13 +1037,29 @@ internal fun CommentComposer(
     }
 }
 
-/** 只读评论区：作者/日期/赞/内容，回复缩进展示；整体挂在单张卡片内逐条排列。 */
+/** 只读评论区单条：作者/日期/赞/内容，回复默认折叠 2 条；回复区带缩进线并可继续回复。 */
 @Composable
-internal fun CommentRow(item: CommentItem, depth: Int = 0) {
+internal fun CommentRow(
+    item: CommentItem,
+    depth: Int = 0,
+    onReply: ((CommentItem) -> Unit)? = null,
+) {
+    val lineColor = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.25f)
+    var repliesExpanded by remember(item.id) { mutableStateOf(item.replies.size <= COMMENT_VISIBLE_REPLIES) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 12.dp + (depth * 16).dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 12.dp + (depth * 12).dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+            .drawBehind {
+                if (depth > 0) {
+                    // 回复线：贴在缩进区外侧的竖线，标识回复归属层级
+                    drawRect(
+                        color = lineColor,
+                        topLeft = Offset(-6.dp.toPx(), 0f),
+                        size = Size(2.dp.toPx(), size.height),
+                    )
+                }
+            },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -1019,19 +1075,38 @@ internal fun CommentRow(item: CommentItem, depth: Int = 0) {
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
+            Spacer(modifier = Modifier.weight(1f))
+            if (item.likes > 0) {
+                Text(
+                    text = "赞 ${item.likes}",
+                    fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text(text = item.content, fontSize = MiuixTheme.textStyles.body1.fontSize)
-        if (item.likes > 0) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "赞 ${item.likes}",
-                fontSize = MiuixTheme.textStyles.footnote2.fontSize,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        if (onReply != null) {
+            TextButton(
+                text = "回复",
+                onClick = { onReply(item) },
+                minWidth = 0.dp,
+                minHeight = 28.dp,
             )
         }
-    }
-    for (reply in item.replies) {
-        CommentRow(item = reply, depth = depth + 1)
+        if (item.replies.isNotEmpty()) {
+            val shown = if (repliesExpanded) item.replies else item.replies.take(COMMENT_VISIBLE_REPLIES)
+            for (reply in shown) {
+                CommentRow(item = reply, depth = depth + 1, onReply = onReply)
+            }
+            if (item.replies.size > COMMENT_VISIBLE_REPLIES) {
+                TextButton(
+                    text = if (repliesExpanded) "收起回复" else "展开 ${item.replies.size} 条回复",
+                    onClick = { repliesExpanded = !repliesExpanded },
+                    minWidth = 0.dp,
+                    minHeight = 28.dp,
+                )
+            }
+        }
     }
 }

@@ -49,6 +49,7 @@ import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.model.Chapter
+import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
@@ -265,6 +266,9 @@ private fun ReaderPages(
     var commentsFailed by remember { mutableStateOf(false) }
     var commentText by remember(photo.albumId) { mutableStateOf("") }
     var commentBusy by remember { mutableStateOf(false) }
+    // 评论抽屉内的回复：目标评论与发送态
+    var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
+    var replyBusy by remember { mutableStateOf(false) }
     var showTrackPrompt by remember { mutableStateOf(false) }
     var trackPromptShown by remember { mutableStateOf(false) }
     var trackMuteChecked by remember { mutableStateOf(false) }
@@ -388,6 +392,25 @@ private fun ReaderPages(
                     loadComments()
                 }
                 .onFailure { snackbarHostState.showSnackbar("发表失败：" + (it.message ?: "请稍后重试")) }
+        }
+    }
+
+    fun sendReply(text: String) {
+        val target = replyTarget ?: return
+        if (text.isBlank() || replyBusy) return
+        replyBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.replyComment(photo.albumId, text, target.id) }
+            }
+            replyBusy = false
+            result
+                .onSuccess {
+                    replyTarget = null
+                    snackbarHostState.showSnackbar("回复已发送")
+                    loadComments()
+                }
+                .onFailure { snackbarHostState.showSnackbar("回复失败：" + (it.message ?: "请稍后重试")) }
         }
     }
 
@@ -621,7 +644,12 @@ private fun ReaderPages(
 
                     else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                         items(page.items, key = { it.id }) { item ->
-                            CommentRow(item = item)
+                            CommentRow(
+                                item = item,
+                                onReply = {
+                                    if (user == null) onOpenLogin() else replyTarget = item
+                                },
+                            )
                         }
                     }
                 }
@@ -637,6 +665,15 @@ private fun ReaderPages(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
+
+        // 回复面板：与评论抽屉平级，避免底部抽屉叠加导致高度抖动
+        CommentReplySheet(
+            show = replyTarget != null,
+            targetAuthor = replyTarget?.author,
+            busy = replyBusy,
+            onDismiss = { replyTarget = null },
+            onSend = ::sendReply,
+        )
 
         OverlayDialog(
             show = showTrackPrompt,

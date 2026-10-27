@@ -57,6 +57,7 @@ fun MineScreen(
     onOpenProfile: () -> Unit,
     onOpenTasks: () -> Unit,
     onOpenWatchHistory: () -> Unit,
+    onOpenForum: () -> Unit,
 ) {
     val user by account.user.collectAsState()
     val unread by Jm3Graph.unreadNotifications.collectAsState()
@@ -234,6 +235,12 @@ fun MineScreen(
                 ArrowPreference(
                     title = "连载追踪",
                     onClick = { if (user == null) onOpenLogin() else onOpenTracking() },
+                )
+                // 论坛为公开内容，未登录也可浏览；发帖/回复时才引导登录
+                ArrowPreference(
+                    title = "社区论坛",
+                    summary = "全部讨论 · 漫画评论 · 闲聊",
+                    onClick = onOpenForum,
                 )
             }
             SmallTitle(text = "成就与服务")

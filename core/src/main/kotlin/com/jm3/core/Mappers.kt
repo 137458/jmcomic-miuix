@@ -190,6 +190,7 @@ fun JmComment.toCommentItem(): CommentItem = CommentItem(
     postDate = postDate(),
     likes = likes(),
     replies = replys().orEmpty().map { it.toCommentItem() },
+    albumId = aid()?.takeIf { it.isNotBlank() && it != "0" },
 )
 
 fun JmCommentList.toCommentPage(): CommentPage = CommentPage(

@@ -53,6 +53,7 @@ fun MainScreen(
     onOpenProfile: () -> Unit,
     onOpenTasks: () -> Unit,
     onOpenWatchHistory: () -> Unit,
+    onOpenForum: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     // 启动即恢复下载队列（中断任务收敛为暂停态），底栏角标才能反映在途任务
@@ -121,6 +122,7 @@ fun MainScreen(
                     onOpenProfile = onOpenProfile,
                     onOpenTasks = onOpenTasks,
                     onOpenWatchHistory = onOpenWatchHistory,
+                    onOpenForum = onOpenForum,
                 )
             }
         }
