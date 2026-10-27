@@ -3,6 +3,7 @@ package com.jm3.app.miuix.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -25,6 +26,8 @@ class SettingsStore(private val context: Context) : SettingsRepository {
     private val readerHorizontalKey = booleanPreferencesKey("reader_horizontal")
     private val volumeHintKey = booleanPreferencesKey("volume_hint_shown")
     private val trackMuteKey = longPreferencesKey("track_prompt_mute_until")
+    private val novelFontSizeKey = intPreferencesKey("novel_font_size")
+    private val novelLangKey = stringPreferencesKey("novel_lang")
 
     override suspend fun themeMode(): ThemeMode =
         context.settingsDataStore.data.first()[themeKey]
@@ -116,4 +119,37 @@ class SettingsStore(private val context: Context) : SettingsRepository {
     override suspend fun setTrackPromptMuteUntil(epochMillis: Long) {
         context.settingsDataStore.edit { it[trackMuteKey] = epochMillis }
     }
+
+    override suspend fun novelFontSize(): Int =
+        context.settingsDataStore.data.first()[novelFontSizeKey]
+            ?.coerceIn(SettingsRepository.NOVEL_FONT_SIZE_MIN, SettingsRepository.NOVEL_FONT_SIZE_MAX)
+            ?: SettingsRepository.DEFAULT_NOVEL_FONT_SIZE
+
+    override suspend fun setNovelFontSize(sizeSp: Int) {
+        context.settingsDataStore.edit {
+            it[novelFontSizeKey] = sizeSp.coerceIn(
+                SettingsRepository.NOVEL_FONT_SIZE_MIN,
+                SettingsRepository.NOVEL_FONT_SIZE_MAX,
+            )
+        }
+    }
+
+    override suspend fun novelLang(): String =
+        context.settingsDataStore.data.first()[novelLangKey]
+            ?.takeIf { it == "cn" || it == "tw" }
+            ?: SettingsRepository.DEFAULT_NOVEL_LANG
+
+    override suspend fun setNovelLang(lang: String) {
+        context.settingsDataStore.edit { it[novelLangKey] = if (lang == "cn") "cn" else "tw" }
+    }
+
+    /** 进度按小说 id 独立成键：避免每次读写都要反序列化整张表。 */
+    override suspend fun novelLastChapter(novelId: String): String? =
+        context.settingsDataStore.data.first()[novelLastChapterKey(novelId)]
+
+    override suspend fun setNovelLastChapter(novelId: String, chapterId: String) {
+        context.settingsDataStore.edit { it[novelLastChapterKey(novelId)] = chapterId }
+    }
+
+    private fun novelLastChapterKey(novelId: String) = stringPreferencesKey("novel_last_$novelId")
 }

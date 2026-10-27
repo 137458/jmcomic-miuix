@@ -119,8 +119,19 @@
 - 替代决策：顶栏（`TopAppBar`）与主底栏（`FloatingNavigationBar`）在 Miuix `Scaffold` 中不覆盖内容（body 已按 bar 高度内缩），无 backdrop 可采样，强行模糊只会得到空采样；故毛玻璃落在真正覆盖内容的阅读器悬浮工具栏。路由转场沿用既有 `NavDisplayEffects(cornerClipRadius, backdropColor)` + 全路由 `swipeDismiss`。
 - 验证：`:app:compileDebugKotlin` 一次通过（exit 0）。
 
-### [ ] M13 小说域（列表/详情/阅读）
-- [ ] 网关小说接口 + 三个路由 + 字体设置
+### [x] M13 小说域（列表/详情/阅读）
+- [x] core 小说协议层：`Models.kt` 新增 `NovelOrder`（5 档）/`NovelMeta`/`NovelPage`/`NovelChapterMeta`/`NovelDetail`/`NovelChapter`；`Mappers.kt` 新增 `novelCoverUrl`（兼容绝对 URL 与相对路径，相对时拼图片域名）与 5 个映射；`Jm3Gateway` 暴露 9 个方法（列表/搜索/详情/章节/点赞/收藏/评论列表/发评论/回复评论）。
+- [x] 设置持久化：`SettingsRepository` 新增小说字号（14–26sp，默认 18）、繁简体（cn/tw，默认 tw）、按小说 id 记录最后阅读章节；`SettingsStore` 落地 DataStore key，`InMemorySettingsRepository` 同步实现供测试。
+- [x] 小说列表页：排序 `OverlaySpinnerPreference` 5 档（全部/最新/最多点阅/最多章节/最多爱心）、关键词搜索、`PullToRefresh` 阻尼刷新、点赞与收藏（未登录走登录页）、封面 squircle 裁切、错误/空态/加载态、`loadToken` 防竞态。
+- [x] 小说详情页：封面/编号/作者/连载状态/章节数/上架日期/阅读量/爱心、标签横向滚动点击转标签搜索、简介 3 行折叠展开、三宫格动作台（收藏/喜欢/评论）、「开始阅读/继续阅读」（恢复上次章节）、目录正倒序与已读/new/需购买标记、相关作品列表、评论 Tab。
+- [x] 小说阅读页：正文按字号与 1.75 行高排版、繁简切换、字号 A-/A+ 并持久化、上一章/下一章（需购买章节拦截并提示）、章节进度自动落盘、悬浮工具栏（字号/上章/下章/评论/收藏）、评论底部弹层。
+- [x] 小说评论区：`ForumQuery.novel(nid).mode(ALL)` 复用评论模型，分页加载更多、发评论/回复（≤200 字）、未登录引导。
+- [x] 路由与入口：`Route.Novel` / `Route.NovelDetail(novelId)` / `Route.NovelReader(novelId, chapterId)` 三条路由（均 `swipeDismiss`），我的页「我的内容」新增「小说」入口。
+- [x] Miuix 高阶：`TopAppBar`、`Scaffold` + `floatingToolbar`、`FloatingToolbar`、`OverlayBottomSheet`（字号/评论）、`OverlaySpinnerPreference`（排序）、`TabRow`（目录/相关/评论）、`Card` + `BasicComponent` 行式布局、`PullToRefresh`、`TextButton` 动作、`squircleClip` 封面。
+- 替代决策 1：库 `getNovelList` 只发送 `o` 与当前时间戳，无法表达原版时间档筛选 → 排序收敛为接口可表达的 5 档。
+- 替代决策 2：`buyNovelChapter` 已在库标记 `@Deprecated` 且无支付链路 → 需购买章节只拦截并提示，不提供购买。
+- 替代决策 3：原版小说收藏夹分页管理能力在库中仅暴露 `manageNovelFavoriteFolder` 而无列表查询 → 本轮只做整部作品的收藏切换。
+- 验证：`:app:compileDebugKotlin` 通过（修复 3 处：点赞/回复返回类型溢出、`ImageVector` 导包、composable `return@Scaffold`）。
 
 ### [ ] M14 书库域（作者/作品）
 - [ ] 网关 creator 接口 + 作者列表/作品列表/作品详情
@@ -133,6 +144,7 @@
 - 2026-10-27 / M05：详情页补收藏夹选择/移动、简介与车号复制、禁漫车信息块、四等分动作台（收藏/喜欢/追更/下载），章节分组与已读标记复核通过。`:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M07+M08：收藏页（移动收藏夹/标签收藏增删）、历史页（按作品聚合 + 续读 + 删除整部 + 清空确认 + Room `deleteAlbum`）。`:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M11：设置页补分页模式切换（弹层单选 + 全局状态同步）、公告/网址发布页/广告合作外链、版本号 5 连点隐藏诊断面板。`:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M13：小说域三页（列表/详情/阅读）+ 评论区 + 字号/繁简/进度持久化 + 三条路由与我的页入口。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M10：详情页/阅读器评论回复（共享 `CommentReplySheet`、折叠回复与缩进线）、独立论坛页三档（`Route.Forum` + `ForumScreen`，发帖面板、两种分页、社区规则折叠卡）、我的页论坛入口；`CommentItem` 增补 `albumId`。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M09：我的页新增成就任务/个人资料/云端观看记录三条路由与页面，签到进度条 + 入口分组卡片；修正资料提交键为库记录名并补全 6 个字段。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M06：阅读器补左右模式（Pager 弹簧翻页 + 手势接管）、点击显隐上下栏、音量键翻页（首提示一次）、最后一话追更引导（3 天静默）、底部收藏/喜欢/评论动作行与评论抽屉；阅读方向/提示/静默时间落 DataStore。`:core:test` + `:app:compileDebugKotlin` 通过。
