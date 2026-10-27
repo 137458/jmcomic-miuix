@@ -59,14 +59,17 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
@@ -92,6 +95,7 @@ fun NovelListScreen(
     var orderName by rememberSaveable { mutableStateOf(NovelOrder.DEFAULT.name) }
     val order = NovelOrder.entries.firstOrNull { it.name == orderName } ?: NovelOrder.DEFAULT
     var query by rememberSaveable { mutableStateOf("") }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var appliedQuery by rememberSaveable { mutableStateOf("") }
     var items by remember { mutableStateOf<List<NovelMeta>>(emptyList()) }
     var total by remember { mutableIntStateOf(0) }
@@ -101,6 +105,7 @@ fun NovelListScreen(
     // 快速切换排序/搜索时旧响应不能覆盖新结果
     var loadToken by remember { mutableIntStateOf(0) }
     var busyId by remember { mutableStateOf<String?>(null) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
 
     fun load(orderValue: String, keyword: String, showLoading: Boolean) {
@@ -190,25 +195,25 @@ fun NovelListScreen(
                     subtitle = if (total > 0) "共 $total 本" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        label = "搜索小说",
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Button(
-                        onClick = { appliedQuery = query.trim() },
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                    ) {
-                        Text(text = "搜索")
-                    }
-                }
+                // 胶囊搜索框：展开态输入，提交即检索
+                SearchBar(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    expanded = searchExpanded,
+                    onExpandedChange = { searchExpanded = it },
+                    inputField = {
+                        InputField(
+                            query = query,
+                            onQueryChange = { query = it },
+                            onSearch = {
+                                appliedQuery = query.trim()
+                                searchExpanded = false
+                            },
+                            expanded = searchExpanded,
+                            onExpandedChange = { searchExpanded = it },
+                            label = "搜索小说",
+                        )
+                    },
+                ) {}
             }
         },
         snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
@@ -246,6 +251,7 @@ fun NovelListScreen(
                         load(order.apiValue, appliedQuery, showLoading = false)
                     },
                     modifier = Modifier.fillMaxSize(),
+                    pullToRefreshState = refreshState,
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(items, key = { it.id }) { item ->

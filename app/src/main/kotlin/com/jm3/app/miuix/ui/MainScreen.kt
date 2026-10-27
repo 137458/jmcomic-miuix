@@ -1,7 +1,10 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -12,6 +15,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.data.AccountManager
 import com.jm3.core.Jm3Gateway
@@ -19,11 +24,18 @@ import com.jm3.core.download.DownloadStatus
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.NavigationRail
+import top.yukonga.miuix.kmp.basic.NavigationRailItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.rememberNavigationRailState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.icon.extended.Home
@@ -34,6 +46,16 @@ private enum class MainTab(val label: String) {
     CATEGORY("分类"),
     RANK("榜单"),
     MINE("我的"),
+}
+
+/** 宽屏阈值：≥600dp 视为平板/折叠展开/桌面，主框架切为可折叠侧栏。 */
+private val WIDE_SCREEN_WIDTH = 600.dp
+
+private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
+    MainTab.HOME -> MiuixIcons.Home
+    MainTab.CATEGORY -> MiuixIcons.GridView
+    MainTab.RANK -> MiuixIcons.Playlist
+    MainTab.MINE -> MiuixIcons.Contacts
 }
 
 @Composable
@@ -70,64 +92,114 @@ fun MainScreen(
     // 登录态变化后重算未读；登出时 refresh 内部会归零
     LaunchedEffect(user?.uid) { Jm3Graph.refreshUnreadNotifications() }
 
-    Scaffold(
-        bottomBar = {
-            // HyperOS 悬浮胶囊底栏：与系统底栏留白一致，替代贴边全宽 NavigationBar
-            FloatingNavigationBar {
-                MainTab.entries.forEachIndexed { index, t ->
-                    FloatingNavigationBarItem(
-                        selected = tab == index,
-                        onClick = { tab = index },
-                        icon = when (t) {
-                            MainTab.HOME -> MiuixIcons.Home
-                            MainTab.CATEGORY -> MiuixIcons.GridView
-                            MainTab.RANK -> MiuixIcons.Playlist
-                            MainTab.MINE -> MiuixIcons.Contacts
-                        },
-                        label = t.label,
-                        badge = when {
-                            // 未读优先显示数字；无未读时用圆点提示在途下载
-                            t == MainTab.MINE && unread > 0 -> {
-                                { Badge { Text(text = if (unread > 99) "99+" else unread.toString()) } }
-                            }
-                            t == MainTab.MINE && activeDownloads > 0 -> {
-                                { Badge() }
-                            }
-                            else -> null
-                        },
-                    )
+    // 未读优先显示数字；无未读时用圆点提示在途下载
+    fun badgeFor(item: MainTab): (@Composable () -> Unit)? = when {
+        item == MainTab.MINE && unread > 0 -> {
+            { Badge { Text(text = if (unread > 99) "99+" else unread.toString()) } }
+        }
+        item == MainTab.MINE && activeDownloads > 0 -> {
+            { Badge() }
+        }
+        else -> null
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // 宽屏改用 NavigationRail：底栏让位给侧栏，列表获得更宽的横向空间
+        val wideScreen = maxWidth >= WIDE_SCREEN_WIDTH
+        Scaffold(
+            bottomBar = {
+                if (!wideScreen) {
+                    // HyperOS 悬浮胶囊底栏：与系统底栏留白一致，替代贴边全宽 NavigationBar
+                    FloatingNavigationBar {
+                        MainTab.entries.forEachIndexed { index, item ->
+                            FloatingNavigationBarItem(
+                                selected = tab == index,
+                                onClick = { tab = index },
+                                icon = tabIcon(item),
+                                label = item.label,
+                                badge = badgeFor(item),
+                            )
+                        }
+                    }
                 }
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
-        // 消费父 Scaffold 的内边距，避免各 tab 自己的 Scaffold 重复应用系统栏 insets。
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)) {
-            when (tab) {
-                0 -> HomeScreen(
-                    gateway = gateway,
-                    onOpenAlbum = onOpenAlbum,
-                    onOpenWeek = onOpenWeek,
-                )
-                1 -> BrowseScreen(mode = BrowseMode.CATEGORY, gateway = gateway, onOpenAlbum = onOpenAlbum)
-                2 -> BrowseScreen(mode = BrowseMode.RANK, gateway = gateway, onOpenAlbum = onOpenAlbum)
-                else -> MineScreen(
-                    account = account,
-                    snackbarHostState = snackbarHostState,
-                    onOpenLogin = onOpenLogin,
-                    onOpenFavorites = onOpenFavorites,
-                    onOpenHistory = onOpenHistory,
-                    onOpenShelf = onOpenShelf,
-                    onOpenSettings = onOpenSettings,
-                    onOpenNotifications = onOpenNotifications,
-                    onOpenTracking = onOpenTracking,
-                    onOpenProfile = onOpenProfile,
-                    onOpenTasks = onOpenTasks,
-                    onOpenWatchHistory = onOpenWatchHistory,
-                    onOpenForum = onOpenForum,
-                    onOpenNovel = onOpenNovel,
-                    onOpenLibrary = onOpenLibrary,
-                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { innerPadding ->
+            // 消费父 Scaffold 的内边距，避免各 tab 自己的 Scaffold 重复应用系统栏 insets。
+            Row(
+                modifier = Modifier.fillMaxSize()
+                    .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding),
+            ) {
+                if (wideScreen) {
+                    // 可展开/收起侧栏：展开宽度由库的连续动画驱动，收起时只留图标
+                    val railState = rememberNavigationRailState()
+                    NavigationRail(
+                        state = railState,
+                        header = {
+                            IconButton(
+                                onClick = { railState.toggle() },
+                                minWidth = 48.dp,
+                                minHeight = 48.dp,
+                            ) {
+                                Icon(
+                                    imageVector = if (railState.isExpanded) {
+                                        MiuixIcons.ChevronBackward
+                                    } else {
+                                        MiuixIcons.ChevronForward
+                                    },
+                                    contentDescription = if (railState.isExpanded) "收起侧栏" else "展开侧栏",
+                                )
+                            }
+                        },
+                    ) {
+                        MainTab.entries.forEachIndexed { index, item ->
+                            NavigationRailItem(
+                                selected = tab == index,
+                                onClick = { tab = index },
+                                icon = tabIcon(item),
+                                label = item.label,
+                                badge = badgeFor(item),
+                            )
+                        }
+                    }
+                }
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    when (tab) {
+                        0 -> HomeScreen(
+                            gateway = gateway,
+                            onOpenAlbum = onOpenAlbum,
+                            onOpenWeek = onOpenWeek,
+                        )
+                        1 -> BrowseScreen(
+                            mode = BrowseMode.CATEGORY,
+                            gateway = gateway,
+                            onOpenAlbum = onOpenAlbum,
+                        )
+                        2 -> BrowseScreen(
+                            mode = BrowseMode.RANK,
+                            gateway = gateway,
+                            onOpenAlbum = onOpenAlbum,
+                        )
+                        else -> MineScreen(
+                            account = account,
+                            snackbarHostState = snackbarHostState,
+                            onOpenLogin = onOpenLogin,
+                            onOpenFavorites = onOpenFavorites,
+                            onOpenHistory = onOpenHistory,
+                            onOpenShelf = onOpenShelf,
+                            onOpenSettings = onOpenSettings,
+                            onOpenNotifications = onOpenNotifications,
+                            onOpenTracking = onOpenTracking,
+                            onOpenProfile = onOpenProfile,
+                            onOpenTasks = onOpenTasks,
+                            onOpenWatchHistory = onOpenWatchHistory,
+                            onOpenForum = onOpenForum,
+                            onOpenNovel = onOpenNovel,
+                            onOpenLibrary = onOpenLibrary,
+                        )
+                    }
+                }
             }
         }
     }

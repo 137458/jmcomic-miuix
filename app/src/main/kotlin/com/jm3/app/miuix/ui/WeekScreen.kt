@@ -28,6 +28,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
@@ -49,6 +50,7 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     var detailLoading by remember { mutableStateOf(false) }
     var detailError by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 快速切期时旧响应不能覆盖当前期的结果
     var detailToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -154,6 +156,7 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                         refreshing = true
                         loadDetail(periods[selected.coerceIn(0, periods.lastIndex)], showLoading = false)
                     },
+                    pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {

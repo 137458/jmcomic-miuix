@@ -34,6 +34,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TopAppBar
@@ -57,6 +58,7 @@ fun SearchScreen(
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     var loadingMore by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 排序/下拉刷新会替换第一页，旧的分页响应只在代次未变时落地
     var requestToken by remember { mutableIntStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
@@ -162,6 +164,7 @@ fun SearchScreen(
             PullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { loadFirstPage(byPull = true) },
+                pullToRefreshState = refreshState,
                 modifier = Modifier.fillMaxSize(),
             ) {
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {

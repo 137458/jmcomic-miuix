@@ -1,5 +1,7 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +57,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -106,6 +109,8 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
     var refreshing by remember { mutableStateOf(false) }
     // 列表代次：切换搜索/刷新时递增，旧请求的响应只在代次未变时落地。
     var listToken by remember { mutableIntStateOf(0) }
+    // 下拉阻尼阈值调低：首页内容多，轻拉即可触发刷新
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -432,6 +437,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                 isRefreshing = refreshing,
                 onRefresh = { refresh(byPull = true) },
                 modifier = Modifier.fillMaxSize(),
+                pullToRefreshState = refreshState,
             ) {
                 LazyColumn(
                     state = listState,
@@ -674,7 +680,13 @@ private fun SectionHeader(
 private fun HotTagFlow(tags: List<String>, expanded: Boolean, onClick: (String) -> Unit) {
     val visible = if (expanded) tags else tags.take(HOT_TAG_COLLAPSED)
     FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            // 展开/收起时高度弹性过渡，避免列表瞬间跳变
+            .animateContentSize(
+                animationSpec = spring(dampingRatio = 0.8f, stiffness = 700f),
+            ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

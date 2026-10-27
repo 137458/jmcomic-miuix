@@ -33,6 +33,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -133,7 +134,13 @@ private fun TaskList(
     onRefresh: () -> Unit,
 ) {
     val done = page.items.count { it.done }
-    PullToRefresh(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
+    PullToRefresh(
+        isRefreshing = refreshing,
+        onRefresh = onRefresh,
+        pullToRefreshState = refreshState,
+        modifier = Modifier.fillMaxSize(),
+    ) {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item(key = "progress") {
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {

@@ -34,6 +34,7 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -67,6 +68,7 @@ fun TrackingScreen(
     var endReached by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var removingId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -161,6 +163,7 @@ fun TrackingScreen(
                         refreshing = true
                         loadFirstPage(showLoading = false)
                     },
+                    pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     contentPadding = innerPadding,
                 ) {
