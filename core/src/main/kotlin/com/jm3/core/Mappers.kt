@@ -2,6 +2,7 @@ package com.jm3.core
 
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
+import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
@@ -11,8 +12,10 @@ import com.jm3.core.model.Jm3User
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchResult
+import com.jm3.core.model.SearchScope
 import io.github.jukomu.jmcomic.api.enums.Category
 import io.github.jukomu.jmcomic.api.enums.OrderBy
+import io.github.jukomu.jmcomic.api.enums.SearchMainTag
 import io.github.jukomu.jmcomic.api.enums.TimeOption
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
@@ -59,7 +62,10 @@ fun JmPhotoMeta.toChapter(): Chapter = Chapter(
     sortOrder = sortOrder(),
 )
 
-fun JmAlbum.toAlbumDetail(coverUrl: String? = null): AlbumDetail = AlbumDetail(
+fun JmAlbum.toAlbumDetail(
+    coverUrl: String? = null,
+    relatedCoverUrl: (JmAlbumMeta) -> String? = { null },
+): AlbumDetail = AlbumDetail(
     id = id(),
     title = title() ?: "",
     description = description() ?: "",
@@ -72,6 +78,10 @@ fun JmAlbum.toAlbumDetail(coverUrl: String? = null): AlbumDetail = AlbumDetail(
     coverUrl = coverUrl,
     chapters = photoMetas().orEmpty().map { it.toChapter() },
     favorited = isFavorite(),
+    pageCount = pageCount(),
+    commentCount = commentCount(),
+    liked = isLiked(),
+    related = relatedAlbums().orEmpty().map { it.toSearchResult(coverUrl = relatedCoverUrl(it)) },
 )
 
 fun JmPhoto.toPhotoPages(): PhotoPages = PhotoPages(
@@ -101,6 +111,32 @@ fun BrowseFilter.toSearchQuery(page: Int): SearchQuery {
         .page(page)
         .build()
 }
+
+/** 排序值映射：core 枚举值即库 OrderBy 的 API 值。 */
+fun BrowseOrder.toOrderBy(): OrderBy =
+    OrderBy.entries.firstOrNull { it.value == apiValue } ?: OrderBy.LATEST
+
+/** 搜索范围映射到库的主标签。 */
+fun SearchScope.toMainTag(): SearchMainTag = when (this) {
+    SearchScope.SITE -> SearchMainTag.SITE_SEARCH
+    SearchScope.WORK -> SearchMainTag.WORK
+    SearchScope.AUTHOR -> SearchMainTag.AUTHOR
+    SearchScope.TAG -> SearchMainTag.TAG
+    SearchScope.ACTOR -> SearchMainTag.ACTOR
+}
+
+/** 关键词/标签搜索查询；mainTag 决定站内搜索或标签检索。 */
+fun searchQuery(
+    text: String,
+    page: Int,
+    mainTag: SearchMainTag,
+    order: BrowseOrder,
+): SearchQuery = SearchQuery.Builder()
+    .mainTag(mainTag)
+    .text(text)
+    .orderBy(order.toOrderBy())
+    .page(page)
+    .build()
 
 fun PageImage.toJmImage(): JmImage = JmImage(
     photoId,

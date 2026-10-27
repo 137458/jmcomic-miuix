@@ -5,13 +5,18 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.jm3.app.Jm3Graph
 import com.jm3.app.data.AccountManager
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.download.DownloadStatus
+import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -43,6 +48,13 @@ fun MainScreen(
     onOpenSettings: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    // 启动即恢复下载队列（中断任务收敛为暂停态），底栏角标才能反映在途任务
+    LaunchedEffect(Unit) { Jm3Graph.downloadManager.ensureStarted() }
+    // 下载队列进度在“我的”页可见，底栏用角标提示在途任务
+    val downloads by Jm3Graph.downloadManager.queue.updates.collectAsState()
+    val activeDownloads = downloads.values.count {
+        it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.QUEUED
+    }
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -57,6 +69,11 @@ fun MainScreen(
                             MainTab.MINE -> MiuixIcons.Contacts
                         },
                         label = t.label,
+                        badge = if (t == MainTab.MINE && activeDownloads > 0) {
+                            { Badge() }
+                        } else {
+                            null
+                        },
                     )
                 }
             }

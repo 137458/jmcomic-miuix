@@ -1,7 +1,10 @@
 package com.jm3.app.ui
 
+import android.content.Intent
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -9,11 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,18 +28,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.Jm3Graph
 import com.jm3.core.mergedWith
 import com.jm3.core.model.AlbumDetail
+import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
+import com.jm3.core.model.SearchResult
+import com.jm3.core.model.SearchScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -45,12 +58,17 @@ import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Favorites
 import top.yukonga.miuix.kmp.icon.extended.FavoritesFill
+import top.yukonga.miuix.kmp.icon.extended.Share
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private const val CHAPTER_GROUP_SIZE = 10
+private const val COMMENT_MAX_LENGTH = 200
 
 sealed interface AlbumUiState {
     data object Loading : AlbumUiState
@@ -64,34 +82,115 @@ private sealed interface CommentsUiState {
     data object Failed : CommentsUiState
 }
 
+/** 详情页：信息/简介/标签/相关作品/章节分组/评论，对齐原版 Desc + Series 能力域。 */
 @Composable
 fun AlbumDetailScreen(
     albumId: String,
     onBack: () -> Unit,
     onOpenReader: (String) -> Unit,
+    onOpenAlbum: (String) -> Unit,
+    onOpenSearch: (query: String, scope: SearchScope) -> Unit,
+    onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
+    val context = LocalContext.current
+    val user by Jm3Graph.account.user.collectAsState()
+
     var state by remember(albumId) { mutableStateOf<AlbumUiState>(AlbumUiState.Loading) }
     var comments by remember(albumId) { mutableStateOf<CommentsUiState>(CommentsUiState.Loading) }
     var favoriteBusy by remember(albumId) { mutableStateOf(false) }
     var favorited by remember(albumId) { mutableStateOf(false) }
+    var likeBusy by remember(albumId) { mutableStateOf(false) }
+    var liked by remember(albumId) { mutableStateOf(false) }
+    var tracking by remember(albumId) { mutableStateOf<Boolean?>(null) }
+    var trackingBusy by remember(albumId) { mutableStateOf(false) }
+    var latestPhotoId by remember(albumId) { mutableStateOf<String?>(null) }
+    var readPhotoIds by remember(albumId) { mutableStateOf<Set<String>>(emptySet()) }
+    var descriptionExpanded by remember(albumId) { mutableStateOf(false) }
+    var expandedGroups by remember(albumId) { mutableStateOf(setOf(0)) }
+    var commentText by remember(albumId) { mutableStateOf("") }
+    var commentBusy by remember(albumId) { mutableStateOf(false) }
     var commentsLoadingMore by remember(albumId) { mutableStateOf(false) }
     var pullRefreshing by remember(albumId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun toggleFavorite() {
+        if (user == null) {
+            onOpenLogin()
+            return
+        }
         if (favoriteBusy) return
         favoriteBusy = true
         scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleFavorite(albumId) }.isSuccess
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.toggleFavorite(albumId) }
             }
             favoriteBusy = false
-            if (ok) {
-                favorited = !favorited
-                snackbarHostState.showSnackbar(if (favorited) "已收藏" else "已取消收藏")
-            }
+            result
+                .onSuccess {
+                    favorited = !favorited
+                    snackbarHostState.showSnackbar(if (favorited) "已收藏" else "已取消收藏")
+                }
+                .onFailure { snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试")) }
         }
+    }
+
+    fun like() {
+        if (user == null) {
+            onOpenLogin()
+            return
+        }
+        if (likeBusy) return
+        if (liked) {
+            scope.launch { snackbarHostState.showSnackbar("已经喜欢过了") }
+            return
+        }
+        likeBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.toggleLike(albumId) }
+            }
+            likeBusy = false
+            result
+                .onSuccess {
+                    liked = true
+                    snackbarHostState.showSnackbar("已喜欢")
+                }
+                .onFailure { snackbarHostState.showSnackbar("操作失败：" + (it.message ?: "请稍后重试")) }
+        }
+    }
+
+    fun toggleTracking() {
+        if (user == null) {
+            onOpenLogin()
+            return
+        }
+        if (trackingBusy) return
+        trackingBusy = true
+        scope.launch {
+            val next = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.setTracking(albumId) }
+                    .mapCatching { Jm3Graph.gateway.isTracking(albumId) }
+                    .getOrNull()
+            }
+            trackingBusy = false
+            tracking = next
+            next?.let { snackbarHostState.showSnackbar(if (it) "已开启连载追踪" else "已取消连载追踪") }
+        }
+    }
+
+    fun share(detail: AlbumDetail) {
+        val host = Jm3Graph.gateway.usedDomain()
+        val link = host?.takeIf { it.isNotBlank() }?.let { "https://$it/album/${detail.id}" }
+        val text = buildString {
+            append(detail.title)
+            if (link != null) append('\n').append(link)
+        }
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(send, "分享作品"))
     }
 
     fun loadMoreComments() {
@@ -114,8 +213,11 @@ fun AlbumDetailScreen(
             runCatching { AlbumUiState.Loaded(Jm3Graph.gateway.album(albumId)) }
                 .getOrElse { AlbumUiState.Failed(it.message ?: "加载失败") }
         }
-        // 详情返回后才拿到收藏态，用库返回值初始化，避免把已收藏相册当未收藏
-        (state as? AlbumUiState.Loaded)?.let { loaded -> favorited = loaded.detail.favorited }
+        // 详情返回后才拿到收藏/点赞态，用库返回值初始化，避免把已操作过的相册当未操作
+        (state as? AlbumUiState.Loaded)?.let { loaded ->
+            favorited = loaded.detail.favorited
+            liked = loaded.detail.liked
+        }
     }
 
     suspend fun loadComments() {
@@ -125,9 +227,52 @@ fun AlbumDetailScreen(
         }
     }
 
+    fun postComment() {
+        val text = commentText.trim()
+        if (text.isEmpty() || commentBusy) return
+        commentBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.postComment(albumId, text) }
+            }
+            commentBusy = false
+            result
+                .onSuccess {
+                    commentText = ""
+                    snackbarHostState.showSnackbar("评论已发表")
+                    loadComments()
+                }
+                .onFailure { snackbarHostState.showSnackbar("发表失败：" + (it.message ?: "请稍后重试")) }
+        }
+    }
+
+    suspend fun loadHistory() {
+        latestPhotoId = runCatching { Jm3Graph.history.latestForAlbum(albumId) }.getOrNull()?.photoId
+        readPhotoIds = runCatching { Jm3Graph.history.readPhotoIds(albumId) }.getOrDefault(emptySet())
+    }
+
     LaunchedEffect(albumId) {
         loadDetail()
         loadComments()
+        loadHistory()
+    }
+
+    // 登录态变化后重新读取追踪状态；未登录时清空，避免显示上一个账号的状态。
+    LaunchedEffect(user?.uid, albumId) {
+        if (user == null) {
+            tracking = null
+            return@LaunchedEffect
+        }
+        tracking = withContext(Dispatchers.IO) {
+            runCatching { Jm3Graph.gateway.isTracking(albumId) }.getOrNull()
+        }
+    }
+
+    // 续读目标所在的章节组默认展开，其余收起。
+    LaunchedEffect(latestPhotoId, state) {
+        val detail = (state as? AlbumUiState.Loaded)?.detail ?: return@LaunchedEffect
+        val index = detail.chapters.indexOfFirst { it.id == latestPhotoId }
+        if (index >= 0) expandedGroups = expandedGroups + index / CHAPTER_GROUP_SIZE
     }
 
     fun refresh() {
@@ -137,6 +282,7 @@ fun AlbumDetailScreen(
             try {
                 loadDetail()
                 loadComments()
+                loadHistory()
             } finally {
                 pullRefreshing = false
             }
@@ -160,13 +306,16 @@ fun AlbumDetailScreen(
         }
         is AlbumUiState.Loaded -> {
             val detail = s.detail
+            val resumeId = latestPhotoId?.takeIf { id -> detail.chapters.any { it.id == id } }
             Scaffold(
                 topBar = {
                     TopAppBar(
                         title = detail.title,
                         navigationIcon = { BackButton(onBack = onBack) },
                         actions = {
-                            // 顶栏空间有限，收藏/批量下载用图标操作，避免文字挤压标题。
+                            IconButton(onClick = { share(detail) }) {
+                                Icon(MiuixIcons.Share, contentDescription = "分享")
+                            }
                             IconButton(onClick = ::toggleFavorite, enabled = !favoriteBusy) {
                                 Icon(
                                     imageVector = if (favorited) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
@@ -185,10 +334,7 @@ fun AlbumDetailScreen(
                                         }
                                     },
                                 ) {
-                                    Icon(
-                                        imageVector = MiuixIcons.Download,
-                                        contentDescription = "下载全部",
-                                    )
+                                    Icon(imageVector = MiuixIcons.Download, contentDescription = "下载全部")
                                 }
                             }
                         },
@@ -202,83 +348,132 @@ fun AlbumDetailScreen(
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     contentPadding = innerPadding,
                 ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
                         item(key = "header") {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                            ) {
-                                detail.coverUrl?.let { url ->
-                                    Card(modifier = Modifier.fillMaxWidth()) {
-                                        AsyncImage(
-                                            model = url,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                            DetailHeader(
+                                detail = detail,
+                                resumeId = resumeId,
+                                loggedIn = user != null,
+                                liked = liked,
+                                likeBusy = likeBusy,
+                                tracking = tracking,
+                                trackingBusy = trackingBusy,
+                                onRead = { photoId -> onOpenReader(photoId) },
+                                onLike = ::like,
+                                onTrack = ::toggleTracking,
+                            )
+                        }
+                        if (detail.description.isNotBlank()) {
+                            item(key = "description") { DescriptionSection(detail.description, descriptionExpanded) { descriptionExpanded = !descriptionExpanded } }
+                        }
+                        if (detail.tags.isNotEmpty()) {
+                            item(key = "tags-title") { SmallTitle(text = "标签") }
+                            item(key = "tags") {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    items(detail.tags) { tag ->
+                                        TextButton(
+                                            text = tag,
+                                            onClick = { onOpenSearch(tag, SearchScope.TAG) },
+                                            minWidth = 0.dp,
+                                            minHeight = 32.dp,
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(12.dp))
                                 }
-                                // 标题与元信息按 Miuix 字号层级区分，元信息合并为一行摘要。
-                                Text(
-                                    text = detail.title,
-                                    fontSize = MiuixTheme.textStyles.title4.fontSize,
-                                    fontWeight = FontWeight.Medium,
-                                )
-                                val meta = buildList {
-                                    if (detail.authors.isNotEmpty()) add("作者：${detail.authors.joinToString()}")
-                                    if (detail.works.isNotEmpty()) add("社团：${detail.works.joinToString()}")
-                                    if (detail.actors.isNotEmpty()) add("角色：${detail.actors.joinToString()}")
-                                    detail.likes?.let { add("喜欢：$it") }
-                                    detail.views?.let { add("浏览：$it") }
+                            }
+                        }
+                        if (detail.authors.isNotEmpty() || detail.works.isNotEmpty() || detail.actors.isNotEmpty()) {
+                            item(key = "credits") {
+                                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                    if (detail.authors.isNotEmpty()) {
+                                        BasicComponent(
+                                            title = "作者",
+                                            summary = detail.authors.joinToString("、"),
+                                            onClick = { onOpenSearch(detail.authors.first(), SearchScope.AUTHOR) },
+                                        )
+                                    }
+                                    if (detail.works.isNotEmpty()) {
+                                        BasicComponent(
+                                            title = "作品",
+                                            summary = detail.works.joinToString("、"),
+                                            onClick = { onOpenSearch(detail.works.first(), SearchScope.WORK) },
+                                        )
+                                    }
+                                    if (detail.actors.isNotEmpty()) {
+                                        BasicComponent(
+                                            title = "登场人物",
+                                            summary = detail.actors.joinToString("、"),
+                                            onClick = { onOpenSearch(detail.actors.first(), SearchScope.ACTOR) },
+                                        )
+                                    }
                                 }
-                                if (meta.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = meta.joinToString(" · "),
-                                        fontSize = MiuixTheme.textStyles.body2.fontSize,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
-                                }
-                                if (detail.tags.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = detail.tags.joinToString(separator = " ") { "#$it" },
-                                        fontSize = MiuixTheme.textStyles.body2.fontSize,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
+                            }
+                        }
+                        if (detail.related.isNotEmpty()) {
+                            item(key = "related-title") { SmallTitle(text = "更多相关") }
+                            item(key = "related") {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    items(detail.related, key = { it.id }) { related ->
+                                        RelatedAlbumCard(related = related, onClick = { onOpenAlbum(related.id) })
+                                    }
                                 }
                             }
                         }
                         item(key = "chapters-title") {
-                            SmallTitle(text = "章节")
-                        }
-                        items(detail.chapters, key = { it.id }) { chapter ->
-                            BasicComponent(
-                                title = chapter.title,
-                                onClick = { onOpenReader(chapter.id) },
-                                endActions = {
-                                    IconButton(
-                                        onClick = {
-                                            Jm3Graph.downloadManager.enqueueChapter(
-                                                photoId = chapter.id,
-                                                albumId = detail.id,
-                                                title = chapter.title,
-                                            )
-                                        },
-                                    ) {
-                                        Icon(
-                                            imageVector = MiuixIcons.Download,
-                                            contentDescription = "下载",
-                                        )
-                                    }
+                            SmallTitle(
+                                text = if (detail.chapters.isEmpty()) {
+                                    "章节"
+                                } else {
+                                    "章节（${detail.chapters.size}）"
                                 },
                             )
+                        }
+                        if (detail.chapters.isEmpty()) {
+                            item(key = "chapters-empty") { EmptyState(title = "暂无章节") }
+                        }
+                        detail.chapters.chunked(CHAPTER_GROUP_SIZE).forEachIndexed { groupIndex, group ->
+                            item(key = "chapter-group-$groupIndex") {
+                                ChapterGroupCard(
+                                    group = group,
+                                    expanded = groupIndex in expandedGroups,
+                                    resumeId = resumeId,
+                                    readPhotoIds = readPhotoIds,
+                                    onToggle = {
+                                        expandedGroups = if (groupIndex in expandedGroups) {
+                                            expandedGroups - groupIndex
+                                        } else {
+                                            expandedGroups + groupIndex
+                                        }
+                                    },
+                                    onRead = { photoId -> onOpenReader(photoId) },
+                                    onDownload = { chapter ->
+                                        Jm3Graph.downloadManager.enqueueChapter(
+                                            photoId = chapter.id,
+                                            albumId = detail.id,
+                                            title = chapter.title,
+                                        )
+                                    },
+                                )
+                            }
                         }
                         item(key = "comments-title") {
                             val total = (comments as? CommentsUiState.Loaded)?.page?.total
                             SmallTitle(text = if (total != null) "评论（$total）" else "评论")
+                        }
+                        item(key = "comment-composer") {
+                            CommentComposer(
+                                loggedIn = user != null,
+                                text = commentText,
+                                busy = commentBusy,
+                                onTextChange = { commentText = it.take(COMMENT_MAX_LENGTH) },
+                                onLogin = onOpenLogin,
+                                onSend = ::postComment,
+                            )
                         }
                         when (val cs = comments) {
                             is CommentsUiState.Loading -> item(key = "comments-loading") {
@@ -300,6 +495,14 @@ fun AlbumDetailScreen(
                                 item(key = "comments-card") {
                                     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                            if (cs.page.items.isEmpty()) {
+                                                Text(
+                                                    text = "暂无评论，来抢沙发",
+                                                    fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                                )
+                                            }
                                             for (comment in cs.page.items) {
                                                 CommentRow(item = comment)
                                             }
@@ -324,6 +527,228 @@ fun AlbumDetailScreen(
                             }
                         }
                         item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 头部：封面、标题、统计、阅读/喜欢/追更入口。 */
+@Composable
+private fun DetailHeader(
+    detail: AlbumDetail,
+    resumeId: String?,
+    loggedIn: Boolean,
+    liked: Boolean,
+    likeBusy: Boolean,
+    tracking: Boolean?,
+    trackingBusy: Boolean,
+    onRead: (String) -> Unit,
+    onLike: () -> Unit,
+    onTrack: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        detail.coverUrl?.let { url ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        Text(
+            text = detail.title,
+            fontSize = MiuixTheme.textStyles.title4.fontSize,
+            fontWeight = FontWeight.Medium,
+        )
+        val meta = buildList {
+            if (detail.authors.isNotEmpty()) add("作者：${detail.authors.joinToString()}")
+            if (detail.works.isNotEmpty()) add("社团：${detail.works.joinToString()}")
+            if (detail.actors.isNotEmpty()) add("角色：${detail.actors.joinToString()}")
+            if (detail.pageCount > 0) add("页数：${detail.pageCount}")
+            detail.likes?.let { add("喜欢：$it") }
+            detail.views?.let { add("浏览：$it") }
+            if (detail.commentCount > 0) add("评论：${detail.commentCount}")
+        }
+        if (meta.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = meta.joinToString(" · "),
+                fontSize = MiuixTheme.textStyles.body2.fontSize,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val startId = resumeId ?: detail.chapters.firstOrNull()?.id
+            Button(
+                onClick = { startId?.let(onRead) },
+                enabled = startId != null,
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(text = if (resumeId != null) "继续阅读" else "开始阅读")
+            }
+            TextButton(
+                text = if (liked) "已喜欢" else "喜欢",
+                onClick = onLike,
+                enabled = !likeBusy,
+                minWidth = 0.dp,
+            )
+            if (loggedIn) {
+                TextButton(
+                    text = when {
+                        trackingBusy -> "处理中…"
+                        tracking == true -> "追更中"
+                        else -> "追更"
+                    },
+                    onClick = onTrack,
+                    enabled = tracking != null && !trackingBusy,
+                    minWidth = 0.dp,
+                )
+            }
+        }
+    }
+}
+
+/** 简介：默认 4 行折叠，超出后可展开。 */
+@Composable
+private fun DescriptionSection(text: String, expanded: Boolean, onToggle: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SmallTitle(text = "简介")
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(
+                    text = text,
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    maxLines = if (expanded) Int.MAX_VALUE else 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (text.length > 80) {
+                    TextButton(
+                        text = if (expanded) "收起" else "显示全部",
+                        onClick = onToggle,
+                        minWidth = 0.dp,
+                        minHeight = 32.dp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 章节组：一组 10 话，默认仅展开续读所在组。 */
+@Composable
+private fun ChapterGroupCard(
+    group: List<Chapter>,
+    expanded: Boolean,
+    resumeId: String?,
+    readPhotoIds: Set<String>,
+    onToggle: () -> Unit,
+    onRead: (String) -> Unit,
+    onDownload: (Chapter) -> Unit,
+) {
+    val first = group.first()
+    val last = group.last()
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+        BasicComponent(
+            title = if (group.size > 1) "${first.title} ~ ${last.title}" else first.title,
+            summary = "${group.size} 话 · 点击${if (expanded) "收起" else "展开"}",
+            onClick = onToggle,
+        )
+        if (expanded) {
+            group.forEach { chapter ->
+                BasicComponent(
+                    title = chapter.title,
+                    summary = when {
+                        chapter.id == resumeId -> "上次读到"
+                        chapter.id in readPhotoIds -> "已读"
+                        else -> null
+                    },
+                    onClick = { onRead(chapter.id) },
+                    endActions = {
+                        IconButton(onClick = { onDownload(chapter) }) {
+                            Icon(MiuixIcons.Download, contentDescription = "下载")
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 更多相关作品卡片：封面 + 两行标题。 */
+@Composable
+private fun RelatedAlbumCard(related: SearchResult, onClick: () -> Unit) {
+    Card(modifier = Modifier.width(112.dp), onClick = onClick) {
+        if (related.coverUrl != null) {
+            AsyncImage(
+                model = related.coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(3f / 4f),
+            )
+        }
+        Text(
+            text = related.title,
+            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+        )
+    }
+}
+
+/** 评论输入：未登录时引导登录；登录后限 200 字并可发表。 */
+@Composable
+private fun CommentComposer(
+    loggedIn: Boolean,
+    text: String,
+    busy: Boolean,
+    onTextChange: (String) -> Unit,
+    onLogin: () -> Unit,
+    onSend: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        if (!loggedIn) {
+            BasicComponent(
+                title = "登录后发表评论",
+                summary = "登录账号即可参与讨论",
+                onClick = onLogin,
+            )
+        } else {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                TextField(
+                    value = text,
+                    onValueChange = onTextChange,
+                    label = "写下你的评论（最多 $COMMENT_MAX_LENGTH 字）",
+                    minLines = 2,
+                    maxLines = 5,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "${text.length}/$COMMENT_MAX_LENGTH",
+                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Button(
+                        onClick = onSend,
+                        enabled = !busy && text.isNotBlank(),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) {
+                        Text(text = if (busy) "发表中…" else "发表")
                     }
                 }
             }

@@ -14,6 +14,8 @@ data class SearchPage(
     val currentPage: Int,
     val totalPages: Int,
     val items: List<SearchResult>,
+    /** 结果总数；0 表示库未提供。 */
+    val totalItems: Int = 0,
 )
 
 data class Chapter(
@@ -35,6 +37,13 @@ data class AlbumDetail(
     val coverUrl: String?,
     val chapters: List<Chapter>,
     val favorited: Boolean,
+    /** 总页数；接口未返回时为 0。 */
+    val pageCount: Int = 0,
+    val commentCount: Int = 0,
+    /** 当前用户是否已点赞。 */
+    val liked: Boolean = false,
+    /** 更多相关作品。 */
+    val related: List<SearchResult> = emptyList(),
 )
 
 @Serializable
@@ -146,6 +155,15 @@ enum class BrowseTime(override val apiValue: String, override val label: String)
     WEEK("w", "本周"),
     MONTH("m", "本月"),
     ALL("a", "全部"),
+}
+
+/** 搜索范围（对应原版搜索类型）：站内/作品/作者/标签/登场人物。 */
+enum class SearchScope(val label: String) {
+    SITE("综合"),
+    WORK("作品"),
+    AUTHOR("作者"),
+    TAG("标签"),
+    ACTOR("登场人物"),
 }
 
 /** 分类/榜单浏览筛选条件。 */

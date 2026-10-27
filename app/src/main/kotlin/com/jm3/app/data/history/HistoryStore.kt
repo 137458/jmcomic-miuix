@@ -34,6 +34,12 @@ interface HistoryDao {
     @Query("SELECT * FROM history ORDER BY updatedAt DESC LIMIT :pageSize OFFSET :offset")
     suspend fun page(pageSize: Int, offset: Int): List<HistoryEntity>
 
+    @Query("SELECT * FROM history WHERE albumId = :albumId ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun latestForAlbum(albumId: String): HistoryEntity?
+
+    @Query("SELECT photoId FROM history WHERE albumId = :albumId")
+    suspend fun photoIdsForAlbum(albumId: String): List<String>
+
     @Query("DELETE FROM history")
     suspend fun clear()
 }
@@ -110,6 +116,12 @@ class RoomHistoryRepository(
         if (page < 1) return emptyList()
         return dao.page(pageSize = pageSize, offset = (page - 1) * pageSize).map { it.toEntry() }
     }
+
+    override suspend fun latestForAlbum(albumId: String): HistoryEntry? =
+        dao.latestForAlbum(albumId)?.toEntry()
+
+    override suspend fun readPhotoIds(albumId: String): Set<String> =
+        dao.photoIdsForAlbum(albumId).toSet()
 
     override suspend fun clear() {
         dao.clear()

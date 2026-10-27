@@ -1,5 +1,6 @@
 package com.jm3.app.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.Jm3Graph
 import com.jm3.app.data.AccountManager
@@ -25,12 +27,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -52,6 +57,7 @@ fun MineScreen(
     var checkInError by remember { mutableStateOf<String?>(null) }
     var checkInBusy by remember { mutableStateOf(false) }
     var checkedIn by remember { mutableStateOf(false) }
+    var confirmLogout by remember { mutableStateOf(false) }
 
     // 加载签到状态；失败保留 error 由卡片上的重试行兜底。
     fun loadCheckInStatus() {
@@ -117,7 +123,7 @@ fun MineScreen(
                     )
                     ArrowPreference(
                         title = "退出登录",
-                        onClick = { scope.launch { account.logout() } },
+                        onClick = { confirmLogout = true },
                     )
                 }
             }
@@ -169,6 +175,40 @@ fun MineScreen(
                 ArrowPreference(title = "设置", onClick = onOpenSettings)
             }
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // 登出属于会话级操作：与清空数据一致，采用纵向全宽按钮二次确认
+        OverlayDialog(
+            show = confirmLogout,
+            title = "退出登录",
+            summary = "确定要登出账号吗？",
+            onDismissRequest = { confirmLogout = false },
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextButton(
+                    text = "取消",
+                    onClick = { confirmLogout = false },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(
+                    text = "确认退出",
+                    colors = ButtonDefaults.textButtonColors(
+                        color = Color.Transparent,
+                        textColor = MiuixTheme.colorScheme.error,
+                    ),
+                    onClick = {
+                        confirmLogout = false
+                        scope.launch {
+                            account.logout()
+                            snackbarHostState.showSnackbar("已退出登录")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }
