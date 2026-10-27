@@ -1,6 +1,8 @@
 # JM3
 
-JM Comic 第三方 Android 客户端。无广告，基于 Jetpack Compose 与 Miuix 构建。
+JM Comic（18comic）第三方 Android 客户端，与官方应用无关。无广告，基于 Jetpack Compose 与 Miuix 构建。
+
+本项目只实现阅读侧能力。广告投放、OTA 版本更新、注册/找回密码、客服、充值赞助等官方运营功能不在实现范围：这些能力依附官方服务端与商业链路，第三方客户端既无控制权，也不应复制。
 
 ## 功能
 
