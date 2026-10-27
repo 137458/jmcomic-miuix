@@ -1,4 +1,4 @@
-package com.jm3.app.data
+package com.jm3.app.miuix.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey

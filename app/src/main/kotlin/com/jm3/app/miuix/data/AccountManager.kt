@@ -1,4 +1,4 @@
-package com.jm3.app.data
+package com.jm3.app.miuix.data
 
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.model.Jm3User

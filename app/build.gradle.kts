@@ -17,7 +17,7 @@ val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPas
     .all { !localProps.getProperty(it).isNullOrBlank() }
 
 android {
-    namespace = "com.jm3.app"
+    namespace = "com.jm3.app.miuix"
     compileSdkVersion("android-37.0") // 依赖 AAR 元数据要求 >=37
 
     defaultConfig {

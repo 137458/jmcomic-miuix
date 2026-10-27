@@ -1,4 +1,4 @@
-package com.jm3.app.ui
+package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,8 +33,8 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.jm3.app.Jm3Graph
-import com.jm3.app.data.download.decodePhotoPages
+import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.model.Chapter

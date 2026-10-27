@@ -1,4 +1,4 @@
-package com.jm3.app.ui
+package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column

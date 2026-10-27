@@ -1,4 +1,4 @@
-package com.jm3.app.ui
+package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -12,8 +12,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.jm3.app.Jm3Graph
-import com.jm3.app.data.AccountManager
+import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.data.AccountManager
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadStatus
 import top.yukonga.miuix.kmp.basic.Badge

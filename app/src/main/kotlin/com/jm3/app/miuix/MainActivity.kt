@@ -1,4 +1,4 @@
-package com.jm3.app
+package com.jm3.app.miuix
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
