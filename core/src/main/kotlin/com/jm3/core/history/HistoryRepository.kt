@@ -23,6 +23,12 @@ interface HistoryRepository {
     /** 某作品已读章节 id 集合。 */
     suspend fun readPhotoIds(albumId: String): Set<String>
 
+    /** 删除单条章节阅读记录，默认不实现（内存实现覆盖）。 */
+    suspend fun delete(photoId: String) {}
+
+    /** 删除某作品的全部阅读记录。 */
+    suspend fun deleteAlbum(albumId: String) {}
+
     /** 清空全部历史。 */
     suspend fun clear()
 }
@@ -53,6 +59,14 @@ class InMemoryHistoryRepository(private val clock: () -> Long = System::currentT
         entries.values
             .filter { it.albumId == albumId }
             .mapTo(HashSet()) { it.photoId }
+
+    override suspend fun delete(photoId: String) {
+        entries.remove(photoId)
+    }
+
+    override suspend fun deleteAlbum(albumId: String) {
+        entries.values.removeAll { it.albumId == albumId }
+    }
 
     override suspend fun clear() {
         entries.clear()

@@ -293,6 +293,7 @@ fun Jm3App() {
                 HistoryScreen(
                     onBack = { backStack.removeLastOrNull() },
                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                    onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
                 )
             }
             entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {

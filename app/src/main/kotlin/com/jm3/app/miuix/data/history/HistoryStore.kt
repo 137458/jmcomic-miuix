@@ -40,6 +40,12 @@ interface HistoryDao {
     @Query("SELECT photoId FROM history WHERE albumId = :albumId")
     suspend fun photoIdsForAlbum(albumId: String): List<String>
 
+    @Query("DELETE FROM history WHERE photoId = :photoId")
+    suspend fun delete(photoId: String)
+
+    @Query("DELETE FROM history WHERE albumId = :albumId")
+    suspend fun deleteAlbum(albumId: String)
+
     @Query("DELETE FROM history")
     suspend fun clear()
 }
@@ -122,6 +128,14 @@ class RoomHistoryRepository(
 
     override suspend fun readPhotoIds(albumId: String): Set<String> =
         dao.photoIdsForAlbum(albumId).toSet()
+
+    override suspend fun delete(photoId: String) {
+        dao.delete(photoId)
+    }
+
+    override suspend fun deleteAlbum(albumId: String) {
+        dao.deleteAlbum(albumId)
+    }
 
     override suspend fun clear() {
         dao.clear()
