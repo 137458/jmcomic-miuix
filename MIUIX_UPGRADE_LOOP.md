@@ -91,11 +91,15 @@
 - 验证：`:core:test`（资料映射断言更新）+ `:app:compileDebugKotlin` 通过。
 - Miuix 高阶：`LinearProgressIndicator` 进度、双段 `TabRow`、`OverlayBottomSheet` + `RadioButtonPreference` 选择器、`ArrowPreference` 分组卡片、`PullToRefresh`
 
-### [ ] M10 评论区 / 论坛
-- [ ] 评论回复（`replyToComment`）
-- [ ] 独立论坛页（全部/漫画评论/闲聊三 tab）
-- [ ] 发表评论 ≤200 字校验与错误回显
-- [ ] Miuix 高阶：`OverlayBottomSheet` 发帖、缩进回复线
+### [x] M10 评论区 / 论坛
+- [x] 评论回复（`replyToComment`）：共享 `CommentReplySheet`（200 字实时计数、发送态、换目标清草稿），详情页与阅读器均已接入；`CommentRow` 增加回复入口、默认折叠 2 条回复与「展开 N 条回复」。
+- [x] 独立论坛页（全部/漫画评论/闲聊三 tab）：新增 `Route.Forum` + `ForumScreen`，`TabRow` 切换档位、`PullToRefresh`、空/错/加载态、两种分页模式（点击翻页/加载更多）；闲聊档展示可折叠「社区规则」卡片；我的页新增「社区论坛」入口。
+- [x] 发表评论 ≤200 字校验与错误回显：发帖 `OverlayBottomSheet` 实时字数与超限截断、空内容禁用发布、失败保留草稿并 Snackbar 提示。
+- [x] Miuix 高阶：`TabRow` 三档切换、`OverlayBottomSheet` 发帖/回复、`Card` 包裹评论、`drawBehind` 缩进回复线、`PullToRefresh` 阻尼刷新。
+- 替代决策 1：原版全站论坛请求不带 `aid`，而库 `ForumQuery.Builder` 强制 `entityId` 非空（空即抛异常）且 `JmClient` 无全局论坛方法 → 以 `ForumQuery.album("0")` 占位调用 `getComments`，服务端不支持时表现空列表由空态兜底。
+- 替代决策 2：库无删除评论、剧透标记、推荐书号、算术验证码、举报入口 → 本轮不做，仅保留发帖/回复（回复需评论带 `aid`，闲聊楼层提示「暂不支持回复」）。
+- 替代决策 3：`CommentItem` 新增 `albumId`（取自 `JmComment.aid()`，`0`/空归一为 null），用于论坛楼层定位回复实体，同时为后续「评论跳作品」预留。
+- 验证：`:core:test` + `:app:compileDebugKotlin` 通过。
 
 ### [ ] M11 设置页（SettingsScreen）
 - [ ] 分页模式切换
@@ -121,5 +125,6 @@
 - 替代决策：原版搜索年/月（`y`/`m`）库不支持 → 改用库 `TimeOption`（今日/本周/本月/全部）；原版子分类 `slug` 过滤库未暴露 → 以名称做标签检索。
 - 2026-10-27 / M05：详情页补收藏夹选择/移动、简介与车号复制、禁漫车信息块、四等分动作台（收藏/喜欢/追更/下载），章节分组与已读标记复核通过。`:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M07+M08：收藏页（移动收藏夹/标签收藏增删）、历史页（按作品聚合 + 续读 + 删除整部 + 清空确认 + Room `deleteAlbum`）。`:app:compileDebugKotlin` 通过。
-- 2026-10-27 / M09：我的页新增成就任务/个人资料/云端观看记录三条路由与页面，签到进���条 + 入口分组卡片；修正资料提交键为库记录名并补全 6 个字段。`:core:test` + `:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M10：详情页/阅读器评论回复（共享 `CommentReplySheet`、折叠回复与缩进线）、独立论坛页三档（`Route.Forum` + `ForumScreen`，发帖面板、两种分页、社区规则折叠卡）、我的页论坛入口；`CommentItem` 增补 `albumId`。`:core:test` + `:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M09：我的页新增成就任务/个人资料/云端观看记录三条路由与页面，签到进度条 + 入口分组卡片；修正资料提交键为库记录名并补全 6 个字段。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M06：阅读器补左右模式（Pager 弹簧翻页 + 手势接管）、点击显隐上下栏、音量键翻页（首提示一次）、最后一话追更引导（3 天静默）、底部收藏/喜欢/评论动作行与评论抽屉；阅读方向/提示/静默时间落 DataStore。`:core:test` + `:app:compileDebugKotlin` 通过。

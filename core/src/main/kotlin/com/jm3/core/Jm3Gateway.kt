@@ -11,6 +11,7 @@ import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.FavoritePage
 import com.jm3.core.model.FolderOperation
+import com.jm3.core.model.ForumScope
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.NotificationPage
 import com.jm3.core.model.PageImage
@@ -73,6 +74,9 @@ interface Jm3Gateway {
 
     /** 回复某条评论。阻塞调用。 */
     fun replyComment(albumId: String, text: String, parentCommentId: String)
+
+    /** 论坛列表：全站/漫画评论/闲聊三档。阻塞调用。 */
+    fun forum(scope: ForumScope, page: Int = 1): CommentPage
 
     /** 切换本子点赞（平台不支持取消）。阻塞调用。 */
     fun toggleLike(albumId: String)
@@ -245,6 +249,18 @@ class Jm3GatewayImpl internal constructor(
 
     override fun replyComment(albumId: String, text: String, parentCommentId: String) {
         client.replyToComment(albumId, text, parentCommentId)
+    }
+
+    override fun forum(scope: ForumScope, page: Int): CommentPage {
+        val mode = when (scope) {
+            ForumScope.ALL -> ForumMode.ALL
+            ForumScope.MANHUA -> ForumMode.MANHUA
+            ForumScope.CHAT -> ForumMode.CHAT
+        }
+        // 库的 ForumQuery 强制要求实体 ID（entityId 为空直接抛异常），而原版全站论坛请求不带 aid。
+        // 以 "0" 作为无实体占位，服务端按 mode 返回；若接口不支持则表现为空列表，由页面空态兜底。
+        val query = ForumQuery.album("0").mode(mode).page(page).build()
+        return client.getComments(query).toCommentPage()
     }
 
     override fun toggleLike(albumId: String) = client.toggleAlbumLike(albumId)
