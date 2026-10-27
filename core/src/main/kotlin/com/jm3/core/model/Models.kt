@@ -173,6 +173,66 @@ data class BrowseFilter(
     val time: BrowseTime = BrowseTime.ALL,
 )
 
+/** 每周必看期数（原版 Week 页的期数菜单）。 */
+data class WeeklyPeriod(
+    val id: String,
+    val title: String,
+    val time: String,
+)
+
+/** 每周必看期数列表；接口不可用时 periods 为空。 */
+data class WeeklyPicks(
+    val periods: List<WeeklyPeriod>,
+)
+
+/** 每周必看某一期的作品集合（接口一次返回全部，不分页）。 */
+data class WeeklyPicksDetail(
+    val total: Int,
+    val items: List<SearchResult>,
+)
+
+/** 站内通知/信箱单条记录。 */
+data class NotificationItem(
+    val id: String,
+    val title: String,
+    val content: String,
+    val time: String?,
+    val read: Boolean,
+    val type: String?,
+)
+
+data class NotificationPage(
+    val total: Int,
+    val items: List<NotificationItem>,
+)
+
+/** 连载追踪条目；updateAt 为 Unix 秒字符串，接口未提供时不展示时间。 */
+data class TrackingItem(
+    val id: String,
+    val name: String,
+    val coverUrl: String?,
+    val updateAt: String?,
+)
+
+data class TrackingPage(
+    val total: Int,
+    val items: List<TrackingItem>,
+)
+
+/** 收藏夹管理动作，apiValue 与库 FavoriteFolderType 一致。 */
+enum class FavoriteFolderAction(val apiValue: String) {
+    ADD("add"),
+    EDIT("edit"),
+    MOVE("move"),
+    DELETE("del"),
+}
+
+/** 收藏夹操作结果：ok=false 时 message 为服务端返回的失败原因。 */
+data class FolderOperation(
+    val ok: Boolean,
+    val message: String?,
+)
+
 data class CommentItem(
     val id: String,
     val author: String,

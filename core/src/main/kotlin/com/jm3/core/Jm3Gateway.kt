@@ -6,13 +6,19 @@ import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.DailyCheckInStatus
+import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.FavoritePage
+import com.jm3.core.model.FolderOperation
 import com.jm3.core.model.Jm3Session
+import com.jm3.core.model.NotificationPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.model.TrackingPage
+import com.jm3.core.model.WeeklyPicks
+import com.jm3.core.model.WeeklyPicksDetail
 import io.github.jukomu.jmcomic.api.enums.ForumMode
 import io.github.jukomu.jmcomic.api.model.ForumQuery
 import io.github.jukomu.jmcomic.api.model.JmFavoritePage
@@ -89,6 +95,29 @@ interface Jm3Gateway {
 
     /** 执行当日签到。阻塞调用。 */
     fun dailyCheckIn(userId: String, dailyId: Int)
+
+    /** 每周必看期数列表。阻塞调用。 */
+    fun weeklyPicks(): WeeklyPicks
+
+    /** 每周必看某一期的作品集合（接口一次返回全部）。阻塞调用。 */
+    fun weeklyPicksDetail(categoryId: String): WeeklyPicksDetail
+
+    /** 站内通知/信箱列表。阻塞调用。 */
+    fun notifications(): NotificationPage
+
+    /** 标记单条通知已读/未读。阻塞调用。 */
+    fun markNotification(id: String, read: Boolean)
+
+    /** 连载追踪列表。阻塞调用。 */
+    fun trackingList(page: Int): TrackingPage
+
+    /** 收藏夹管理（新建/重命名/移动/删除）。阻塞调用。 */
+    fun manageFavoriteFolder(
+        action: FavoriteFolderAction,
+        folderId: String = "",
+        name: String = "",
+        albumId: String = "",
+    ): FolderOperation
 
     /** 当前实际使用的 API 域名；域名未就绪时为 null。 */
     fun usedDomain(): String?
@@ -197,6 +226,33 @@ class Jm3GatewayImpl internal constructor(
         client.getDailyCheckInStatus(userId).toDailyCheckInStatus()
 
     override fun dailyCheckIn(userId: String, dailyId: Int) = client.doDailyCheckin(userId, dailyId.toString())
+
+    override fun weeklyPicks(): WeeklyPicks = client.getWeeklyPicksList().toWeeklyPicks()
+
+    override fun weeklyPicksDetail(categoryId: String): WeeklyPicksDetail {
+        val detail = client.getWeeklyPicksDetail(categoryId)
+        val domain = imageDomain(detail.list().orEmpty().firstOrNull()?.id().orEmpty())
+        return detail.toWeeklyPicksDetail { meta -> CoverUrls.build(meta.id(), domain, "_3x4") }
+    }
+
+    override fun notifications(): NotificationPage = client.getNotifications().toNotificationPage()
+
+    override fun markNotification(id: String, read: Boolean) =
+        client.markNotification(id, if (read) 1 else 0)
+
+    override fun trackingList(page: Int): TrackingPage = client.getAlbumTrackingList(page).toTrackingPage()
+
+    override fun manageFavoriteFolder(
+        action: FavoriteFolderAction,
+        folderId: String,
+        name: String,
+        albumId: String,
+    ): FolderOperation = client.manageFavoriteFolder(
+        action.toFavoriteFolderType(),
+        folderId,
+        name,
+        albumId,
+    ).toFolderOperation()
 
     override fun usedDomain(): String? = domainControls.usedDomain()?.takeIf { it.isNotBlank() }
 

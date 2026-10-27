@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +43,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
@@ -53,7 +56,10 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ExpandLess
+import top.yukonga.miuix.kmp.icon.extended.Promotions
 import top.yukonga.miuix.kmp.icon.extended.Search
+import top.yukonga.miuix.kmp.icon.extended.Weeks
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private sealed interface HomeListState {
@@ -64,7 +70,7 @@ private sealed interface HomeListState {
 
 /** 首页：固定搜索栏 + 发现流（热门标签/随便看看/最新上架）或搜索结果。 */
 @Composable
-fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
+fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
     // 已执行的关键词/标签；空串且未执行时展示发现流
@@ -228,7 +234,59 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = "JM3 Miuix") }) { innerPadding ->
+    // 与原版一致：列表滚动后出现悬浮操作（随机一部/回到顶部）
+    val showActions by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 100 }
+    }
+
+    fun openRandom() {
+        val candidates = randomPicks.ifEmpty { activePage()?.items.orEmpty() }
+        candidates.randomOrNull()?.let { onOpenAlbum(it.id) }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = "JM3 Miuix",
+                actions = {
+                    IconButton(onClick = onOpenWeek) {
+                        Icon(imageVector = MiuixIcons.Weeks, contentDescription = "每周必看")
+                    }
+                },
+            )
+        },
+        floatingActionButton = {
+            if (showActions) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    FloatingActionButton(
+                        onClick = ::openRandom,
+                        minWidth = 44.dp,
+                        minHeight = 44.dp,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Promotions,
+                            contentDescription = "随机看一部",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    FloatingActionButton(
+                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        minWidth = 44.dp,
+                        minHeight = 44.dp,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.ExpandLess,
+                            contentDescription = "回到顶部",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+        },
+    ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             // 搜索栏固定于列表之外：结果滚动后仍可直接改关键词。
             SearchBar(

@@ -36,6 +36,9 @@ import com.jm3.app.miuix.ui.ReaderScreen
 import com.jm3.app.miuix.ui.SearchScreen
 import com.jm3.app.miuix.ui.SettingsScreen
 import com.jm3.app.miuix.ui.ShelfScreen
+import com.jm3.app.miuix.ui.TrackingScreen
+import com.jm3.app.miuix.ui.WeekScreen
+import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.core.GatewayFactory
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadQueue
@@ -48,6 +51,7 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -81,6 +85,22 @@ object Jm3Graph {
     val settings: SettingsRepository by lazy { SettingsStore(appContext()) }
 
     val account: AccountManager by lazy { AccountManager({ gateway }, sessionStore) }
+
+    /** 信箱未读数：登录后刷新，供底栏「我的」角标与我的页入口共用。 */
+    val unreadNotifications = MutableStateFlow(0)
+
+    /** 重新统计未读通知；未登录或请求失败时归零，避免角标常驻。 */
+    fun refreshUnreadNotifications() {
+        if (account.user.value == null) {
+            unreadNotifications.value = 0
+            return
+        }
+        appScope.launch {
+            unreadNotifications.value = runCatching {
+                gateway.notifications().items.count { !it.read }
+            }.getOrDefault(0)
+        }
+    }
 
     /** 历史与下载共用一个 Room 库（jm3.db），v2 起含 downloads 表。 */
     private val db: HistoryDb by lazy {
@@ -154,6 +174,18 @@ sealed interface Route : NavKey {
 
     @Serializable
     data object Settings : Route
+
+    /** 每周必看（原版 Week 页）。 */
+    @Serializable
+    data object Week : Route
+
+    /** 站内信箱/通知。 */
+    @Serializable
+    data object Notifications : Route
+
+    /** 连载追踪列表。 */
+    @Serializable
+    data object Tracking : Route
 
     @Serializable
     data class AlbumDetail(val albumId: String) : Route
@@ -239,6 +271,9 @@ fun Jm3App() {
                     onOpenHistory = { backStack.add(Route.History) },
                     onOpenShelf = { backStack.add(Route.Shelf) },
                     onOpenSettings = { backStack.add(Route.Settings) },
+                    onOpenWeek = { backStack.add(Route.Week) },
+                    onOpenNotifications = { backStack.add(Route.Notifications) },
+                    onOpenTracking = { backStack.add(Route.Tracking) },
                 )
             }
             entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -275,6 +310,25 @@ fun Jm3App() {
                         scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
                     },
                     onBack = { backStack.removeLastOrNull() },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.Week>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                WeekScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                )
+            }
+            entry<Route.Notifications>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                NotificationsScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.Tracking>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                TrackingScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                     snackbarHostState = snackbarHostState,
                 )
             }

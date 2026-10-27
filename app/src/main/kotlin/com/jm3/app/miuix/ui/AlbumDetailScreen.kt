@@ -60,6 +60,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.TooltipBox
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Favorites
@@ -313,28 +314,35 @@ fun AlbumDetailScreen(
                         title = detail.title,
                         navigationIcon = { BackButton(onBack = onBack) },
                         actions = {
-                            IconButton(onClick = { share(detail) }) {
-                                Icon(MiuixIcons.Share, contentDescription = "分享")
+                            // 纯图标动作挂 Tooltip：长按即可确认语义，避免误触收藏/批量下载
+                            TooltipBox(text = "分享") {
+                                IconButton(onClick = { share(detail) }) {
+                                    Icon(MiuixIcons.Share, contentDescription = "分享")
+                                }
                             }
-                            IconButton(onClick = ::toggleFavorite, enabled = !favoriteBusy) {
-                                Icon(
-                                    imageVector = if (favorited) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
-                                    contentDescription = if (favorited) "取消收藏" else "收藏",
-                                )
+                            TooltipBox(text = if (favorited) "取消收藏" else "收藏") {
+                                IconButton(onClick = ::toggleFavorite, enabled = !favoriteBusy) {
+                                    Icon(
+                                        imageVector = if (favorited) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
+                                        contentDescription = if (favorited) "取消收藏" else "收藏",
+                                    )
+                                }
                             }
                             if (detail.chapters.size > 1) {
-                                IconButton(
-                                    onClick = {
-                                        detail.chapters.forEach { chapter ->
-                                            Jm3Graph.downloadManager.enqueueChapter(
-                                                photoId = chapter.id,
-                                                albumId = detail.id,
-                                                title = chapter.title,
-                                            )
-                                        }
-                                    },
-                                ) {
-                                    Icon(imageVector = MiuixIcons.Download, contentDescription = "下载全部")
+                                TooltipBox(text = "下载全部") {
+                                    IconButton(
+                                        onClick = {
+                                            detail.chapters.forEach { chapter ->
+                                                Jm3Graph.downloadManager.enqueueChapter(
+                                                    photoId = chapter.id,
+                                                    albumId = detail.id,
+                                                    title = chapter.title,
+                                                )
+                                            }
+                                        },
+                                    ) {
+                                        Icon(imageVector = MiuixIcons.Download, contentDescription = "下载全部")
+                                    }
                                 }
                             }
                         },

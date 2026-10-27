@@ -7,13 +7,23 @@ import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.DailyCheckInStatus
+import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.FavoritePage
+import com.jm3.core.model.FolderOperation
 import com.jm3.core.model.Jm3User
+import com.jm3.core.model.NotificationItem
+import com.jm3.core.model.NotificationPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.model.TrackingItem
+import com.jm3.core.model.TrackingPage
+import com.jm3.core.model.WeeklyPeriod
+import com.jm3.core.model.WeeklyPicks
+import com.jm3.core.model.WeeklyPicksDetail
 import io.github.jukomu.jmcomic.api.enums.Category
+import io.github.jukomu.jmcomic.api.enums.FavoriteFolderType
 import io.github.jukomu.jmcomic.api.enums.OrderBy
 import io.github.jukomu.jmcomic.api.enums.SearchMainTag
 import io.github.jukomu.jmcomic.api.enums.TimeOption
@@ -23,7 +33,12 @@ import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.JmComment
 import io.github.jukomu.jmcomic.api.model.JmCommentList
 import io.github.jukomu.jmcomic.api.model.JmDailyCheckInStatus
+import io.github.jukomu.jmcomic.api.model.JmFavoriteFolderResult
 import io.github.jukomu.jmcomic.api.model.JmFavoritePage
+import io.github.jukomu.jmcomic.api.model.JmNotificationPage
+import io.github.jukomu.jmcomic.api.model.JmTrackingPage
+import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksDetail
+import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksList
 import io.github.jukomu.jmcomic.api.model.JmImage
 import io.github.jukomu.jmcomic.api.model.JmPhoto
 import io.github.jukomu.jmcomic.api.model.JmPhotoMeta
@@ -183,3 +198,60 @@ fun JmDailyCheckInStatus.toDailyCheckInStatus(): DailyCheckInStatus = DailyCheck
     signedDays = record.orEmpty().flatten().count { it.signed == true },
     totalDays = record.orEmpty().flatten().size,
 )
+
+/** 每周必看期数列表；null 分类按空表处理。 */
+fun JmWeeklyPicksList.toWeeklyPicks(): WeeklyPicks = WeeklyPicks(
+    periods = categories().orEmpty().map { category ->
+        WeeklyPeriod(
+            id = category.id().orEmpty(),
+            title = category.title().orEmpty(),
+            time = category.time().orEmpty(),
+        )
+    },
+)
+
+/** 每周必看某期结果；封面由网关按图片域名统一构造。 */
+fun JmWeeklyPicksDetail.toWeeklyPicksDetail(coverUrlFor: (JmAlbumMeta) -> String? = { null }): WeeklyPicksDetail =
+    WeeklyPicksDetail(
+        total = total(),
+        items = list().orEmpty().map { it.toSearchResult(coverUrl = coverUrlFor(it)) },
+    )
+
+/** 通知列表；标题/正文缺失时降级为空串，已读态直接透传。 */
+fun JmNotificationPage.toNotificationPage(): NotificationPage = NotificationPage(
+    total = total(),
+    items = list().orEmpty().map { item ->
+        NotificationItem(
+            id = item.id().orEmpty(),
+            title = item.title().orEmpty(),
+            content = item.content().orEmpty(),
+            time = item.time(),
+            read = item.read(),
+            type = item.type(),
+        )
+    },
+)
+
+/** 连载追踪列表；totalCnt 为字符串类型，无法解析时按当前页条数计。 */
+fun JmTrackingPage.toTrackingPage(): TrackingPage {
+    val items = item().orEmpty().map { entry ->
+        TrackingItem(
+            id = entry.id().orEmpty(),
+            name = entry.name().orEmpty(),
+            coverUrl = entry.image()?.takeIf { it.isNotBlank() },
+            updateAt = entry.updateAt()?.takeIf { it.isNotBlank() },
+        )
+    }
+    return TrackingPage(
+        total = totalCnt()?.toIntOrNull() ?: items.size,
+        items = items,
+    )
+}
+
+/** 收藏夹操作结果：服务端 status 非 ok 时携带 msg 作为失败原因。 */
+fun JmFavoriteFolderResult.toFolderOperation(): FolderOperation =
+    FolderOperation(ok = isOk(), message = msg()?.takeIf { it.isNotBlank() })
+
+/** 收藏夹动作映射：core 枚举值即库 FavoriteFolderType 的 API 值。 */
+fun FavoriteFolderAction.toFavoriteFolderType(): FavoriteFolderType =
+    FavoriteFolderType.entries.firstOrNull { it.value == apiValue } ?: FavoriteFolderType.ADD
