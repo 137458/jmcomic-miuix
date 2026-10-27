@@ -3,6 +3,12 @@ package com.jm3.core.settings
 /** 主题模式：跟随系统/浅色/深色。 */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/** 列表分页模式：无限滚动 / 点击翻页（原版设置项）。 */
+enum class PaginationMode(val label: String) {
+    INFINITE("上拉加载更多"),
+    CLICK("点击切换分页"),
+}
+
 /** 应用设置持久化：主题模式与自定义 API 线路。缺省值：主题 SYSTEM、线路空表（库默认解析）。 */
 interface SettingsRepository {
     suspend fun themeMode(): ThemeMode
@@ -22,6 +28,25 @@ interface SettingsRepository {
 
     /** 默认空实现，理由同 [dynamicColor]。 */
     suspend fun setDynamicColor(enabled: Boolean) {}
+
+    /** 列表分页模式，默认无限滚动。 */
+    suspend fun paginationMode(): PaginationMode = PaginationMode.INFINITE
+
+    suspend fun setPaginationMode(mode: PaginationMode) {}
+
+    /** 搜索历史，最近一次在前，上限 [SEARCH_HISTORY_LIMIT]。 */
+    suspend fun searchHistory(): List<String> = emptyList()
+
+    /** 记录一次搜索；空词忽略，重复词前移并截断。 */
+    suspend fun addSearchHistory(query: String) {}
+
+    suspend fun removeSearchHistory(query: String) {}
+
+    suspend fun clearSearchHistory() {}
+
+    companion object {
+        const val SEARCH_HISTORY_LIMIT = 10
+    }
 }
 
 /** 纯内存实现，供测试与缺省装配。 */
@@ -30,6 +55,8 @@ class InMemorySettingsRepository : SettingsRepository {
     private var mode: ThemeMode = ThemeMode.SYSTEM
     private var domains: List<String> = emptyList()
     private var dynamic = false
+    private var pagination = PaginationMode.INFINITE
+    private val searchHistory = mutableListOf<String>()
 
     override suspend fun themeMode(): ThemeMode = mode
 
@@ -47,5 +74,31 @@ class InMemorySettingsRepository : SettingsRepository {
 
     override suspend fun setDynamicColor(enabled: Boolean) {
         this.dynamic = enabled
+    }
+
+    override suspend fun paginationMode(): PaginationMode = pagination
+
+    override suspend fun setPaginationMode(mode: PaginationMode) {
+        pagination = mode
+    }
+
+    override suspend fun searchHistory(): List<String> = searchHistory.toList()
+
+    override suspend fun addSearchHistory(query: String) {
+        val normalized = query.trim()
+        if (normalized.isEmpty()) return
+        searchHistory.remove(normalized)
+        searchHistory.add(0, normalized)
+        while (searchHistory.size > SettingsRepository.SEARCH_HISTORY_LIMIT) {
+            searchHistory.removeAt(searchHistory.lastIndex)
+        }
+    }
+
+    override suspend fun removeSearchHistory(query: String) {
+        searchHistory.remove(query)
+    }
+
+    override suspend fun clearSearchHistory() {
+        searchHistory.clear()
     }
 }

@@ -246,3 +246,96 @@ data class CommentPage(
     val total: Int,
     val items: List<CommentItem>,
 )
+
+/** 分类条目：slug 用于标签检索，children 为子分类（原版「更多分类」弹窗）。 */
+data class CategoryNode(
+    val id: String,
+    val name: String,
+    val slug: String,
+    val totalAlbums: Int = 0,
+    val children: List<CategoryNode> = emptyList(),
+)
+
+/** 标签区块：如「主题A漫」「角色/扮演」，内容为可点击标签。 */
+data class CategoryBlock(
+    val title: String,
+    val tags: List<String>,
+)
+
+/** 分类树：一级分类 + 标签区块；接口不可用时均为空表。 */
+data class CategoryTree(
+    val categories: List<CategoryNode>,
+    val blocks: List<CategoryBlock>,
+)
+
+/** 任务类型：称号 / 勋章（原版成就页两组）。 */
+enum class TaskType(val apiValue: String, val label: String) {
+    TITLE("title", "称号"),
+    BADGE("badge", "勋章"),
+}
+
+/** 任务筛选：我的 / 全部。 */
+enum class TaskFilter(val apiValue: String, val label: String) {
+    MY("my", "我的"),
+    ALL("all", "全部"),
+}
+
+/** 成就/任务条目；coin 为奖励金币文本，无法解析时为 0。 */
+data class TaskItem(
+    val id: String,
+    val name: String,
+    val content: String,
+    val coin: Int,
+    val done: Boolean,
+    val type: String?,
+)
+
+/** 任务列表；message 为服务端失败原因。 */
+data class TaskPage(
+    val items: List<TaskItem>,
+    val message: String? = null,
+)
+
+/** 个人资料（username/email 只读，其余可编辑）。 */
+data class UserProfile(
+    val username: String,
+    val email: String,
+    val nickname: String,
+    val birthday: String,
+    val relations: String,
+    val sexuality: String,
+    val website: String,
+    val birthPlace: String,
+    val city: String,
+    val country: String,
+    val occupation: String,
+    val company: String,
+    val school: String,
+    val aboutMe: String,
+    val favorite: String,
+    val hate: String,
+) {
+    /** 可编辑字段：库 editUserProfile 的键 → 值；空值也提交以便清空。 */
+    fun editableFields(): Map<String, String> = linkedMapOf(
+        "nickname" to nickname,
+        "birthday" to birthday,
+        "relations" to relations,
+        "sexuality" to sexuality,
+        "website" to website,
+        "birthplace" to birthPlace,
+        "city" to city,
+        "country" to country,
+        "occupation" to occupation,
+        "company" to company,
+        "school" to school,
+        "about_me" to aboutMe,
+        "favorite" to favorite,
+        "hate" to hate,
+    )
+}
+
+/** 收藏标签：updatedAt 为服务端相对时间文案。 */
+data class TagFavorite(
+    val tag: String,
+    val updatedAt: String?,
+)
