@@ -17,6 +17,11 @@ import com.jm3.core.model.FolderOperation
 import com.jm3.core.model.Jm3User
 import com.jm3.core.model.NotificationItem
 import com.jm3.core.model.NotificationPage
+import com.jm3.core.model.NovelChapter
+import com.jm3.core.model.NovelChapterMeta
+import com.jm3.core.model.NovelDetail
+import com.jm3.core.model.NovelMeta
+import com.jm3.core.model.NovelPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchResult
@@ -46,6 +51,12 @@ import io.github.jukomu.jmcomic.api.model.JmDailyCheckInStatus
 import io.github.jukomu.jmcomic.api.model.JmFavoriteFolderResult
 import io.github.jukomu.jmcomic.api.model.JmFavoritePage
 import io.github.jukomu.jmcomic.api.model.JmNotificationPage
+import io.github.jukomu.jmcomic.api.model.JmNovelChapter
+import io.github.jukomu.jmcomic.api.model.JmNovelChapterMeta
+import io.github.jukomu.jmcomic.api.model.JmNovelDetail
+import io.github.jukomu.jmcomic.api.model.JmNovelMeta
+import io.github.jukomu.jmcomic.api.model.JmNovelPage
+import io.github.jukomu.jmcomic.api.model.JmRelatedNovel
 import io.github.jukomu.jmcomic.api.model.JmTagFavorite
 import io.github.jukomu.jmcomic.api.model.JmTaskItem
 import io.github.jukomu.jmcomic.api.model.JmTaskList
@@ -348,4 +359,84 @@ fun JmUserProfile.toUserProfile(): UserProfile = UserProfile(
 fun JmTagFavorite.toTagFavorite(): TagFavorite = TagFavorite(
     tag = tag().orEmpty(),
     updatedAt = updatedAt()?.takeIf { it.isNotBlank() },
+)
+
+/** 小说封面：接口的 image 可能是绝对地址或相对路径，相对时拼接图片域名（与 API 同域）。 */
+fun novelCoverUrl(image: String?, imageHost: String): String? {
+    val path = image?.takeIf { it.isNotBlank() } ?: return null
+    if (path.startsWith("http://") || path.startsWith("https://")) return path
+    if (imageHost.isBlank()) return null
+    return "https://" + imageHost.removePrefix("https://").trimEnd('/') + path
+}
+
+fun JmNovelMeta.toNovelMeta(imageHost: String = ""): NovelMeta = NovelMeta(
+    id = getId().orEmpty(),
+    name = getName().orEmpty(),
+    author = getAuthor().orEmpty(),
+    coverUrl = novelCoverUrl(getImage(), imageHost),
+    liked = isLiked(),
+    favorite = getIsFavorite() == true,
+    updateAt = getUpdateAt(),
+    likes = getLikes()?.takeIf { it.isNotBlank() },
+    lastChapterIndex = getLastChapterIndex()?.takeIf { it.isNotBlank() },
+    lastChapterTitle = getLastChapterTitle()?.takeIf { it.isNotBlank() },
+)
+
+fun JmRelatedNovel.toNovelMeta(imageHost: String = ""): NovelMeta = NovelMeta(
+    id = getId().orEmpty(),
+    name = getName().orEmpty(),
+    author = getAuthor().orEmpty(),
+    coverUrl = novelCoverUrl(getImage(), imageHost),
+    liked = false,
+    favorite = getIsFavorite() == true,
+    updateAt = getChapterUpdateAt(),
+    likes = getLikes()?.takeIf { it.isNotBlank() },
+    lastChapterIndex = getLastChapterIndex()?.takeIf { it.isNotBlank() },
+    lastChapterTitle = getLastChapterTitle()?.takeIf { it.isNotBlank() },
+)
+
+fun JmNovelPage.toNovelPage(imageHost: String = ""): NovelPage = NovelPage(
+    items = getList().orEmpty().map { it.toNovelMeta(imageHost) },
+    total = getTotal(),
+)
+
+fun JmNovelChapterMeta.toNovelChapterMeta(): NovelChapterMeta = NovelChapterMeta(
+    ncid = getNCID().orEmpty(),
+    title = getTitle().orEmpty().ifBlank { getName().orEmpty() },
+    sort = getSort()?.takeIf { it.isNotBlank() },
+    isNew = isNew(),
+    purchased = isPurchased(),
+    needBuy = getIsNeedBuyNc() == "1" && !isPurchased(),
+)
+
+fun JmNovelDetail.toNovelDetail(imageHost: String = ""): NovelDetail = NovelDetail(
+    id = getId().orEmpty(),
+    name = getName().orEmpty(),
+    author = getAuthor().orEmpty(),
+    coverUrl = novelCoverUrl(getImages(), imageHost),
+    addtime = getAddtime(),
+    description = getDescription().orEmpty(),
+    totalViews = getTotalViews()?.takeIf { it.isNotBlank() },
+    likes = getLikes()?.takeIf { it.isNotBlank() },
+    isEnd = getIsEnd() == "1",
+    serialStatus = getSerialStatus().orEmpty(),
+    tags = getTags().orEmpty(),
+    liked = isLiked(),
+    favorite = getIsFavorite() == true,
+    chapters = getSeries().orEmpty().map { it.toNovelChapterMeta() },
+    related = getRelatedList().orEmpty().map { it.toNovelMeta(imageHost) },
+)
+
+fun JmNovelChapter.toNovelChapter(): NovelChapter = NovelChapter(
+    ncid = getNcid().toString(),
+    novelId = getNid().orEmpty(),
+    title = getTitle().orEmpty().ifBlank { getName().orEmpty() },
+    contentText = getContentText().orEmpty().ifBlank { getContent().orEmpty() },
+    lastChapterTitle = getLastChapterTitle()?.takeIf { it.isNotBlank() },
+    totalFavorites = getTotalFavorites()?.takeIf { it.isNotBlank() },
+    totalViews = getTotalViews()?.takeIf { it.isNotBlank() },
+    totalLikes = getTotalLikes()?.takeIf { it.isNotBlank() },
+    addtime = getAddtime()?.takeIf { it.isNotBlank() },
+    favorite = getIsFavorite() == true,
+    liked = isLiked(),
 )

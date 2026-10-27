@@ -58,6 +58,7 @@ fun MineScreen(
     onOpenTasks: () -> Unit,
     onOpenWatchHistory: () -> Unit,
     onOpenForum: () -> Unit,
+    onOpenNovel: () -> Unit,
 ) {
     val user by account.user.collectAsState()
     val unread by Jm3Graph.unreadNotifications.collectAsState()
@@ -216,6 +217,11 @@ fun MineScreen(
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ArrowPreference(title = "我的收藏", onClick = onOpenFavorites)
                 ArrowPreference(title = "阅读历史", onClick = onOpenHistory)
+                ArrowPreference(
+                    title = "小说",
+                    summary = "连载小说阅读",
+                    onClick = onOpenNovel,
+                )
                 // 下载队列在途时行尾显示圆点，无需进书架页确认
                 ArrowPreference(
                     title = "本地书架",

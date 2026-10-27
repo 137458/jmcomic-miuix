@@ -360,3 +360,83 @@ data class TagFavorite(
     val tag: String,
     val updatedAt: String?,
 )
+
+/** 小说列表排序：对应原版 8 档排序中接口可表达的部分（o 参数）。 */
+enum class NovelOrder(val apiValue: String, val label: String) {
+    DEFAULT("", "全部"),
+    LATEST("mr", "最新"),
+    MOST_VIEWED("mv", "最多点阅"),
+    MOST_CHAPTERS("mp", "最多章节"),
+    MOST_LIKES("tf", "最多爱心"),
+}
+
+/** 小说列表条目。 */
+data class NovelMeta(
+    val id: String,
+    val name: String,
+    val author: String,
+    val coverUrl: String?,
+    val liked: Boolean,
+    val favorite: Boolean,
+    /** Unix 秒。 */
+    val updateAt: Long,
+    /** 点赞数文本，接口未提供时为 null。 */
+    val likes: String? = null,
+    val lastChapterIndex: String? = null,
+    val lastChapterTitle: String? = null,
+)
+
+/** 小说列表页；接口只返回总数与当页条目，无总页数。 */
+data class NovelPage(
+    val items: List<NovelMeta>,
+    val total: Int,
+)
+
+/** 小说详情里的章节条目。 */
+data class NovelChapterMeta(
+    val ncid: String,
+    val title: String,
+    val sort: String?,
+    /** 是否为新章节（原版 new 标记）。 */
+    val isNew: Boolean,
+    /** 是否已购买。 */
+    val purchased: Boolean,
+    /** 是否需要购买才能阅读。 */
+    val needBuy: Boolean,
+)
+
+/** 小说详情。 */
+data class NovelDetail(
+    val id: String,
+    val name: String,
+    val author: String,
+    val coverUrl: String?,
+    /** 上架时间（Unix 秒）。 */
+    val addtime: Long,
+    val description: String,
+    val totalViews: String?,
+    val likes: String?,
+    val isEnd: Boolean,
+    val serialStatus: String,
+    val tags: List<String>,
+    val liked: Boolean,
+    val favorite: Boolean,
+    val chapters: List<NovelChapterMeta>,
+    val related: List<NovelMeta>,
+)
+
+/** 小说章节正文。 */
+data class NovelChapter(
+    val ncid: String,
+    val novelId: String,
+    val title: String,
+    /** 已去标签与实体的纯文本。 */
+    val contentText: String,
+    val lastChapterTitle: String?,
+    val totalFavorites: String?,
+    val totalViews: String?,
+    val totalLikes: String?,
+    val addtime: String?,
+    val favorite: Boolean,
+    val liked: Boolean,
+)

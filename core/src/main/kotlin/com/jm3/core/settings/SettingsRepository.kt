@@ -59,8 +59,28 @@ interface SettingsRepository {
 
     suspend fun setTrackPromptMuteUntil(epochMillis: Long) {}
 
+    /** 小说阅读字号（sp），默认 [DEFAULT_NOVEL_FONT_SIZE]。 */
+    suspend fun novelFontSize(): Int = DEFAULT_NOVEL_FONT_SIZE
+
+    suspend fun setNovelFontSize(sizeSp: Int) {}
+
+    /** 小说正文语言：tw（繁体）/ cn（简体）。 */
+    suspend fun novelLang(): String = DEFAULT_NOVEL_LANG
+
+    suspend fun setNovelLang(lang: String) {}
+
+    /** 某部小说最后阅读的章节 id（原版 novelRead 进度）；未读过为 null。 */
+    suspend fun novelLastChapter(novelId: String): String? = null
+
+    suspend fun setNovelLastChapter(novelId: String, chapterId: String) {}
+
     companion object {
         const val SEARCH_HISTORY_LIMIT = 10
+
+        const val NOVEL_FONT_SIZE_MIN = 14
+        const val NOVEL_FONT_SIZE_MAX = 26
+        const val DEFAULT_NOVEL_FONT_SIZE = 18
+        const val DEFAULT_NOVEL_LANG = "tw"
     }
 }
 
@@ -75,6 +95,9 @@ class InMemorySettingsRepository : SettingsRepository {
     private var readerHorizontal = false
     private var volumeHintShown = false
     private var trackPromptMuteUntil = 0L
+    private var novelFontSize = SettingsRepository.DEFAULT_NOVEL_FONT_SIZE
+    private var novelLang = SettingsRepository.DEFAULT_NOVEL_LANG
+    private val novelProgress = mutableMapOf<String, String>()
 
     override suspend fun themeMode(): ThemeMode = mode
 
@@ -136,5 +159,26 @@ class InMemorySettingsRepository : SettingsRepository {
 
     override suspend fun setTrackPromptMuteUntil(epochMillis: Long) {
         trackPromptMuteUntil = epochMillis
+    }
+
+    override suspend fun novelFontSize(): Int = novelFontSize
+
+    override suspend fun setNovelFontSize(sizeSp: Int) {
+        novelFontSize = sizeSp.coerceIn(
+            SettingsRepository.NOVEL_FONT_SIZE_MIN,
+            SettingsRepository.NOVEL_FONT_SIZE_MAX,
+        )
+    }
+
+    override suspend fun novelLang(): String = novelLang
+
+    override suspend fun setNovelLang(lang: String) {
+        novelLang = if (lang == "cn") "cn" else "tw"
+    }
+
+    override suspend fun novelLastChapter(novelId: String): String? = novelProgress[novelId]
+
+    override suspend fun setNovelLastChapter(novelId: String, chapterId: String) {
+        novelProgress[novelId] = chapterId
     }
 }

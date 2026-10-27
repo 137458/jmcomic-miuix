@@ -33,6 +33,9 @@ import com.jm3.app.miuix.ui.ForumScreen
 import com.jm3.app.miuix.ui.HistoryScreen
 import com.jm3.app.miuix.ui.LoginScreen
 import com.jm3.app.miuix.ui.MainScreen
+import com.jm3.app.miuix.ui.NovelDetailScreen
+import com.jm3.app.miuix.ui.NovelListScreen
+import com.jm3.app.miuix.ui.NovelReaderScreen
 import com.jm3.app.miuix.ui.ProfileScreen
 import com.jm3.app.miuix.ui.ReaderScreen
 import com.jm3.app.miuix.ui.SearchScreen
@@ -216,6 +219,18 @@ sealed interface Route : NavKey {
     @Serializable
     data class Reader(val photoId: String) : Route
 
+    /** 小说列表（原版 Novels 页）。 */
+    @Serializable
+    data object Novel : Route
+
+    /** 小说详情：目录/相关/评论三档。 */
+    @Serializable
+    data class NovelDetail(val novelId: String) : Route
+
+    /** 小说阅读器：记录起始章节，返回详情页而非逐章回退。 */
+    @Serializable
+    data class NovelReader(val novelId: String, val chapterId: String) : Route
+
     /** 独立搜索结果页：标签/作者/作品/人物点击进入；scope 对应原版搜索类型。 */
     @Serializable
     data class Search(val query: String, val scope: SearchScope = SearchScope.SITE) : Route
@@ -302,6 +317,7 @@ fun Jm3App() {
                     onOpenTasks = { backStack.add(Route.Tasks) },
                     onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
                     onOpenForum = { backStack.add(Route.Forum) },
+                    onOpenNovel = { backStack.add(Route.Novel) },
                 )
             }
             entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -406,6 +422,36 @@ fun Jm3App() {
                         // 同层替换：返回键回到详情页，而不是逐章回退
                         if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(photoId)
                     },
+                    onOpenLogin = { backStack.add(Route.Login) },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.Novel>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                NovelListScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
+                    onOpenLogin = { backStack.add(Route.Login) },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.NovelDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                NovelDetailScreen(
+                    novelId = route.novelId,
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
+                    onOpenReader = { novelId, chapterId ->
+                        backStack.add(Route.NovelReader(novelId, chapterId))
+                    },
+                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                    onOpenLogin = { backStack.add(Route.Login) },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.NovelReader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                NovelReaderScreen(
+                    novelId = route.novelId,
+                    initialChapterId = route.chapterId,
+                    onBack = { backStack.removeLastOrNull() },
                     onOpenLogin = { backStack.add(Route.Login) },
                     snackbarHostState = snackbarHostState,
                 )

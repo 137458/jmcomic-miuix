@@ -14,6 +14,9 @@ import com.jm3.core.model.FolderOperation
 import com.jm3.core.model.ForumScope
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.NotificationPage
+import com.jm3.core.model.NovelChapter
+import com.jm3.core.model.NovelDetail
+import com.jm3.core.model.NovelPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchPage
@@ -178,6 +181,38 @@ interface Jm3Gateway {
 
     /** 切换收藏状态（已收藏则取消）；folderId 指定加入的收藏夹，默认「全部」。阻塞调用。 */
     fun toggleFavorite(albumId: String, folderId: String = "0")
+
+    /** 小说列表；order 为原版排序值（空串=全部，mr=最新，mv=最多点阅，mp=最多章节，tf=最多爱心）。阻塞调用。 */
+    fun novelList(order: String, page: Int = 1): NovelPage
+
+    /** 小说关键词搜索。阻塞调用。 */
+    fun searchNovels(query: String): NovelPage
+
+    /** 小说详情（含章节列表与相关作品）。阻塞调用。 */
+    fun novelDetail(novelId: String): NovelDetail
+
+    /** 小说章节正文；lang 为 tw/cn。阻塞调用。 */
+    fun novelChapter(chapterId: String, lang: String = "tw"): NovelChapter
+
+    /** 小说点赞（平台不支持取消）。阻塞调用。 */
+    fun toggleNovelLike(novelId: String)
+
+    /** 切换小说收藏（已收藏则取消）。阻塞调用。 */
+    fun toggleNovelFavorite(novelId: String)
+
+    /** 小说评论区（整部作品）。阻塞调用。 */
+    fun novelComments(novelId: String, page: Int = 1): CommentPage
+
+    /** 发表小说评论；chapterId 为空表示评论整部作品。阻塞调用。 */
+    fun postNovelComment(novelId: String, text: String, chapterId: String = "")
+
+    /** 回复小说评论。阻塞调用。 */
+    fun replyNovelComment(
+        novelId: String,
+        text: String,
+        parentCommentId: String,
+        chapterId: String = "",
+    )
 }
 
 class Jm3GatewayImpl internal constructor(
@@ -357,6 +392,43 @@ class Jm3GatewayImpl internal constructor(
 
     override fun toggleFavorite(albumId: String, folderId: String) =
         client.toggleAlbumFavorite(albumId, folderId)
+
+    override fun novelList(order: String, page: Int): NovelPage =
+        client.getNovelList(order, page).toNovelPage(novelImageHost())
+
+    override fun searchNovels(query: String): NovelPage =
+        client.searchNovels(query).toNovelPage(novelImageHost())
+
+    override fun novelDetail(novelId: String): NovelDetail =
+        client.getNovelDetail(novelId).toNovelDetail(novelImageHost())
+
+    override fun novelChapter(chapterId: String, lang: String): NovelChapter =
+        client.getNovelChapter(chapterId, lang).toNovelChapter()
+
+    override fun toggleNovelLike(novelId: String) = client.toggleNovelLike(novelId)
+
+    override fun toggleNovelFavorite(novelId: String) = client.toggleNovelFavorite(novelId)
+
+    override fun novelComments(novelId: String, page: Int): CommentPage {
+        val query = ForumQuery.novel(novelId).mode(ForumMode.ALL).page(page).build()
+        return client.getComments(query).toCommentPage()
+    }
+
+    override fun postNovelComment(novelId: String, text: String, chapterId: String) {
+        client.postNovelComment(novelId, text, chapterId)
+    }
+
+    override fun replyNovelComment(
+        novelId: String,
+        text: String,
+        parentCommentId: String,
+        chapterId: String,
+    ) {
+        client.replyToNovelComment(novelId, text, parentCommentId, chapterId)
+    }
+
+    /** 小说封面与 API 同域：直接复用域名裁决结果；未就绪时返回空串，封面降级为 null。 */
+    private fun novelImageHost(): String = usedDomain().orEmpty()
 
     /** 域名解析只做一次：借库的域名裁决取首个封面地址，解析出图片域名后全部走纯构造器，消除逐项调用。 */
     private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(): SearchPage {
