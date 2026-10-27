@@ -65,6 +65,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.extended.ExpandLess
+import top.yukonga.miuix.kmp.icon.extended.Help
 import top.yukonga.miuix.kmp.icon.extended.Promotions
 import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.icon.extended.Weeks
@@ -403,10 +404,11 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                                     minWidth = 32.dp,
                                     minHeight = 32.dp,
                                 ) {
-                                    Text(
-                                        text = "?",
-                                        style = MiuixTheme.textStyles.title4,
-                                        color = MiuixTheme.colorScheme.onSurfaceContainerHigh,
+                                    Icon(
+                                        imageVector = MiuixIcons.Help,
+                                        contentDescription = "搜索语法帮助",
+                                        tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
+                                        modifier = Modifier.size(16.dp),
                                     )
                                 }
                             }

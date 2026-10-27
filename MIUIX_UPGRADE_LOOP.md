@@ -47,11 +47,14 @@
 - 说明：原版子分类按 `slug` 过滤，库 `BrowseFilter` 未暴露 sub_slug，改用子分类名称做标签检索（结果集近似，记录为替代决策）
 - [x] Miuix 高阶：`TabRow` 分段、`FlowRow` 胶囊标签、`OverlayBottomSheet` 更多分类/连载
 
-### [ ] M05 详情页（AlbumDetailScreen）
-- [ ] 收藏夹选择/移动（复用 `manageFavoriteFolder` + `favorites().folders`）
-- [ ] 简介复制到剪贴板 + 禁漫车信息块
-- [ ] 章节按 10 话分组 + 已读标记 + 当前话高亮（复核）
-- [ ] Miuix 高阶：动作行胶囊化、`TooltipBox`、`OverlayBottomSheet` 文件夹选择
+### [x] M05 详情页（AlbumDetailScreen）
+- [x] 收藏夹选择/移动：未收藏点击收藏 → `OverlayBottomSheet` 选夹后加入；已收藏 → 选夹移动或取消收藏（`manageFavoriteFolder` + `favorites().folders`）
+- [x] 简介复制到剪贴板（标题栏 Copy 图标 + 复制成功提示）
+- [x] 禁漫车信息块（车号可复制 + 页数）
+- [x] 章节按 10 话分组 + 已读标记 + 续读组自动展开 + 当前话高亮（复核并保留）
+- [x] 高频动作台：阅读主按钮全宽 + 收藏/喜欢/追更/下载四等分胶囊卡（填充图标回显状态，禁用态降灰）
+- [x] Miuix 高阶：`TooltipBox`（分享/下载全部）、`OverlayBottomSheet` 文件夹选择、`Card` + `BasicComponent` 信息块
+- 验证：`:app:compileDebugKotlin` 通过。
 
 ### [ ] M06 阅读器（ReaderScreen）
 - [ ] 左右阅读模式（HorizontalPager + `springAnimateToPage` + `pagerGestureOverride`）
@@ -108,3 +111,4 @@
 - 2026-10-27 / M01：扩展网关 11 项能力 + 分页/搜索历史持久化 + 9 项 core 测试。构建与测试通过，提交 `b51d6e6`。
 - 2026-10-27 / M02+M03+M04+M07：首页（连载横滑/热标签/搜索历史/语法帮助/点击分页）、搜索页（时间范围服务端过滤 + 点击分页）、分类页（子分类/更多分类/每周连载/热标签/标签结果）、收藏页（移动收藏夹/标签收藏增删）。新增公共 `ResultPagerBar`/`pagedSearchResultItems` 消除重复。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 替代决策：原版搜索年/月（`y`/`m`）库不支持 → 改用库 `TimeOption`（今日/本周/本月/全部）；原版子分类 `slug` 过滤库未暴露 → 以名称做标签检索。
+- 2026-10-27 / M05：详情页补收藏夹选择/移动、简介与车号复制、禁漫车信息块、四等分动作台（收藏/喜欢/追更/下载），章节分组与已读标记复核通过。`:app:compileDebugKotlin` 通过。
