@@ -1,5 +1,10 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,19 +17,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import coil3.compose.AsyncImage
 import com.jm3.core.model.SearchPage
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -184,7 +193,7 @@ private fun SearchResultCover(url: String?) {
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
-            .clip(RoundedCornerShape(6.dp)),
+            .squircleClip(6.dp),
     )
 }
 
@@ -202,7 +211,7 @@ fun LazyListScope.searchResultItems(
     }
     items(page.items, key = { it.id }) { result ->
         // 逐行卡片：封面 + 标题/作者标签摘要，与其他页的卡式布局保持一致
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp).pressScale()) {
             BasicComponent(
                 title = result.title,
                 summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
@@ -269,7 +278,7 @@ fun LazyListScope.pagedSearchResultItems(
         item(key = "empty") { EmptyState(title = "无结果", hint = "换个关键词再试试") }
     }
     items(page.items, key = { it.id }) { result ->
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp).pressScale()) {
             BasicComponent(
                 title = result.title,
                 summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
@@ -282,4 +291,33 @@ fun LazyListScope.pagedSearchResultItems(
         }
     }
     item(key = "pager") { ResultPagerBar(page = page, onPageChange = onPageChange) }
+}
+
+/**
+ * 按压微缩放：叠加弹簧回弹（阻尼 0.55 / 刚度 900）与可选轻触觉反馈。
+ * 用 pointerInput 旁路监听而不消费事件，因此不会吞掉 Card/列表项自身的点击。
+ */
+@Composable
+fun Modifier.pressScale(scaleDown: Float = 0.96f, hapticFeedback: Boolean = false): Modifier {
+    var pressed by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) scaleDown else 1f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 900f),
+        label = "pressScale",
+    )
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .pointerInput(hapticFeedback) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                pressed = true
+                if (hapticFeedback) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                waitForUpOrCancellation()
+                pressed = false
+            }
+        }
 }

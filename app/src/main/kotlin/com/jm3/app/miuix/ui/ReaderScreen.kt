@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
@@ -58,6 +61,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.blur
+import top.yukonga.miuix.kmp.blur.drawBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -273,6 +281,10 @@ private fun ReaderPages(
     var trackPromptShown by remember { mutableStateOf(false) }
     var trackMuteChecked by remember { mutableStateOf(false) }
     var trackBusy by remember { mutableStateOf(false) }
+
+    // 悬浮工具栏毛玻璃：内容层录屏作为 backdrop，工具栏按胶囊形状采样并模糊
+    val toolbarBackdrop = rememberLayerBackdrop()
+    val toolbarBlurRadius = with(LocalDensity.current) { 22.dp.toPx() }
 
     val prevChapter = chapters.getOrNull(chapterIndex - 1)?.takeIf { chapterIndex > 0 }
     val nextChapter = chapters.getOrNull(chapterIndex + 1)
@@ -505,6 +517,8 @@ private fun ReaderPages(
                     horizontal = horizontal,
                     favorited = favorited,
                     liked = liked,
+                    backdrop = toolbarBackdrop,
+                    blurRadius = toolbarBlurRadius,
                     onToggleMode = { switchMode(!horizontal) },
                     onChapters = { showChapterSheet = true },
                     onComments = ::openComments,
@@ -514,13 +528,12 @@ private fun ReaderPages(
             }
         },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().layerBackdrop(toolbarBackdrop)) {
             if (horizontal) {
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(innerPadding)
                         .pagerGestureOverride(pagerState),
                     // 手势由 pagerGestureOverride 驱动，避免与原生拖拽竞争
                     userScrollEnabled = false,
@@ -763,37 +776,53 @@ private fun ReaderToolbar(
     horizontal: Boolean,
     favorited: Boolean,
     liked: Boolean,
+    backdrop: LayerBackdrop,
+    blurRadius: Float,
     onToggleMode: () -> Unit,
     onChapters: () -> Unit,
     onComments: () -> Unit,
     onFavorite: () -> Unit,
     onLike: () -> Unit,
 ) {
-    FloatingToolbar {
-        Row(
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly,
+    // 外层承载模糊形状，内层 FloatingToolbar 只留半透明底色，避免不透明背景盖住模糊
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RoundedCornerShape(50.dp) },
+                effects = { blur(blurRadius) },
+            ),
+    ) {
+        FloatingToolbar(
+            color = MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f),
+            outSidePadding = PaddingValues(0.dp),
         ) {
-            ReaderActionCell(
-                icon = if (horizontal) MiuixIcons.VerticalSplit else MiuixIcons.HorizontalSplit,
-                label = if (horizontal) "直向阅读" else "左右阅读",
-                onClick = onToggleMode,
-            )
-            ReaderActionCell(icon = MiuixIcons.ListView, label = "章节", onClick = onChapters)
-            ReaderActionCell(icon = MiuixIcons.Messages, label = "评论", onClick = onComments)
-            ReaderActionCell(
-                icon = if (favorited) MiuixIcons.FolderFill else MiuixIcons.Folder,
-                label = "收藏",
-                active = favorited,
-                onClick = onFavorite,
-            )
-            ReaderActionCell(
-                icon = if (liked) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
-                label = "喜欢",
-                active = liked,
-                onClick = onLike,
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                ReaderActionCell(
+                    icon = if (horizontal) MiuixIcons.VerticalSplit else MiuixIcons.HorizontalSplit,
+                    label = if (horizontal) "直向阅读" else "左右阅读",
+                    onClick = onToggleMode,
+                )
+                ReaderActionCell(icon = MiuixIcons.ListView, label = "章节", onClick = onChapters)
+                ReaderActionCell(icon = MiuixIcons.Messages, label = "评论", onClick = onComments)
+                ReaderActionCell(
+                    icon = if (favorited) MiuixIcons.FolderFill else MiuixIcons.Folder,
+                    label = "收藏",
+                    active = favorited,
+                    onClick = onFavorite,
+                )
+                ReaderActionCell(
+                    icon = if (liked) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
+                    label = "喜欢",
+                    active = liked,
+                    onClick = onLike,
+                )
+            }
         }
     }
 }
@@ -811,6 +840,7 @@ private fun ReaderActionCell(
         modifier = Modifier
             .width(66.dp)
             .clickable(onClick = onClick)
+            .pressScale(hapticFeedback = true)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

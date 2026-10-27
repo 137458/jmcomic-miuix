@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,7 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -262,11 +261,11 @@ private fun AlbumHistoryCard(
                     model = cover,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(width = 58.dp, height = 78.dp).clip(RoundedCornerShape(8.dp)),
+                    modifier = Modifier.size(width = 58.dp, height = 78.dp).squircleClip(8.dp),
                 )
             } else {
                 Box(
-                    modifier = Modifier.size(width = 58.dp, height = 78.dp).clip(RoundedCornerShape(8.dp)),
+                    modifier = Modifier.size(width = 58.dp, height = 78.dp).squircleClip(8.dp),
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))

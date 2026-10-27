@@ -88,6 +88,8 @@ dependencies {
     implementation(libs.miuix.nav)
     implementation(libs.miuix.icons)
     implementation(libs.miuix.preference)
+    implementation(libs.miuix.blur)
+    implementation(libs.miuix.squircle)
 
     // 无 AWT 的 Android 环境必须提供 ImageProcessor SPI 实现
     implementation(libs.jmcomic.android.support) {
