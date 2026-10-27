@@ -18,7 +18,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.jm3.app.Jm3Graph
 import com.jm3.app.data.AccountManager
 import com.jm3.core.model.DailyCheckInStatus
@@ -27,11 +26,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -128,26 +127,28 @@ fun MineScreen(
                     val status = checkInStatus
                     when {
                         status != null -> {
+                            // 签到作为整行可点操作，进度与活动信息放进 summary，避免卡片内再嵌全宽按钮。
                             BasicComponent(
-                                title = status.eventName,
-                                summary = "已签到 ${status.signedDays}/${status.totalDays} 天 · 奖励进度 ${status.currentProgress}",
-                            )
-                            TextButton(
-                                text = when {
+                                title = when {
                                     checkInBusy -> "签到中…"
                                     checkedIn -> "今日已签到"
-                                    else -> "签到"
+                                    else -> "立即签到"
+                                },
+                                summary = "${status.eventName} · 已签到 ${status.signedDays}/${status.totalDays} 天 · 奖励进度 ${status.currentProgress}",
+                                enabled = !checkInBusy && !checkedIn,
+                                endActions = {
+                                    if (checkInBusy) {
+                                        CircularProgressIndicator(size = 20.dp)
+                                    }
                                 },
                                 onClick = { performCheckIn(status) },
-                                enabled = !checkInBusy && !checkedIn,
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                             )
                             checkInError?.let { message ->
                                 Text(
                                     text = message,
-                                    fontSize = 13.sp,
+                                    fontSize = MiuixTheme.textStyles.footnote1.fontSize,
                                     color = MiuixTheme.colorScheme.error,
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                                 )
                             }
                         }

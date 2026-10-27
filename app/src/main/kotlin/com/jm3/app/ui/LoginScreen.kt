@@ -17,15 +17,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.jm3.app.data.AccountManager
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
@@ -66,15 +67,19 @@ fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                     error?.let { message ->
-                        Text(text = message, fontSize = 13.sp)
+                        Text(
+                            text = message,
+                            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                            color = MiuixTheme.colorScheme.error,
+                        )
                     }
-                    TextButton(
-                        text = if (busy) "登录中…" else "登录",
+                    // 主操作使用 Miuix 主色按钮，与设置页的次级 TextButton 区分层级。
+                    Button(
                         onClick = {
-                            if (busy) return@TextButton
+                            if (busy) return@Button
                             if (username.isBlank() || password.isBlank()) {
                                 error = "请输入用户名和密码"
-                                return@TextButton
+                                return@Button
                             }
                             busy = true
                             error = null
@@ -84,8 +89,12 @@ fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
                                 if (failure == null) onBack() else error = failure
                             }
                         },
+                        enabled = !busy,
+                        colors = ButtonDefaults.buttonColorsPrimary(),
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                    ) {
+                        Text(text = if (busy) "登录中…" else "登录")
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))

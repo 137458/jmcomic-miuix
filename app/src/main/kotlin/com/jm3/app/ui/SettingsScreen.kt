@@ -3,7 +3,6 @@ package com.jm3.app.ui
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,9 +19,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.jm3.app.Jm3Graph
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.ThemeMode
@@ -31,7 +30,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHost
@@ -169,25 +170,17 @@ fun SettingsScreen(
 
             SmallTitle(text = "线路")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                Text(
-                    text = "当前线路：" + activeDomains.value.ifBlank { "默认（自动解析）" },
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                // Card 内统一用 BasicComponent 行式布局承载诊断信息与操作，替代散落的小号正文与全宽按钮。
+                BasicComponent(
+                    title = "当前线路",
+                    summary = activeDomains.value.ifBlank { "默认（自动解析）" },
                 )
-                Text(
-                    text = "实际线路：" + (usedDomain ?: "未解析"),
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                BasicComponent(
+                    title = "实际线路",
+                    summary = usedDomain ?: "未解析",
                 )
                 if (domainLatency.isEmpty()) {
-                    Text(
-                        text = "尚未完成线路探活",
-                        fontSize = 13.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
+                    BasicComponent(title = "线路延迟", summary = "尚未完成线路探活")
                 } else {
                     domainLatency.forEach { (domain, latencyMs) ->
                         BasicComponent(title = domain, summary = "${latencyMs} ms")
@@ -196,27 +189,39 @@ fun SettingsScreen(
                 diagError?.let { message ->
                     Text(
                         text = "线路诊断失败：$message",
-                        fontSize = 13.sp,
+                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
                         color = MiuixTheme.colorScheme.error,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
-                TextButton(
-                    text = if (reprobeBusy) "探活中…" else "重新探活",
-                    onClick = ::reprobeDomains,
+                BasicComponent(
+                    title = "重新探活",
+                    summary = if (reprobeBusy) "探活中…" else "逐条测速并按延迟排序",
                     enabled = !reprobeBusy,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    endActions = {
+                        if (reprobeBusy) {
+                            CircularProgressIndicator(size = 20.dp)
+                        }
+                    },
+                    onClick = ::reprobeDomains,
                 )
-                TextField(
-                    value = domainsInput.value,
-                    onValueChange = { domainsInput.value = it },
-                    label = "API 域名（每行一个，留空恢复默认）",
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                BasicComponent(
+                    title = "自定义线路",
+                    summary = "每行一个域名，留空恢复默认",
+                    bottomAction = {
+                        TextField(
+                            value = domainsInput.value,
+                            onValueChange = { domainsInput.value = it },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),
+                        )
+                    },
                 )
-                TextButton(
-                    text = if (applying.value) "应用中…" else "应用线路",
+                BasicComponent(
+                    title = "应用线路",
+                    summary = if (applying.value) "应用中…" else "保存配置并重建 API 网关",
+                    enabled = !applying.value,
                     onClick = {
-                        if (applying.value) return@TextButton
+                        if (applying.value) return@BasicComponent
                         applying.value = true
                         scope.launch {
                             val domains = Domains.normalize(domainsInput.value.split("\n"))
@@ -231,7 +236,6 @@ fun SettingsScreen(
                             )
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
             }
 
@@ -276,17 +280,22 @@ fun SettingsScreen(
             },
             onDismissRequest = { confirmClear = null },
         ) {
-            Row(
+            // HyperOS 弹窗惯例：按钮纵向堆叠、各占满宽，避免横排等分与系统弹窗观感不一致
+            Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TextButton(
                     text = "取消",
                     onClick = { confirmClear = null },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 TextButton(
                     text = "确认清空",
+                    colors = ButtonDefaults.textButtonColors(
+                        color = Color.Transparent,
+                        textColor = MiuixTheme.colorScheme.error,
+                    ),
                     onClick = {
                         val target = confirmClear
                         confirmClear = null
@@ -300,7 +309,7 @@ fun SettingsScreen(
                             )
                         }
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -314,7 +323,7 @@ fun SettingsScreen(
                 text = "本应用为第三方客户端，与禁漫官方无关，仅供学习交流；" +
                     "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +
                     "未满 18 周岁（或当地法定年龄）请勿使用；因使用本应用产生的一切后果由使用者自行承担。",
-                fontSize = 14.sp,
+                fontSize = MiuixTheme.textStyles.body2.fontSize,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             )
             TextButton(

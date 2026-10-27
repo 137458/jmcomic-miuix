@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.jm3.core.model.SearchPage
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -84,7 +83,7 @@ fun EmptyState(title: String, hint: String? = null, modifier: Modifier = Modifie
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = hint,
-                fontSize = 13.sp,
+                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
                 textAlign = TextAlign.Center,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
