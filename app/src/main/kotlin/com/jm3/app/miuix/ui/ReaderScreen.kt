@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import android.os.Build
 import android.view.KeyEvent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -282,8 +283,10 @@ private fun ReaderPages(
     var trackMuteChecked by remember { mutableStateOf(false) }
     var trackBusy by remember { mutableStateOf(false) }
 
-    // 悬浮工具栏毛玻璃：内容层录屏作为 backdrop，工具栏按胶囊形状采样并模糊
-    val toolbarBackdrop = rememberLayerBackdrop()
+    // 悬浮工具栏毛玻璃：内容层录屏作为 backdrop，工具栏按胶囊形状采样并模糊；
+    // miuix-blur 依赖 API 33 的 RuntimeShader，低版本跳过录屏并退回不透明底色
+    val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val toolbarBackdrop = if (supportsBlur) rememberLayerBackdrop() else null
     val toolbarBlurRadius = with(LocalDensity.current) { 22.dp.toPx() }
 
     val prevChapter = chapters.getOrNull(chapterIndex - 1)?.takeIf { chapterIndex > 0 }
@@ -528,7 +531,16 @@ private fun ReaderPages(
             }
         },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().layerBackdrop(toolbarBackdrop)) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .then(
+                    if (toolbarBackdrop != null) {
+                        Modifier.layerBackdrop(toolbarBackdrop)
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             if (horizontal) {
                 HorizontalPager(
                     state = pagerState,
@@ -776,7 +788,7 @@ private fun ReaderToolbar(
     horizontal: Boolean,
     favorited: Boolean,
     liked: Boolean,
-    backdrop: LayerBackdrop,
+    backdrop: LayerBackdrop?,
     blurRadius: Float,
     onToggleMode: () -> Unit,
     onChapters: () -> Unit,
@@ -788,14 +800,21 @@ private fun ReaderToolbar(
     Box(
         modifier = Modifier
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { RoundedCornerShape(50.dp) },
-                effects = { blur(blurRadius) },
+            .then(
+                if (backdrop != null) {
+                    Modifier.drawBackdrop(
+                        backdrop = backdrop,
+                        shape = { RoundedCornerShape(50.dp) },
+                        effects = { blur(blurRadius) },
+                    )
+                } else {
+                    Modifier
+                },
             ),
     ) {
         FloatingToolbar(
-            color = MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f),
+            color = MiuixTheme.colorScheme.surfaceContainer
+                .copy(alpha = if (backdrop != null) 0.78f else 1f),
             outSidePadding = PaddingValues(0.dp),
         ) {
             Row(
