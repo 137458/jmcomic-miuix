@@ -21,7 +21,7 @@ android {
     compileSdkVersion("android-37.0") // 依赖 AAR 元数据要求 >=37
 
     defaultConfig {
-        applicationId = "com.jm3.app"
+        applicationId = "com.jm3.app.miuix"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
