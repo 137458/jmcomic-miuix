@@ -1,4 +1,4 @@
-# JM3
+# JM3 Miuix
 
 JM Comic（18comic）Android 客户端，用 Jetpack Compose + Miuix 重写原版 JMComic3 v2.1.12。无广告。
 
