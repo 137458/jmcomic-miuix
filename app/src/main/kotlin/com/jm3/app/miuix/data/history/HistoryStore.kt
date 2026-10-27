@@ -1,4 +1,4 @@
-package com.jm3.app.data.history
+package com.jm3.app.miuix.data.history
 
 import androidx.room.Dao
 import androidx.room.Database
@@ -9,8 +9,8 @@ import androidx.room.RoomDatabase
 import androidx.room.Upsert
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.jm3.app.data.download.DownloadRecordStore
-import com.jm3.app.data.download.DownloadRecordWithPages
+import com.jm3.app.miuix.data.download.DownloadRecordStore
+import com.jm3.app.miuix.data.download.DownloadRecordWithPages
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry

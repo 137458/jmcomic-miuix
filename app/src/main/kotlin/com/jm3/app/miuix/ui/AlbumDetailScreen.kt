@@ -1,4 +1,4 @@
-package com.jm3.app.ui
+package com.jm3.app.miuix.ui
 
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.jm3.app.Jm3Graph
+import com.jm3.app.miuix.Jm3Graph
 import com.jm3.core.mergedWith
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter

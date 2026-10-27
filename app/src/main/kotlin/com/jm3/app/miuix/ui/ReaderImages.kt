@@ -1,4 +1,4 @@
-package com.jm3.app.ui
+package com.jm3.app.miuix.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect

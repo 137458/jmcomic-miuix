@@ -1,4 +1,4 @@
-package com.jm3.app.data.download
+package com.jm3.app.miuix.data.download
 
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.PageFetcher

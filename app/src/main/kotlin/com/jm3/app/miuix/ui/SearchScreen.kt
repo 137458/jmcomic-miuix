@@ -1,4 +1,4 @@
-package com.jm3.app.ui
+package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +22,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
-import com.jm3.app.Jm3Graph
+import com.jm3.app.miuix.Jm3Graph
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.SearchPage
