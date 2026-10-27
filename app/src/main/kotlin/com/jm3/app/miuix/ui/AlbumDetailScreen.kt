@@ -1,6 +1,10 @@
 package com.jm3.app.miuix.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +43,7 @@ import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
+import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import kotlinx.coroutines.Dispatchers
@@ -61,11 +66,16 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.TooltipBox
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Favorites
 import top.yukonga.miuix.kmp.icon.extended.FavoritesFill
+import top.yukonga.miuix.kmp.icon.extended.Folder
+import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Share
+import top.yukonga.miuix.kmp.icon.extended.Weeks
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private const val CHAPTER_GROUP_SIZE = 10
@@ -101,6 +111,9 @@ fun AlbumDetailScreen(
     var comments by remember(albumId) { mutableStateOf<CommentsUiState>(CommentsUiState.Loading) }
     var favoriteBusy by remember(albumId) { mutableStateOf(false) }
     var favorited by remember(albumId) { mutableStateOf(false) }
+    var folders by remember(albumId) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var showFolderSheet by remember(albumId) { mutableStateOf(false) }
+    var folderBusy by remember(albumId) { mutableStateOf(false) }
     var likeBusy by remember(albumId) { mutableStateOf(false) }
     var liked by remember(albumId) { mutableStateOf(false) }
     var tracking by remember(albumId) { mutableStateOf<Boolean?>(null) }
@@ -115,11 +128,18 @@ fun AlbumDetailScreen(
     var pullRefreshing by remember(albumId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    fun toggleFavorite() {
-        if (user == null) {
-            onOpenLogin()
-            return
+    /** 打开收藏夹选择面板；登录后拉取收藏夹名称表，失败时只保留「全部收藏」。 */
+    fun openFolderSheet() {
+        showFolderSheet = true
+        scope.launch {
+            val page = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.favorites(1) }.getOrNull()
+            }
+            if (page != null && page.folders.isNotEmpty()) folders = page.folders
         }
+    }
+
+    fun cancelFavorite() {
         if (favoriteBusy) return
         favoriteBusy = true
         scope.launch {
@@ -129,11 +149,61 @@ fun AlbumDetailScreen(
             favoriteBusy = false
             result
                 .onSuccess {
-                    favorited = !favorited
-                    snackbarHostState.showSnackbar(if (favorited) "已收藏" else "已取消收藏")
+                    favorited = false
+                    showFolderSheet = false
+                    snackbarHostState.showSnackbar("已取消收藏")
                 }
                 .onFailure { snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试")) }
         }
+    }
+
+    /** 收藏按钮：未收藏先选收藏夹（原版 FolderModal 语义），已收藏直接取消。 */
+    fun onFavoriteClick() {
+        if (user == null) {
+            onOpenLogin()
+            return
+        }
+        if (favorited) {
+            cancelFavorite()
+        } else {
+            openFolderSheet()
+        }
+    }
+
+    /** 选择收藏夹：未收藏则加入该夹，已收藏则移动；成功后关闭面板并回显。 */
+    fun pickFolder(folderId: String) {
+        if (folderBusy) return
+        folderBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (favorited) {
+                        Jm3Graph.gateway.manageFavoriteFolder(
+                            action = FavoriteFolderAction.MOVE,
+                            folderId = folderId,
+                            albumId = albumId,
+                        )
+                    } else {
+                        Jm3Graph.gateway.toggleFavorite(albumId, folderId)
+                    }
+                }
+            }
+            folderBusy = false
+            result
+                .onSuccess {
+                    favorited = true
+                    showFolderSheet = false
+                    val name = folders[folderId] ?: "全部收藏"
+                    snackbarHostState.showSnackbar("已收藏到「$name」")
+                }
+                .onFailure { snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试")) }
+        }
+    }
+
+    fun copyText(label: String, value: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText(label, value))
+        scope.launch { snackbarHostState.showSnackbar("复制成功！") }
     }
 
     fun like() {
@@ -314,18 +384,10 @@ fun AlbumDetailScreen(
                         title = detail.title,
                         navigationIcon = { BackButton(onBack = onBack) },
                         actions = {
-                            // 纯图标动作挂 Tooltip：长按即可确认语义，避免误触收藏/批量下载
+                            // 纯图标动作挂 Tooltip：长按即可确认语义，避免误触分享/批量下载
                             TooltipBox(text = "分享") {
                                 IconButton(onClick = { share(detail) }) {
                                     Icon(MiuixIcons.Share, contentDescription = "分享")
-                                }
-                            }
-                            TooltipBox(text = if (favorited) "取消收藏" else "收藏") {
-                                IconButton(onClick = ::toggleFavorite, enabled = !favoriteBusy) {
-                                    Icon(
-                                        imageVector = if (favorited) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
-                                        contentDescription = if (favorited) "取消收藏" else "收藏",
-                                    )
                                 }
                             }
                             if (detail.chapters.size > 1) {
@@ -362,17 +424,44 @@ fun AlbumDetailScreen(
                                 detail = detail,
                                 resumeId = resumeId,
                                 loggedIn = user != null,
+                                favorited = favorited,
+                                favoriteBusy = favoriteBusy,
                                 liked = liked,
                                 likeBusy = likeBusy,
                                 tracking = tracking,
                                 trackingBusy = trackingBusy,
                                 onRead = { photoId -> onOpenReader(photoId) },
+                                onFavorite = ::onFavoriteClick,
                                 onLike = ::like,
                                 onTrack = ::toggleTracking,
+                                onDownloadAll = if (detail.chapters.isEmpty()) {
+                                    null
+                                } else {
+                                    { detail.chapters.forEach { chapter ->
+                                        Jm3Graph.downloadManager.enqueueChapter(
+                                            photoId = chapter.id,
+                                            albumId = detail.id,
+                                            title = chapter.title,
+                                        )
+                                    } }
+                                },
+                            )
+                        }
+                        item(key = "info") {
+                            AlbumInfoCard(
+                                detail = detail,
+                                onCopy = { label, value -> copyText(label, value) },
                             )
                         }
                         if (detail.description.isNotBlank()) {
-                            item(key = "description") { DescriptionSection(detail.description, descriptionExpanded) { descriptionExpanded = !descriptionExpanded } }
+                            item(key = "description") {
+                                DescriptionSection(
+                                    text = detail.description,
+                                    expanded = descriptionExpanded,
+                                    onToggle = { descriptionExpanded = !descriptionExpanded },
+                                    onCopy = { copyText("简介", detail.description) },
+                                )
+                            }
                         }
                         if (detail.tags.isNotEmpty()) {
                             item(key = "tags-title") { SmallTitle(text = "标签") }
@@ -537,24 +626,61 @@ fun AlbumDetailScreen(
                         item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                     }
                 }
+                // 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏
+                OverlayBottomSheet(
+                    show = showFolderSheet,
+                    title = if (favorited) "移动收藏夹" else "选择收藏夹",
+                    onDismissRequest = { showFolderSheet = false },
+                ) {
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        val allLabel = folders["0"] ?: "全部收藏"
+                        BasicComponent(
+                            title = allLabel,
+                            summary = "默认收藏夹",
+                            onClick = { pickFolder("0") },
+                        )
+                        folders.entries
+                            .filter { it.key != "0" }
+                            .forEach { (id, name) ->
+                                BasicComponent(
+                                    title = name,
+                                    onClick = { pickFolder(id) },
+                                )
+                            }
+                    }
+                    if (favorited) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+                            TextButton(
+                                text = "取消收藏",
+                                onClick = ::cancelFavorite,
+                                enabled = !favoriteBusy,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-/** 头部：封面、标题、统计、阅读/喜欢/追更入口。 */
+/** 头部：封面、标题、统计、阅读按钮与高频动作台。 */
 @Composable
 private fun DetailHeader(
     detail: AlbumDetail,
     resumeId: String?,
     loggedIn: Boolean,
+    favorited: Boolean,
+    favoriteBusy: Boolean,
     liked: Boolean,
     likeBusy: Boolean,
     tracking: Boolean?,
     trackingBusy: Boolean,
     onRead: (String) -> Unit,
+    onFavorite: () -> Unit,
     onLike: () -> Unit,
     onTrack: () -> Unit,
+    onDownloadAll: (() -> Unit)?,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         detail.coverUrl?.let { url ->
@@ -591,43 +717,122 @@ private fun DetailHeader(
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val startId = resumeId ?: detail.chapters.firstOrNull()?.id
-            Button(
-                onClick = { startId?.let(onRead) },
-                enabled = startId != null,
-                colors = ButtonDefaults.buttonColorsPrimary(),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(text = if (resumeId != null) "继续阅读" else "开始阅读")
-            }
-            TextButton(
-                text = if (liked) "已喜欢" else "喜欢",
-                onClick = onLike,
-                enabled = !likeBusy,
-                minWidth = 0.dp,
-            )
-            if (loggedIn) {
-                TextButton(
-                    text = when {
-                        trackingBusy -> "处理中…"
-                        tracking == true -> "追更中"
-                        else -> "追更"
-                    },
-                    onClick = onTrack,
-                    enabled = tracking != null && !trackingBusy,
-                    minWidth = 0.dp,
+        val startId = resumeId ?: detail.chapters.firstOrNull()?.id
+        Button(
+            onClick = { startId?.let(onRead) },
+            enabled = startId != null,
+            colors = ButtonDefaults.buttonColorsPrimary(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(text = if (resumeId != null) "继续阅读" else "开始阅读")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        // 高频动作台：四等分胶囊卡，图标 + 短标签，状态用填充图标回显
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                ActionCell(
+                    icon = if (favorited) MiuixIcons.FolderFill else MiuixIcons.Folder,
+                    label = if (favorited) "已收藏" else "收藏",
+                    enabled = !favoriteBusy,
+                    onClick = onFavorite,
+                    modifier = Modifier.weight(1f),
                 )
+                ActionCell(
+                    icon = if (liked) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
+                    label = if (liked) "已喜欢" else "喜欢",
+                    enabled = !likeBusy,
+                    onClick = onLike,
+                    modifier = Modifier.weight(1f),
+                )
+                if (loggedIn) {
+                    ActionCell(
+                        icon = MiuixIcons.Weeks,
+                        label = when {
+                            trackingBusy -> "处理中"
+                            tracking == true -> "追更中"
+                            else -> "追更"
+                        },
+                        enabled = tracking != null && !trackingBusy,
+                        onClick = onTrack,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (onDownloadAll != null) {
+                    ActionCell(
+                        icon = MiuixIcons.Download,
+                        label = "下载",
+                        onClick = onDownloadAll,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
 }
 
-/** 简介：默认 4 行折叠，超出后可展开。 */
+/** 动作台单元：图标 + 标签，禁用态降灰；整格可点，热区覆盖到卡片边缘。 */
 @Composable
-private fun DescriptionSection(text: String, expanded: Boolean, onToggle: () -> Unit) {
+private fun ActionCell(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val contentColor = if (enabled) {
+        MiuixTheme.colorScheme.onSurfaceContainerHigh
+    } else {
+        MiuixTheme.colorScheme.onSurfaceVariantSummary
+    }
+    Column(
+        modifier = modifier
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = contentColor,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            color = contentColor,
+        )
+    }
+}
+
+/** 简介：默认 4 行折叠，标题栏提供复制入口。 */
+@Composable
+private fun DescriptionSection(
+    text: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onCopy: () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        SmallTitle(text = "简介")
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "简介",
+                fontSize = MiuixTheme.textStyles.subtitle.fontSize,
+                color = MiuixTheme.colorScheme.onBackgroundVariant,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onCopy, minWidth = 32.dp, minHeight = 32.dp) {
+                Icon(
+                    imageVector = MiuixIcons.Copy,
+                    contentDescription = "复制简介",
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Text(
@@ -645,6 +850,34 @@ private fun DescriptionSection(text: String, expanded: Boolean, onToggle: () -> 
                     )
                 }
             }
+        }
+    }
+}
+
+/** 禁漫车信息块：车号（可复制）+ 页数，对齐原版 Desc 的 forbcomics/page_count。 */
+@Composable
+private fun AlbumInfoCard(detail: AlbumDetail, onCopy: (String, String) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        BasicComponent(
+            title = "禁漫车",
+            summary = "#${detail.id}",
+            endActions = {
+                IconButton(
+                    onClick = { onCopy("禁漫车号", detail.id) },
+                    minWidth = 36.dp,
+                    minHeight = 36.dp,
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Copy,
+                        contentDescription = "复制车号",
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            },
+        )
+        if (detail.pageCount > 0) {
+            BasicComponent(title = "页数", summary = "${detail.pageCount} 页")
         }
     }
 }

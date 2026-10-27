@@ -172,8 +172,8 @@ interface Jm3Gateway {
     /** 释放底层客户端资源（退出或切换线路时调用）。 */
     fun close()
 
-    /** 切换收藏状态（已收藏则取消）。阻塞调用。 */
-    fun toggleFavorite(albumId: String)
+    /** 切换收藏状态（已收藏则取消）；folderId 指定加入的收藏夹，默认「全部」。阻塞调用。 */
+    fun toggleFavorite(albumId: String, folderId: String = "0")
 }
 
 class Jm3GatewayImpl internal constructor(
@@ -339,7 +339,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun close() = domainControls.close()
 
-    override fun toggleFavorite(albumId: String) = client.toggleAlbumFavorite(albumId, "0")
+    override fun toggleFavorite(albumId: String, folderId: String) =
+        client.toggleAlbumFavorite(albumId, folderId)
 
     /** 域名解析只做一次：借库的域名裁决取首个封面地址，解析出图片域名后全部走纯构造器，消除逐项调用。 */
     private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(): SearchPage {
