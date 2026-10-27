@@ -22,10 +22,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.data.AccountManager
+import com.jm3.core.download.DownloadStatus
 import com.jm3.core.model.DailyCheckInStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -48,8 +50,15 @@ fun MineScreen(
     onOpenHistory: () -> Unit,
     onOpenShelf: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    onOpenTracking: () -> Unit,
 ) {
     val user by account.user.collectAsState()
+    val unread by Jm3Graph.unreadNotifications.collectAsState()
+    val downloads by Jm3Graph.downloadManager.queue.updates.collectAsState()
+    val activeDownloads = downloads.values.count {
+        it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.QUEUED
+    }
     val scope = rememberCoroutineScope()
 
     var checkInStatus by remember { mutableStateOf<DailyCheckInStatus?>(null) }
@@ -171,7 +180,26 @@ fun MineScreen(
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ArrowPreference(title = "我的收藏", onClick = onOpenFavorites)
                 ArrowPreference(title = "阅读历史", onClick = onOpenHistory)
-                ArrowPreference(title = "本地书架", onClick = onOpenShelf)
+                // 下载队列在途时行尾显示圆点，无需进书架页确认
+                ArrowPreference(
+                    title = "本地书架",
+                    onClick = onOpenShelf,
+                    endActions = {
+                        if (activeDownloads > 0) Badge()
+                    },
+                )
+                ArrowPreference(
+                    title = "信箱",
+                    summary = if (unread > 0) "$unread 条未读通知" else null,
+                    onClick = { if (user == null) onOpenLogin() else onOpenNotifications() },
+                    endActions = {
+                        if (unread > 0) Badge { Text(text = if (unread > 99) "99+" else unread.toString()) }
+                    },
+                )
+                ArrowPreference(
+                    title = "连载追踪",
+                    onClick = { if (user == null) onOpenLogin() else onOpenTracking() },
+                )
                 ArrowPreference(title = "设置", onClick = onOpenSettings)
             }
             Spacer(modifier = Modifier.height(24.dp))
