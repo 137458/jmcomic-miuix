@@ -2,6 +2,7 @@ package com.jm3.app.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,10 +20,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalWindowInfo
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
+import coil3.size.Size
 import com.jm3.app.Jm3Graph
 import com.jm3.app.data.download.decodePhotoPages
 import com.jm3.core.download.DownloadStatus
@@ -30,11 +33,15 @@ import com.jm3.core.history.HistoryEntry
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.VerticalScrollBar
+import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
+import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 
 sealed interface ReaderUiState {
     data object Loading : ReaderUiState
@@ -107,11 +114,17 @@ fun ReaderScreen(photoId: String, onBack: () -> Unit) {
     }
 }
 
+// ScrollBar 目前在 Miuix 标记为实验 API（warning 级别），仅此处显式表态使用
+@OptIn(ExperimentalScrollBarApi::class)
 @Composable
 private fun ReaderPages(photo: PhotoPages, onBack: () -> Unit) {
     val imageLoader = rememberReaderImageLoader(Jm3Graph.gateway, Jm3Graph.downloadFiles)
     val listState = rememberLazyListState()
     val context = LocalPlatformContext.current
+    // 页面占位为 fillMaxWidth + 3:4，解码尺寸按同比例推算；预取与展示共用该尺寸，
+    // 否则两次解码尺寸不同会让内存缓存键不一致，预取实际命中不到。
+    val pageWidthPx = LocalWindowInfo.current.containerSize.width.coerceAtLeast(1)
+    val pageSize = remember(pageWidthPx) { Size(pageWidthPx, pageWidthPx * 4 / 3) }
     // 已发起预加载的页号；翻页向前向后都只发一次
     val prefetched = remember { mutableSetOf<Int>() }
     var currentPage by remember(photo) { mutableStateOf(1) }
@@ -125,34 +138,40 @@ private fun ReaderPages(photo: PhotoPages, onBack: () -> Unit) {
             )
         },
     ) { innerPadding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = innerPadding,
-        ) {
-            items(photo.images, key = { it.index }) { image ->
-                ReaderPage(image = image, imageLoader = imageLoader)
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding,
+            ) {
+                items(photo.images, key = { it.index }) { image ->
+                    ReaderPage(image = image, imageLoader = imageLoader, pageSize = pageSize)
+                }
             }
+            // 长图阅读时长列表无位置反馈，补 Miuix 滚动条（拖动可直接跳页）
+            VerticalScrollBar(
+                adapter = rememberScrollBarAdapter(listState),
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                trackPadding = innerPadding,
+            )
         }
     }
 
-    // 顶栏页码跟随当前可见页
-    LaunchedEffect(listState) {
+    // 顶栏页码与预取共用一次订阅：同一次 collect 内完成，collectLatest 让快速滚动只处理最新页
+    LaunchedEffect(listState, photo.images, imageLoader, pageSize) {
         snapshotFlow { listState.firstVisibleItemIndex }
-            .collect { currentPage = it + 1 }
-    }
-
-    // 预加载可见页之后的 1..3 页
-    LaunchedEffect(photo.images, imageLoader) {
-        snapshotFlow { listState.firstVisibleItemIndex }
-            .collect { first ->
+            .collectLatest { first ->
+                currentPage = first + 1
+                // 预加载可见页之后的 1..3 页
                 for (offset in 1..3) {
                     val index = first + offset
                     if (index < photo.images.size && prefetched.add(index)) {
-                        val request = ImageRequest.Builder(context)
-                            .data(photo.images[index])
-                            .build()
-                        imageLoader.enqueue(request)
+                        imageLoader.enqueue(
+                            ImageRequest.Builder(context)
+                                .data(photo.images[index])
+                                .size(pageSize)
+                                .build(),
+                        )
                     }
                 }
             }
@@ -160,14 +179,19 @@ private fun ReaderPages(photo: PhotoPages, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ReaderPage(image: PageImage, imageLoader: ImageLoader) {
+private fun ReaderPage(image: PageImage, imageLoader: ImageLoader, pageSize: Size) {
+    val context = LocalPlatformContext.current
+    // 与预取请求同一尺寸，保证内存缓存可复用
+    val request = remember(image, pageSize, context) {
+        ImageRequest.Builder(context).data(image).size(pageSize).build()
+    }
     var failed by remember(image) { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
         if (failed) {
             Text(text = "图片加载失败", modifier = Modifier.align(Alignment.Center))
         }
         AsyncImage(
-            model = image,
+            model = request,
             contentDescription = null,
             imageLoader = imageLoader,
             contentScale = ContentScale.Fit,

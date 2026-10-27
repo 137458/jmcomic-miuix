@@ -50,8 +50,11 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
+import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
@@ -175,7 +178,8 @@ private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode 
 
 @Composable
 fun Jm3App() {
-    val backStack = rememberNavBackStack(Route.Main)
+    // 显式指定路由超类型，否则 saver 只按 Route.Main 序列化，压入二级页后保存会抛异常
+    val backStack = rememberNavBackStack<Route>(Route.Main)
     val scope = rememberCoroutineScope()
     // colorSchemeMode 是 val 不可赋值：主题切换通过重建 controller 完成。
     var themeModeName by rememberSaveable { mutableStateOf(ThemeMode.SYSTEM.name) }
@@ -208,9 +212,15 @@ fun Jm3App() {
                 isAppearanceLightNavigationBars = !darkSurface
             }
         }
+        // 转场特效：圆角裁剪贴合设备屏幕圆角，背景色补上浮层下露出的底色（HyperOS 浮动转场观感）
+        val screenCornerRadius = rememberNavSystemCornerRadius()
         NavDisplay(
             backStack = backStack,
             onBack = { backStack.removeLastOrNull() },
+            effects = NavDisplayEffects(
+                cornerClipRadius = screenCornerRadius,
+                backdropColor = MiuixTheme.colorScheme.surface,
+            ),
         ) {
             entry<Route.Main> {
                 MainScreen(
@@ -225,28 +235,28 @@ fun Jm3App() {
                     onOpenSettings = { backStack.add(Route.Settings) },
                 )
             }
-            entry<Route.Login> {
+            entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                 LoginScreen(account = Jm3Graph.account, onBack = { backStack.removeLastOrNull() })
             }
-            entry<Route.Favorites> {
+            entry<Route.Favorites>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                 FavoritesScreen(
                     onBack = { backStack.removeLastOrNull() },
                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                 )
             }
-            entry<Route.History> {
+            entry<Route.History>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                 HistoryScreen(
                     onBack = { backStack.removeLastOrNull() },
                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                 )
             }
-            entry<Route.Shelf> {
+            entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                 ShelfScreen(
                     onBack = { backStack.removeLastOrNull() },
                     onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
                 )
             }
-            entry<Route.Settings> {
+            entry<Route.Settings>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                 SettingsScreen(
                     themeMode = themeMode,
                     onThemeModeChange = { mode ->
@@ -262,7 +272,7 @@ fun Jm3App() {
                     snackbarHostState = snackbarHostState,
                 )
             }
-            entry<Route.AlbumDetail> { route ->
+            entry<Route.AlbumDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                 AlbumDetailScreen(
                     albumId = route.albumId,
                     onBack = { backStack.removeLastOrNull() },
@@ -270,7 +280,7 @@ fun Jm3App() {
                     snackbarHostState = snackbarHostState,
                 )
             }
-            entry<Route.Reader> { route ->
+            entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                 ReaderScreen(photoId = route.photoId, onBack = { backStack.removeLastOrNull() })
             }
         }
