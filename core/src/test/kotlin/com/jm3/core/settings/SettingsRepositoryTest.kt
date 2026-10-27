@@ -35,4 +35,18 @@ class SettingsRepositoryTest {
         r.setApiDomains(emptyList())
         assertEquals(emptyList(), r.apiDomains())
     }
+
+    @Test
+    fun 动态取色默认关闭() = runTest {
+        assertEquals(false, repo().dynamicColor())
+    }
+
+    @Test
+    fun 设置动态取色后可读回() = runTest {
+        val r = repo()
+        r.setDynamicColor(true)
+        assertEquals(true, r.dynamicColor())
+        r.setDynamicColor(false)
+        assertEquals(false, r.dynamicColor())
+    }
 }

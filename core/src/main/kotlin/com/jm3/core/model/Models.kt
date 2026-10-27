@@ -34,6 +34,7 @@ data class AlbumDetail(
     val views: String?,
     val coverUrl: String?,
     val chapters: List<Chapter>,
+    val favorited: Boolean,
 )
 
 @Serializable
@@ -91,6 +92,25 @@ data class FavoritePage(
     val currentPage: Int,
     val totalPages: Int,
     val items: List<SearchResult>,
+    /** 收藏夹 id→名称；空表表示库未返回。 */
+    val folders: Map<String, String> = emptyMap(),
+    /** 当前页所属收藏夹；0 表示全部收藏。 */
+    val folderId: Int = 0,
+)
+
+/** 签到状态：signedDays/totalDays 由 record 记录扁平统计，不解析 date 做“今日”判断。 */
+data class DailyCheckInStatus(
+    val dailyId: Int,
+    val eventName: String,
+    val currentProgress: String,
+    val signedDays: Int,
+    val totalDays: Int,
+)
+
+/** 单个 API 域名的探测延迟（毫秒），供设置页排序展示。 */
+data class DomainLatency(
+    val domain: String,
+    val latencyMs: Int,
 )
 
 /** 筛选选项公共形态，供 UI 泛型渲染。 */
