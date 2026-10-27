@@ -1,11 +1,7 @@
 package com.jm3.app.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,10 +36,7 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TabRow
-import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.squircle.squircleSurface
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 浏览模式：分类走 categories/filter，榜单为排序+时间参数近似（同一接口）。 */
 enum class BrowseMode(val title: String) {
@@ -65,6 +57,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     var state by remember { mutableStateOf<BrowseUiState>(BrowseUiState.Loading) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
+    var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -77,13 +71,15 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         BrowseMode.RANK -> BrowseFilter(category = BrowseCategory.ALL, order = order, time = time)
     }
 
-    fun refresh() {
+    fun refresh(byPull: Boolean = false) {
+        if (byPull) refreshing = true
         scope.launch {
             state = BrowseUiState.Loading
             state = withContext(Dispatchers.IO) {
                 runCatching { BrowseUiState.Loaded(gateway.browse(filter(), 1)) }
                     .getOrElse { BrowseUiState.Failed(it.message ?: "加载失败") }
             }
+            refreshing = false
         }
     }
 
@@ -120,8 +116,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         topBar = { TopAppBar(title = mode.title) },
     ) { innerPadding ->
         PullToRefresh(
-            isRefreshing = state is BrowseUiState.Loading,
-            onRefresh = ::refresh,
+            isRefreshing = refreshing,
+            onRefresh = { refresh(byPull = true) },
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = innerPadding,
         ) {
@@ -130,6 +126,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                 modifier = Modifier.fillMaxSize(),
             ) {
                 item(key = "filters") {
+                    // 分组筛选统一用 Miuix TabRow（分段控件语义），替代手写 Chip 行。
                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                         if (mode == BrowseMode.CATEGORY) {
                             TabRow(
@@ -138,20 +135,35 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                 onTabSelected = { categoryValue = BrowseCategory.entries[it].apiValue },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-                        ChipRow(BrowseOrder.entries, orderValue) { orderValue = it.apiValue }
+                        TabRow(
+                            tabs = BrowseOrder.entries.map { it.label },
+                            selectedTabIndex = BrowseOrder.entries.indexOf(order),
+                            onTabSelected = { orderValue = BrowseOrder.entries[it].apiValue },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        )
                         if (mode == BrowseMode.RANK) {
-                            ChipRow(BrowseTime.entries, timeValue) { timeValue = it.apiValue }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TabRow(
+                                tabs = BrowseTime.entries.map { it.label },
+                                selectedTabIndex = BrowseTime.entries.indexOf(time),
+                                onTabSelected = { timeValue = BrowseTime.entries[it].apiValue },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            )
                         }
                     }
                 }
                 when (val s = state) {
-                    is BrowseUiState.Loading -> item(key = "loading") {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(24.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator()
+                    is BrowseUiState.Loading -> if (!refreshing) {
+                        // 下拉刷新时顶部指示器已在转圈，列表内不再重复显示。
+                        item(key = "loading") {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator()
+                            }
                         }
                     }
                     is BrowseUiState.Failed -> item(key = "error") {
@@ -171,47 +183,5 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                 item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
             }
         }
-    }
-}
-
-@Composable
-private fun <T : LabeledOption> ChipRow(
-    options: List<T>,
-    selectedApiValue: String,
-    onSelect: (T) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for (option in options) {
-            val selected = option.apiValue == selectedApiValue
-            Chip(
-                selected = selected,
-                label = option.label,
-                onClick = { onSelect(option) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun Chip(selected: Boolean, label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .squircleSurface(
-                color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainer,
-                cornerRadius = 16.dp,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-    ) {
-        Text(
-            text = label,
-            color = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurfaceContainer,
-        )
     }
 }

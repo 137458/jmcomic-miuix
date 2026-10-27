@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -21,8 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.Jm3Graph
 import com.jm3.core.mergedWith
@@ -35,6 +36,8 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -43,6 +46,10 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Download
+import top.yukonga.miuix.kmp.icon.extended.Favorites
+import top.yukonga.miuix.kmp.icon.extended.FavoritesFill
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 sealed interface AlbumUiState {
@@ -159,14 +166,15 @@ fun AlbumDetailScreen(
                         title = detail.title,
                         navigationIcon = { BackButton(onBack = onBack) },
                         actions = {
-                            TextButton(
-                                text = if (favorited) "取消收藏" else "收藏",
-                                onClick = ::toggleFavorite,
-                                enabled = !favoriteBusy,
-                            )
+                            // 顶栏空间有限，收藏/批量下载用图标操作，避免文字挤压标题。
+                            IconButton(onClick = ::toggleFavorite, enabled = !favoriteBusy) {
+                                Icon(
+                                    imageVector = if (favorited) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
+                                    contentDescription = if (favorited) "取消收藏" else "收藏",
+                                )
+                            }
                             if (detail.chapters.size > 1) {
-                                TextButton(
-                                    text = "下载全部",
+                                IconButton(
                                     onClick = {
                                         detail.chapters.forEach { chapter ->
                                             Jm3Graph.downloadManager.enqueueChapter(
@@ -176,7 +184,12 @@ fun AlbumDetailScreen(
                                             )
                                         }
                                     },
-                                )
+                                ) {
+                                    Icon(
+                                        imageVector = MiuixIcons.Download,
+                                        contentDescription = "下载全部",
+                                    )
+                                }
                             }
                         },
                     )
@@ -193,7 +206,9 @@ fun AlbumDetailScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         item(key = "header") {
-                            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            ) {
                                 detail.coverUrl?.let { url ->
                                     Card(modifier = Modifier.fillMaxWidth()) {
                                         AsyncImage(
@@ -205,8 +220,12 @@ fun AlbumDetailScreen(
                                     }
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
-                                Text(text = detail.title)
-                                Spacer(modifier = Modifier.height(8.dp))
+                                // 标题与元信息按 Miuix 字号层级区分，元信息合并为一行摘要。
+                                Text(
+                                    text = detail.title,
+                                    fontSize = MiuixTheme.textStyles.title4.fontSize,
+                                    fontWeight = FontWeight.Medium,
+                                )
                                 val meta = buildList {
                                     if (detail.authors.isNotEmpty()) add("作者：${detail.authors.joinToString()}")
                                     if (detail.works.isNotEmpty()) add("社团：${detail.works.joinToString()}")
@@ -214,12 +233,21 @@ fun AlbumDetailScreen(
                                     detail.likes?.let { add("喜欢：$it") }
                                     detail.views?.let { add("浏览：$it") }
                                 }
-                                for (line in meta) {
-                                    Text(text = line)
+                                if (meta.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = meta.joinToString(" · "),
+                                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
                                 }
                                 if (detail.tags.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(text = detail.tags.joinToString(separator = " ") { "#$it" })
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = detail.tags.joinToString(separator = " ") { "#$it" },
+                                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
                                 }
                             }
                         }
@@ -229,11 +257,9 @@ fun AlbumDetailScreen(
                         items(detail.chapters, key = { it.id }) { chapter ->
                             BasicComponent(
                                 title = chapter.title,
-                                summary = null,
                                 onClick = { onOpenReader(chapter.id) },
                                 endActions = {
-                                    TextButton(
-                                        text = "下载",
+                                    IconButton(
                                         onClick = {
                                             Jm3Graph.downloadManager.enqueueChapter(
                                                 photoId = chapter.id,
@@ -241,7 +267,12 @@ fun AlbumDetailScreen(
                                                 title = chapter.title,
                                             )
                                         },
-                                    )
+                                    ) {
+                                        Icon(
+                                            imageVector = MiuixIcons.Download,
+                                            contentDescription = "下载",
+                                        )
+                                    }
                                 },
                             )
                         }
@@ -311,25 +342,25 @@ private fun CommentRow(item: CommentItem, depth: Int = 0) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = item.author,
-                fontSize = 14.sp,
+                fontSize = MiuixTheme.textStyles.body2.fontSize,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
             item.postDate?.let {
-                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = it,
-                    fontSize = 12.sp,
+                    fontSize = MiuixTheme.textStyles.footnote2.fontSize,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
         }
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = item.content, fontSize = 15.sp)
+        Text(text = item.content, fontSize = MiuixTheme.textStyles.body1.fontSize)
         if (item.likes > 0) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "赞 ${item.likes}",
-                fontSize = 12.sp,
+                fontSize = MiuixTheme.textStyles.footnote2.fontSize,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }

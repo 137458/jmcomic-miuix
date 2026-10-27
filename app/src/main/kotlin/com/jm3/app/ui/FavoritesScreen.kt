@@ -1,6 +1,5 @@
 package com.jm3.app.ui
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,12 +23,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.RadioButtonPreference
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 
 @Composable
 fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
@@ -40,7 +38,6 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     // 收藏夹筛选：0 = 全部；切换后重新拉第一页。
     var folderId by rememberSaveable { mutableStateOf(0) }
     var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var showFolders by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun loadFirstPage() {
@@ -83,7 +80,6 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     }
 
     fun switchFolder(targetFolderId: Int) {
-        showFolders = false
         if (targetFolderId == folderId) return
         folderId = targetFolderId
         loadFirstPage()
@@ -143,10 +139,19 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 ) {
                     item(key = "folder-selector") {
                         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            ArrowPreference(
+                            // OverlaySpinnerPreference 内置弹出选择层，替代手写 Dialog + RadioButtonPreference。
+                            val selectedIndex = folderOptions.indexOfFirst { it.first == folderId }
+                            OverlaySpinnerPreference(
+                                items = folderOptions.map { (id, name) ->
+                                    DropdownItem(text = name, selected = id == folderId)
+                                },
+                                selectedIndex = selectedIndex.coerceAtLeast(0),
                                 title = "收藏夹",
                                 summary = currentFolderName,
-                                onClick = { showFolders = true },
+                                showValue = false,
+                                onSelectedIndexChange = { index ->
+                                    folderOptions.getOrNull(index)?.let { switchFolder(it.first) }
+                                },
                             )
                         }
                     }
@@ -157,22 +162,6 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                         onOpenAlbum = onOpenAlbum,
                     )
                     item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
-                }
-            }
-        }
-
-        OverlayDialog(
-            show = showFolders,
-            title = "选择收藏夹",
-            onDismissRequest = { showFolders = false },
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-                folderOptions.forEach { (id, name) ->
-                    RadioButtonPreference(
-                        title = name,
-                        selected = folderId == id,
-                        onClick = { switchFolder(id) },
-                    )
                 }
             }
         }

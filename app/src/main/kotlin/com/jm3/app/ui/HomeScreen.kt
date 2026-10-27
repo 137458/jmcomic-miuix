@@ -1,13 +1,11 @@
 package com.jm3.app.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -31,10 +29,10 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Search
@@ -52,17 +50,22 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
     var lastQuery by remember { mutableStateOf("") }
     var state by remember { mutableStateOf<HomeUiState>(HomeUiState.Idle) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 仅下拉手势触发的刷新使用顶部指示器；普通搜索由列表内进度条表达，避免误显刷新态。
+    var refreshing by remember { mutableStateOf(false) }
+    var searchExpanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    fun runSearch(text: String) {
+    fun runSearch(text: String, byPull: Boolean = false) {
         lastQuery = text
+        if (byPull) refreshing = true
         scope.launch {
             state = HomeUiState.Loading
             state = withContext(Dispatchers.IO) {
                 runCatching { HomeUiState.Loaded(text, gateway.search(text, 1)) }
                     .getOrElse { HomeUiState.Failed(it.message ?: "网络错误") }
             }
+            refreshing = false
         }
     }
 
@@ -106,8 +109,8 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
         topBar = { TopAppBar(title = "JM3") },
     ) { innerPadding ->
         PullToRefresh(
-            isRefreshing = state is HomeUiState.Loading && lastQuery.isNotEmpty(),
-            onRefresh = { if (lastQuery.isNotEmpty()) runSearch(lastQuery) },
+            isRefreshing = refreshing,
+            onRefresh = { if (lastQuery.isNotEmpty()) runSearch(lastQuery, byPull = true) },
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = innerPadding,
         ) {
@@ -116,31 +119,31 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
                 modifier = Modifier.fillMaxSize(),
             ) {
                 item(key = "search") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            label = "搜索 / 车号",
-                            singleLine = true,
-                            leadingIcon = {
+                    // SearchBar + InputField：胶囊输入框、聚焦展开搜索动作、返回键收起、内置清除键。
+                    SearchBar(
+                        inputField = {
+                            InputField(
+                                query = query,
+                                onQueryChange = { query = it },
+                                onSearch = { submitSearch() },
+                                expanded = searchExpanded,
+                                onExpandedChange = { searchExpanded = it },
+                                label = "搜索 / 车号",
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        },
+                        onExpandedChange = { searchExpanded = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        expanded = searchExpanded,
+                        outsideEndAction = {
+                            IconButton(onClick = ::submitSearch) {
                                 Icon(
                                     imageVector = MiuixIcons.Search,
-                                    contentDescription = null,
+                                    contentDescription = "搜索",
                                 )
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        IconButton(onClick = ::submitSearch) {
-                            Icon(
-                                imageVector = MiuixIcons.Search,
-                                contentDescription = "搜索",
-                            )
-                        }
-                    }
+                            }
+                        },
+                    ) {}
                 }
                 when (val s = state) {
                     is HomeUiState.Idle -> item(key = "hint") {
@@ -149,12 +152,15 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
                             hint = "例如作品名、作者名或纯数字车号",
                         )
                     }
-                    is HomeUiState.Loading -> item(key = "loading") {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(24.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CircularProgressIndicator()
+                    is HomeUiState.Loading -> if (!refreshing) {
+                        // 下拉刷新时顶部指示器已在转圈，列表内不再重复显示。
+                        item(key = "loading") {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator()
+                            }
                         }
                     }
                     is HomeUiState.Failed -> item(key = "error") {
