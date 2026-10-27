@@ -2,6 +2,7 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +33,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -52,6 +54,9 @@ fun MineScreen(
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenTracking: () -> Unit,
+    onOpenProfile: () -> Unit,
+    onOpenTasks: () -> Unit,
+    onOpenWatchHistory: () -> Unit,
 ) {
     val user by account.user.collectAsState()
     val unread by Jm3Graph.unreadNotifications.collectAsState()
@@ -130,6 +135,7 @@ fun MineScreen(
                         title = u.username,
                         summary = "Lv.${u.level} ${u.levelName ?: ""} · 经验 ${u.currentExp}/${u.nextLevelExp} · 硬币 ${u.coin}",
                     )
+                    ArrowPreference(title = "个人资料", onClick = onOpenProfile)
                     ArrowPreference(
                         title = "退出登录",
                         onClick = { confirmLogout = true },
@@ -158,6 +164,35 @@ fun MineScreen(
                                 },
                                 onClick = { performCheckIn(status) },
                             )
+                            // 签到进度可视化：文字保留精确天数，胶囊进度条给出整体完成度
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = status.currentProgress.ifBlank { "本月签到" },
+                                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                    Text(
+                                        text = "${status.signedDays}/${status.totalDays} 天",
+                                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    )
+                                }
+                                LinearProgressIndicator(
+                                    progress = if (status.totalDays <= 0) {
+                                        0f
+                                    } else {
+                                        (status.signedDays.toFloat() / status.totalDays).coerceIn(0f, 1f)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                             checkInError?.let { message ->
                                 Text(
                                     text = message,
@@ -176,7 +211,7 @@ fun MineScreen(
                     }
                 }
             }
-            SmallTitle(text = "功能")
+            SmallTitle(text = "我的内容")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ArrowPreference(title = "我的收藏", onClick = onOpenFavorites)
                 ArrowPreference(title = "阅读历史", onClick = onOpenHistory)
@@ -199,6 +234,19 @@ fun MineScreen(
                 ArrowPreference(
                     title = "连载追踪",
                     onClick = { if (user == null) onOpenLogin() else onOpenTracking() },
+                )
+            }
+            SmallTitle(text = "成就与服务")
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                ArrowPreference(
+                    title = "成就任务",
+                    summary = "称号与勋章",
+                    onClick = { if (user == null) onOpenLogin() else onOpenTasks() },
+                )
+                ArrowPreference(
+                    title = "云端观看记录",
+                    summary = "账号同步的阅读足迹",
+                    onClick = { if (user == null) onOpenLogin() else onOpenWatchHistory() },
                 )
                 ArrowPreference(title = "设置", onClick = onOpenSettings)
             }

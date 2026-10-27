@@ -296,11 +296,13 @@ data class TaskPage(
     val message: String? = null,
 )
 
-/** 个人资料（username/email 只读，其余可编辑）。 */
+/** 个人资料（username/email 只读，其余可编辑）。字段顺序与库 JmUserProfile 一致。 */
 data class UserProfile(
     val username: String,
     val email: String,
     val nickname: String,
+    val lastName: String,
+    val firstName: String,
     val birthday: String,
     val relations: String,
     val sexuality: String,
@@ -312,23 +314,33 @@ data class UserProfile(
     val company: String,
     val school: String,
     val aboutMe: String,
+    val infoHere: String,
+    val collections: String,
+    val ideal: String,
+    val erogenic: String,
     val favorite: String,
     val hate: String,
 ) {
-    /** 可编辑字段：库 editUserProfile 的键 → 值；空值也提交以便清空。 */
+    /** 可编辑字段：键与库 JmUserProfile 记录名一致（服务端表单字段）；空值也提交以便清空。 */
     fun editableFields(): Map<String, String> = linkedMapOf(
         "nickname" to nickname,
+        "lastName" to lastName,
+        "firstName" to firstName,
         "birthday" to birthday,
         "relations" to relations,
         "sexuality" to sexuality,
         "website" to website,
-        "birthplace" to birthPlace,
+        "birthPlace" to birthPlace,
         "city" to city,
         "country" to country,
         "occupation" to occupation,
         "company" to company,
         "school" to school,
-        "about_me" to aboutMe,
+        "aboutMe" to aboutMe,
+        "infoHere" to infoHere,
+        "collections" to collections,
+        "ideal" to ideal,
+        "erogenic" to erogenic,
         "favorite" to favorite,
         "hate" to hate,
     )
