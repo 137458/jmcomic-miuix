@@ -149,6 +149,20 @@
 - 替代决策 3：原版作品详情底部为折叠 Swiper 轮播 → 改为 `FloatingToolbar` 入口 + 底部弹层横滑，避免遮挡正文并贴合 HyperOS 交互。
 - 验证：`:core:compileKotlin` + `:app:compileDebugKotlin` 通过（修复 1 处 `floatingToolbar` 不可空传参）。
 
+### [x] M15 全局自适应与高阶质感
+- [x] 宽屏自适应导航：`MainScreen` 用 `BoxWithConstraints` 判定 ≥600dp，宽屏切换为可折叠 `NavigationRail(state = rememberNavigationRailState())`（header 内 `IconButton` 配 `ChevronBackward/Forward` 展开收起、`NavigationRailItem(selected, onClick, icon, label, badge)`），窄屏保留 `FloatingNavigationBar`；内容区宽屏改为 `Row` 右侧 `weight(1f)` 填充，避免底栏与侧栏重复占位。
+- [x] 面包屑层级导航：`CreatorWorksScreen` / `CreatorWorkDetailScreen` 顶部新增 `BreadcrumbBar`（书库 → 作者 / 书库 → 作品），首段点击回到书库。
+- [x] 胶囊搜索：`LibraryScreen` / `NovelListScreen` 的两处 `TextField` + 搜索按钮替换为 `SearchBar` + `InputField`（展开态输入、提交即检索并收起、建议区留空）。
+- [x] 下拉阻尼统一：全站 13 处 `PullToRefresh` 统一 `rememberPullToRefreshState(refreshThreshold = 0.18f)`（首页、书库两处、小说、浏览、作品详情、论坛、收藏、通知、搜索、任务、追踪、周连载、观看记录），轻拉即触发且回弹一致。
+- [x] 渐进式模糊头图：`CreatorHero` 用 `rememberLayerBackdrop()` 录制封面层，叠 `progressiveTextureBlur(backdrop, shape = RectangleShape, blurRadius = 26f, gradient = ProgressiveBlur.Bottom)` 生成底缘渐隐磨砂 + 28% 黑蒙版；API 33 以下退回 50% 纯色蒙版。
+- [x] Coil 3 全局交叉淡入：`setSingletonImageLoaderFactory { ImageLoader.Builder(it).crossfade(true) }`，消除列表滚动换图硬切（Coil 3 的 `crossfade` 是 `coil3.request` 包内扩展，需显式导包）。
+- [x] 预测性返回：清单 `android:enableOnBackInvokedCallback="true"`，配合既有 `NavDisplayEffects` 圆角转场与全路由 `swipeDismiss`。
+- [x] 弹性内容尺寸：首页热门标签「更多/收起」改用 `animateContentSize(spring(dampingRatio = 0.8f, stiffness = 700f))`，列表高度不再瞬间跳变。
+- 替代决策 1：`miuix-nav` 的 `animatedTop` 在 0.9.4 源码中不存在（全量检索无匹配），转场仍用 `NavDisplayEffects(cornerClipRadius, backdropColor)`。
+- 替代决策 2：`miuix-window` 不在 Gradle 离线缓存中，宽屏适配改用 `miuix-ui` 的 `NavigationRail`。
+- 替代决策 3：`sh.calvin.reorderable` 与 Compottie 缓存缺失，离线无法引入；`multiplatform-markdown-renderer` 可用但应用内无长文/更新日志渲染场景，`miuix-shader` 可用但当前无值得付出功耗的流光场景，均不引入。
+- 验证：`:app:compileDebugKotlin` 通过（修复三处：`coil3.request.crossfade` 导包、`RectangleShape` 正确包名 `androidx.compose.ui.graphics`、`SearchBar` 必须显式传 `expanded`/`onExpandedChange` 且带尾随 `content`）。
+
 ## 迭代日志
 
 - 2026-10-27 / M01：扩展网关 11 项能力 + 分页/搜索历史持久化 + 9 项 core 测试。构建与测试通过，提交 `b51d6e6`。
@@ -164,3 +178,4 @@
 - 2026-10-27 / M06：阅读器补左右模式（Pager 弹簧翻页 + 手势接管）、点击显隐上下栏、音量键翻页（首提示一次）、最后一话追更引导（3 天静默）、底部收藏/喜欢/评论动作行与评论抽屉；阅读方向/提示/静默时间落 DataStore。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / 全量构建修复：`miuix-blur` 声明 minSdk 33 与项目 minSdk 26 冲突 → 清单 `tools:overrideLibrary` + API 33 运行时降级（低版本不录屏、不模糊，工具栏用不透明底色）。`:core:test` + `:app:assembleDebug` 全量通过（exit 0），14 个模块全部 `[x]`。
 - 2026-10-27 / M12：接入 `miuix-blur` + `miuix-squircle`；阅读器底栏实现 `drawBackdrop` 毛玻璃胶囊（backdrop 录屏 + 22dp 模糊）、6 处封面改 `squircleClip`、新增公共 `Modifier.pressScale`（弹簧 + 触觉）并用于搜索结果卡与阅读器动作位。`:app:compileDebugKotlin` 通过。
+- 2026-10-28 / M15：宽屏 `NavigationRail`（可折叠）、书库两页 `BreadcrumbBar`、书库/小说胶囊 `SearchBar`、全站 13 处 `PullToRefresh` 阻尼统一（0.18）、作者头图 `progressiveTextureBlur` 渐进模糊、Coil 3 全局 `crossfade`、预测性返回开关、热门标签 `animateContentSize` 弹簧展开。`:app:compileDebugKotlin` 通过。

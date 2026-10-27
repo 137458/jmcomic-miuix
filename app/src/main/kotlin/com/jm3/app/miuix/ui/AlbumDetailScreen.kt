@@ -60,6 +60,7 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHost
@@ -134,6 +135,7 @@ fun AlbumDetailScreen(
     var replyBusy by remember(albumId) { mutableStateOf(false) }
     var commentsLoadingMore by remember(albumId) { mutableStateOf(false) }
     var pullRefreshing by remember(albumId) { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
 
     /** 打开收藏夹选择面板；登录后拉取收藏夹名称表，失败时只保留「全部收藏」。 */
@@ -442,6 +444,7 @@ fun AlbumDetailScreen(
                 PullToRefresh(
                     isRefreshing = pullRefreshing,
                     onRefresh = ::refresh,
+                    pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     contentPadding = innerPadding,
                 ) {

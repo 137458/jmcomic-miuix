@@ -37,6 +37,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -75,6 +76,7 @@ fun ForumScreen(
     var state by remember { mutableStateOf<ForumUiState>(ForumUiState.Loading) }
     var loadingMore by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
     var replyBusy by remember { mutableStateOf(false) }
     var composing by remember { mutableStateOf(false) }
@@ -221,6 +223,7 @@ fun ForumScreen(
                         refreshing = true
                         fetch(targetPage = 1, replace = true, showLoading = false)
                     },
+                    pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     contentPadding = innerPadding,
                 ) {

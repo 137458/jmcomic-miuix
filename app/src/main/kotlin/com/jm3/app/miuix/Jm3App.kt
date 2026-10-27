@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.room.Room
+import coil3.ImageLoader
+import coil3.compose.setSingletonImageLoaderFactory
+import coil3.request.crossfade
 import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.data.SessionStore
 import com.jm3.app.miuix.data.SettingsStore
@@ -269,6 +272,10 @@ private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode 
 
 @Composable
 fun Jm3App() {
+    // 全局图片加载器：所有 AsyncImage 共享，交叉淡入消除列表滚动时的硬切
+    setSingletonImageLoaderFactory { context ->
+        ImageLoader.Builder(context).crossfade(true).build()
+    }
     // 显式指定路由超类型，否则 saver 只按 Route.Main 序列化，压入二级页后保存会抛异常
     val backStack = rememberNavBackStack<Route>(Route.Main)
     val scope = rememberCoroutineScope()

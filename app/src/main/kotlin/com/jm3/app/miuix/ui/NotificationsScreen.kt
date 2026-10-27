@@ -31,6 +31,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -53,6 +54,7 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var marking by remember { mutableStateOf(false) }
     var tabValue by rememberSaveable { mutableStateOf(NotificationTab.ALL.name) }
     val tab = NotificationTab.entries.firstOrNull { it.name == tabValue } ?: NotificationTab.ALL
@@ -147,6 +149,7 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
                         refreshing = true
                         load(showLoading = false)
                     },
+                    pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {

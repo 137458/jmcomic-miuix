@@ -52,6 +52,7 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -83,6 +84,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     var loadingMore by remember { mutableStateOf(false) }
     // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
     var refreshing by remember { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 快速切换筛选时旧响应不能覆盖新条件的结果
     var requestToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -226,6 +228,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             PullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { refresh(byPull = true) },
+                pullToRefreshState = refreshState,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 contentPadding = innerPadding,
             ) {

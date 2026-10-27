@@ -46,6 +46,7 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -76,6 +77,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var loadingMore by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 收藏夹筛选：0 = 全部；切换后重新拉第一页。
     var folderId by rememberSaveable { mutableStateOf(0) }
     var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -368,6 +370,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 else -> PullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = ::refresh,
+                    pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     contentPadding = innerPadding,
                 ) {

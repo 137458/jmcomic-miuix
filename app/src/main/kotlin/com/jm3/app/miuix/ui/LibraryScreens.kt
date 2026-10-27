@@ -3,6 +3,7 @@ package com.jm3.app.miuix.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,18 +58,26 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.BreadcrumbBar
+import top.yukonga.miuix.kmp.basic.BreadcrumbItem
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.FloatingToolbar
+import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
+import top.yukonga.miuix.kmp.blur.ProgressiveBlur
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
@@ -88,6 +98,7 @@ fun LibraryScreen(
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var appliedQuery by rememberSaveable { mutableStateOf("") }
     var lang by rememberSaveable { mutableStateOf("") }
     var source by rememberSaveable { mutableStateOf("") }
@@ -104,6 +115,8 @@ fun LibraryScreen(
     // 切换 Tab/筛选/搜索时旧响应不能覆盖新结果
     var loadToken by remember { mutableIntStateOf(0) }
     val paginationMode = Jm3Graph.paginationMode
+    // 阻尼阈值略低：下拉更轻快即触发刷新，回弹仍由库的弹簧曲线负责
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
 
     fun load(targetPage: Int, append: Boolean) {
@@ -168,25 +181,25 @@ fun LibraryScreen(
                     subtitle = if (total > 0) "共 $total 项" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        label = if (tab == 0) "搜索创作者" else "搜索作品",
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Button(
-                        onClick = { appliedQuery = query.trim() },
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                    ) {
-                        Text(text = "搜索")
-                    }
-                }
+                // 胶囊搜索框：展开态输入，提交即按当前 Tab 检索
+                SearchBar(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    expanded = searchExpanded,
+                    onExpandedChange = { searchExpanded = it },
+                    inputField = {
+                        InputField(
+                            query = query,
+                            onQueryChange = { query = it },
+                            onSearch = {
+                                appliedQuery = query.trim()
+                                searchExpanded = false
+                            },
+                            expanded = searchExpanded,
+                            onExpandedChange = { searchExpanded = it },
+                            label = if (tab == 0) "搜索创作者" else "搜索作品",
+                        )
+                    },
+                ) {}
                 TabRow(
                     tabs = LIBRARY_TABS,
                     selectedTabIndex = tab,
@@ -245,6 +258,7 @@ fun LibraryScreen(
                         load(1, append = false)
                     },
                     modifier = Modifier.fillMaxSize(),
+                    pullToRefreshState = refreshState,
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         if (tab == 0) {
@@ -316,6 +330,7 @@ fun CreatorWorksScreen(
     var loadToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
 
     fun load(showLoading: Boolean) {
         loadToken++
@@ -352,11 +367,25 @@ fun CreatorWorksScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = data?.authorName?.takeIf { it.isNotBlank() } ?: "创作者",
-                subtitle = data?.works?.size?.takeIf { it > 0 }?.let { "$it 部作品" } ?: "",
-                navigationIcon = { BackButton(onBack = onBack) },
-            )
+            Column {
+                TopAppBar(
+                    title = data?.authorName?.takeIf { it.isNotBlank() } ?: "创作者",
+                    subtitle = data?.works?.size?.takeIf { it > 0 }?.let { "$it 部作品" } ?: "",
+                    navigationIcon = { BackButton(onBack = onBack) },
+                )
+                // 多层级目录：书库 → 创作者，点击「书库」回到上一层
+                BreadcrumbBar(
+                    items = listOf(
+                        BreadcrumbItem(path = "library", text = "书库"),
+                        BreadcrumbItem(
+                            path = creatorId,
+                            text = data?.authorName?.takeIf { it.isNotBlank() } ?: "创作者",
+                        ),
+                    ),
+                    onItemClick = { index -> if (index == 0) onBack() },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                )
+            }
         },
         snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
@@ -374,6 +403,7 @@ fun CreatorWorksScreen(
                     load(showLoading = false)
                 },
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
+                pullToRefreshState = refreshState,
             ) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     item(key = "hero") {
@@ -496,11 +526,25 @@ fun CreatorWorkDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = work?.title?.takeIf { it.isNotBlank() } ?: "作品",
-                subtitle = work?.authorName.orEmpty(),
-                navigationIcon = { BackButton(onBack = onBack) },
-            )
+            Column {
+                TopAppBar(
+                    title = work?.title?.takeIf { it.isNotBlank() } ?: "作品",
+                    subtitle = work?.authorName.orEmpty(),
+                    navigationIcon = { BackButton(onBack = onBack) },
+                )
+                // 多层级目录：书库 → 作品，点击「书库」回到上一层
+                BreadcrumbBar(
+                    items = listOf(
+                        BreadcrumbItem(path = "library", text = "书库"),
+                        BreadcrumbItem(
+                            path = workId,
+                            text = work?.title?.takeIf { it.isNotBlank() } ?: "作品",
+                        ),
+                    ),
+                    onItemClick = { index -> if (index == 0) onBack() },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                )
+            }
         },
         floatingToolbar = {
             if (related.isNotEmpty()) {
@@ -696,16 +740,39 @@ private fun WorkCard(
     }
 }
 
-/** 作者主页头部：背景 + 蒙版 + 头像 + 名称。 */
+/** 作者主页头部：背景（底部渐进模糊）+ 头像 + 名称。 */
 @Composable
 private fun CreatorHero(author: CreatorAuthorWorks) {
+    // 背景层作为 backdrop 供底部渐进模糊采样；API 33 以下退回纯色蒙版
+    val backdrop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        rememberLayerBackdrop()
+    } else {
+        null
+    }
     Box(modifier = Modifier.fillMaxWidth().height(150.dp)) {
         LibraryCover(
             url = author.backgroundUrl,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().then(
+                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier,
+            ),
             contentScale = ContentScale.Crop,
         )
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)))
+        if (backdrop != null) {
+            // 从下往上由实到虚：底部文字压在模糊带上，比整块暗色蒙版更通透
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .progressiveTextureBlur(
+                        backdrop = backdrop,
+                        shape = RectangleShape,
+                        blurRadius = 26f,
+                        gradient = ProgressiveBlur.Bottom,
+                    )
+                    .background(Color.Black.copy(alpha = 0.28f)),
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)))
+        }
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,

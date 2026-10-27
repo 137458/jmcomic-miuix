@@ -36,6 +36,7 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -69,6 +70,7 @@ fun WatchHistoryScreen(
     var state by remember { mutableStateOf<WatchUiState>(WatchUiState.Loading) }
     var loadingMore by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var deletingId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -149,6 +151,7 @@ fun WatchHistoryScreen(
                         refreshing = true
                         fetch(targetPage = 1, replace = true, showLoading = false)
                     },
+                    pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     contentPadding = innerPadding,
                 ) {
