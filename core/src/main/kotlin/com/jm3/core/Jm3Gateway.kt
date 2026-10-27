@@ -2,6 +2,7 @@ package com.jm3.core
 
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
+import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.DailyCheckInStatus
@@ -11,19 +12,32 @@ import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
+import com.jm3.core.model.SearchScope
 import io.github.jukomu.jmcomic.api.enums.ForumMode
 import io.github.jukomu.jmcomic.api.model.ForumQuery
-import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
 import io.github.jukomu.jmcomic.api.model.JmFavoritePage
-import io.github.jukomu.jmcomic.api.model.SearchQuery
 import io.github.jukomu.jmcomic.core.JmComic
 import io.github.jukomu.jmcomic.core.client.AbstractJmClient
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
 
 interface Jm3Gateway {
-    /** 搜索。阻塞调用，调用方需自行切到 IO 线程。 */
-    fun search(text: String, page: Int): SearchPage
+    /** 搜索。scope 对应原版搜索类型（站内/作品/作者/标签/登场人物）。阻塞调用。 */
+    fun search(
+        text: String,
+        page: Int,
+        order: BrowseOrder = BrowseOrder.LATEST,
+        scope: SearchScope = SearchScope.SITE,
+    ): SearchPage
+
+    /** 最新上架列表。阻塞调用。 */
+    fun latest(page: Int): SearchPage
+
+    /** 热门搜索标签；接口不可用时返回空表。阻塞调用。 */
+    fun hotTags(): List<String>
+
+    /** 随机推荐。阻塞调用。 */
+    fun randomRecommend(): List<SearchResult>
 
     /** 分类筛选/榜单浏览（categories/filter 接口）。阻塞调用。 */
     fun browse(filter: BrowseFilter, page: Int): SearchPage
@@ -33,6 +47,18 @@ interface Jm3Gateway {
 
     /** 相册评论区（只读，一页）。阻塞调用。 */
     fun comments(albumId: String, page: Int = 1): CommentPage
+
+    /** 发表本子评论。阻塞调用。 */
+    fun postComment(albumId: String, text: String)
+
+    /** 切换本子点赞（平台不支持取消）。阻塞调用。 */
+    fun toggleLike(albumId: String)
+
+    /** 连载追踪状态。阻塞调用。 */
+    fun isTracking(albumId: String): Boolean
+
+    /** 切换连载追踪。阻塞调用。 */
+    fun setTracking(albumId: String)
 
     /** 章节图片清单。阻塞调用。 */
     fun photo(photoId: String): PhotoPages
@@ -103,9 +129,17 @@ class Jm3GatewayImpl internal constructor(
 
     private val domainControls: DomainControls by lazy(domainControlsProvider)
 
-    override fun search(text: String, page: Int): SearchPage {
-        val query = SearchQuery.Builder().text(text).page(page).build()
-        return client.search(query).toPage()
+    override fun search(text: String, page: Int, order: BrowseOrder, scope: SearchScope): SearchPage =
+        client.search(searchQuery(text, page, scope.toMainTag(), order)).toPage()
+
+    override fun latest(page: Int): SearchPage = client.getLatest(page).toPage()
+
+    override fun hotTags(): List<String> = runCatching { client.getHotTags() }.getOrDefault(emptyList())
+
+    override fun randomRecommend(): List<SearchResult> {
+        val metas = client.getRandomRecommend()
+        val domain = imageDomain(metas.firstOrNull()?.id().orEmpty())
+        return metas.map { it.toSearchResult(coverUrl = CoverUrls.build(it.id(), domain, "_3x4")) }
     }
 
     override fun browse(filter: BrowseFilter, page: Int): SearchPage =
@@ -113,14 +147,28 @@ class Jm3GatewayImpl internal constructor(
 
     override fun album(albumId: String): AlbumDetail {
         val album = client.getAlbum(albumId)
-        val cover = runCatching { client.getAlbumCoverUrl(albumId, "") }.getOrNull()
-        return album.toAlbumDetail(coverUrl = cover)
+        val domain = imageDomain(albumId)
+        val cover = CoverUrls.build(albumId, domain, "")
+        return album.toAlbumDetail(
+            coverUrl = cover,
+            relatedCoverUrl = { meta -> CoverUrls.build(meta.id(), domain, "_3x4") },
+        )
     }
 
     override fun comments(albumId: String, page: Int): CommentPage {
         val query = ForumQuery.album(albumId).mode(ForumMode.ALL).page(page).build()
         return client.getComments(query).toCommentPage()
     }
+
+    override fun postComment(albumId: String, text: String) {
+        client.postComment(albumId, text)
+    }
+
+    override fun toggleLike(albumId: String) = client.toggleAlbumLike(albumId)
+
+    override fun isTracking(albumId: String): Boolean = client.getAlbumSertracking(albumId)
+
+    override fun setTracking(albumId: String) = client.setAlbumSertracking(albumId)
 
     override fun photo(photoId: String): PhotoPages = client.getPhoto(photoId).toPhotoPages()
 
@@ -163,24 +211,28 @@ class Jm3GatewayImpl internal constructor(
     /** 域名解析只做一次：借库的域名裁决取首个封面地址，解析出图片域名后全部走纯构造器，消除逐项调用。 */
     private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(): SearchPage {
         val metas = content().orEmpty()
-        return SearchPage(currentPage = currentPage(), totalPages = totalPages(), items = metas.toSearchResults())
+        val domain = imageDomain(metas.firstOrNull()?.id().orEmpty())
+        return SearchPage(
+            currentPage = currentPage(),
+            totalPages = totalPages(),
+            totalItems = totalItems(),
+            items = metas.map { it.toSearchResult(coverUrl = CoverUrls.build(it.id(), domain, "_3x4")) },
+        )
+    }
+
+    /** 图片域名裁决：借首项封面地址取 host，失败返回空串（封面降级为 null）。 */
+    private fun imageDomain(albumId: String): String {
+        if (albumId.isBlank()) return ""
+        return runCatching { client.getAlbumCoverUrl(albumId, "_3x4") }.getOrNull()
+            ?.removePrefix("https://")
+            ?.substringBefore("/")
+            .orEmpty()
     }
 
     /** 图片域名每页只解析一次，随后全部走纯构造器，避免逐项请求封面。 */
     private fun JmFavoritePage.toFavoritePageWithCovers(): FavoritePage {
-        val imageDomain = content.orEmpty().firstOrNull()
-            ?.let { meta -> runCatching { client.getAlbumCoverUrl(meta.id(), "_3x4") }.getOrNull() }
-            ?.removePrefix("https://")?.substringBefore("/")
-            .orEmpty()
+        val imageDomain = imageDomain(content.orEmpty().firstOrNull()?.id().orEmpty())
         return toFavoritePage { meta -> CoverUrls.build(meta.id(), imageDomain, "_3x4") }
-    }
-
-    private fun List<JmAlbumMeta>.toSearchResults(): List<SearchResult> {
-        val imageDomain = firstOrNull()
-            ?.let { runCatching { client.getAlbumCoverUrl(it.id(), "_3x4") }.getOrNull() }
-            ?.let { it.removePrefix("https://").substringBefore("/") }
-            .orEmpty()
-        return map { meta -> meta.toSearchResult(coverUrl = CoverUrls.build(meta.id(), imageDomain, "_3x4")) }
     }
 
     private fun okhttp3.Cookie.toSnapshot(): CookieSnapshot =

@@ -53,7 +53,7 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
         },
     ) { innerPadding ->
         if (records.isEmpty()) {
-            EmptyState(
+            CenteredEmptyState(
                 title = "暂无下载",
                 hint = "在详情页点下载按钮，章节会出现在这里",
                 modifier = Modifier.padding(innerPadding),

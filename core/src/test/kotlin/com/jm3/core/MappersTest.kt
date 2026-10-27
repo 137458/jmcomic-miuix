@@ -6,6 +6,8 @@ import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.SearchResult
+import com.jm3.core.model.SearchScope
+import io.github.jukomu.jmcomic.api.enums.SearchMainTag
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
 import io.github.jukomu.jmcomic.api.model.JmCategoryMeta
@@ -41,10 +43,14 @@ class MappersTest {
         views: String? = "3.4K",
         favorite: Boolean = false,
         photoMetas: List<JmPhotoMeta> = listOf(JmPhotoMeta("p1", "c1", 0), JmPhotoMeta("p2", "c2", 1)),
+        pageCount: Int = 24,
+        commentCount: Int = 5,
+        liked: Boolean = false,
+        related: List<JmAlbumMeta> = emptyList(),
     ): JmAlbum = JmAlbum(
-        id, "T", "D", "220980", "1700000000", 2, likes, views, 5, "cover.jpg",
-        cat, subCat, listOf("A"), emptyList(), emptyList(), listOf("t"), emptyList(), photoMetas, "",
-        favorite, false, false, emptyList(), "", "",
+        id, "T", "D", "220980", "1700000000", pageCount, likes, views, commentCount, "cover.jpg",
+        cat, subCat, listOf("A"), emptyList(), emptyList(), listOf("t"), related, photoMetas, "",
+        favorite, liked, false, emptyList(), "", "",
     )
 
     /** JmComment 记录组件顺序：id,userId,username,nickname,content,contentHtml,postDate,photo,expinfo,expinfoData,aid,bid,nid,ncid,name,likes,gender,updateAt,parentCommentId,spoiler,replys,voteUp,voteDown */
@@ -101,6 +107,58 @@ class MappersTest {
     fun 相册详情_映射_未收藏时favorited为false() {
         val got = album(favorite = false).toAlbumDetail()
         assertFalse(got.favorited)
+    }
+
+    @Test
+    fun 相册详情_映射_页数评论数点赞与相关作品() {
+        val related = albumMeta(id = "77", title = "相关")
+        val got = album(
+            pageCount = 24,
+            commentCount = 5,
+            liked = true,
+            related = listOf(related),
+        ).toAlbumDetail(relatedCoverUrl = { meta -> "https://img.example/media/albums/${meta.id()}_3x4.jpg" })
+
+        assertEquals(24, got.pageCount)
+        assertEquals(5, got.commentCount)
+        assertTrue(got.liked)
+        assertEquals(listOf("77"), got.related.map { it.id })
+        assertEquals("https://img.example/media/albums/77_3x4.jpg", got.related.single().coverUrl)
+    }
+
+    @Test
+    fun 相册详情_映射_无相关作品时为空表() {
+        assertEquals(emptyList(), album(related = emptyList()).toAlbumDetail().related)
+    }
+
+    @Test
+    fun 搜索查询_按主标签与排序构造() {
+        val site = searchQuery("关键词", 2, SearchMainTag.SITE_SEARCH, BrowseOrder.MOST_LIKED)
+        assertEquals(0, site.mainTag.value)
+        assertEquals("关键词", site.searchQuery)
+        assertEquals("tf", site.orderBy.value)
+        assertEquals(2, site.page)
+
+        val tag = searchQuery("全彩", 1, SearchMainTag.TAG, BrowseOrder.MOST_IMAGES)
+        assertEquals(3, tag.mainTag.value)
+        assertEquals("mp", tag.orderBy.value)
+    }
+
+    @Test
+    fun 搜索排序_映射到库排序值() {
+        assertEquals("mr", BrowseOrder.LATEST.toOrderBy().value)
+        assertEquals("mv", BrowseOrder.MOST_VIEWED.toOrderBy().value)
+        assertEquals("mp", BrowseOrder.MOST_IMAGES.toOrderBy().value)
+        assertEquals("tf", BrowseOrder.MOST_LIKED.toOrderBy().value)
+    }
+
+    @Test
+    fun 搜索范围_映射到库主标签() {
+        assertEquals(SearchMainTag.SITE_SEARCH, SearchScope.SITE.toMainTag())
+        assertEquals(SearchMainTag.WORK, SearchScope.WORK.toMainTag())
+        assertEquals(SearchMainTag.AUTHOR, SearchScope.AUTHOR.toMainTag())
+        assertEquals(SearchMainTag.TAG, SearchScope.TAG.toMainTag())
+        assertEquals(SearchMainTag.ACTOR, SearchScope.ACTOR.toMainTag())
     }
 
     @Test

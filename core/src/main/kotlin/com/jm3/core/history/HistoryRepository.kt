@@ -17,6 +17,12 @@ interface HistoryRepository {
     /** 页码从 1 起；非法页码或越界返回空列表。 */
     suspend fun page(page: Int, pageSize: Int = 20): List<HistoryEntry>
 
+    /** 某作品最近一次阅读记录；无记录返回 null。 */
+    suspend fun latestForAlbum(albumId: String): HistoryEntry?
+
+    /** 某作品已读章节 id 集合。 */
+    suspend fun readPhotoIds(albumId: String): Set<String>
+
     /** 清空全部历史。 */
     suspend fun clear()
 }
@@ -37,6 +43,16 @@ class InMemoryHistoryRepository(private val clock: () -> Long = System::currentT
         if (from >= all.size) return emptyList()
         return all.subList(from, minOf(from + pageSize, all.size))
     }
+
+    override suspend fun latestForAlbum(albumId: String): HistoryEntry? =
+        entries.values
+            .filter { it.albumId == albumId }
+            .maxByOrNull { it.updatedAt }
+
+    override suspend fun readPhotoIds(albumId: String): Set<String> =
+        entries.values
+            .filter { it.albumId == albumId }
+            .mapTo(HashSet()) { it.photoId }
 
     override suspend fun clear() {
         entries.clear()

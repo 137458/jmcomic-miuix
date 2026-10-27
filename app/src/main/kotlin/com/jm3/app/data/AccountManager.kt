@@ -19,12 +19,19 @@ class AccountManager(
     /** 当前登录用户；null 表示未登录。 */
     val user: StateFlow<Jm3User?> = _user.asStateFlow()
 
-    /** 启动时恢复本地会话并注回网关；无会话或已损坏则保持未登录。 */
+    /** 启动时恢复本地会话并注回网关；会话失效则清空持久化，保持未登录。 */
     suspend fun restore() {
         if (_user.value != null) return
         val session = store.load() ?: return
-        withContext(Dispatchers.IO) { runCatching { gatewayProvider().restoreSession(session) } }
-        _user.value = session.user
+        val restored = withContext(Dispatchers.IO) {
+            runCatching { gatewayProvider().restoreSession(session) }.isSuccess
+        }
+        if (restored) {
+            _user.value = session.user
+        } else {
+            // 会话无法注入时不能让 UI 显示已登录，否则后续请求全部失败
+            store.clear()
+        }
     }
 
     /** 登录成功返回 null 并持久化会话；失败返回错误消息。 */

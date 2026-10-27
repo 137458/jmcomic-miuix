@@ -22,6 +22,7 @@ import com.jm3.app.Jm3Graph
 import com.jm3.core.history.HistoryEntry
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -96,7 +97,7 @@ fun HistoryScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
             )
             HistoryListState.Loaded -> {
                 if (entries.isEmpty()) {
-                    EmptyState(
+                    CenteredEmptyState(
                         title = "暂无阅读历史",
                         hint = "读过的章节会出现在这里",
                         modifier = Modifier.padding(innerPadding),
@@ -107,11 +108,13 @@ fun HistoryScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                         contentPadding = innerPadding,
                     ) {
                         items(entries, key = { it.photoId }) { entry ->
-                            BasicComponent(
-                                title = entry.title,
-                                summary = historyDateFormat.format(Date(entry.updatedAt)),
-                                onClick = { onOpenAlbum(entry.albumId) },
-                            )
+                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+                                BasicComponent(
+                                    title = entry.title,
+                                    summary = historyDateFormat.format(Date(entry.updatedAt)),
+                                    onClick = { onOpenAlbum(entry.albumId) },
+                                )
+                            }
                         }
                         if (!endReached) {
                             item(key = "load-more") {

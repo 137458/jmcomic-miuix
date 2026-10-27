@@ -48,4 +48,14 @@ class SearchPagesTest {
         assertEquals(listOf("1", "2"), merged.items.map { it.id })
         assertEquals(2, merged.currentPage)
     }
+
+    @Test
+    fun 加载更多_透传结果总数_缺省时保留原值() {
+        val first = SearchPage(currentPage = 1, totalPages = 3, items = listOf(result("1")), totalItems = 120)
+        val next = SearchPage(currentPage = 2, totalPages = 3, items = listOf(result("2")), totalItems = 120)
+        assertEquals(120, first.mergedWith(next).totalItems)
+
+        val withoutTotal = SearchPage(currentPage = 2, totalPages = 3, items = listOf(result("2")))
+        assertEquals(120, first.mergedWith(withoutTotal).totalItems)
+    }
 }

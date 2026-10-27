@@ -59,6 +59,27 @@ class HistoryRepositoryTest {
     }
 
     @Test
+    fun 按作品查询_最近一次阅读与已读章节() = runTest {
+        val r = repo()
+        now = 1L; r.upsert(entry("p1", albumId = "a1"))
+        now = 2L; r.upsert(entry("p2", albumId = "a1"))
+        now = 3L; r.upsert(entry("p3", albumId = "a2"))
+
+        assertEquals("p2", r.latestForAlbum("a1")?.photoId)
+        assertEquals("p3", r.latestForAlbum("a2")?.photoId)
+        assertEquals(setOf("p1", "p2"), r.readPhotoIds("a1"))
+        assertEquals(setOf("p3"), r.readPhotoIds("a2"))
+        assertTrue(r.readPhotoIds("missing").isEmpty())
+    }
+
+    @Test
+    fun 按作品查询_无记录返回null() = runTest {
+        val r = repo()
+        assertEquals(null, r.latestForAlbum("a9"))
+        assertTrue(r.readPhotoIds("a9").isEmpty())
+    }
+
+    @Test
     fun 清空后可继续写入() = runTest {
         val r = repo()
         now = 1L; r.upsert(entry("p1"))

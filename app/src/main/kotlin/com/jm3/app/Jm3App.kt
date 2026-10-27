@@ -33,6 +33,7 @@ import com.jm3.app.ui.HistoryScreen
 import com.jm3.app.ui.LoginScreen
 import com.jm3.app.ui.MainScreen
 import com.jm3.app.ui.ReaderScreen
+import com.jm3.app.ui.SearchScreen
 import com.jm3.app.ui.SettingsScreen
 import com.jm3.app.ui.ShelfScreen
 import com.jm3.core.GatewayFactory
@@ -42,6 +43,7 @@ import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
 import com.jm3.core.settings.SettingsRepository
 import com.jm3.core.settings.ThemeMode
+import com.jm3.core.model.SearchScope
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -158,6 +160,10 @@ sealed interface Route : NavKey {
 
     @Serializable
     data class Reader(val photoId: String) : Route
+
+    /** 独立搜索结果页：标签/作者/作品/人物点击进入；scope 对应原版搜索类型。 */
+    @Serializable
+    data class Search(val query: String, val scope: SearchScope = SearchScope.SITE) : Route
 }
 
 /** :core 不依赖 Miuix，主题映射收敛在应用层；动态取色开启后改用 Monet 配色。 */
@@ -277,11 +283,29 @@ fun Jm3App() {
                     albumId = route.albumId,
                     onBack = { backStack.removeLastOrNull() },
                     onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                    onOpenLogin = { backStack.add(Route.Login) },
                     snackbarHostState = snackbarHostState,
                 )
             }
             entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
-                ReaderScreen(photoId = route.photoId, onBack = { backStack.removeLastOrNull() })
+                ReaderScreen(
+                    photoId = route.photoId,
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenChapter = { photoId ->
+                        // 同层替换：返回键回到详情页，而不是逐章回退
+                        if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(photoId)
+                    },
+                )
+            }
+            entry<Route.Search>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                SearchScreen(
+                    query = route.query,
+                    scope = route.scope,
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                )
             }
         }
     }

@@ -10,6 +10,7 @@ fun SearchPage.mergedWith(next: SearchPage): SearchPage {
     return copy(
         currentPage = next.currentPage,
         totalPages = next.totalPages,
+        totalItems = if (next.totalItems > 0) next.totalItems else totalItems,
         items = items + appended,
     )
 }

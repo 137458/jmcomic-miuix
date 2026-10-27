@@ -11,13 +11,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.jm3.core.model.SearchPage
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -91,6 +96,31 @@ fun EmptyState(title: String, hint: String? = null, modifier: Modifier = Modifie
     }
 }
 
+/** 全屏空态：在可用区域内垂直居中，供无列表的空页面使用。 */
+@Composable
+fun CenteredEmptyState(title: String, hint: String? = null, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        EmptyState(title = title, hint = hint)
+    }
+}
+
+/** 搜索结果行封面：统一尺寸，缺失时留空占位，保持行高稳定。 */
+@Composable
+private fun SearchResultCover(url: String?) {
+    if (url == null) {
+        Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
+        return
+    }
+    AsyncImage(
+        model = url,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(width = 48.dp, height = 64.dp)
+            .clip(RoundedCornerShape(6.dp)),
+    )
+}
+
 /** 搜索/浏览共用的结果列表与加载更多入口；hasMore 由 currentPage/totalPages 推断。 */
 fun LazyListScope.searchResultItems(
     page: SearchPage,
@@ -104,14 +134,18 @@ fun LazyListScope.searchResultItems(
         }
     }
     items(page.items, key = { it.id }) { result ->
-        BasicComponent(
-            title = result.title,
-            summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
-                .filter { it.isNotBlank() }
-                .joinToString(" · ")
-                .ifBlank { null },
-            onClick = { onOpenAlbum(result.id) },
-        )
+        // 逐行卡片：封面 + 标题/作者标签摘要，与其他页的卡式布局保持一致
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+            BasicComponent(
+                title = result.title,
+                summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
+                    .ifBlank { null },
+                startAction = { SearchResultCover(result.coverUrl) },
+                onClick = { onOpenAlbum(result.id) },
+            )
+        }
     }
     if (page.currentPage < page.totalPages) {
         item(key = "load-more") {
