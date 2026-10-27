@@ -1,6 +1,7 @@
 package com.jm3.app.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -14,6 +15,8 @@ import com.jm3.core.Jm3Gateway
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SnackbarHost
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Contacts
 import top.yukonga.miuix.kmp.icon.extended.GridView
@@ -31,6 +34,7 @@ private enum class MainTab(val label: String) {
 fun MainScreen(
     gateway: Jm3Gateway,
     account: AccountManager,
+    snackbarHostState: SnackbarHostState,
     onOpenAlbum: (String) -> Unit,
     onOpenLogin: () -> Unit,
     onOpenFavorites: () -> Unit,
@@ -57,14 +61,17 @@ fun MainScreen(
                 }
             }
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        // 消费父 Scaffold 的内边距，避免各 tab 自己的 Scaffold 重复应用系统栏 insets。
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)) {
             when (tab) {
                 0 -> HomeScreen(gateway = gateway, onOpenAlbum = onOpenAlbum)
                 1 -> BrowseScreen(mode = BrowseMode.CATEGORY, gateway = gateway, onOpenAlbum = onOpenAlbum)
                 2 -> BrowseScreen(mode = BrowseMode.RANK, gateway = gateway, onOpenAlbum = onOpenAlbum)
                 else -> MineScreen(
                     account = account,
+                    snackbarHostState = snackbarHostState,
                     onOpenLogin = onOpenLogin,
                     onOpenFavorites = onOpenFavorites,
                     onOpenHistory = onOpenHistory,

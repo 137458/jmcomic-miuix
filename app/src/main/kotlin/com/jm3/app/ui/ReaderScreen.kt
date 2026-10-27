@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -12,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -28,6 +30,7 @@ import com.jm3.core.history.HistoryEntry
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
@@ -42,26 +45,46 @@ sealed interface ReaderUiState {
 @Composable
 fun ReaderScreen(photoId: String, onBack: () -> Unit) {
     var state by remember(photoId) { mutableStateOf<ReaderUiState>(ReaderUiState.Loading) }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(photoId) {
-        state = withContext(Dispatchers.IO) {
-            val local = runCatching { Jm3Graph.downloadManager.find(photoId) }.getOrNull()
-                ?.takeIf { it.record.status == DownloadStatus.DONE }
-                ?.pagesJson
-                ?.let { decodePhotoPages(it) }
-                ?.takeIf { it.images.isNotEmpty() }
-            if (local != null) {
-                ReaderUiState.Loaded(local)
-            } else {
-                runCatching { ReaderUiState.Loaded(Jm3Graph.gateway.photo(photoId)) }
-                    .getOrElse { ReaderUiState.Failed(it.message ?: "章节加载失败") }
+    // 优先读已下载落盘数据，缺失时回退网关；供首载与失败重试复用
+    fun load() {
+        scope.launch {
+            state = withContext(Dispatchers.IO) {
+                val local = runCatching { Jm3Graph.downloadManager.find(photoId) }.getOrNull()
+                    ?.takeIf { it.record.status == DownloadStatus.DONE }
+                    ?.pagesJson
+                    ?.let { decodePhotoPages(it) }
+                    ?.takeIf { it.images.isNotEmpty() }
+                if (local != null) {
+                    ReaderUiState.Loaded(local)
+                } else {
+                    runCatching { ReaderUiState.Loaded(Jm3Graph.gateway.photo(photoId)) }
+                        .getOrElse { ReaderUiState.Failed(it.message ?: "章节加载失败") }
+                }
             }
         }
     }
 
+    LaunchedEffect(photoId) {
+        load()
+    }
+
     when (val s = state) {
-        is ReaderUiState.Loading -> LoadingScreen()
-        is ReaderUiState.Failed -> ErrorScreen("章节加载失败：${s.message}")
+        is ReaderUiState.Loading -> Scaffold(
+            topBar = { TopAppBar(title = "阅读", navigationIcon = { BackButton(onBack = onBack) }) },
+        ) { innerPadding ->
+            LoadingScreen(modifier = Modifier.padding(innerPadding))
+        }
+        is ReaderUiState.Failed -> Scaffold(
+            topBar = { TopAppBar(title = "阅读", navigationIcon = { BackButton(onBack = onBack) }) },
+        ) { innerPadding ->
+            ErrorScreen(
+                message = "章节加载失败：${s.message}",
+                onRetry = ::load,
+                modifier = Modifier.padding(innerPadding),
+            )
+        }
         is ReaderUiState.Loaded -> {
             LaunchedEffect(s.photo.photoId) {
                 val coverUrl = withContext(Dispatchers.IO) {
@@ -91,11 +114,13 @@ private fun ReaderPages(photo: PhotoPages, onBack: () -> Unit) {
     val context = LocalPlatformContext.current
     // 已发起预加载的页号；翻页向前向后都只发一次
     val prefetched = remember { mutableSetOf<Int>() }
+    var currentPage by remember(photo) { mutableStateOf(1) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = photo.title,
+                subtitle = "第 $currentPage / ${photo.images.size} 页",
                 navigationIcon = { BackButton(onBack = onBack) },
             )
         },
@@ -109,6 +134,12 @@ private fun ReaderPages(photo: PhotoPages, onBack: () -> Unit) {
                 ReaderPage(image = image, imageLoader = imageLoader)
             }
         }
+    }
+
+    // 顶栏页码跟随当前可见页
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .collect { currentPage = it + 1 }
     }
 
     // 预加载可见页之后的 1..3 页

@@ -14,6 +14,7 @@ import coil3.key.Keyer
 import coil3.request.Options
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadStore
+import com.jm3.core.download.PageNumbers
 import com.jm3.core.model.PageImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,9 +33,11 @@ class ReaderFetcherFactory(
     private val store: DownloadStore?,
 ) : Fetcher.Factory<PageImage> {
     override fun create(data: PageImage, options: Options, imageLoader: ImageLoader): Fetcher = Fetcher {
+        // 页列表下标 0 起，落盘页号 1 起，统一经 PageNumbers 换算。
+        val pageNo = PageNumbers.pageNo(data.index)
         val local = store
-            ?.takeIf { it.exists(data.photoId, data.index) }
-            ?.let { withContext(Dispatchers.IO) { it.read(data.photoId, data.index) } }
+            ?.takeIf { it.exists(data.photoId, pageNo) }
+            ?.let { withContext(Dispatchers.IO) { it.read(data.photoId, pageNo) } }
         if (local != null) {
             SourceFetchResult(
                 source = ImageSource(Buffer().apply { write(local) }, FileSystem.SYSTEM),

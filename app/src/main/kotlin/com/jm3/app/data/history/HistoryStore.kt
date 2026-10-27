@@ -63,6 +63,10 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE photoId = :photoId")
     suspend fun find(photoId: String): DownloadEntity?
 
+    /** 只改状态，保留行内其它字段（进程重启恢复用）。 */
+    @Query("UPDATE downloads SET status = :status WHERE photoId = :photoId")
+    suspend fun updateStatus(photoId: String, status: String)
+
     @Query("DELETE FROM downloads WHERE photoId = :photoId")
     suspend fun delete(photoId: String)
 }
@@ -122,6 +126,10 @@ class RoomDownloadRepository(
 
     override suspend fun upsert(record: DownloadRecord, pagesJson: String?) {
         dao.upsert(record.toEntity(updatedAt = clock(), pagesJson = pagesJson))
+    }
+
+    override suspend fun updateStatus(photoId: String, status: DownloadStatus) {
+        dao.updateStatus(photoId = photoId, status = status.name)
     }
 
     override suspend fun all(): List<DownloadRecord> = dao.all().map { it.toRecord() }

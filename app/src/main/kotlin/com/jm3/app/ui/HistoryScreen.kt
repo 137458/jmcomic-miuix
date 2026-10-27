@@ -22,8 +22,8 @@ import com.jm3.app.Jm3Graph
 import com.jm3.core.history.HistoryEntry
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import java.text.SimpleDateFormat
@@ -49,14 +49,23 @@ fun HistoryScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     var loadingMore by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    fun loadFirstPage() {
+        scope.launch {
+            state = HistoryListState.Loading
+            nextPage = 2
+            endReached = false
+            runCatching { repository.page(1, pageSize) }
+                .onSuccess {
+                    entries = it
+                    state = HistoryListState.Loaded
+                    if (it.size < pageSize) endReached = true
+                }
+                .onFailure { state = HistoryListState.Failed(it.message ?: "历史加载失败") }
+        }
+    }
+
     LaunchedEffect(Unit) {
-        runCatching { repository.page(1, pageSize) }
-            .onSuccess {
-                entries = it
-                state = HistoryListState.Loaded
-                if (it.size < pageSize) endReached = true
-            }
-            .onFailure { state = HistoryListState.Failed(it.message ?: "历史加载失败") }
+        loadFirstPage()
     }
 
     fun loadMore() {
@@ -79,16 +88,19 @@ fun HistoryScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
         topBar = { TopAppBar(title = "阅读历史", navigationIcon = { BackButton(onBack = onBack) }) },
     ) { innerPadding ->
         when (val s = state) {
-            HistoryListState.Loading -> LoadingScreen()
-            is HistoryListState.Failed -> ErrorScreen(message = s.message)
+            HistoryListState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+            is HistoryListState.Failed -> ErrorScreen(
+                message = s.message,
+                onRetry = ::loadFirstPage,
+                modifier = Modifier.padding(innerPadding),
+            )
             HistoryListState.Loaded -> {
                 if (entries.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize().padding(innerPadding),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(text = "暂无阅读历史")
-                    }
+                    EmptyState(
+                        title = "暂无阅读历史",
+                        hint = "读过的章节会出现在这里",
+                        modifier = Modifier.padding(innerPadding),
+                    )
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(innerPadding),
@@ -107,7 +119,7 @@ fun HistoryScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (loadingMore) {
-                                        Text(text = "加载中…")
+                                        CircularProgressIndicator(size = 20.dp)
                                     } else {
                                         TextButton(text = "加载更多", onClick = ::loadMore)
                                     }

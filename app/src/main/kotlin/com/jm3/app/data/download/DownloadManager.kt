@@ -2,10 +2,14 @@ package com.jm3.app.data.download
 
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadRecord
+import com.jm3.core.download.DownloadStatus
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.DownloadTask
+import com.jm3.core.download.recoverInterrupted
+import com.jm3.core.download.toResumeTask
 import com.jm3.core.model.PhotoPages
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -31,6 +35,9 @@ data class DownloadRecordWithPages(
 interface DownloadRecordStore {
     suspend fun upsert(record: DownloadRecord, pagesJson: String?)
 
+    /** 仅更新状态（进程重启恢复用），保留 pagesJson 等既有字段。 */
+    suspend fun updateStatus(photoId: String, status: DownloadStatus)
+
     suspend fun all(): List<DownloadRecord>
 
     suspend fun find(photoId: String): DownloadRecordWithPages?
@@ -51,10 +58,14 @@ class DownloadManager(
 
     private val started = AtomicBoolean(false)
 
-    /** 幂等启动：worker 池 + 进度持久化订阅。 */
+    /** 幂等启动：中断记录恢复 + worker 池 + 进度持久化订阅。 */
     fun ensureStarted() {
         if (!started.compareAndSet(false, true)) return
-        appScope.launch { queue.start(appScope) }
+        appScope.launch {
+            // 先收敛上次进程被杀遗留的中断记录，再启动 worker
+            recoverInterruptedRecords()
+            queue.start(appScope)
+        }
         appScope.launch {
             queue.updates.collect { tasks ->
                 tasks.values.forEach { task ->
@@ -75,6 +86,25 @@ class DownloadManager(
         }
     }
 
+    /**
+     * 把 RUNNING/QUEUED 记录收敛为 PAUSED：进程重启后它们已无内存任务承载，
+     * 保持原状态会让 UI 误以为仍在下载。恢复是尽力而为，落库失败不阻塞队列启动。
+     */
+    private suspend fun recoverInterruptedRecords() {
+        try {
+            val records = recordStore.all()
+            recoverInterrupted(records).forEachIndexed { i, recovered ->
+                if (recovered.status != records[i].status) {
+                    recordStore.updateStatus(recovered.photoId, recovered.status)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 恢复失败只影响展示态，worker 仍应启动
+        }
+    }
+
     /** 章节入队（total 未知，开跑前由 resolver 补齐）。 */
     fun enqueueChapter(photoId: String, albumId: String, title: String) {
         ensureStarted()
@@ -87,7 +117,14 @@ class DownloadManager(
 
     fun pause(photoId: String) = queue.pause(photoId)
 
-    fun resume(photoId: String) = queue.resume(photoId)
+    /**
+     * 按持久化记录恢复入队：内存无任务时用记录快照重建，从 donePages 续传；
+     * 已暂停任务直接续跑（沿用内存游标），运行中/已完成返回 false。
+     */
+    fun resumeRecord(record: DownloadRecord): Boolean {
+        ensureStarted()
+        return queue.restore(record.toResumeTask())
+    }
 
     /** 删除：取消任务 + 清文件 + 清记录。 */
     fun remove(photoId: String) {
