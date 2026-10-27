@@ -16,7 +16,9 @@ import io.github.jukomu.jmcomic.api.model.JmPhoto
 import io.github.jukomu.jmcomic.api.model.JmPhotoMeta
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 // 库为 Java record，构造器只支持位置实参。
 class MappersTest {
@@ -37,11 +39,12 @@ class MappersTest {
         id: String = "9",
         likes: String? = "1.2K",
         views: String? = "3.4K",
+        favorite: Boolean = false,
         photoMetas: List<JmPhotoMeta> = listOf(JmPhotoMeta("p1", "c1", 0), JmPhotoMeta("p2", "c2", 1)),
     ): JmAlbum = JmAlbum(
         id, "T", "D", "220980", "1700000000", 2, likes, views, 5, "cover.jpg",
         cat, subCat, listOf("A"), emptyList(), emptyList(), listOf("t"), emptyList(), photoMetas, "",
-        false, false, false, emptyList(), "", "",
+        favorite, false, false, emptyList(), "", "",
     )
 
     /** JmComment 记录组件顺序：id,userId,username,nickname,content,contentHtml,postDate,photo,expinfo,expinfoData,aid,bid,nid,ncid,name,likes,gender,updateAt,parentCommentId,spoiler,replys,voteUp,voteDown */
@@ -86,6 +89,18 @@ class MappersTest {
         assertEquals("http://x/c.jpg", got.coverUrl)
         assertEquals(listOf("p1", "p2"), got.chapters.map { it.id })
         assertEquals(listOf("c1", "c2"), got.chapters.map { it.title })
+    }
+
+    @Test
+    fun 相册详情_映射_已收藏时favorited为true() {
+        val got = album(favorite = true).toAlbumDetail()
+        assertTrue(got.favorited)
+    }
+
+    @Test
+    fun 相册详情_映射_未收藏时favorited为false() {
+        val got = album(favorite = false).toAlbumDetail()
+        assertFalse(got.favorited)
     }
 
     @Test

@@ -13,6 +13,15 @@ interface SettingsRepository {
     suspend fun apiDomains(): List<String>
 
     suspend fun setApiDomains(domains: List<String>)
+
+    /**
+     * 动态取色（Material You）开关。默认实现返回 false，
+     * 保证既有实现（app 的 SettingsStore）在 UI 接线前仍可编译；接线后由实现覆盖。
+     */
+    suspend fun dynamicColor(): Boolean = false
+
+    /** 默认空实现，理由同 [dynamicColor]。 */
+    suspend fun setDynamicColor(enabled: Boolean) {}
 }
 
 /** 纯内存实现，供测试与缺省装配。 */
@@ -20,6 +29,7 @@ class InMemorySettingsRepository : SettingsRepository {
 
     private var mode: ThemeMode = ThemeMode.SYSTEM
     private var domains: List<String> = emptyList()
+    private var dynamic = false
 
     override suspend fun themeMode(): ThemeMode = mode
 
@@ -31,5 +41,11 @@ class InMemorySettingsRepository : SettingsRepository {
 
     override suspend fun setApiDomains(domains: List<String>) {
         this.domains = domains
+    }
+
+    override suspend fun dynamicColor(): Boolean = dynamic
+
+    override suspend fun setDynamicColor(enabled: Boolean) {
+        this.dynamic = enabled
     }
 }

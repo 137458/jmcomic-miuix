@@ -4,6 +4,7 @@ import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CookieSnapshot
+import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.FavoritePage
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.PageImage
@@ -11,12 +12,12 @@ import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import io.github.jukomu.jmcomic.api.enums.ForumMode
-import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.ForumQuery
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
 import io.github.jukomu.jmcomic.api.model.JmFavoritePage
 import io.github.jukomu.jmcomic.api.model.SearchQuery
 import io.github.jukomu.jmcomic.core.JmComic
+import io.github.jukomu.jmcomic.core.client.AbstractJmClient
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
 
@@ -54,18 +55,53 @@ interface Jm3Gateway {
     /** 收藏列表（folderId=0 全部收藏）。阻塞调用。 */
     fun favorites(page: Int): FavoritePage
 
+    /** 指定收藏夹的收藏列表页。阻塞调用。 */
+    fun favorites(folderId: Int, page: Int): FavoritePage
+
+    /** 签到状态（含记录扁平统计）。阻塞调用。 */
+    fun dailyCheckInStatus(userId: String): DailyCheckInStatus
+
+    /** 执行当日签到。阻塞调用。 */
+    fun dailyCheckIn(userId: String, dailyId: Int)
+
+    /** 当前实际使用的 API 域名；域名未就绪时为 null。 */
+    fun usedDomain(): String?
+
+    /** 各域名延迟（毫秒）；空表表示尚未探测。 */
+    fun domainLatency(): Map<String, Int>
+
+    /** 重新探测全部域名。阻塞调用。 */
+    fun reprobeDomains()
+
+    /** 释放底层客户端资源（退出或切换线路时调用）。 */
+    fun close()
+
     /** 切换收藏状态（已收藏则取消）。阻塞调用。 */
     fun toggleFavorite(albumId: String)
 }
 
-class Jm3GatewayImpl(
-    private val clientProvider: () -> JmApiClient = {
-        @Suppress("DEPRECATION")
-        JmComic.newApiClient(JmConfiguration.Builder().build())
-    },
+class Jm3GatewayImpl internal constructor(
+    private val clientProvider: () -> JmApiClient,
+    private val domainControlsProvider: () -> DomainControls,
 ) : Jm3Gateway {
 
+    /** 生产装配：域名能力取自库客户端（JmApiClient 实际派生自 AbstractJmClient，v1.1.12 已核实）。 */
+    constructor(
+        clientProvider: () -> JmApiClient = {
+            @Suppress("DEPRECATION")
+            JmComic.newApiClient(JmConfiguration.Builder().build())
+        },
+    ) : this(clientProvider, {
+        val client = clientProvider()
+        LibraryDomainControls(
+            client as? AbstractJmClient
+                ?: error("jmcomic v1.1.12 的 JmApiClient 必须派生自 AbstractJmClient，域名能力不可用"),
+        )
+    })
+
     private val client: JmApiClient by lazy(clientProvider)
+
+    private val domainControls: DomainControls by lazy(domainControlsProvider)
 
     override fun search(text: String, page: Int): SearchPage {
         val query = SearchQuery.Builder().text(text).page(page).build()
@@ -104,8 +140,23 @@ class Jm3GatewayImpl(
         client.setCookies(session.cookies.map { it.toOkhttpCookie() })
     }
 
-    override fun favorites(page: Int): FavoritePage =
-        client.getFavorites(FavoriteQuery.Builder().folderId(0).page(page).build()).toFavoritePage()
+    override fun favorites(page: Int): FavoritePage = favorites(0, page)
+
+    override fun favorites(folderId: Int, page: Int): FavoritePage =
+        client.getFavorites(favoritesQuery(folderId, page)).toFavoritePageWithCovers()
+
+    override fun dailyCheckInStatus(userId: String): DailyCheckInStatus =
+        client.getDailyCheckInStatus(userId).toDailyCheckInStatus()
+
+    override fun dailyCheckIn(userId: String, dailyId: Int) = client.doDailyCheckin(userId, dailyId.toString())
+
+    override fun usedDomain(): String? = domainControls.usedDomain()?.takeIf { it.isNotBlank() }
+
+    override fun domainLatency(): Map<String, Int> = domainControls.domainLatency()
+
+    override fun reprobeDomains() = domainControls.reprobeDomains()
+
+    override fun close() = domainControls.close()
 
     override fun toggleFavorite(albumId: String) = client.toggleAlbumFavorite(albumId, "0")
 
@@ -115,9 +166,13 @@ class Jm3GatewayImpl(
         return SearchPage(currentPage = currentPage(), totalPages = totalPages(), items = metas.toSearchResults())
     }
 
-    private fun JmFavoritePage.toFavoritePage(): FavoritePage {
-        val metas = content.orEmpty()
-        return FavoritePage(currentPage = currentPage, totalPages = totalPages, items = metas.toSearchResults())
+    /** 图片域名每页只解析一次，随后全部走纯构造器，避免逐项请求封面。 */
+    private fun JmFavoritePage.toFavoritePageWithCovers(): FavoritePage {
+        val imageDomain = content.orEmpty().firstOrNull()
+            ?.let { meta -> runCatching { client.getAlbumCoverUrl(meta.id(), "_3x4") }.getOrNull() }
+            ?.removePrefix("https://")?.substringBefore("/")
+            .orEmpty()
+        return toFavoritePage { meta -> CoverUrls.build(meta.id(), imageDomain, "_3x4") }
     }
 
     private fun List<JmAlbumMeta>.toSearchResults(): List<SearchResult> {
@@ -138,4 +193,30 @@ class Jm3GatewayImpl(
             .domain(domain)
             .path(path.ifBlank { "/" })
             .build()
+}
+
+/**
+ * 域名裁决与资源释放能力：对应库 [AbstractJmClient] 的公开方法。
+ * JmApiClient 是 final class，单测无法伪造，抽成接口注入以便验证转发。
+ */
+internal interface DomainControls {
+    fun usedDomain(): String?
+
+    fun domainLatency(): Map<String, Int>
+
+    fun reprobeDomains()
+
+    fun close()
+}
+
+/** [DomainControls] 的生产实现：直接委托库客户端。 */
+private class LibraryDomainControls(private val client: AbstractJmClient) : DomainControls {
+
+    override fun usedDomain(): String? = client.usedDomain
+
+    override fun domainLatency(): Map<String, Int> = client.domainLatency.orEmpty()
+
+    override fun reprobeDomains() = client.reprobeDomains()
+
+    override fun close() = client.close()
 }

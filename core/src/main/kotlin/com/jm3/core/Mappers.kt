@@ -5,6 +5,8 @@ import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
+import com.jm3.core.model.DailyCheckInStatus
+import com.jm3.core.model.FavoritePage
 import com.jm3.core.model.Jm3User
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
@@ -14,8 +16,11 @@ import io.github.jukomu.jmcomic.api.enums.OrderBy
 import io.github.jukomu.jmcomic.api.enums.TimeOption
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
+import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.JmComment
 import io.github.jukomu.jmcomic.api.model.JmCommentList
+import io.github.jukomu.jmcomic.api.model.JmDailyCheckInStatus
+import io.github.jukomu.jmcomic.api.model.JmFavoritePage
 import io.github.jukomu.jmcomic.api.model.JmImage
 import io.github.jukomu.jmcomic.api.model.JmPhoto
 import io.github.jukomu.jmcomic.api.model.JmPhotoMeta
@@ -66,6 +71,7 @@ fun JmAlbum.toAlbumDetail(coverUrl: String? = null): AlbumDetail = AlbumDetail(
     views = views(),
     coverUrl = coverUrl,
     chapters = photoMetas().orEmpty().map { it.toChapter() },
+    favorited = isFavorite(),
 )
 
 fun JmPhoto.toPhotoPages(): PhotoPages = PhotoPages(
@@ -118,4 +124,26 @@ fun JmComment.toCommentItem(): CommentItem = CommentItem(
 fun JmCommentList.toCommentPage(): CommentPage = CommentPage(
     total = total(),
     items = list().orEmpty().map { it.toCommentItem() },
+)
+
+/** 收藏夹列表查询：folderId=0 表示全部收藏。 */
+fun favoritesQuery(folderId: Int, page: Int): FavoriteQuery =
+    FavoriteQuery.Builder().folderId(folderId).page(page).build()
+
+/** 收藏列表页：folders 为收藏夹 id→名称；coverUrlFor 解析封面地址（由网关按图片域名构造）。 */
+fun JmFavoritePage.toFavoritePage(coverUrlFor: (JmAlbumMeta) -> String? = { null }): FavoritePage = FavoritePage(
+    currentPage = currentPage,
+    totalPages = totalPages,
+    folders = folderList.orEmpty(),
+    folderId = folderId,
+    items = content.orEmpty().map { it.toSearchResult(coverUrl = coverUrlFor(it)) },
+)
+
+/** 签到状态：signedDays/totalDays 由 record 记录扁平统计；未签到/无标记不算签到。 */
+fun JmDailyCheckInStatus.toDailyCheckInStatus(): DailyCheckInStatus = DailyCheckInStatus(
+    dailyId = dailyId,
+    eventName = eventName.orEmpty(),
+    currentProgress = currentProgress.orEmpty(),
+    signedDays = record.orEmpty().flatten().count { it.signed == true },
+    totalDays = record.orEmpty().flatten().size,
 )
