@@ -14,7 +14,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "jm3"
+rootProject.name = "jmcomic-miuix"
 
 include(":app")
 include(":core")

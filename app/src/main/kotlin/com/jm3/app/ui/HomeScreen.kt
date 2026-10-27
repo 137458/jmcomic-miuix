@@ -228,7 +228,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = "JM3") }) { innerPadding ->
+    Scaffold(topBar = { TopAppBar(title = "JM3 Miuix") }) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             // 搜索栏固定于列表之外：结果滚动后仍可直接改关键词。
             SearchBar(
