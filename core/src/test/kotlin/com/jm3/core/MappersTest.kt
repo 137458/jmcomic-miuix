@@ -145,6 +145,15 @@ class MappersTest {
     }
 
     @Test
+    fun 搜索查询_时间范围默认为全部并可按周过滤() {
+        assertEquals("a", searchQuery("词", 1, SearchMainTag.SITE_SEARCH, BrowseOrder.LATEST).timeOption.value)
+        assertEquals(
+            "w",
+            searchQuery("词", 1, SearchMainTag.SITE_SEARCH, BrowseOrder.LATEST, BrowseTime.WEEK).timeOption.value,
+        )
+    }
+
+    @Test
     fun 搜索排序_映射到库排序值() {
         assertEquals("mr", BrowseOrder.LATEST.toOrderBy().value)
         assertEquals("mv", BrowseOrder.MOST_VIEWED.toOrderBy().value)

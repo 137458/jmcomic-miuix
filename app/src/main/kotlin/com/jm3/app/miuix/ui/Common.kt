@@ -159,3 +159,60 @@ fun LazyListScope.searchResultItems(
         }
     }
 }
+
+/** 点击分页条：上一页 / 页码 / 下一页，供任意结果列表在“点击切换分页”模式下复用。 */
+@Composable
+fun ResultPagerBar(page: SearchPage, onPageChange: (Int) -> Unit) {
+    val total = page.totalPages.coerceAtLeast(1)
+    Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TextButton(
+                text = "上一页",
+                onClick = { onPageChange(page.currentPage - 1) },
+                enabled = page.currentPage > 1,
+                minWidth = 0.dp,
+                minHeight = 36.dp,
+            )
+            Text(
+                text = "${page.currentPage} / $total",
+                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            TextButton(
+                text = "下一页",
+                onClick = { onPageChange(page.currentPage + 1) },
+                enabled = page.currentPage < total,
+                minWidth = 0.dp,
+                minHeight = 36.dp,
+            )
+        }
+    }
+}
+
+/** 点击分页结果列表：单页整页展示，底部附翻页条；与无限滚动共用同一行样式。 */
+fun LazyListScope.pagedSearchResultItems(
+    page: SearchPage,
+    onPageChange: (Int) -> Unit,
+    onOpenAlbum: (String) -> Unit,
+) {
+    if (page.items.isEmpty()) {
+        item(key = "empty") { EmptyState(title = "无结果", hint = "换个关键词再试试") }
+    }
+    items(page.items, key = { it.id }) { result ->
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+            BasicComponent(
+                title = result.title,
+                summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
+                    .ifBlank { null },
+                startAction = { SearchResultCover(result.coverUrl) },
+                onClick = { onOpenAlbum(result.id) },
+            )
+        }
+    }
+    item(key = "pager") { ResultPagerBar(page = page, onPageChange = onPageChange) }
+}

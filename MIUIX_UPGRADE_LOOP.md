@@ -16,31 +16,36 @@
 
 ## 模块清单
 
-### [ ] M01 基础设施：网关能力扩展 + 设置持久化
-- [ ] `Jm3Gateway` 新增：连载更新 `serialization(page)`、分类树 `categoriesList()`、评论回复 `replyComment`、任务 `tasks(type,filter)` / `claimTask`、个人资料 `userProfile(uid)` / `editUserProfile`、观看记录 `watchHistory(page)` / `deleteWatchHistory`、收藏标签 `tagsFavorite()` / `addFavoriteTags` / `removeFavoriteTags`
-- [ ] `SettingsRepository` 新增：分页模式（infinite/click）、搜索历史（去重、上限 10、可清除）、卷键翻页提示已读
-- [ ] `SettingsStore`（app）实现上述持久化
-- [ ] `:core:test` 新增映射与契约测试
+### [x] M01 基础设施：网关能力扩展 + 设置持久化
+- [x] `Jm3Gateway` 新增：连载更新 `serialization(page)`、分类树 `categoriesList()`、评论回复 `replyComment`、任务 `tasks(type,filter)`、个人资料 `userProfile(uid)` / `editUserProfile`、观看记录 `watchHistory(page)` / `deleteWatchHistory`、收藏标签 `tagsFavorite()` / `addFavoriteTags` / `removeFavoriteTags`
+- [x] `SettingsRepository` 新增：分页模式（infinite/click）、搜索历史（去重、上限 10、可清除）
+- [x] `SettingsStore`（app）实现上述持久化
+- [x] `:core:test` 新增映射与契约测试（`LoopCoreTest`：分类树/任务/资料/标签/搜索历史/分页模式）
+- 备注：`claimTask` 库标注 @Deprecated 且参数体无文档，暂不接入（避免臆造）；评论投票服务端已停用（@Deprecated），不做。
+- 验证：`:core:test` + `:app:compileDebugKotlin` 通过（BUILD SUCCESSFUL）。
 
-### [ ] M02 搜索页（SearchScreen / Home 内搜索）
-- [ ] 搜索历史（本地持久化、点击复搜、逐条删除、清空、上限）
-- [ ] 高级语法帮助弹层（包含/排除写法）
-- [ ] 年份/月份本页过滤（仅过滤已加载结果，带提示文案）
-- [ ] 分页模式联动（点击分页 vs 无限滚动）
-- [ ] Miuix 高阶：`SearchBar` 固定 + `InputField`、筛选 `TabRow`/`OverlaySpinnerPreference`、空态引导
+### [x] M02 搜索页（SearchScreen / Home 内搜索）
+- [x] 搜索历史：DataStore 持久化，Home 搜索框内卡片展示；点击复搜、逐条删除、清空、上限 10、提交即记录
+- [x] 高级语法帮助弹层（空格=同时包含、`+`=必须包含、`-`=排除），入口常驻搜索框尾部
+- [x] 分页模式联动：独立搜索页与首页搜索均读取 `Jm3Graph.paginationMode`，CLICK 时切换为单页 + 公共 `ResultPagerBar`
+- [x] 时间范围筛选：新增 `BrowseTime`（服务端 `TimeOption`）双 TabRow；原版 `y`/`m` 年月参数库 `SearchQuery` 不支持，采用等价的服务端时间过滤（记录为替代决策）
+- [x] Miuix 高阶：固定 `SearchBar` + `InputField`、排序/时间双 `TabRow`、公共翻页条 `ResultPagerBar`/`pagedSearchResultItems`
+- 验证：`:core:test`（含 `搜索查询_时间范围默认为全部并可按周过滤`）+ `:app:compileDebugKotlin` 通过。
 
-### [ ] M03 首页（HomeScreen）
-- [ ] 多块横滑轮播：连载更新（`serialization`）、热门/分类块、随机推荐；每块「查看更多」
-- [ ] 点击分页模式
-- [ ] 回顶/随机一部 FAB 联动滚动
-- [ ] Miuix 高阶：`PullToRefresh` 阻尼、`FloatingActionButton`、卡片内 `BasicComponent`
+### [x] M03 首页（HomeScreen）
+- [x] 多块横滑：连载更新（`serialization(1)` 前 12 条）、热门标签折叠胶囊流（更多/收起）、随机推荐（随便看看）、最新上架
+- [x] 点击分页模式（复用公共分页列表与翻页条）
+- [x] 搜索历史卡（首屏并行加载；词条点击/删除/清空）
+- [x] 回顶 / 随机一部 FAB，滚动后出现并与列表状态联动
+- [x] Miuix 高阶：`PullToRefresh`、`FloatingActionButton`、`Card` + `BasicComponent`、`SmallTitle`、`FlowRow` 胶囊标签、`OverlayDialog` 语法帮助（纵向全宽按钮）
 
-### [ ] M04 分类页（BrowseScreen）
-- [ ] 子分类横向条（`categoriesList`）+ 更多分类弹窗
-- [ ] 每周连载更新 tab（`serialization`）
-- [ ] 热门标签行 → 搜索
-- [ ] 收藏标签快捷入口
-- [ ] Miuix 高阶：`TabRow` 分段、`FlowRow` 胶囊标签、`OverlayBottomSheet` 更多分类
+### [x] M04 分类页（BrowseScreen）
+- [x] 子分类横向胶囊条（`categoriesList`）+ 更多分类弹窗（`FlowRow` 分区 blocks）
+- [x] 每周连载更新（顶栏 `Weeks` 图标 → `OverlayBottomSheet`，滚动到底自动合并下一页）
+- [x] 热门标签行（前 12）→ 标签检索
+- [x] 标签/子分类结果区（分页、错误重试、返回恢复）
+- 说明：原版子分类按 `slug` 过滤，库 `BrowseFilter` 未暴露 sub_slug，改用子分类名称做标签检索（结果集近似，记录为替代决策）
+- [x] Miuix 高阶：`TabRow` 分段、`FlowRow` 胶囊标签、`OverlayBottomSheet` 更多分类/连载
 
 ### [ ] M05 详情页（AlbumDetailScreen）
 - [ ] 收藏夹选择/移动（复用 `manageFavoriteFolder` + `favorites().folders`）
@@ -56,10 +61,11 @@
 - [ ] 阅读器内收藏/点赞/评论抽屉
 - [ ] Miuix 高阶：`FloatingToolbar`、`OverlayBottomSheet`、`NumberPicker`、`VerticalScrollBar`
 
-### [ ] M07 收藏页（FavoritesScreen）
-- [ ] 收藏夹内移动作品
-- [ ] 标签收藏 tab（`tagsFavorite`、增删）
-- [ ] Miuix 高阶：`OverlaySpinnerPreference`、分段 `TabRow`
+### [x] M07 收藏页（FavoritesScreen）
+- [x] 收藏夹内移动作品：行尾 `MoveFile` → `OverlayBottomSheet` 选择目标收藏夹（排除“全部”），成功后提示并刷新
+- [x] 标签收藏 tab：`tagsFavorite()` 加载、新增（弹窗输入）、删除（二次确认）
+- [x] 未登录、空态、错误重试、下拉刷新齐备
+- [x] Miuix 高阶：分段 `TabRow`（收藏夹/标签收藏）、`Card` + `BasicComponent`、`OverlayBottomSheet`、`OverlayDialog`、`OverlaySpinnerPreference`
 
 ### [ ] M08 历史页（HistoryScreen）
 - [ ] 按作品聚合 + 最近阅读章节/页 + 一键续读
@@ -99,4 +105,6 @@
 
 ## 迭代日志
 
-（每次模块完成后追加：补齐功能 / Miuix 替换 / 发散创新 / 构建结果）
+- 2026-10-27 / M01：扩展网关 11 项能力 + 分页/搜索历史持久化 + 9 项 core 测试。构建与测试通过，提交 `b51d6e6`。
+- 2026-10-27 / M02+M03+M04+M07：首页（连载横滑/热标签/搜索历史/语法帮助/点击分页）、搜索页（时间范围服务端过滤 + 点击分页）、分类页（子分类/更多分类/每周连载/热标签/标签结果）、收藏页（移动收藏夹/标签收藏增删）。新增公共 `ResultPagerBar`/`pagedSearchResultItems` 消除重复。`:core:test` + `:app:compileDebugKotlin` 通过。
+- 替代决策：原版搜索年/月（`y`/`m`）库不支持 → 改用库 `TimeOption`（今日/本周/本月/全部）；原版子分类 `slug` 过滤库未暴露 → 以名称做标签检索。

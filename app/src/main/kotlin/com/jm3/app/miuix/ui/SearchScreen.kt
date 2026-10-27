@@ -25,8 +25,10 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchScope
+import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,6 +54,7 @@ fun SearchScreen(
 ) {
     var state by remember(query, scope) { mutableStateOf<SearchUiState>(SearchUiState.Loading) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
+    var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     var loadingMore by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     // 排序/下拉刷新会替换第一页，旧的分页响应只在代次未变时落地
@@ -60,9 +63,12 @@ fun SearchScreen(
     val listState = rememberLazyListState()
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
+    val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
+    // 分页模式是全局可观察状态，设置页切换后本页立即变更控件形态。
+    val clickPaging = Jm3Graph.paginationMode == PaginationMode.CLICK
 
     fun fetch(page: Int, sort: BrowseOrder): SearchPage =
-        Jm3Graph.gateway.search(query, page, sort, scope)
+        Jm3Graph.gateway.search(query, page, sort, scope, time)
 
     fun loadFirstPage(byPull: Boolean = false) {
         if (byPull) refreshing = true
@@ -97,12 +103,32 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(query, scope, orderValue) {
+    /** 点击分页：整页替换并回到列表顶部。 */
+    fun jumpToPage(target: Int) {
+        val loaded = state as? SearchUiState.Loaded ?: return
+        if (target < 1 || target > loaded.page.totalPages) return
+        requestToken++
+        val token = requestToken
+        state = SearchUiState.Loading
+        coroutineScope.launch {
+            val next = withContext(Dispatchers.IO) { runCatching { fetch(target, order) } }
+            if (token != requestToken) return@launch
+            next.fold(
+                onSuccess = {
+                    state = SearchUiState.Loaded(it)
+                    listState.scrollToItem(0)
+                },
+                onFailure = { state = SearchUiState.Failed(it.message ?: "搜索失败") },
+            )
+        }
+    }
+
+    LaunchedEffect(query, scope, orderValue, timeValue) {
         loadFirstPage()
     }
 
-    LaunchedEffect((state as? SearchUiState.Loaded)?.page) {
-        if (state !is SearchUiState.Loaded) return@LaunchedEffect
+    LaunchedEffect((state as? SearchUiState.Loaded)?.page, clickPaging) {
+        if (clickPaging || state !is SearchUiState.Loaded) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo
             (info.visibleItemsInfo.lastOrNull()?.index ?: -1) to info.totalItemsCount
@@ -125,6 +151,13 @@ fun SearchScreen(
                 selectedTabIndex = BrowseOrder.entries.indexOf(order),
                 onTabSelected = { orderValue = BrowseOrder.entries[it].apiValue },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            // 时间范围由服务端过滤（原版年/月筛选的等价能力，库只提供 今日/本周/本月/全部）
+            TabRow(
+                tabs = BrowseTime.entries.map { it.label },
+                selectedTabIndex = BrowseTime.entries.indexOf(time),
+                onTabSelected = { timeValue = BrowseTime.entries[it].apiValue },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
             PullToRefresh(
                 isRefreshing = refreshing,
@@ -150,12 +183,20 @@ fun SearchScreen(
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
-                        is SearchUiState.Loaded -> searchResultItems(
-                            page = s.page,
-                            loadingMore = loadingMore,
-                            onLoadMore = ::loadMore,
-                            onOpenAlbum = onOpenAlbum,
-                        )
+                        is SearchUiState.Loaded -> if (clickPaging) {
+                            pagedSearchResultItems(
+                                page = s.page,
+                                onPageChange = ::jumpToPage,
+                                onOpenAlbum = onOpenAlbum,
+                            )
+                        } else {
+                            searchResultItems(
+                                page = s.page,
+                                loadingMore = loadingMore,
+                                onLoadMore = ::loadMore,
+                                onOpenAlbum = onOpenAlbum,
+                            )
+                        }
                     }
                     item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                 }
