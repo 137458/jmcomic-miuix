@@ -78,13 +78,18 @@
 - [x] 删除单部作品记录（`HistoryRepository.deleteAlbum` + Room DAO）与清空全部（二次确认弹窗）
 - [x] Miuix 高阶：`Card` 行、`OverlayDialog` 纵排确认、`IconButton` 删除、分页「加载更多」
 
-### [ ] M09 我的页（MineScreen）
-- [ ] 成就/任务（`tasks`、`claimTask`）
-- [ ] 个人资料查看/编辑（`userProfile`/`editUserProfile`）
-- [ ] 服务端观看记录
-- [ ] 网络测速（线路延迟色阶）
-- [ ] 签到日历（`dailyCheckInStatus` 记录）
-- [ ] Miuix 高阶：签到卡进度可视化、入口分组卡片
+### [x] M09 我的页（MineScreen）
+- [x] 成就/任务：新增 `Route.Tasks` + `TasksScreen`（称号/勋章 `TabRow` + 我的/全部筛选、达成进度汇总条、逐项已达成状态、服务端 message 透传、下拉刷新与空/错态）
+- [x] 个人资料查看/编辑：新增 `Route.Profile` + `ProfileScreen`（只读用户名/邮箱；昵称/姓/名/生日/网站/位置/公司/学校/关于我/其他信息/收藏类别/理想型/敏感区域/最喜欢/最讨厌；感情状态与性取向走底部选择器；标题栏与页尾双保存入口，保存后以服务端回包刷新）
+- [x] 服务端观看记录：新增 `Route.WatchHistory` + `WatchHistoryScreen`（`watchHistory(page)` + 逐条 `deleteWatchHistory` + 下拉刷新 + 分页模式联动：无限滚动/点击翻页）
+- [x] 我的页入口分组卡片：账号（个人资料/退出登录）、我的内容（收藏/历史/书架/信箱/连载追踪）、成就与服务（成就任务/云端观看记录/设置）
+- [x] 签到进度可视化：`LinearProgressIndicator` 胶囊进度 + 精确天数（`signedDays/totalDays`）
+- 替代决策 1：网络测速已由设置页「线路诊断」（`usedDomain`/`domainLatency`/`reprobeDomains` 延时升序）覆盖，我的页不重复造轮子。
+- 替代决策 2：`claimTask` 库标注 @Deprecated 且参数无文档，成就页只读展示，不做领取动作。
+- 替代决策 3：原版签到日历为逐月打卡图片，库接口仅提供 `signedDays/totalDays` 与 `currentProgress`，落为进度条而非日历图。
+- 修正：`UserProfile.editableFields()` 键改为与库 `JmUserProfile` 记录名一致（`lastName`/`firstName`/`birthPlace`/`aboutMe`/`infoHere`/`collections`/`ideal`/`erogenic`），补全原先缺失的 6 个字段，避免提交蛇形键导致服务端忽略。
+- 验证：`:core:test`（资料映射断言更新）+ `:app:compileDebugKotlin` 通过。
+- Miuix 高阶：`LinearProgressIndicator` 进度、双段 `TabRow`、`OverlayBottomSheet` + `RadioButtonPreference` 选择器、`ArrowPreference` 分组卡片、`PullToRefresh`
 
 ### [ ] M10 评论区 / 论坛
 - [ ] 评论回复（`replyToComment`）
@@ -115,4 +120,6 @@
 - 2026-10-27 / M02+M03+M04+M07：首页（连载横滑/热标签/搜索历史/语法帮助/点击分页）、搜索页（时间范围服务端过滤 + 点击分页）、分类页（子分类/更多分类/每周连载/热标签/标签结果）、收藏页（移动收藏夹/标签收藏增删）。新增公共 `ResultPagerBar`/`pagedSearchResultItems` 消除重复。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 替代决策：原版搜索年/月（`y`/`m`）库不支持 → 改用库 `TimeOption`（今日/本周/本月/全部）；原版子分类 `slug` 过滤库未暴露 → 以名称做标签检索。
 - 2026-10-27 / M05：详情页补收藏夹选择/移动、简介与车号复制、禁漫车信息块、四等分动作台（收藏/喜欢/追更/下载），章节分组与已读标记复核通过。`:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M07+M08：收藏页（移动收藏夹/标签收藏增删）、历史页（按作品聚合 + 续读 + 删除整部 + 清空确认 + Room `deleteAlbum`）。`:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M09：我的页新增成就任务/个人资料/云端观看记录三条路由与页面，签到进���条 + 入口分组卡片；修正资料提交键为库记录名并补全 6 个字段。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M06：阅读器补左右模式（Pager 弹簧翻页 + 手势接管）、点击显隐上下栏、音量键翻页（首提示一次）、最后一话追更引导（3 天静默）、底部收藏/喜欢/评论动作行与评论抽屉；阅读方向/提示/静默时间落 DataStore。`:core:test` + `:app:compileDebugKotlin` 通过。

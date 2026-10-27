@@ -80,8 +80,10 @@ class LoopCoreTest {
 
         assertEquals("鲸娘", profile.nickname)
         assertEquals("2000-01-01", profile.birthday)
-        assertEquals("你好", profile.editableFields()["about_me"])
+        assertEquals("你好", profile.editableFields()["aboutMe"])
         assertEquals("鲸娘", profile.editableFields()["nickname"])
+        assertEquals("台北", profile.editableFields()["birthPlace"])
+        assertEquals("耳", profile.editableFields()["erogenic"])
     }
 
     @Test

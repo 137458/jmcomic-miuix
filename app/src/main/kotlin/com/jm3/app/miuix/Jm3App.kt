@@ -32,11 +32,14 @@ import com.jm3.app.miuix.ui.FavoritesScreen
 import com.jm3.app.miuix.ui.HistoryScreen
 import com.jm3.app.miuix.ui.LoginScreen
 import com.jm3.app.miuix.ui.MainScreen
+import com.jm3.app.miuix.ui.ProfileScreen
 import com.jm3.app.miuix.ui.ReaderScreen
 import com.jm3.app.miuix.ui.SearchScreen
 import com.jm3.app.miuix.ui.SettingsScreen
 import com.jm3.app.miuix.ui.ShelfScreen
+import com.jm3.app.miuix.ui.TasksScreen
 import com.jm3.app.miuix.ui.TrackingScreen
+import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
 import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.core.GatewayFactory
@@ -190,6 +193,18 @@ sealed interface Route : NavKey {
     @Serializable
     data object Tracking : Route
 
+    /** 成就/任务（称号与勋章）。 */
+    @Serializable
+    data object Tasks : Route
+
+    /** 个人资料查看与编辑。 */
+    @Serializable
+    data object Profile : Route
+
+    /** 服务端观看记录。 */
+    @Serializable
+    data object WatchHistory : Route
+
     @Serializable
     data class AlbumDetail(val albumId: String) : Route
 
@@ -278,6 +293,9 @@ fun Jm3App() {
                     onOpenWeek = { backStack.add(Route.Week) },
                     onOpenNotifications = { backStack.add(Route.Notifications) },
                     onOpenTracking = { backStack.add(Route.Tracking) },
+                    onOpenProfile = { backStack.add(Route.Profile) },
+                    onOpenTasks = { backStack.add(Route.Tasks) },
+                    onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
                 )
             }
             entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -332,6 +350,25 @@ fun Jm3App() {
             }
             entry<Route.Tracking>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                 TrackingScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.Tasks>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                TasksScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.Profile>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                ProfileScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.WatchHistory>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                WatchHistoryScreen(
                     onBack = { backStack.removeLastOrNull() },
                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                     snackbarHostState = snackbarHostState,

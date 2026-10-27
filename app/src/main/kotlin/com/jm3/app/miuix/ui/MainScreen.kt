@@ -50,6 +50,9 @@ fun MainScreen(
     onOpenWeek: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenTracking: () -> Unit,
+    onOpenProfile: () -> Unit,
+    onOpenTasks: () -> Unit,
+    onOpenWatchHistory: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     // 启动即恢复下载队列（中断任务收敛为暂停态），底栏角标才能反映在途任务
@@ -115,6 +118,9 @@ fun MainScreen(
                     onOpenSettings = onOpenSettings,
                     onOpenNotifications = onOpenNotifications,
                     onOpenTracking = onOpenTracking,
+                    onOpenProfile = onOpenProfile,
+                    onOpenTasks = onOpenTasks,
+                    onOpenWatchHistory = onOpenWatchHistory,
                 )
             }
         }
