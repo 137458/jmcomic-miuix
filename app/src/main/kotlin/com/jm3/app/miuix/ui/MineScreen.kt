@@ -59,6 +59,7 @@ fun MineScreen(
     onOpenWatchHistory: () -> Unit,
     onOpenForum: () -> Unit,
     onOpenNovel: () -> Unit,
+    onOpenLibrary: () -> Unit,
 ) {
     val user by account.user.collectAsState()
     val unread by Jm3Graph.unreadNotifications.collectAsState()
@@ -221,6 +222,11 @@ fun MineScreen(
                     title = "小说",
                     summary = "连载小说阅读",
                     onClick = onOpenNovel,
+                )
+                ArrowPreference(
+                    title = "禁漫书库",
+                    summary = "创作者与作品",
+                    onClick = onOpenLibrary,
                 )
                 // 下载队列在途时行尾显示圆点，无需进书架页确认
                 ArrowPreference(

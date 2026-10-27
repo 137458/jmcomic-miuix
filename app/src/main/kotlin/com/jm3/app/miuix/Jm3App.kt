@@ -28,9 +28,12 @@ import com.jm3.app.miuix.data.history.MIGRATION_1_2
 import com.jm3.app.miuix.data.history.RoomDownloadRepository
 import com.jm3.app.miuix.data.history.RoomHistoryRepository
 import com.jm3.app.miuix.ui.AlbumDetailScreen
+import com.jm3.app.miuix.ui.CreatorWorkDetailScreen
+import com.jm3.app.miuix.ui.CreatorWorksScreen
 import com.jm3.app.miuix.ui.FavoritesScreen
 import com.jm3.app.miuix.ui.ForumScreen
 import com.jm3.app.miuix.ui.HistoryScreen
+import com.jm3.app.miuix.ui.LibraryScreen
 import com.jm3.app.miuix.ui.LoginScreen
 import com.jm3.app.miuix.ui.MainScreen
 import com.jm3.app.miuix.ui.NovelDetailScreen
@@ -231,6 +234,18 @@ sealed interface Route : NavKey {
     @Serializable
     data class NovelReader(val novelId: String, val chapterId: String) : Route
 
+    /** 禁漫书库（原版 Library：创作者/作品双 Tab）。 */
+    @Serializable
+    data object Library : Route
+
+    /** 创作者主页：头像/背景/赞助入口/作品集合。 */
+    @Serializable
+    data class Creator(val creatorId: String) : Route
+
+    /** 创作者作品详情：描述 + 整页图片 + 相关作品。 */
+    @Serializable
+    data class CreatorWork(val workId: String) : Route
+
     /** 独立搜索结果页：标签/作者/作品/人物点击进入；scope 对应原版搜索类型。 */
     @Serializable
     data class Search(val query: String, val scope: SearchScope = SearchScope.SITE) : Route
@@ -318,6 +333,7 @@ fun Jm3App() {
                     onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
                     onOpenForum = { backStack.add(Route.Forum) },
                     onOpenNovel = { backStack.add(Route.Novel) },
+                    onOpenLibrary = { backStack.add(Route.Library) },
                 )
             }
             entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -453,6 +469,31 @@ fun Jm3App() {
                     initialChapterId = route.chapterId,
                     onBack = { backStack.removeLastOrNull() },
                     onOpenLogin = { backStack.add(Route.Login) },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.Library>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                LibraryScreen(
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
+                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.Creator>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                CreatorWorksScreen(
+                    creatorId = route.creatorId,
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
+                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                    snackbarHostState = snackbarHostState,
+                )
+            }
+            entry<Route.CreatorWork>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                CreatorWorkDetailScreen(
+                    workId = route.workId,
+                    onBack = { backStack.removeLastOrNull() },
+                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
                     snackbarHostState = snackbarHostState,
                 )
             }

@@ -116,6 +116,7 @@
 - [x] 阅读器悬浮工具栏毛玻璃：`rememberLayerBackdrop()` 录屏内容层（`Modifier.layerBackdrop`），工具栏用 `Modifier.drawBackdrop(backdrop, shape = { RoundedCornerShape(50.dp) }, effects = { blur(22.dp.toPx()) })` 采样模糊；`FloatingToolbar` 改为 `surfaceContainer.copy(alpha = 0.78f)` + `outSidePadding = 0`，避免不透明底色盖住模糊；左右模式 Pager 改为整屏沉浸（去掉 `innerPadding`），使图片真正从工具栏下方穿过
 - [x] Squircle 连续曲率：6 处封面 `clip(RoundedCornerShape(x))` 全部替换为 `Modifier.squircleClip(x.dp)`（搜索行、收藏、历史、连载追踪、观看记录），Android 13 以下由库自动回落普通圆角
 - [x] 微交互：新增公共 `Modifier.pressScale(scaleDown, hapticFeedback)` —— `graphicsLayer` 弹簧缩放（`spring(dampingRatio = 0.55f, stiffness = 900f)`）＋ `pointerInput` 旁路监听（不消费点击，不吞事件）；搜索结果卡与阅读器底栏 5 个动作位启用，动作位同时 `LocalHapticFeedback` 轻触反馈
+- [x] 低版本兼容：`miuix-blur-android` 清单声明 minSdk 33，App 清单加 `xmlns:tools` + `<uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />`；运行时以 `Build.VERSION.SDK_INT >= TIRAMISU` 门控 backdrop，低版本 `ReaderToolbar` 的 backdrop 传 null、跳过 `drawBackdrop` 并退回不透明 `surfaceContainer` 底色
 - 替代决策：顶栏（`TopAppBar`）与主底栏（`FloatingNavigationBar`）在 Miuix `Scaffold` 中不覆盖内容（body 已按 bar 高度内缩），无 backdrop 可采样，强行模糊只会得到空采样；故毛玻璃落在真正覆盖内容的阅读器悬浮工具栏。路由转场沿用既有 `NavDisplayEffects(cornerClipRadius, backdropColor)` + 全路由 `swipeDismiss`。
 - 验证：`:app:compileDebugKotlin` 一次通过（exit 0）。
 
@@ -133,8 +134,20 @@
 - 替代决策 3：原版小说收藏夹分页管理能力在库中仅暴露 `manageNovelFavoriteFolder` 而无列表查询 → 本轮只做整部作品的收藏切换。
 - 验证：`:app:compileDebugKotlin` 通过（修复 3 处：点赞/回复返回类型溢出、`ImageVector` 导包、composable `return@Scaffold`）。
 
-### [ ] M14 书库域（作者/作品）
-- [ ] 网关 creator 接口 + 作者列表/作品列表/作品详情
+### [x] M14 书库域（作者/作品）
+- [x] core 创作者协议层：`Models.kt` 新增 `CreatorFilters`/`CreatorMeta`/`CreatorPage`/`CreatorWorkMeta`/`CreatorWorkPage`/`CreatorRelatedWork`/`CreatorSponsor`/`CreatorAuthorWorks`/`CreatorWork`；`Mappers.kt` 新增 `imageUrl`（相对路径拼域名、绝对地址原样）、`htmlToText`（作品描述 HTML→纯文本保留段落）、`creatorFilters`（接口 filters 的语言/来源两组）、6 个记录映射与 `toCreatorWork`（弹窗信息 + 整页详情合并）。
+- [x] 网关：新增 `creatorAuthors(page, query)` / `creatorWorks(page, query, lang, source)` / `creatorAuthorWorks(creatorId, lang, source, page)` / `creatorWork(workId)`；作品信息失败不阻塞正文，图片域名复用 API 域名裁决。
+- [x] 书库首页：创作者/作品双 `TabRow`、关键词搜索、作品 Tab 语言/来源两个 `OverlaySpinnerPreference`（选项由接口 filters 下发，首项「全部」）、`PullToRefresh`、无限滚动「加载更多」与点击翻页双模式（每页 30 条、总页数由 total 推算）、加载/错误/空态。
+- [x] 创作者行：背景图 + 暗色蒙版 + squircle 头像 + 名称/更新时间文案。
+- [x] 作品网格：两列卡片、封面 squircle、平台角标、标题两行截断、作者可点跳作者主页、发布日期；作者主页语言/来源筛选后即时重载。
+- [x] 作者主页：背景/头像/名称头部、赞助平台全宽按钮（`ACTION_VIEW` 外链，缺失或无 Activity 时 Snackbar 提示）、作品网格与筛选、下拉刷新。
+- [x] 作品详情：描述纯文本 + 整页图片纵向列表（squircle 裁切、Fit 显示、按接口 page 排序）、底部 `FloatingToolbar`「相关作品 N」入口、`OverlayBottomSheet` 横滑相关作品并可继续跳转。
+- [x] 路由与入口：`Route.Library` / `Route.Creator(creatorId)` / `Route.CreatorWork(workId)`（均 `swipeDismiss`），我的页「我的内容」新增「禁漫书库」入口。
+- [x] Miuix 高阶：`TabRow`、`OverlaySpinnerPreference` 动态筛选、`PullToRefresh`、`Card` + `squircleClip`、`FloatingToolbar`、`OverlayBottomSheet`、`TextButton` 分页条、`pressScale` 卡片按压。
+- 替代决策 1：原版语言/来源为 MUI SelectMenu，选项来自 `filters`（Map<String,Object>）→ 收敛为 `CreatorFilters(languages, sources)` 两组字符串，用 Miuix 下拉呈现。
+- 替代决策 2：原版作者主页无分页（接口只返回关联作品集合）→ 作者页不设分页，筛选变更即整页重载。
+- 替代决策 3：原版作品详情底部为折叠 Swiper 轮播 → 改为 `FloatingToolbar` 入口 + 底部弹层横滑，避免遮挡正文并贴合 HyperOS 交互。
+- 验证：`:core:compileKotlin` + `:app:compileDebugKotlin` 通过（修复 1 处 `floatingToolbar` 不可空传参）。
 
 ## 迭代日志
 
@@ -145,7 +158,9 @@
 - 2026-10-27 / M07+M08：收藏页（移动收藏夹/标签收藏增删）、历史页（按作品聚合 + 续读 + 删除整部 + 清空确认 + Room `deleteAlbum`）。`:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M11：设置页补分页模式切换（弹层单选 + 全局状态同步）、公告/网址发布页/广告合作外链、版本号 5 连点隐藏诊断面板。`:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M13：小说域三页（列表/详情/阅读）+ 评论区 + 字号/繁简/进度持久化 + 三条路由与我的页入口。`:core:test` + `:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M14：书库域（创作者/作品双 Tab、关键词搜索、语言/来源筛选、两种分页）+ 作者主页（赞助外链、作品网格）+ 作品详情（描述/整页图/相关作品弹层）+ 三条路由与我的页入口。`:core:compileKotlin` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M10：详情页/阅读器评论回复（共享 `CommentReplySheet`、折叠回复与缩进线）、独立论坛页三档（`Route.Forum` + `ForumScreen`，发帖面板、两种分页、社区规则折叠卡）、我的页论坛入口；`CommentItem` 增补 `albumId`。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M09：我的页新增成就任务/个人资料/云端观看记录三条路由与页面，签到进度条 + 入口分组卡片；修正资料提交键为库记录名并补全 6 个字段。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M06：阅读器补左右模式（Pager 弹簧翻页 + 手势接管）、点击显隐上下栏、音量键翻页（首提示一次）、最后一话追更引导（3 天静默）、底部收藏/喜欢/评论动作行与评论抽屉；阅读方向/提示/静默时间落 DataStore。`:core:test` + `:app:compileDebugKotlin` 通过。
+- 2026-10-27 / 全量构建修复：`miuix-blur` 声明 minSdk 33 与项目 minSdk 26 冲突 → 清单 `tools:overrideLibrary` + API 33 运行时降级（低版本不录屏、不模糊，工具栏用不透明底色）。`:core:test` + `:app:assembleDebug` 全量通过（exit 0），14 个模块全部 `[x]`。
 - 2026-10-27 / M12：接入 `miuix-blur` + `miuix-squircle`；阅读器底栏实现 `drawBackdrop` 毛玻璃胶囊（backdrop 录屏 + 22dp 模糊）、6 处封面改 `squircleClip`、新增公共 `Modifier.pressScale`（弹簧 + 触觉）并用于搜索结果卡与阅读器动作位。`:app:compileDebugKotlin` 通过。

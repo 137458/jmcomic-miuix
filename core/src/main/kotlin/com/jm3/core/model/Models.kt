@@ -440,3 +440,83 @@ data class NovelChapter(
     val favorite: Boolean,
     val liked: Boolean,
 )
+
+/** 创作者作品来源筛选：对应原版语言/来源两个下拉，选项由接口 filters 下发。 */
+data class CreatorFilters(
+    val languages: List<String> = emptyList(),
+    val sources: List<String> = emptyList(),
+) {
+    val isEmpty: Boolean get() = languages.isEmpty() && sources.isEmpty()
+}
+
+/** 创作者/作者摘要；头像与背景为完整 URL，缺失时为 null。 */
+data class CreatorMeta(
+    val id: String,
+    val name: String,
+    val avatarUrl: String?,
+    val backgroundUrl: String?,
+    /** 服务端相对时间文案，如 "25 days ago"。 */
+    val updateText: String?,
+)
+
+/** 创作者列表分页。 */
+data class CreatorPage(
+    val items: List<CreatorMeta>,
+    val total: Int,
+)
+
+/** 创作者作品摘要。 */
+data class CreatorWorkMeta(
+    val id: String,
+    val title: String,
+    val coverUrl: String?,
+    val platform: String?,
+    val workDate: String?,
+    val authorName: String?,
+    val authorId: String?,
+)
+
+/** 作品列表分页；filters 为接口下发的可选筛选值。 */
+data class CreatorWorkPage(
+    val items: List<CreatorWorkMeta>,
+    val total: Int,
+    val filters: CreatorFilters,
+)
+
+/** 创作者详情页的关联作品。 */
+data class CreatorRelatedWork(
+    val id: String,
+    val title: String,
+    val coverUrl: String?,
+    val workDate: String?,
+    val platform: String?,
+)
+
+/** 赞助平台入口。 */
+data class CreatorSponsor(
+    val name: String,
+    val url: String?,
+)
+
+/** 创作者主页：头像/背景/赞助入口/作品集合。 */
+data class CreatorAuthorWorks(
+    val authorName: String,
+    val avatarUrl: String?,
+    val backgroundUrl: String?,
+    val sponsors: List<CreatorSponsor>,
+    val works: List<CreatorRelatedWork>,
+    val filters: CreatorFilters,
+)
+
+/** 创作者作品详情：描述 + 整页图片；related 供底部相关作品入口。 */
+data class CreatorWork(
+    val id: String,
+    val title: String,
+    val authorName: String?,
+    val workDate: String?,
+    /** 已去标签的纯文本描述。 */
+    val contentText: String,
+    val images: List<String>,
+    val related: List<CreatorRelatedWork>,
+)
+

@@ -10,6 +10,15 @@ import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
+import com.jm3.core.model.CreatorAuthorWorks
+import com.jm3.core.model.CreatorFilters
+import com.jm3.core.model.CreatorMeta
+import com.jm3.core.model.CreatorPage
+import com.jm3.core.model.CreatorRelatedWork
+import com.jm3.core.model.CreatorSponsor
+import com.jm3.core.model.CreatorWork
+import com.jm3.core.model.CreatorWorkMeta
+import com.jm3.core.model.CreatorWorkPage
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.FavoritePage
@@ -47,6 +56,15 @@ import io.github.jukomu.jmcomic.api.model.JmCategoryList
 import io.github.jukomu.jmcomic.api.model.JmCategoryListItem
 import io.github.jukomu.jmcomic.api.model.JmComment
 import io.github.jukomu.jmcomic.api.model.JmCommentList
+import io.github.jukomu.jmcomic.api.model.JmCreatorAuthorWorksPage
+import io.github.jukomu.jmcomic.api.model.JmCreatorMeta
+import io.github.jukomu.jmcomic.api.model.JmCreatorPage
+import io.github.jukomu.jmcomic.api.model.JmCreatorRelatedWork
+import io.github.jukomu.jmcomic.api.model.JmCreatorSponsor
+import io.github.jukomu.jmcomic.api.model.JmCreatorWorkDetail
+import io.github.jukomu.jmcomic.api.model.JmCreatorWorkInfo
+import io.github.jukomu.jmcomic.api.model.JmCreatorWorkMeta
+import io.github.jukomu.jmcomic.api.model.JmCreatorWorkPage
 import io.github.jukomu.jmcomic.api.model.JmDailyCheckInStatus
 import io.github.jukomu.jmcomic.api.model.JmFavoriteFolderResult
 import io.github.jukomu.jmcomic.api.model.JmFavoritePage
@@ -361,13 +379,117 @@ fun JmTagFavorite.toTagFavorite(): TagFavorite = TagFavorite(
     updatedAt = updatedAt()?.takeIf { it.isNotBlank() },
 )
 
-/** 小说封面：接口的 image 可能是绝对地址或相对路径，相对时拼接图片域名（与 API 同域）。 */
-fun novelCoverUrl(image: String?, imageHost: String): String? {
+/** 相对图片路径拼接图片域名；绝对地址原样返回，域名未就绪时返回 null。 */
+fun imageUrl(image: String?, imageHost: String): String? {
     val path = image?.takeIf { it.isNotBlank() } ?: return null
     if (path.startsWith("http://") || path.startsWith("https://")) return path
     if (imageHost.isBlank()) return null
     return "https://" + imageHost.removePrefix("https://").trimEnd('/') + path
 }
+
+/** 小说封面：接口的 image 可能是绝对地址或相对路径，相对时拼接图片域名（与 API 同域）。 */
+fun novelCoverUrl(image: String?, imageHost: String): String? = imageUrl(image, imageHost)
+
+private val HTML_BREAK = Regex("(?i)<br\\s*/?>|</p\\s*>|</div\\s*>")
+private val HTML_TAG = Regex("<[^>]*>")
+private val HTML_BLANK_LINES = Regex("\n{3,}")
+
+/** 作品描述在接口里是 HTML；转成纯文本供 Compose 排版，保留段落换行。 */
+fun htmlToText(html: String?): String {
+    val raw = html?.takeIf { it.isNotBlank() } ?: return ""
+    return raw
+        .replace(HTML_BREAK, "\n")
+        .replace(HTML_TAG, "")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace(HTML_BLANK_LINES, "\n\n")
+        .trim()
+}
+
+/** 接口 filters 是 Map<String, Object>，只取语言与来源两组字符串选项。 */
+fun creatorFilters(filters: Map<String, Any?>?): CreatorFilters {
+    fun read(key: String): List<String> = (filters?.get(key) as? List<*>)
+        .orEmpty()
+        .mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }
+        .distinct()
+    return CreatorFilters(languages = read("language"), sources = read("source"))
+}
+
+fun JmCreatorMeta.toCreatorMeta(imageHost: String = ""): CreatorMeta = CreatorMeta(
+    id = getId().orEmpty(),
+    name = getName().orEmpty(),
+    avatarUrl = imageUrl(getAvatarImage(), imageHost),
+    backgroundUrl = imageUrl(getBackgroundImage(), imageHost),
+    updateText = getUpdateDate()?.takeIf { it.isNotBlank() },
+)
+
+fun JmCreatorPage.toCreatorPage(imageHost: String = ""): CreatorPage = CreatorPage(
+    items = getList().orEmpty().map { it.toCreatorMeta(imageHost) },
+    total = getTotal(),
+)
+
+fun JmCreatorWorkMeta.toCreatorWorkMeta(imageHost: String = ""): CreatorWorkMeta = CreatorWorkMeta(
+    id = getId().orEmpty(),
+    title = getName().orEmpty(),
+    coverUrl = imageUrl(getWorkImage(), imageHost),
+    platform = getPlatformName()?.takeIf { it.isNotBlank() },
+    workDate = getWorkDate()?.takeIf { it.isNotBlank() },
+    authorName = getAuthorName()?.takeIf { it.isNotBlank() },
+    authorId = getAuthorId()?.takeIf { it.isNotBlank() },
+)
+
+fun JmCreatorWorkPage.toCreatorWorkPage(imageHost: String = ""): CreatorWorkPage = CreatorWorkPage(
+    items = getList().orEmpty().map { it.toCreatorWorkMeta(imageHost) },
+    total = getTotal(),
+    filters = creatorFilters(getFilters()),
+)
+
+fun JmCreatorRelatedWork.toCreatorRelatedWork(imageHost: String = ""): CreatorRelatedWork =
+    CreatorRelatedWork(
+        id = getId().orEmpty(),
+        title = getWorkTitle().orEmpty(),
+        coverUrl = imageUrl(getWorkImage(), imageHost),
+        workDate = getWorkDate()?.takeIf { it.isNotBlank() },
+        platform = getPlatformName()?.takeIf { it.isNotBlank() },
+    )
+
+fun JmCreatorSponsor.toCreatorSponsor(): CreatorSponsor = CreatorSponsor(
+    name = getPlatformName().orEmpty(),
+    url = getPlatformUrl()?.takeIf { it.isNotBlank() },
+)
+
+fun JmCreatorAuthorWorksPage.toCreatorAuthorWorks(imageHost: String = ""): CreatorAuthorWorks =
+    CreatorAuthorWorks(
+        authorName = getAuthorName().orEmpty(),
+        avatarUrl = imageUrl(getAuthorAvatar(), imageHost),
+        backgroundUrl = imageUrl(getBackgroundImage(), imageHost),
+        sponsors = getSponsors().orEmpty().map { it.toCreatorSponsor() },
+        works = getRelatedWorks().orEmpty().map { it.toCreatorRelatedWork(imageHost) },
+        filters = creatorFilters(getFilters()),
+    )
+
+/** 作品弹窗信息与整页详情合并成一个 UI 模型；任一侧字段缺失时用另一侧兜底。 */
+fun toCreatorWork(
+    info: JmCreatorWorkInfo?,
+    detail: JmCreatorWorkDetail?,
+    imageHost: String = "",
+): CreatorWork = CreatorWork(
+    id = detail?.getId().orEmpty(),
+    title = info?.getWorkTitle().orEmpty().ifBlank { detail?.getName().orEmpty() },
+    authorName = info?.getAuthorName()?.takeIf { it.isNotBlank() },
+    workDate = info?.getWorkDate()?.takeIf { it.isNotBlank() }
+        ?: detail?.getAdddt()?.takeIf { it.isNotBlank() },
+    contentText = htmlToText(detail?.getContent()),
+    images = detail?.getImages().orEmpty()
+        .sortedBy { it.getPage() }
+        .mapNotNull { imageUrl(it.getImage(), imageHost) },
+    related = info?.getRelatedWorks().orEmpty().map { it.toCreatorRelatedWork(imageHost) },
+)
+
 
 fun JmNovelMeta.toNovelMeta(imageHost: String = ""): NovelMeta = NovelMeta(
     id = getId().orEmpty(),

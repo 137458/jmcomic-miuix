@@ -7,6 +7,10 @@ import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CookieSnapshot
+import com.jm3.core.model.CreatorAuthorWorks
+import com.jm3.core.model.CreatorPage
+import com.jm3.core.model.CreatorWork
+import com.jm3.core.model.CreatorWorkPage
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.FavoritePage
@@ -213,6 +217,28 @@ interface Jm3Gateway {
         parentCommentId: String,
         chapterId: String = "",
     )
+
+    /** 创作者列表（原版书库「创作者」Tab）。阻塞调用。 */
+    fun creatorAuthors(page: Int = 1, query: String = ""): CreatorPage
+
+    /** 创作者作品列表；lang/source 为空表示全部。阻塞调用。 */
+    fun creatorWorks(
+        page: Int = 1,
+        query: String = "",
+        lang: String = "",
+        source: String = "",
+    ): CreatorWorkPage
+
+    /** 作者主页（头像/背景/赞助入口/作品集合）。阻塞调用。 */
+    fun creatorAuthorWorks(
+        creatorId: String,
+        lang: String = "",
+        source: String = "",
+        page: Int = 1,
+    ): CreatorAuthorWorks
+
+    /** 作品详情（描述 + 整页图片 + 相关作品）。阻塞调用。 */
+    fun creatorWork(workId: String): CreatorWork
 }
 
 class Jm3GatewayImpl internal constructor(
@@ -425,6 +451,27 @@ class Jm3GatewayImpl internal constructor(
         chapterId: String,
     ) {
         client.replyToNovelComment(novelId, text, parentCommentId, chapterId)
+    }
+
+    override fun creatorAuthors(page: Int, query: String): CreatorPage =
+        client.getCreatorAuthors(page, query).toCreatorPage(novelImageHost())
+
+    override fun creatorWorks(page: Int, query: String, lang: String, source: String): CreatorWorkPage =
+        client.getCreatorWorks(page, query, lang, source).toCreatorWorkPage(novelImageHost())
+
+    override fun creatorAuthorWorks(
+        creatorId: String,
+        lang: String,
+        source: String,
+        page: Int,
+    ): CreatorAuthorWorks =
+        client.getCreatorAuthorWorks(creatorId, lang, source, page)
+            .toCreatorAuthorWorks(novelImageHost())
+
+    override fun creatorWork(workId: String): CreatorWork {
+        // 弹窗信息（标题/作者/相关作品）失败不阻塞整页正文
+        val info = runCatching { client.getCreatorWorkInfo(workId) }.getOrNull()
+        return toCreatorWork(info, client.getCreatorWorkDetail(workId), novelImageHost())
     }
 
     /** 小说封面与 API 同域：直接复用域名裁决结果；未就绪时返回空串，封面降级为 null。 */
