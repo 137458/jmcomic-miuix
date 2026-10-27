@@ -89,16 +89,15 @@ object Jm3Graph {
     /** 信箱未读数：登录后刷新，供底栏「我的」角标与我的页入口共用。 */
     val unreadNotifications = MutableStateFlow(0)
 
-    /** 重新统计未读通知；未登录或请求失败时归零，避免角标常驻。 */
+    /** 重新统计未读通知；未登录归零，请求失败保留上次结果避免角标闪烁。 */
     fun refreshUnreadNotifications() {
         if (account.user.value == null) {
             unreadNotifications.value = 0
             return
         }
         appScope.launch {
-            unreadNotifications.value = runCatching {
-                gateway.notifications().items.count { !it.read }
-            }.getOrDefault(0)
+            runCatching { gateway.notifications().items.count { !it.read } }
+                .onSuccess { unreadNotifications.value = it }
         }
     }
 

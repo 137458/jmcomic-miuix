@@ -25,53 +25,79 @@ import com.jm3.core.model.WeeklyPicksDetail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 每周必看：期数切换 + 当期作品列表；接口一次返回整期，无分页。 */
+/**
+ * 每周必看：期数下拉 + 当期作品列表。
+ * 原版页面为「期数下拉 + 类型分段 + 分页」；协议库的期数详情只接受期数 id，
+ * 不支持类型与页码参数，因此这里只做期数切换，不伪造类型筛选。
+ */
 @Composable
 fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     var periods by remember { mutableStateOf<List<WeeklyPeriod>>(emptyList()) }
     var selected by rememberSaveable { mutableIntStateOf(0) }
     var detail by remember { mutableStateOf<WeeklyPicksDetail?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var periodsLoading by remember { mutableStateOf(true) }
+    var periodsError by remember { mutableStateOf<String?>(null) }
+    var detailLoading by remember { mutableStateOf(false) }
+    var detailError by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
-    // 快速切期时旧响应不能覆盖当前期
-    var token by remember { mutableIntStateOf(0) }
+    // 快速切期时旧响应不能覆盖当前期的结果
+    var detailToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    fun load(showLoading: Boolean = true) {
-        token++
-        val current = token
-        if (showLoading) loading = true
-        error = null
-        val target = selected
+    fun loadDetail(period: WeeklyPeriod, showLoading: Boolean = true) {
+        detailToken++
+        val current = detailToken
+        if (showLoading) detailLoading = true
+        detailError = null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val list = Jm3Graph.gateway.weeklyPicks().periods
-                    val period = list.getOrNull(target.coerceIn(0, (list.size - 1).coerceAtLeast(0)))
-                    list to period?.let { Jm3Graph.gateway.weeklyPicksDetail(it.id) }
-                }
+                runCatching { Jm3Graph.gateway.weeklyPicksDetail(period.id) }
             }
-            if (current != token) return@launch
-            loading = false
+            if (current != detailToken) return@launch
+            detailLoading = false
             refreshing = false
-            result.fold(
-                onSuccess = { (list, picked) ->
-                    periods = list
-                    selected = selected.coerceIn(0, (list.size - 1).coerceAtLeast(0))
-                    detail = picked
-                },
-                onFailure = { error = it.message ?: "加载失败" },
-            )
+            result
+                .onSuccess { detail = it }
+                .onFailure { detailError = it.message ?: "加载失败" }
         }
     }
 
-    LaunchedEffect(Unit) { load() }
+    // 期数列表只在进入页面/下拉刷新时取一次；切期只重取当期，避免每次切期都请求列表
+    fun loadPeriods() {
+        periodsLoading = true
+        periodsError = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.weeklyPicks() }
+            }
+            periodsLoading = false
+            refreshing = false
+            result
+                .onSuccess { picks ->
+                    periods = picks.periods
+                    val index = selected.coerceIn(0, (periods.size - 1).coerceAtLeast(0))
+                    selected = index
+                    val period = periods.getOrNull(index)
+                    if (period == null) {
+                        detail = null
+                    } else {
+                        loadDetail(period, showLoading = detail == null)
+                    }
+                }
+                .onFailure { periodsError = it.message ?: "加载失败" }
+        }
+    }
+
+    LaunchedEffect(Unit) { loadPeriods() }
 
     Scaffold(
         topBar = {
@@ -82,45 +108,74 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
             )
         },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            if (periods.size > 1) {
-                TabRow(
-                    tabs = periods.map { it.title },
-                    selectedTabIndex = selected,
-                    onTabSelected = { index ->
-                        if (index != selected) {
+        when {
+            periodsLoading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+            periodsError != null -> ErrorScreen(
+                message = "加载失败：$periodsError",
+                onRetry = ::loadPeriods,
+                modifier = Modifier.padding(innerPadding),
+            )
+            periods.isEmpty() -> CenteredEmptyState(
+                title = "暂无每周必看",
+                hint = "稍后再来看看",
+                modifier = Modifier.padding(innerPadding),
+            )
+            else -> Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    val current = periods[selected.coerceIn(0, periods.lastIndex)]
+                    OverlaySpinnerPreference(
+                        items = periods.map { DropdownItem(text = it.title, selected = it.id == current.id) },
+                        selectedIndex = selected.coerceIn(0, periods.lastIndex),
+                        title = "期数",
+                        summary = current.time.ifBlank { current.title },
+                        showValue = false,
+                        onSelectedIndexChange = { index ->
+                            val period = periods.getOrNull(index) ?: return@OverlaySpinnerPreference
+                            if (index == selected) return@OverlaySpinnerPreference
                             selected = index
-                            load()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-            }
-            when {
-                error != null -> ErrorScreen(
-                    message = "加载失败：$error",
-                    onRetry = { load() },
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                )
-                loading -> LoadingScreen()
-                periods.isEmpty() -> CenteredEmptyState(
-                    title = "暂无每周必看",
-                    hint = "稍后再来看看",
-                )
-                else -> PullToRefresh(
+                            detail = null
+                            loadDetail(period)
+                        },
+                    )
+                }
+                // 期数时间范围紧跟选择器，和原版菜单里的时间文案对应
+                val current = periods[selected.coerceIn(0, periods.lastIndex)]
+                if (current.time.isNotBlank()) {
+                    Text(
+                        text = current.time,
+                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                    )
+                }
+                PullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = {
                         refreshing = true
-                        load(showLoading = false)
+                        loadDetail(periods[selected.coerceIn(0, periods.lastIndex)], showLoading = false)
                     },
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    val loaded = detail
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        if (loaded == null || loaded.items.isEmpty()) {
-                            item(key = "empty") { EmptyState(title = "本期暂无内容") }
-                        } else {
-                            searchResultItems(
+                        val loaded = detail
+                        when {
+                            detailLoading -> item(key = "loading") {
+                                LoadingScreen(modifier = Modifier.fillMaxWidth().padding(24.dp))
+                            }
+                            detailError != null -> item(key = "error") {
+                                // 期数列表已成功，只有当期失败：保留下拉选择器重试
+                                ErrorScreen(
+                                    message = "加载失败：$detailError",
+                                    onRetry = {
+                                        loadDetail(periods[selected.coerceIn(0, periods.lastIndex)])
+                                    },
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                )
+                            }
+                            loaded == null || loaded.items.isEmpty() -> item(key = "empty") {
+                                EmptyState(title = "本期暂无内容")
+                            }
+                            else -> searchResultItems(
                                 page = SearchPage(
                                     currentPage = 1,
                                     totalPages = 1,

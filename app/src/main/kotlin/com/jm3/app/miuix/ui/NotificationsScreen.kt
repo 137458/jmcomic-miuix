@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,11 +34,19 @@ import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 信箱：漫画更新与站内通知；点击未读条目即标记已读并同步底栏角标。 */
+/** 信箱分类：全部 / 漫画追更 / 站内通知，与原版页签一致。 */
+private enum class NotificationTab(val label: String, val type: String?) {
+    ALL("全部", null),
+    FOLLOW("追更", "comic_follow"),
+    NOTICE("站内", "site_notice"),
+}
+
+/** 信箱：通知列表、按类型筛选、点击标记已读；底栏未读数随列表状态同步。 */
 @Composable
 fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
     var page by remember { mutableStateOf<NotificationPage?>(null) }
@@ -45,6 +54,8 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
     var error by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     var marking by remember { mutableStateOf(false) }
+    var tabValue by rememberSaveable { mutableStateOf(NotificationTab.ALL.name) }
+    val tab = NotificationTab.entries.firstOrNull { it.name == tabValue } ?: NotificationTab.ALL
     val scope = rememberCoroutineScope()
 
     fun syncUnread(items: List<NotificationItem>) {
@@ -53,7 +64,6 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
 
     fun load(showLoading: Boolean = true) {
         if (showLoading) loading = true
-        error = null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { Jm3Graph.gateway.notifications() }
@@ -62,10 +72,18 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
             refreshing = false
             result
                 .onSuccess {
+                    error = null
                     page = it
                     syncUnread(it.items)
                 }
-                .onFailure { error = it.message ?: "信箱加载失败" }
+                .onFailure {
+                    // 已有数据时保留列表，只用 Snackbar 提示刷新失败，避免整屏被错误态替换
+                    if (page == null) {
+                        error = it.message ?: "信箱加载失败"
+                    } else {
+                        snackbarHostState.showSnackbar("刷新失败：" + (it.message ?: "请稍后重试"))
+                    }
+                }
         }
     }
 
@@ -89,7 +107,14 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
 
     LaunchedEffect(Unit) { load() }
 
-    val unread = page?.items?.count { !it.read } ?: 0
+    val items = page?.items.orEmpty()
+    val visible = items.filter { tab.type == null || it.type == tab.type }
+    val unread = items.count { !it.read }
+    val tabLabels = NotificationTab.entries.map { entry ->
+        val count = items.count { !it.read && (entry.type == null || it.type == entry.type) }
+        if (count > 0) "${entry.label} $count" else entry.label
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -107,55 +132,66 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
                 modifier = Modifier.padding(innerPadding),
             )
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            else -> PullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = {
-                    refreshing = true
-                    load(showLoading = false)
-                },
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
-                contentPadding = innerPadding,
-            ) {
-                val items = page?.items.orEmpty()
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    if (items.isEmpty()) {
-                        item(key = "empty") {
-                            EmptyState(title = "暂无消息", hint = "订阅作品更新后会收到通知")
+            else -> Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                if (items.isNotEmpty()) {
+                    TabRow(
+                        tabs = tabLabels,
+                        selectedTabIndex = NotificationTab.entries.indexOf(tab),
+                        onTabSelected = { tabValue = NotificationTab.entries[it].name },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+                PullToRefresh(
+                    isRefreshing = refreshing,
+                    onRefresh = {
+                        refreshing = true
+                        load(showLoading = false)
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        if (visible.isEmpty()) {
+                            item(key = "empty") {
+                                EmptyState(
+                                    title = if (items.isEmpty()) "暂无消息" else "暂无此类消息",
+                                    hint = "订阅作品更新后会收到通知",
+                                )
+                            }
                         }
-                    }
-                    items(items, key = { it.id }) { item ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp),
-                            onClick = { markRead(item) },
-                        ) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = item.title,
-                                        fontSize = MiuixTheme.textStyles.body2.fontSize,
-                                        fontWeight = FontWeight.Medium,
-                                    )
-                                    if (!item.read) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Badge()
+                        items(visible, key = { it.id }) { item ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp),
+                                onClick = { markRead(item) },
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = item.title,
+                                            fontSize = MiuixTheme.textStyles.body2.fontSize,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                        if (!item.read) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Badge()
+                                        }
                                     }
-                                }
-                                if (item.content.isNotBlank()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(text = item.content, fontSize = MiuixTheme.textStyles.body1.fontSize)
-                                }
-                                item.time?.takeIf { it.isNotBlank() }?.let {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = it,
-                                        fontSize = MiuixTheme.textStyles.footnote2.fontSize,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
+                                    if (item.content.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(text = item.content, fontSize = MiuixTheme.textStyles.body1.fontSize)
+                                    }
+                                    item.time?.takeIf { it.isNotBlank() }?.let {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = it,
+                                            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                        )
+                                    }
                                 }
                             }
                         }
+                        item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                     }
-                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                 }
             }
         }

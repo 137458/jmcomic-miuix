@@ -68,7 +68,8 @@ fun SearchScreen(
         if (byPull) refreshing = true
         requestToken++
         val token = requestToken
-        state = SearchUiState.Loading
+        // 下拉刷新时保留当前结果，避免列表在刷新指示器下方整屏消失
+        if (!byPull) state = SearchUiState.Loading
         coroutineScope.launch {
             val next = withContext(Dispatchers.IO) { runCatching { fetch(1, order) } }
             if (token != requestToken) return@launch
@@ -100,7 +101,7 @@ fun SearchScreen(
         loadFirstPage()
     }
 
-    LaunchedEffect(state) {
+    LaunchedEffect((state as? SearchUiState.Loaded)?.page) {
         if (state !is SearchUiState.Loaded) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo

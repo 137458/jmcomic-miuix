@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,6 +60,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     var loadingMore by remember { mutableStateOf(false) }
     // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
     var refreshing by remember { mutableStateOf(false) }
+    // 快速切换筛选时旧响应不能覆盖新条件的结果
+    var requestToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -73,12 +76,17 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
 
     fun refresh(byPull: Boolean = false) {
         if (byPull) refreshing = true
+        requestToken++
+        val token = requestToken
+        // 下拉刷新时保留当前列表，避免刷新指示器下方整屏空白
+        if (!byPull) state = BrowseUiState.Loading
         scope.launch {
-            state = BrowseUiState.Loading
-            state = withContext(Dispatchers.IO) {
+            val next = withContext(Dispatchers.IO) {
                 runCatching { BrowseUiState.Loaded(gateway.browse(filter(), 1)) }
                     .getOrElse { BrowseUiState.Failed(it.message ?: "加载失败") }
             }
+            if (token != requestToken) return@launch
+            state = next
             refreshing = false
         }
     }
@@ -87,12 +95,14 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         val loaded = state as? BrowseUiState.Loaded ?: return
         if (loadingMore || loaded.page.currentPage >= loaded.page.totalPages) return
         loadingMore = true
+        val token = requestToken
         scope.launch {
             val next = withContext(Dispatchers.IO) {
                 runCatching { gateway.browse(filter(), loaded.page.currentPage + 1) }.getOrNull()
             }
             loadingMore = false
-            if (next != null) {
+            // 加载期间切换了筛选：这批结果属于旧条件，丢弃以免串页
+            if (next != null && token == requestToken) {
                 state = loaded.copy(page = loaded.page.mergedWith(next))
             }
         }
