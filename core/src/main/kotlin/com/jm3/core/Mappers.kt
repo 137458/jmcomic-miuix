@@ -3,6 +3,7 @@ package com.jm3.core
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.CategoryBlock
 import com.jm3.core.model.CategoryNode
 import com.jm3.core.model.CategoryTree
@@ -153,16 +154,22 @@ fun SearchScope.toMainTag(): SearchMainTag = when (this) {
     SearchScope.ACTOR -> SearchMainTag.ACTOR
 }
 
-/** 关键词/标签搜索查询；mainTag 决定站内搜索或标签检索。 */
+/** 时间范围映射：core 枚举值即库 TimeOption 的 API 值。 */
+fun BrowseTime.toTimeOption(): TimeOption =
+    TimeOption.entries.firstOrNull { it.value == apiValue } ?: TimeOption.ALL
+
+/** 关键词/标签搜索查询；mainTag 决定站内搜索或标签检索，time 由服务端过滤时间范围。 */
 fun searchQuery(
     text: String,
     page: Int,
     mainTag: SearchMainTag,
     order: BrowseOrder,
+    time: BrowseTime = BrowseTime.ALL,
 ): SearchQuery = SearchQuery.Builder()
     .mainTag(mainTag)
     .text(text)
     .orderBy(order.toOrderBy())
+    .time(time.toTimeOption())
     .page(page)
     .build()
 

@@ -45,6 +45,7 @@ import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
 import com.jm3.core.settings.SettingsRepository
+import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.model.SearchScope
 import java.io.File
@@ -88,6 +89,9 @@ object Jm3Graph {
 
     /** 信箱未读数：登录后刷新，供底栏「我的」角标与我的页入口共用。 */
     val unreadNotifications = MutableStateFlow(0)
+
+    /** 列表分页模式：设置页写入后各列表页立即生效（跨 tab 无需重建）。 */
+    var paginationMode by mutableStateOf(PaginationMode.INFINITE)
 
     /** 重新统计未读通知；未登录归零，请求失败保留上次结果避免角标闪烁。 */
     fun refreshUnreadNotifications() {
@@ -234,6 +238,7 @@ fun Jm3App() {
     LaunchedEffect(Unit) {
         themeModeName = Jm3Graph.settings.themeMode().name
         dynamicColor = Jm3Graph.settings.dynamicColor()
+        Jm3Graph.paginationMode = Jm3Graph.settings.paginationMode()
         Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
         Jm3Graph.account.restore()
     }

@@ -3,7 +3,10 @@ package com.jm3.app.miuix.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,15 +36,18 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.jm3.app.miuix.Jm3Graph
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
@@ -56,11 +63,19 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.extended.ExpandLess
 import top.yukonga.miuix.kmp.icon.extended.Promotions
 import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.icon.extended.Weeks
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/** 连载更新横滑区最多展示的条目数，避免首屏请求体过大。 */
+private const val SERIAL_CAROUSEL_LIMIT = 12
+
+/** 热门标签折叠时展示的标签数。 */
+private const val HOT_TAG_COLLAPSED = 8
 
 private sealed interface HomeListState {
     data object Loading : HomeListState
@@ -68,7 +83,7 @@ private sealed interface HomeListState {
     data class Failed(val message: String) : HomeListState
 }
 
-/** 首页：固定搜索栏 + 发现流（热门标签/随便看看/最新上架）或搜索结果。 */
+/** 首页：固定搜索栏 + 发现流（连载更新/热门标签/随便看看/最新上架）或搜索结果。 */
 @Composable
 fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
@@ -80,7 +95,11 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
     var feed by remember { mutableStateOf<HomeListState>(HomeListState.Loading) }
     var results by remember { mutableStateOf<HomeListState?>(null) }
     var hotTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var serialUpdates by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var randomPicks by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+    var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showAllTags by remember { mutableStateOf(false) }
+    var showSearchHelp by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     // 仅下拉手势触发的刷新使用顶部指示器；普通加载由列表内进度条表达。
     var refreshing by remember { mutableStateOf(false) }
@@ -90,9 +109,21 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
     val listState = rememberLazyListState()
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
+    // 分页模式是 Jm3Graph 的全局可观察状态，设置页切换后本页立即变更控件形态。
+    val clickPaging = Jm3Graph.paginationMode == PaginationMode.CLICK
 
     fun requestSearch(page: Int, byTag: Boolean, text: String, sort: BrowseOrder): SearchPage =
         gateway.search(text, page, sort, if (byTag) SearchScope.TAG else SearchScope.SITE)
+
+    /** 搜索历史读写都在 IO 线程，写入后重新读取，UI 只拿最新快照。 */
+    fun mutateHistory(block: suspend () -> Unit) {
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { block() } }
+            searchHistory = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.settings.searchHistory() }.getOrDefault(searchHistory)
+            }
+        }
+    }
 
     fun loadFeed(page: Int, token: Int) {
         scope.launch {
@@ -116,6 +147,8 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         listToken++
         val token = listToken
         results = HomeListState.Loading
+        // 提交即记录：标签检索与排序切换也会把当前关键词前移。
+        mutateHistory { Jm3Graph.settings.addSearchHistory(trimmed) }
         scope.launch {
             val next = withContext(Dispatchers.IO) {
                 runCatching { requestSearch(1, byTag, trimmed, sort) }
@@ -211,21 +244,61 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         }
     }
 
-    // 首屏：最新上架 + 热门标签 + 随机推荐并行加载；标签/随机失败不阻塞主列表。
+    /** 点击分页：用目标页整页替换当前列表，成功后回到列表顶部。 */
+    fun jumpToPage(target: Int) {
+        val current = activePage() ?: return
+        if (target < 1 || target > current.totalPages) return
+        val searching = results != null
+        val text = activeQuery
+        val byTag = searchByTag
+        val nextOrder = order
+        listToken++
+        val token = listToken
+        if (searching) results = HomeListState.Loading else feed = HomeListState.Loading
+        scope.launch {
+            val next = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (searching) requestSearch(target, byTag, text, nextOrder)
+                    else gateway.latest(target)
+                }
+            }
+            if (token != listToken) return@launch
+            next.fold(
+                onSuccess = { page ->
+                    if (searching) results = HomeListState.Loaded(page) else feed = HomeListState.Loaded(page)
+                    listState.scrollToItem(0)
+                },
+                onFailure = { error ->
+                    val failed = HomeListState.Failed(error.message ?: "网络错误")
+                    if (searching) results = failed else feed = failed
+                },
+            )
+        }
+    }
+
+    // 首屏：最新上架 + 连载更新 + 热门标签 + 随机推荐 + 搜索历史并行加载；附属区块失败静默隐藏。
     LaunchedEffect(gateway) {
         listToken++
         loadFeed(1, listToken)
         scope.launch {
             val tags = withContext(Dispatchers.IO) { runCatching { gateway.hotTags() }.getOrDefault(emptyList()) }
             val picks = withContext(Dispatchers.IO) { runCatching { gateway.randomRecommend() }.getOrDefault(emptyList()) }
+            val updates = withContext(Dispatchers.IO) {
+                runCatching { gateway.serialization(1).items.take(SERIAL_CAROUSEL_LIMIT) }.getOrDefault(emptyList())
+            }
+            val storedHistory = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.settings.searchHistory() }.getOrDefault(emptyList())
+            }
             hotTags = tags
             randomPicks = picks
+            serialUpdates = updates
+            searchHistory = storedHistory
         }
     }
 
-    // 接近列表尾部时自动加载下一页；页面切换后重新订阅。
-    LaunchedEffect(activePage(), results != null) {
-        if (activePage() == null) return@LaunchedEffect
+    // 接近列表尾部时自动加载下一页；点击分页模式下禁用自动加载。页面切换后重新订阅。
+    LaunchedEffect(activePage(), results != null, clickPaging) {
+        if (clickPaging || activePage() == null) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo
             (info.visibleItemsInfo.lastOrNull()?.index ?: -1) to info.totalItemsCount
@@ -302,6 +375,42 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                         expanded = searchExpanded,
                         onExpandedChange = { searchExpanded = it },
                         label = "搜索 / 车号",
+                        // 自绘尾部动作：保留清空入口，并常驻「?」语法帮助。
+                        trailingIcon = {
+                            Row(
+                                modifier = Modifier.padding(end = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (query.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = {
+                                            query = ""
+                                            if (results != null) clearSearch()
+                                        },
+                                        minWidth = 32.dp,
+                                        minHeight = 32.dp,
+                                    ) {
+                                        Icon(
+                                            imageVector = MiuixIcons.Basic.Close,
+                                            contentDescription = "清空输入",
+                                            tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { showSearchHelp = true },
+                                    minWidth = 32.dp,
+                                    minHeight = 32.dp,
+                                ) {
+                                    Text(
+                                        text = "?",
+                                        style = MiuixTheme.textStyles.title4,
+                                        color = MiuixTheme.colorScheme.onSurfaceContainerHigh,
+                                    )
+                                }
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 },
@@ -348,30 +457,70 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 )
                             }
-                            is HomeListState.Loaded -> searchResultItems(
+                            is HomeListState.Loaded -> homePageItems(
                                 page = s.page,
+                                clickPaging = clickPaging,
                                 loadingMore = loadingMore,
                                 onLoadMore = ::loadMore,
+                                onPageChange = ::jumpToPage,
                                 onOpenAlbum = onOpenAlbum,
                             )
                             null -> Unit
                         }
                     } else {
-                        if (hotTags.isNotEmpty()) {
-                            item(key = "hot-tags-title") { SmallTitle(text = "热门标签") }
-                            item(key = "hot-tags") {
+                        // 仅当搜索框为空且未进入搜索态时展示搜索记录
+                        if (query.isBlank() && searchHistory.isNotEmpty()) {
+                            item(key = "search-history") {
+                                SearchHistoryCard(
+                                    history = searchHistory,
+                                    onPick = { word ->
+                                        query = word
+                                        runSearch(word, byTag = false, sort = order)
+                                    },
+                                    onRemove = { word ->
+                                        mutateHistory { Jm3Graph.settings.removeSearchHistory(word) }
+                                    },
+                                    onClear = {
+                                        mutateHistory { Jm3Graph.settings.clearSearchHistory() }
+                                    },
+                                )
+                            }
+                        }
+                        if (serialUpdates.isNotEmpty()) {
+                            item(key = "serial-title") { SmallTitle(text = "连载更新") }
+                            item(key = "serial-row") {
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    items(hotTags) { tag ->
-                                        TextButton(
-                                            text = tag,
-                                            onClick = { query = tag; runSearch(tag, byTag = true, sort = order) },
-                                            minWidth = 0.dp,
-                                            minHeight = 32.dp,
-                                        )
+                                    items(serialUpdates, key = { it.id }) { update ->
+                                        SerialUpdateCard(update = update, onClick = { onOpenAlbum(update.id) })
                                     }
+                                }
+                            }
+                        }
+                        if (hotTags.isNotEmpty()) {
+                            item(key = "hot-tags-title") {
+                                SectionHeader(
+                                    text = "热门标签",
+                                    actionText = if (hotTags.size > HOT_TAG_COLLAPSED) {
+                                        if (showAllTags) "收起" else "更多"
+                                    } else {
+                                        null
+                                    },
+                                    onAction = { showAllTags = !showAllTags },
+                                )
+                            }
+                            item(key = "hot-tags") {
+                                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                    HotTagFlow(
+                                        tags = hotTags,
+                                        expanded = showAllTags,
+                                        onClick = { tag ->
+                                            query = tag
+                                            runSearch(tag, byTag = true, sort = order)
+                                        },
+                                    )
                                 }
                             }
                         }
@@ -400,10 +549,12 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 )
                             }
-                            is HomeListState.Loaded -> searchResultItems(
+                            is HomeListState.Loaded -> homePageItems(
                                 page = s.page,
+                                clickPaging = clickPaging,
                                 loadingMore = loadingMore,
                                 onLoadMore = ::loadMore,
+                                onPageChange = ::jumpToPage,
                                 onOpenAlbum = onOpenAlbum,
                             )
                         }
@@ -412,7 +563,182 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                 }
             }
         }
+
+        // 原版搜索语法帮助：空格=同时包含，+ 必须包含，- 排除；按钮沿用 HyperOS 纵向全宽惯例。
+        OverlayDialog(
+            show = showSearchHelp,
+            title = "搜索语法",
+            summary = "用空格与 +/- 组合关键词，可缩小搜索范围。",
+            onDismissRequest = { showSearchHelp = false },
+        ) {
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                BasicComponent(title = "全彩 人妻", summary = "同时包含这两个关键词（空格分隔）")
+                BasicComponent(title = "全彩 +人妻", summary = "两个关键词都必须包含")
+                BasicComponent(title = "全彩 -人妻", summary = "包含「全彩」，排除「人妻」")
+            }
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+                TextButton(
+                    text = "知道了",
+                    onClick = { showSearchHelp = false },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
     }
+}
+
+/** 搜索记录卡：标题右侧清除全部，点击词条复搜，行尾删除单条。 */
+@Composable
+private fun SearchHistoryCard(
+    history: List<String>,
+    onPick: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "搜索记录",
+                style = MiuixTheme.textStyles.subtitle,
+                color = MiuixTheme.colorScheme.onBackgroundVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                text = "清除",
+                onClick = onClear,
+                minWidth = 0.dp,
+                minHeight = 28.dp,
+                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+            )
+        }
+        history.forEach { word ->
+            BasicComponent(
+                title = word,
+                onClick = { onPick(word) },
+                endActions = {
+                    IconButton(
+                        onClick = { onRemove(word) },
+                        minWidth = 36.dp,
+                        minHeight = 36.dp,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Basic.Close,
+                            contentDescription = "删除该记录",
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                },
+            )
+        }
+    }
+}
+
+/** 区块标题：文本 + 右侧可选文字入口（原版「查看更多」）。 */
+@Composable
+private fun SectionHeader(
+    text: String,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MiuixTheme.textStyles.subtitle,
+            color = MiuixTheme.colorScheme.onBackgroundVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (actionText != null && onAction != null) {
+            TextButton(
+                text = actionText,
+                onClick = onAction,
+                minWidth = 0.dp,
+                minHeight = 28.dp,
+                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+/** 热门标签胶囊流：默认折叠，更多/收起由区块标题控制。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HotTagFlow(tags: List<String>, expanded: Boolean, onClick: (String) -> Unit) {
+    val visible = if (expanded) tags else tags.take(HOT_TAG_COLLAPSED)
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        visible.forEach { tag ->
+            TextButton(
+                text = tag,
+                onClick = { onClick(tag) },
+                minWidth = 0.dp,
+                minHeight = 32.dp,
+                insideMargin = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+/** 连载更新卡：封面 + 标题 + 作者，横向滑动浏览。 */
+@Composable
+private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
+    Card(modifier = Modifier.width(112.dp), onClick = onClick) {
+        if (update.coverUrl != null) {
+            AsyncImage(
+                model = update.coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.width(112.dp).height(150.dp),
+            )
+        } else {
+            Spacer(modifier = Modifier.width(112.dp).height(150.dp))
+        }
+        Text(
+            text = update.title,
+            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+        Text(
+            text = update.authors.joinToString(" / ").ifBlank { "未知作者" },
+            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+        )
+    }
+}
+
+/** 结果列表分派：无限滚动沿用公共实现；点击分页复用公共单页列表与翻页条。 */
+private fun LazyListScope.homePageItems(
+    page: SearchPage,
+    clickPaging: Boolean,
+    loadingMore: Boolean,
+    onLoadMore: () -> Unit,
+    onPageChange: (Int) -> Unit,
+    onOpenAlbum: (String) -> Unit,
+) {
+    if (!clickPaging) {
+        searchResultItems(
+            page = page,
+            loadingMore = loadingMore,
+            onLoadMore = onLoadMore,
+            onOpenAlbum = onOpenAlbum,
+        )
+        return
+    }
+    pagedSearchResultItems(page = page, onPageChange = onPageChange, onOpenAlbum = onOpenAlbum)
 }
 
 /** 搜索结果头：关键词/结果数 + 排序分段控件。 */

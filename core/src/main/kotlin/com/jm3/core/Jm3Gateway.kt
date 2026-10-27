@@ -3,6 +3,7 @@ package com.jm3.core
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CookieSnapshot
@@ -34,12 +35,13 @@ import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
 
 interface Jm3Gateway {
-    /** 搜索。scope 对应原版搜索类型（站内/作品/作者/标签/登场人物）。阻塞调用。 */
+    /** 搜索。scope 对应原版搜索类型（站内/作品/作者/标签/登场人物），time 由服务端过滤时间范围。阻塞调用。 */
     fun search(
         text: String,
         page: Int,
         order: BrowseOrder = BrowseOrder.LATEST,
         scope: SearchScope = SearchScope.SITE,
+        time: BrowseTime = BrowseTime.ALL,
     ): SearchPage
 
     /** 最新上架列表。阻塞调用。 */
@@ -197,8 +199,13 @@ class Jm3GatewayImpl internal constructor(
 
     private val domainControls: DomainControls by lazy(domainControlsProvider)
 
-    override fun search(text: String, page: Int, order: BrowseOrder, scope: SearchScope): SearchPage =
-        client.search(searchQuery(text, page, scope.toMainTag(), order)).toPage()
+    override fun search(
+        text: String,
+        page: Int,
+        order: BrowseOrder,
+        scope: SearchScope,
+        time: BrowseTime,
+    ): SearchPage = client.search(searchQuery(text, page, scope.toMainTag(), order, time)).toPage()
 
     override fun latest(page: Int): SearchPage = client.getLatest(page).toPage()
 
