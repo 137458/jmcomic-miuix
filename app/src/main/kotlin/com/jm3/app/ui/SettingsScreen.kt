@@ -1,7 +1,9 @@
 package com.jm3.app.ui
 
 import android.content.Context
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,25 +26,41 @@ import androidx.compose.ui.unit.sp
 import com.jm3.app.Jm3Graph
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.ThemeMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.RadioButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.SnackbarHost
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.RadioButtonPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private fun ThemeMode.label(): String = when (this) {
+    ThemeMode.SYSTEM -> "跟随系统"
+    ThemeMode.LIGHT -> "浅色"
+    ThemeMode.DARK -> "深色"
+}
 
 /** 设置中心：主题/线路/数据管理/关于。内容一屏内可读，关于作为分区而非独立页。 */
 @Composable
 fun SettingsScreen(
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
+    dynamicColor: Boolean,
+    onDynamicColorChange: (Boolean) -> Unit,
     onBack: () -> Unit,
+    snackbarHostState: SnackbarHostState,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -51,15 +69,57 @@ fun SettingsScreen(
     var loadedSaved by rememberSaveable { mutableStateOf(false) }
     val activeDomains = rememberSaveable { mutableStateOf("") }
     val applying = remember { mutableStateOf(false) }
-    val applyResult = remember { mutableStateOf<String?>(null) }
+
+    // 线路诊断：当前实际域名与各域名探活延迟（毫秒升序）。
+    var usedDomain by remember { mutableStateOf<String?>(null) }
+    var domainLatency by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    var reprobeBusy by remember { mutableStateOf(false) }
+    var diagError by remember { mutableStateOf<String?>(null) }
 
     // 破坏性操作二次确认：3 秒未确认自动复位。
     var confirmClear by remember { mutableStateOf<String?>(null) }
+    var showDisclaimer by remember { mutableStateOf(false) }
 
     val versionName = remember {
         @Suppress("DEPRECATION")
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "未知"
+    }
+
+    fun loadDomainsDiagnostics() {
+        scope.launch {
+            diagError = null
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    Jm3Graph.gateway.usedDomain() to
+                        Jm3Graph.gateway.domainLatency().entries
+                            .sortedBy { it.value }
+                            .map { it.key to it.value }
+                }
+            }
+            result
+                .onSuccess { (domain, latency) ->
+                    usedDomain = domain
+                    domainLatency = latency
+                }
+                .onFailure { diagError = it.message ?: "线路诊断失败" }
+        }
+    }
+
+    fun reprobeDomains() {
+        if (reprobeBusy) return
+        reprobeBusy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.reprobeDomains() }
+            }
+            reprobeBusy = false
+            result
+                .onSuccess { snackbarHostState.showSnackbar("线路探活完成") }
+                .onFailure { snackbarHostState.showSnackbar("探活失败：" + (it.message ?: "未知错误")) }
+            // 无论成败都重读一次：失败时也保留上一次可用的探活结果。
+            loadDomainsDiagnostics()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -69,6 +129,7 @@ fun SettingsScreen(
             domainsInput.value = saved.joinToString("\n")
             activeDomains.value = saved.joinToString("、")
         }
+        loadDomainsDiagnostics()
     }
     LaunchedEffect(confirmClear) {
         if (confirmClear != null) {
@@ -77,8 +138,11 @@ fun SettingsScreen(
         }
     }
 
+    val clearingHistory = confirmClear == "history"
+
     Scaffold(
         topBar = { TopAppBar(title = "设置", navigationIcon = { BackButton(onBack = onBack) }) },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -89,17 +153,18 @@ fun SettingsScreen(
             SmallTitle(text = "主题")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ThemeMode.entries.forEach { mode ->
-                    BasicComponent(
-                        title = when (mode) {
-                            ThemeMode.SYSTEM -> "跟随系统"
-                            ThemeMode.LIGHT -> "浅色"
-                            ThemeMode.DARK -> "深色"
-                        },
-                        summary = null,
-                        endActions = { RadioButton(selected = themeMode == mode, onClick = null) },
+                    RadioButtonPreference(
+                        title = mode.label(),
+                        selected = themeMode == mode,
                         onClick = { onThemeModeChange(mode) },
                     )
                 }
+                SwitchPreference(
+                    title = "动态取色",
+                    summary = "跟随壁纸生成配色（Android 12 及以上）",
+                    checked = dynamicColor,
+                    onCheckedChange = onDynamicColorChange,
+                )
             }
 
             SmallTitle(text = "线路")
@@ -111,13 +176,41 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 Text(
-                    text = "API 域名（每行一个，留空恢复默认）",
+                    text = "实际线路：" + (usedDomain ?: "未解析"),
                     fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                if (domainLatency.isEmpty()) {
+                    Text(
+                        text = "尚未完成线路探活",
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                } else {
+                    domainLatency.forEach { (domain, latencyMs) ->
+                        BasicComponent(title = domain, summary = "${latencyMs} ms")
+                    }
+                }
+                diagError?.let { message ->
+                    Text(
+                        text = "线路诊断失败：$message",
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+                TextButton(
+                    text = if (reprobeBusy) "探活中…" else "重新探活",
+                    onClick = ::reprobeDomains,
+                    enabled = !reprobeBusy,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
                 TextField(
                     value = domainsInput.value,
                     onValueChange = { domainsInput.value = it },
+                    label = "API 域名（每行一个，留空恢复默认）",
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                 )
                 TextButton(
@@ -130,71 +223,105 @@ fun SettingsScreen(
                             Jm3Graph.settings.setApiDomains(domains)
                             Jm3Graph.applyDomains(domains)
                             activeDomains.value = domains.joinToString("、")
-                            applyResult.value =
-                                if (domains.isEmpty()) "已恢复默认线路" else "已应用 ${domains.size} 个线路域名"
                             applying.value = false
+                            // 网关已重建，诊断数据属于旧实例，重新读取。
+                            loadDomainsDiagnostics()
+                            snackbarHostState.showSnackbar(
+                                if (domains.isEmpty()) "已恢复默认线路" else "已应用 ${domains.size} 个线路域名",
+                            )
                         }
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
-                applyResult.value?.let { msg ->
-                    Text(
-                        text = msg,
-                        fontSize = 13.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
             }
 
             SmallTitle(text = "数据管理")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                BasicComponent(
+                ArrowPreference(
                     title = "清空阅读历史",
-                    summary = if (confirmClear == "history") "再点一次确认清空" else null,
-                    onClick = {
-                        if (confirmClear == "history") {
-                            confirmClear = null
-                            scope.launch { Jm3Graph.history.clear() }
-                        } else {
-                            confirmClear = "history"
-                        }
-                    },
+                    summary = "移除全部阅读记录",
+                    onClick = { confirmClear = "history" },
                 )
-                BasicComponent(
+                ArrowPreference(
                     title = "清空下载",
-                    summary = if (confirmClear == "downloads") "再点一次确认清空（含已下载文件）" else null,
-                    onClick = {
-                        if (confirmClear == "downloads") {
-                            confirmClear = null
-                            scope.launch { Jm3Graph.downloadManager.clearAll() }
-                        } else {
-                            confirmClear = "downloads"
-                        }
-                    },
+                    summary = "清除下载任务与已下载文件",
+                    onClick = { confirmClear = "downloads" },
                 )
             }
 
             SmallTitle(text = "关于")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                BasicComponent(title = "版本", summary = versionName, onClick = null)
+                // 只读信息行不画箭头，避免误导为可点击项。
+                BasicComponent(title = "版本", summary = versionName)
                 BasicComponent(
                     title = "开源组件",
                     summary = "jmcomic-api (MIT) · Miuix (Apache-2.0) · Coil (Apache-2.0) · Jetpack Compose (Apache-2.0)",
-                    onClick = null,
                 )
-            }
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                Text(
-                    text = "免责声明：本应用为第三方客户端，与禁漫官方无关，仅供学习交流；" +
-                        "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +
-                        "未满 18 周岁（或当地法定年龄）请勿使用；因使用本应用产生的一切后果由使用者自行承担。",
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                ArrowPreference(
+                    title = "免责声明",
+                    summary = "第三方客户端，仅供学习交流，包含成人内容",
+                    onClick = { showDisclaimer = true },
                 )
             }
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        OverlayDialog(
+            show = confirmClear != null,
+            title = if (clearingHistory) "清空阅读历史" else "清空下载",
+            summary = if (clearingHistory) {
+                "将删除全部阅读记录，此操作不可撤销。"
+            } else {
+                "将删除全部下载任务并清除已下载文件，此操作不可撤销。"
+            },
+            onDismissRequest = { confirmClear = null },
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                TextButton(
+                    text = "取消",
+                    onClick = { confirmClear = null },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "确认清空",
+                    onClick = {
+                        val target = confirmClear
+                        confirmClear = null
+                        scope.launch {
+                            when (target) {
+                                "history" -> Jm3Graph.history.clear()
+                                "downloads" -> Jm3Graph.downloadManager.clearAll()
+                            }
+                            snackbarHostState.showSnackbar(
+                                if (target == "history") "已清空阅读历史" else "已清空下载",
+                            )
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        OverlayDialog(
+            show = showDisclaimer,
+            title = "免责声明",
+            onDismissRequest = { showDisclaimer = false },
+        ) {
+            Text(
+                text = "本应用为第三方客户端，与禁漫官方无关，仅供学习交流；" +
+                    "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +
+                    "未满 18 周岁（或当地法定年龄）请勿使用；因使用本应用产生的一切后果由使用者自行承担。",
+                fontSize = 14.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            )
+            TextButton(
+                text = "知道了",
+                onClick = { showDisclaimer = false },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+            )
         }
     }
 }

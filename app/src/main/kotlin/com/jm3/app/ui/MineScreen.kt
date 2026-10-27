@@ -9,25 +9,36 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jm3.app.Jm3Graph
 import com.jm3.app.data.AccountManager
+import com.jm3.core.model.DailyCheckInStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun MineScreen(
     account: AccountManager,
+    snackbarHostState: SnackbarHostState,
     onOpenLogin: () -> Unit,
     onOpenFavorites: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -36,6 +47,57 @@ fun MineScreen(
 ) {
     val user by account.user.collectAsState()
     val scope = rememberCoroutineScope()
+
+    var checkInStatus by remember { mutableStateOf<DailyCheckInStatus?>(null) }
+    var checkInLoading by remember { mutableStateOf(false) }
+    var checkInError by remember { mutableStateOf<String?>(null) }
+    var checkInBusy by remember { mutableStateOf(false) }
+    var checkedIn by remember { mutableStateOf(false) }
+
+    // 加载签到状态；失败保留 error 由卡片上的重试行兜底。
+    fun loadCheckInStatus() {
+        val uid = user?.uid ?: return
+        scope.launch {
+            checkInLoading = true
+            checkInError = null
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }
+            }
+            checkInLoading = false
+            result
+                .onSuccess { checkInStatus = it }
+                .onFailure { checkInError = it.message ?: "签到状态加载失败" }
+        }
+    }
+
+    // 签到成功后刷新进度并提示；本次会话内禁止重复点击。
+    fun performCheckIn(status: DailyCheckInStatus) {
+        val uid = user?.uid ?: return
+        if (checkInBusy || checkedIn) return
+        checkInBusy = true
+        checkInError = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.dailyCheckIn(uid, status.dailyId) }
+            }
+            checkInBusy = false
+            result
+                .onSuccess {
+                    checkedIn = true
+                    snackbarHostState.showSnackbar("签到成功")
+                    loadCheckInStatus()
+                }
+                .onFailure { checkInError = it.message ?: "签到失败，请重试" }
+        }
+    }
+
+    // 切换账号时清掉上一个账号的签到状态，避免串号。
+    LaunchedEffect(user?.uid) {
+        checkInStatus = null
+        checkInError = null
+        checkedIn = false
+        if (user != null) loadCheckInStatus()
+    }
 
     Scaffold { innerPadding ->
         Column(
@@ -50,25 +112,60 @@ fun MineScreen(
                 if (u == null) {
                     BasicComponent(title = "未登录", summary = "点击登录账号", onClick = onOpenLogin)
                 } else {
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Text(text = u.username, fontSize = 18.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Lv.${u.level} ${u.levelName ?: ""} · 经验 ${u.currentExp}/${u.nextLevelExp} · 硬币 ${u.coin}",
-                            fontSize = 13.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    BasicComponent(
+                        title = u.username,
+                        summary = "Lv.${u.level} ${u.levelName ?: ""} · 经验 ${u.currentExp}/${u.nextLevelExp} · 硬币 ${u.coin}",
+                    )
+                    ArrowPreference(
+                        title = "退出登录",
+                        onClick = { scope.launch { account.logout() } },
+                    )
+                }
+            }
+            if (user != null) {
+                SmallTitle(text = "每日签到")
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    val status = checkInStatus
+                    when {
+                        status != null -> {
+                            BasicComponent(
+                                title = status.eventName,
+                                summary = "已签到 ${status.signedDays}/${status.totalDays} 天 · 奖励进度 ${status.currentProgress}",
+                            )
+                            TextButton(
+                                text = when {
+                                    checkInBusy -> "签到中…"
+                                    checkedIn -> "今日已签到"
+                                    else -> "签到"
+                                },
+                                onClick = { performCheckIn(status) },
+                                enabled = !checkInBusy && !checkedIn,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                            checkInError?.let { message ->
+                                Text(
+                                    text = message,
+                                    fontSize = 13.sp,
+                                    color = MiuixTheme.colorScheme.error,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                )
+                            }
+                        }
+                        checkInLoading -> BasicComponent(title = "签到", summary = "加载中…")
+                        else -> BasicComponent(
+                            title = "签到",
+                            summary = checkInError ?: "暂无签到信息，点击重试",
+                            onClick = ::loadCheckInStatus,
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(text = "退出登录", onClick = { scope.launch { account.logout() } })
                     }
                 }
             }
             SmallTitle(text = "功能")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                BasicComponent(title = "我的收藏", summary = null, onClick = onOpenFavorites)
-                BasicComponent(title = "阅读历史", summary = null, onClick = onOpenHistory)
-                BasicComponent(title = "本地书架", summary = null, onClick = onOpenShelf)
-                BasicComponent(title = "设置", summary = null, onClick = onOpenSettings)
+                ArrowPreference(title = "我的收藏", onClick = onOpenFavorites)
+                ArrowPreference(title = "阅读历史", onClick = onOpenHistory)
+                ArrowPreference(title = "本地书架", onClick = onOpenShelf)
+                ArrowPreference(title = "设置", onClick = onOpenSettings)
             }
             Spacer(modifier = Modifier.height(24.dp))
         }

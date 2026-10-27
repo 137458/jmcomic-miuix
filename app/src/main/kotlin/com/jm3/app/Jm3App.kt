@@ -1,14 +1,19 @@
 package com.jm3.app
 
+import android.app.Activity
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.room.Room
 import com.jm3.app.data.AccountManager
 import com.jm3.app.data.SessionStore
@@ -43,6 +48,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
@@ -106,11 +112,14 @@ object Jm3Graph {
 
     /** 应用自定义 API 线路：重建网关并把已持久化会话迁移过去；空表回库默认解析。 */
     suspend fun applyDomains(apiDomains: List<String>) {
+        // 旧网关的 HTTP 客户端持有连接池，切线路后不再可达：迁移完会话即主动释放。
+        val previous = gatewayOverride
         val next = GatewayFactory.create(apiDomains)
         runCatching { sessionStore.load() }.getOrNull()?.let { session ->
             runCatching { next.restoreSession(session) }
         }
         gatewayOverride = next
+        previous?.let { old -> runCatching { old.close() } }
     }
 
     private fun appContext(): Context =
@@ -148,12 +157,21 @@ sealed interface Route : NavKey {
     data class Reader(val photoId: String) : Route
 }
 
-/** :core 不依赖 Miuix，主题映射收敛在应用层。 */
-private fun ThemeMode.toColorSchemeMode(): ColorSchemeMode = when (this) {
-    ThemeMode.SYSTEM -> ColorSchemeMode.System
-    ThemeMode.LIGHT -> ColorSchemeMode.Light
-    ThemeMode.DARK -> ColorSchemeMode.Dark
-}
+/** :core 不依赖 Miuix，主题映射收敛在应用层；动态取色开启后改用 Monet 配色。 */
+private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode =
+    if (dynamicColor) {
+        when (this) {
+            ThemeMode.SYSTEM -> ColorSchemeMode.MonetSystem
+            ThemeMode.LIGHT -> ColorSchemeMode.MonetLight
+            ThemeMode.DARK -> ColorSchemeMode.MonetDark
+        }
+    } else {
+        when (this) {
+            ThemeMode.SYSTEM -> ColorSchemeMode.System
+            ThemeMode.LIGHT -> ColorSchemeMode.Light
+            ThemeMode.DARK -> ColorSchemeMode.Dark
+        }
+    }
 
 @Composable
 fun Jm3App() {
@@ -164,16 +182,32 @@ fun Jm3App() {
     val themeMode = remember(themeModeName) {
         runCatching { ThemeMode.valueOf(themeModeName) }.getOrDefault(ThemeMode.SYSTEM)
     }
-    val controller = remember(themeMode) { ThemeController(colorSchemeMode = themeMode.toColorSchemeMode()) }
+    var dynamicColor by rememberSaveable { mutableStateOf(false) }
+    val controller = remember(themeMode, dynamicColor) {
+        ThemeController(colorSchemeMode = themeMode.toColorSchemeMode(dynamicColor))
+    }
+    // 全局 Snackbar：各屏 Scaffold 的 snackbarHost 槽挂载同一个 host state
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // 启动顺序：先恢复主题与线路，最后 restore 会话——保证 Cookie 注入到切换后的网关。
     LaunchedEffect(Unit) {
         themeModeName = Jm3Graph.settings.themeMode().name
+        dynamicColor = Jm3Graph.settings.dynamicColor()
         Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
         Jm3Graph.account.restore()
     }
 
     MiuixTheme(controller = controller) {
+        // edge-to-edge 下状态栏/导航栏图标明暗跟随应用内主题，而非系统夜间模式
+        val view = LocalView.current
+        val darkSurface = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+        SideEffect {
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !darkSurface
+                isAppearanceLightNavigationBars = !darkSurface
+            }
+        }
         NavDisplay(
             backStack = backStack,
             onBack = { backStack.removeLastOrNull() },
@@ -182,6 +216,7 @@ fun Jm3App() {
                 MainScreen(
                     gateway = Jm3Graph.gateway,
                     account = Jm3Graph.account,
+                    snackbarHostState = snackbarHostState,
                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                     onOpenLogin = { backStack.add(Route.Login) },
                     onOpenFavorites = { backStack.add(Route.Favorites) },
@@ -218,7 +253,13 @@ fun Jm3App() {
                         themeModeName = mode.name
                         scope.launch { Jm3Graph.settings.setThemeMode(mode) }
                     },
+                    dynamicColor = dynamicColor,
+                    onDynamicColorChange = { enabled ->
+                        dynamicColor = enabled
+                        scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
+                    },
                     onBack = { backStack.removeLastOrNull() },
+                    snackbarHostState = snackbarHostState,
                 )
             }
             entry<Route.AlbumDetail> { route ->
@@ -226,6 +267,7 @@ fun Jm3App() {
                     albumId = route.albumId,
                     onBack = { backStack.removeLastOrNull() },
                     onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                    snackbarHostState = snackbarHostState,
                 )
             }
             entry<Route.Reader> { route ->

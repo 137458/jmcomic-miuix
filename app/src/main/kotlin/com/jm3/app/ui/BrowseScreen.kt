@@ -1,6 +1,5 @@
 package com.jm3.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,8 +23,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.mergedWith
@@ -39,9 +37,13 @@ import com.jm3.core.model.SearchPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 浏览模式：分类走 categories/filter，榜单为排序+时间参数近似（同一接口）。 */
@@ -117,36 +119,57 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     Scaffold(
         topBar = { TopAppBar(title = mode.title) },
     ) { innerPadding ->
-        LazyColumn(
-            state = listState,
+        PullToRefresh(
+            isRefreshing = state is BrowseUiState.Loading,
+            onRefresh = ::refresh,
             modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = innerPadding,
         ) {
-            item(key = "filters") {
-                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    if (mode == BrowseMode.CATEGORY) {
-                        ChipRow(BrowseCategory.entries, categoryValue) { categoryValue = it.apiValue }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                item(key = "filters") {
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        if (mode == BrowseMode.CATEGORY) {
+                            TabRow(
+                                tabs = BrowseCategory.entries.map { it.label },
+                                selectedTabIndex = BrowseCategory.entries.indexOf(category),
+                                onTabSelected = { categoryValue = BrowseCategory.entries[it].apiValue },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            )
+                        }
+                        ChipRow(BrowseOrder.entries, orderValue) { orderValue = it.apiValue }
+                        if (mode == BrowseMode.RANK) {
+                            ChipRow(BrowseTime.entries, timeValue) { timeValue = it.apiValue }
+                        }
                     }
-                    ChipRow(BrowseOrder.entries, orderValue) { orderValue = it.apiValue }
-                    if (mode == BrowseMode.RANK) {
-                        ChipRow(BrowseTime.entries, timeValue) { timeValue = it.apiValue }
+                }
+                when (val s = state) {
+                    is BrowseUiState.Loading -> item(key = "loading") {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
                     }
+                    is BrowseUiState.Failed -> item(key = "error") {
+                        ErrorScreen(
+                            message = "加载失败：${s.message}",
+                            onRetry = ::refresh,
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        )
+                    }
+                    is BrowseUiState.Loaded -> searchResultItems(
+                        page = s.page,
+                        loadingMore = loadingMore,
+                        onLoadMore = ::loadMore,
+                        onOpenAlbum = onOpenAlbum,
+                    )
                 }
+                item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
             }
-            when (val s = state) {
-                is BrowseUiState.Loading -> item(key = "loading") {
-                    Text(text = "加载中…", modifier = Modifier.fillMaxWidth().padding(16.dp))
-                }
-                is BrowseUiState.Failed -> item(key = "error") {
-                    Text(text = "加载失败：${s.message}", modifier = Modifier.fillMaxWidth().padding(16.dp))
-                }
-                is BrowseUiState.Loaded -> searchResultItems(
-                    page = s.page,
-                    loadingMore = loadingMore,
-                    onLoadMore = ::loadMore,
-                    onOpenAlbum = onOpenAlbum,
-                )
-            }
-            item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
@@ -179,8 +202,10 @@ private fun <T : LabeledOption> ChipRow(
 private fun Chip(selected: Boolean, label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainer)
+            .squircleSurface(
+                color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainer,
+                cornerRadius = 16.dp,
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {

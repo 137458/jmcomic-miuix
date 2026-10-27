@@ -71,17 +71,11 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
                                 )
                                 DownloadStatus.PAUSED -> TextButton(
                                     text = "继续",
-                                    onClick = { Jm3Graph.downloadManager.resume(record.photoId) },
+                                    onClick = { Jm3Graph.downloadManager.resumeRecord(record) },
                                 )
                                 DownloadStatus.FAILED -> TextButton(
                                     text = "重试",
-                                    onClick = {
-                                        Jm3Graph.downloadManager.enqueueChapter(
-                                            photoId = record.photoId,
-                                            albumId = record.albumId,
-                                            title = record.title,
-                                        )
-                                    },
+                                    onClick = { Jm3Graph.downloadManager.resumeRecord(record) },
                                 )
                             }
                             TextButton(

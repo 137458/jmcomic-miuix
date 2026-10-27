@@ -2,6 +2,7 @@ package com.jm3.app.data.download
 
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.PageFetcher
+import com.jm3.core.download.PageNumbers
 import com.jm3.core.download.ResolvedChapter
 import com.jm3.core.download.TaskResolver
 import com.jm3.core.model.PageImage
@@ -26,8 +27,9 @@ class GatewayPageFetcher(private val gatewayProvider: () -> Jm3Gateway) : PageFe
     }
 
     override suspend fun fetch(photoId: String, index: Int): ByteArray {
-        val image = pages(photoId).firstOrNull { it.index == index }
-            ?: error("页号越界：photoId=$photoId index=$index")
+        // index 为 1 起页号，页列表下标 0 起，统一经 PageNumbers 换算。
+        val image = pages(photoId).firstOrNull { it.index == PageNumbers.imageIndex(index) }
+            ?: error("页号越界：photoId=$photoId 页号=$index")
         return gatewayProvider().imageBytes(image)
     }
 }

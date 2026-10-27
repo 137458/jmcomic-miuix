@@ -1,6 +1,6 @@
 package com.jm3.app.ui
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,11 +28,16 @@ import com.jm3.core.model.SearchPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Search
 
 sealed interface HomeUiState {
     data object Idle : HomeUiState
@@ -44,12 +49,14 @@ sealed interface HomeUiState {
 @Composable
 fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
+    var lastQuery by remember { mutableStateOf("") }
     var state by remember { mutableStateOf<HomeUiState>(HomeUiState.Idle) }
     var loadingMore by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
     fun runSearch(text: String) {
+        lastQuery = text
         scope.launch {
             state = HomeUiState.Loading
             state = withContext(Dispatchers.IO) {
@@ -86,60 +93,86 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
             }
     }
 
+    fun submitSearch() {
+        val q = query.trim()
+        when {
+            q.isEmpty() -> Unit
+            q.all { it.isDigit() } -> onOpenAlbum(q) // 车号直达
+            else -> runSearch(q)
+        }
+    }
+
     Scaffold(
         topBar = { TopAppBar(title = "JM3") },
     ) { innerPadding ->
-        LazyColumn(
-            state = listState,
+        PullToRefresh(
+            isRefreshing = state is HomeUiState.Loading && lastQuery.isNotEmpty(),
+            onRefresh = { if (lastQuery.isNotEmpty()) runSearch(lastQuery) },
             modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = innerPadding,
         ) {
-            item(key = "search") {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        label = "搜索 / 车号",
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TextButton(
-                        text = "搜索",
-                        onClick = {
-                            val q = query.trim()
-                            when {
-                                q.isEmpty() -> Unit
-                                q.all { it.isDigit() } -> onOpenAlbum(q) // 车号直达
-                                else -> runSearch(q)
-                            }
-                        },
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                item(key = "search") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            label = "搜索 / 车号",
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = MiuixIcons.Search,
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        IconButton(onClick = ::submitSearch) {
+                            Icon(
+                                imageVector = MiuixIcons.Search,
+                                contentDescription = "搜索",
+                            )
+                        }
+                    }
+                }
+                when (val s = state) {
+                    is HomeUiState.Idle -> item(key = "hint") {
+                        EmptyState(
+                            title = "输入关键词搜索，或输入车号直达详情",
+                            hint = "例如作品名、作者名或纯数字车号",
+                        )
+                    }
+                    is HomeUiState.Loading -> item(key = "loading") {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    is HomeUiState.Failed -> item(key = "error") {
+                        ErrorScreen(
+                            message = "加载失败：${s.message}",
+                            onRetry = { runSearch(lastQuery) },
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        )
+                    }
+                    is HomeUiState.Loaded -> searchResultItems(
+                        page = s.page,
+                        loadingMore = loadingMore,
+                        onLoadMore = ::loadMore,
+                        onOpenAlbum = onOpenAlbum,
                     )
                 }
+                item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
             }
-            when (val s = state) {
-                is HomeUiState.Idle -> item(key = "hint") {
-                    Text(
-                        text = "输入关键词搜索，或输入车号直达详情",
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    )
-                }
-                is HomeUiState.Loading -> item(key = "loading") {
-                    Text(text = "加载中…", modifier = Modifier.fillMaxWidth().padding(16.dp))
-                }
-                is HomeUiState.Failed -> item(key = "error") {
-                    Text(text = "加载失败：${s.message}", modifier = Modifier.fillMaxWidth().padding(16.dp))
-                }
-                is HomeUiState.Loaded -> searchResultItems(
-                    page = s.page,
-                    loadingMore = loadingMore,
-                    onLoadMore = ::loadMore,
-                    onOpenAlbum = onOpenAlbum,
-                )
-            }
-            item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
