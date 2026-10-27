@@ -1,6 +1,9 @@
 package com.jm3.app.miuix.ui
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -24,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.core.settings.Domains
+import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -41,6 +46,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
@@ -52,6 +58,20 @@ private fun ThemeMode.label(): String = when (this) {
     ThemeMode.LIGHT -> "浅色"
     ThemeMode.DARK -> "深色"
 }
+
+private fun PaginationMode.label(): String = when (this) {
+    PaginationMode.INFINITE -> "无限滚动"
+    PaginationMode.CLICK -> "点击翻页"
+}
+
+/** 原版「JM 公告」对应官方 Trello，网址发布页用于获取最新可用域名。 */
+private const val ANNOUNCEMENT_URL = "https://trello.com/b/McDZAm8C/"
+private const val RELEASE_PAGE_URL = "https://jm-uu.cc/mJ8rWd"
+private const val CONTACT_MAIL = "mailto:www18comic@gmail.com?subject=JMComic3_APP"
+
+/** 版本号连点触发隐藏诊断的阈值与窗口。 */
+private const val DIAGNOSTIC_TAPS = 5
+private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
 
 /** 设置中心：主题/线路/数据管理/关于。内容一屏内可读，关于作为分区而非独立页。 */
 @Composable
@@ -81,10 +101,49 @@ fun SettingsScreen(
     var confirmClear by remember { mutableStateOf<String?>(null) }
     var showDisclaimer by remember { mutableStateOf(false) }
 
+    // 分页模式：与全局状态同步，切换后各列表页按新语义从第一页重载
+    var paginationMode by remember { mutableStateOf(Jm3Graph.paginationMode) }
+    var showPaginationPicker by remember { mutableStateOf(false) }
+    // 版本号连点进入隐藏诊断（原版 secret tap 进 /test）
+    var diagnostics by remember { mutableStateOf(false) }
+    var versionTapCount by remember { mutableIntStateOf(0) }
+
     val versionName = remember {
         @Suppress("DEPRECATION")
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "未知"
+    }
+    val versionCode = remember {
+        @Suppress("DEPRECATION")
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).let { info ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
+            }
+        }.getOrDefault(0L)
+    }
+
+    /** 打开外链；无浏览器等失败场景回落到 Snackbar。 */
+    fun openUrl(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure {
+                scope.launch { snackbarHostState.showSnackbar("无法打开链接：$url") }
+            }
+    }
+
+    fun applyPaginationMode(mode: PaginationMode) {
+        showPaginationPicker = false
+        if (mode == paginationMode) return
+        paginationMode = mode
+        Jm3Graph.paginationMode = mode
+        scope.launch { Jm3Graph.settings.setPaginationMode(mode) }
+    }
+
+    // 连点计数在窗口内归零，避免误触累计
+    LaunchedEffect(versionTapCount) {
+        if (versionTapCount in 1 until DIAGNOSTIC_TAPS) {
+            delay(DIAGNOSTIC_TAP_WINDOW_MS)
+            versionTapCount = 0
+        }
     }
 
     fun loadDomainsDiagnostics() {
@@ -165,6 +224,15 @@ fun SettingsScreen(
                     summary = "跟随壁纸生成配色（Android 12 及以上）",
                     checked = dynamicColor,
                     onCheckedChange = onDynamicColorChange,
+                )
+            }
+
+            SmallTitle(text = "通用")
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                ArrowPreference(
+                    title = "分页模式",
+                    summary = paginationMode.label(),
+                    onClick = { showPaginationPicker = true },
                 )
             }
 
@@ -253,10 +321,39 @@ fun SettingsScreen(
                 )
             }
 
+            SmallTitle(text = "公告与支持")
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                ArrowPreference(
+                    title = "JM 公告",
+                    summary = "官方公告与版本动态",
+                    onClick = { openUrl(ANNOUNCEMENT_URL) },
+                )
+                ArrowPreference(
+                    title = "网址发布页",
+                    summary = "获取最新可用线路",
+                    onClick = { openUrl(RELEASE_PAGE_URL) },
+                )
+                ArrowPreference(
+                    title = "广告合作",
+                    summary = "www18comic@gmail.com",
+                    onClick = { openUrl(CONTACT_MAIL) },
+                )
+            }
+
             SmallTitle(text = "关于")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                // 只读信息行不画箭头，避免误导为可点击项。
-                BasicComponent(title = "版本", summary = versionName)
+                // 版本行兼作隐藏诊断入口：2 秒内连点 5 次打开诊断面板
+                BasicComponent(
+                    title = "版本",
+                    summary = versionName,
+                    onClick = {
+                        versionTapCount += 1
+                        if (versionTapCount >= DIAGNOSTIC_TAPS) {
+                            versionTapCount = 0
+                            diagnostics = true
+                        }
+                    },
+                )
                 BasicComponent(
                     title = "开源组件",
                     summary = "jmcomic-api (MIT) · Miuix (Apache-2.0) · Coil (Apache-2.0) · Jetpack Compose (Apache-2.0)",
@@ -268,6 +365,66 @@ fun SettingsScreen(
                 )
             }
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // 分页模式选择：两档语义在 summary 中说明，避免只改名字造成困惑
+        OverlayBottomSheet(
+            show = showPaginationPicker,
+            title = "分页模式",
+            onDismissRequest = { showPaginationPicker = false },
+        ) {
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                PaginationMode.entries.forEach { mode ->
+                    RadioButtonPreference(
+                        title = mode.label(),
+                        summary = when (mode) {
+                            PaginationMode.INFINITE -> "滚动到底自动加载下一页"
+                            PaginationMode.CLICK -> "列表底部显示上一页/下一页"
+                        },
+                        selected = paginationMode == mode,
+                        onClick = { applyPaginationMode(mode) },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // 隐藏诊断：版本号连点 5 次打开，只读汇总运行环境与线路状态
+        OverlayBottomSheet(
+            show = diagnostics,
+            title = "诊断信息",
+            onDismissRequest = { diagnostics = false },
+        ) {
+            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    DiagnosticRow(label = "包名", value = context.packageName)
+                    DiagnosticRow(label = "版本", value = "$versionName ($versionCode)")
+                    DiagnosticRow(label = "设备", value = "${Build.MANUFACTURER} ${Build.MODEL}")
+                    DiagnosticRow(
+                        label = "系统",
+                        value = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+                    )
+                    DiagnosticRow(label = "当前线路", value = usedDomain ?: "未解析")
+                    DiagnosticRow(
+                        label = "自定义线路",
+                        value = activeDomains.value.ifBlank { "默认（自动解析）" },
+                    )
+                    DiagnosticRow(
+                        label = "线路延迟",
+                        value = domainLatency.joinToString("\n") { (domain, ms) -> "$domain · ${ms}ms" }
+                            .ifBlank { "尚未完成线路探活" },
+                    )
+                    DiagnosticRow(label = "分页模式", value = paginationMode.label())
+                    DiagnosticRow(
+                        label = "主题",
+                        value = themeMode.label() + if (dynamicColor) " · 动态取色" else "",
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
         }
 
         OverlayDialog(
@@ -332,5 +489,18 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
             )
         }
+    }
+}
+
+/** 诊断面板单行：标签在上、值在下，长值自动换行。 */
+@Composable
+private fun DiagnosticRow(label: String, value: String) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+        Text(text = value, fontSize = MiuixTheme.textStyles.body2.fontSize)
     }
 }

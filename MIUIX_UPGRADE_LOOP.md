@@ -101,11 +101,15 @@
 - 替代决策 3：`CommentItem` 新增 `albumId`（取自 `JmComment.aid()`，`0`/空归一为 null），用于论坛楼层定位回复实体，同时为后续「评论跳作品」预留。
 - 验证：`:core:test` + `:app:compileDebugKotlin` 通过。
 
-### [ ] M11 设置页（SettingsScreen）
-- [ ] 分页模式切换
-- [ ] 公告/网址发布页/联系客服外链
-- [ ] 版本号连点进入隐藏诊断
-- [ ] Miuix 高阶：`miuix-preference` 分组、`OverlayDialog` 纵排按钮
+### [x] M11 设置页（SettingsScreen）
+- [x] 分页模式切换：新增「通用」分组 `ArrowPreference` 入口 + `OverlayBottomSheet` + `RadioButtonPreference` 两档（无限滚动/点击翻页），写入 `settings.setPaginationMode` 并同步 `Jm3Graph.paginationMode`，各列表页 `LaunchedEffect(mode)` 自动从第一页重载。
+- [x] 公告/网址发布页/联系客服外链：新增「公告与支持」分组，JM 公告（Trello）、网址发布页、广告合作（mailto）经 `Intent.ACTION_VIEW` 打开，失败回落 Snackbar。
+- [x] 版本号连点进入隐藏诊断：关于卡版本行 2 秒内连点 5 次打开 `OverlayBottomSheet` 诊断面板，展示包名/版本名与 versionCode/设备/系统/当前线路/自定义线路/各线路延迟/分页模式/主题与动态取色。
+- [x] Miuix 高阶：`ArrowPreference` 分组卡片、`OverlayBottomSheet` + `RadioButtonPreference`（带 summary 说明两档语义）、`BasicComponent` 行式诊断。
+- 替代决策 1：原版「语言（繁/简）」需要整套 i18n 资源，本项目单语言（简体），不引入切换。
+- 替代决策 2：原版「切换图源」依赖网页端多 CDN 策略，库仅暴露图片域名裁决，不提供图源切换入口。
+- 替代决策 3：原版「赞助/看广告」属支付与广告 SDK 域，不含在本客户端范围；广告合作邮箱外链保留。
+- 验证：`:app:compileDebugKotlin` 通过。
 
 ### [ ] M12 全局 Miuix 质感
 - [ ] `miuix-blur` 顶栏/底栏渐进模糊（新增依赖）
@@ -125,6 +129,7 @@
 - 替代决策：原版搜索年/月（`y`/`m`）库不支持 → 改用库 `TimeOption`（今日/本周/本月/全部）；原版子分类 `slug` 过滤库未暴露 → 以名称做标签检索。
 - 2026-10-27 / M05：详情页补收藏夹选择/移动、简介与车号复制、禁漫车信息块、四等分动作台（收藏/喜欢/追更/下载），章节分组与已读标记复核通过。`:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M07+M08：收藏页（移动收藏夹/标签收藏增删）、历史页（按作品聚合 + 续读 + 删除整部 + 清空确认 + Room `deleteAlbum`）。`:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M11：设置页补分页模式切换（弹层单选 + 全局状态同步）、公告/网址发布页/广告合作外链、版本号 5 连点隐藏诊断面板。`:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M10：详情页/阅读器评论回复（共享 `CommentReplySheet`、折叠回复与缩进线）、独立论坛页三档（`Route.Forum` + `ForumScreen`，发帖面板、两种分页、社区规则折叠卡）、我的页论坛入口；`CommentItem` 增补 `albumId`。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M09：我的页新增成就任务/个人资料/云端观看记录三条路由与页面，签到进度条 + 入口分组卡片；修正资料提交键为库记录名并补全 6 个字段。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M06：阅读器补左右模式（Pager 弹簧翻页 + 手势接管）、点击显隐上下栏、音量键翻页（首提示一次）、最后一话追更引导（3 天静默）、底部收藏/喜欢/评论动作行与评论抽屉；阅读方向/提示/静默时间落 DataStore。`:core:test` + `:app:compileDebugKotlin` 通过。
