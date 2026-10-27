@@ -36,6 +36,8 @@ miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui-android", version
 miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons-android", version.ref = "miuix" }
 miuix-nav = { group = "top.yukonga.miuix.kmp", name = "miuix-nav-android", version.ref = "miuix" }
 miuix-preference = { group = "top.yukonga.miuix.kmp", name = "miuix-preference-android", version.ref = "miuix" }
+miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur-android", version.ref = "miuix" }
+miuix-squircle = { group = "top.yukonga.miuix.kmp", name = "miuix-squircle-android", version.ref = "miuix" }
 jmcomic-api = { group = "io.github.jukomu", name = "jmcomic-api", version.ref = "jmcomic" }
 jmcomic-core = { group = "io.github.jukomu", name = "jmcomic-core", version.ref = "jmcomic" }
 jmcomic-android-support = { group = "io.github.jukomu", name = "jmcomic-android-support", version.ref = "jmcomic" }

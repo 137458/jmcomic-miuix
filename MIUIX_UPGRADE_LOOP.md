@@ -11,8 +11,8 @@
 
 - 原版路径：`E:\project\jm3\.tools\apk-web\src`（APK 内前端源码，唯一事实来源）
 - 当前路径：`E:\project\jm3`（单仓库，分支 `main`；`app` + `core` 两模块）
-- Miuix 版本：`0.9.4`（`miuix-ui` / `miuix-icons` / `miuix-nav` / `miuix-preference` 已接入）
-- 未接入 Miuix 子模块：`miuix-blur`、`miuix-squircle`（后者的能力由 `Modifier.squircleSurface` 在 `miuix-ui` 内提供）
+- Miuix 版本：`0.9.4`（`miuix-ui` / `miuix-icons` / `miuix-nav` / `miuix-preference` / `miuix-blur` / `miuix-squircle` 已接入）
+- 未接入 Miuix 子模块：`miuix-shader`（`miuix-blur`/`miuix-squircle` 已传递依赖引入）、`miuix-window`
 
 ## 模块清单
 
@@ -111,10 +111,13 @@
 - 替代决策 3：原版「赞助/看广告」属支付与广告 SDK 域，不含在本客户端范围；广告合作邮箱外链保留。
 - 验证：`:app:compileDebugKotlin` 通过。
 
-### [ ] M12 全局 Miuix 质感
-- [ ] `miuix-blur` 顶栏/底栏渐进模糊（新增依赖）
-- [ ] Squircle 裁切与连续曲率
-- [ ] 路由转场 `NavTransitions` 与微交互（弹簧、按压反馈、触觉）
+### [x] M12 全局 Miuix 质感
+- [x] 依赖接入：`libs.versions.toml` + `app/build.gradle.kts` 新增 `miuix-blur`、`miuix-squircle`（0.9.4，Gradle 缓存离线可用）
+- [x] 阅读器悬浮工具栏毛玻璃：`rememberLayerBackdrop()` 录屏内容层（`Modifier.layerBackdrop`），工具栏用 `Modifier.drawBackdrop(backdrop, shape = { RoundedCornerShape(50.dp) }, effects = { blur(22.dp.toPx()) })` 采样模糊；`FloatingToolbar` 改为 `surfaceContainer.copy(alpha = 0.78f)` + `outSidePadding = 0`，避免不透明底色盖住模糊；左右模式 Pager 改为整屏沉浸（去掉 `innerPadding`），使图片真正从工具栏下方穿过
+- [x] Squircle 连续曲率：6 处封面 `clip(RoundedCornerShape(x))` 全部替换为 `Modifier.squircleClip(x.dp)`（搜索行、收藏、历史、连载追踪、观看记录），Android 13 以下由库自动回落普通圆角
+- [x] 微交互：新增公共 `Modifier.pressScale(scaleDown, hapticFeedback)` —— `graphicsLayer` 弹簧缩放（`spring(dampingRatio = 0.55f, stiffness = 900f)`）＋ `pointerInput` 旁路监听（不消费点击，不吞事件）；搜索结果卡与阅读器底栏 5 个动作位启用，动作位同时 `LocalHapticFeedback` 轻触反馈
+- 替代决策：顶栏（`TopAppBar`）与主底栏（`FloatingNavigationBar`）在 Miuix `Scaffold` 中不覆盖内容（body 已按 bar 高度内缩），无 backdrop 可采样，强行模糊只会得到空采样；故毛玻璃落在真正覆盖内容的阅读器悬浮工具栏。路由转场沿用既有 `NavDisplayEffects(cornerClipRadius, backdropColor)` + 全路由 `swipeDismiss`。
+- 验证：`:app:compileDebugKotlin` 一次通过（exit 0）。
 
 ### [ ] M13 小说域（列表/详情/阅读）
 - [ ] 网关小说接口 + 三个路由 + 字体设置
@@ -133,3 +136,4 @@
 - 2026-10-27 / M10：详情页/阅读器评论回复（共享 `CommentReplySheet`、折叠回复与缩进线）、独立论坛页三档（`Route.Forum` + `ForumScreen`，发帖面板、两种分页、社区规则折叠卡）、我的页论坛入口；`CommentItem` 增补 `albumId`。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M09：我的页新增成就任务/个人资料/云端观看记录三条路由与页面，签到进度条 + 入口分组卡片；修正资料提交键为库记录名并补全 6 个字段。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 2026-10-27 / M06：阅读器补左右模式（Pager 弹簧翻页 + 手势接管）、点击显隐上下栏、音量键翻页（首提示一次）、最后一话追更引导（3 天静默）、底部收藏/喜欢/评论动作行与评论抽屉；阅读方向/提示/静默时间落 DataStore。`:core:test` + `:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M12：接入 `miuix-blur` + `miuix-squircle`；阅读器底栏实现 `drawBackdrop` 毛玻璃胶囊（backdrop 录屏 + 22dp 模糊）、6 处封面改 `squircleClip`、新增公共 `Modifier.pressScale`（弹簧 + 触觉）并用于搜索结果卡与阅读器动作位。`:app:compileDebugKotlin` 通过。
