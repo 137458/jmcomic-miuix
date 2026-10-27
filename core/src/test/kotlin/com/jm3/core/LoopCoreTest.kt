@@ -115,4 +115,20 @@ class LoopCoreTest {
         repo.setPaginationMode(PaginationMode.CLICK)
         assertEquals(PaginationMode.CLICK, repo.paginationMode())
     }
+
+    @Test
+    fun 阅读器偏好_默认直向且提示与追更静默可持久() = runTest {
+        val repo = InMemorySettingsRepository()
+        assertEquals(false, repo.readerHorizontal())
+        assertEquals(false, repo.volumeKeyHintShown())
+        assertEquals(0L, repo.trackPromptMuteUntil())
+
+        repo.setReaderHorizontal(true)
+        repo.markVolumeKeyHintShown()
+        repo.setTrackPromptMuteUntil(123L)
+
+        assertEquals(true, repo.readerHorizontal())
+        assertEquals(true, repo.volumeKeyHintShown())
+        assertEquals(123L, repo.trackPromptMuteUntil())
+    }
 }

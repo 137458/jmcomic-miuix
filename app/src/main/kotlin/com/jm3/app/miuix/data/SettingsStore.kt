@@ -3,6 +3,7 @@ package com.jm3.app.miuix.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.jm3.core.settings.Domains
@@ -21,6 +22,9 @@ class SettingsStore(private val context: Context) : SettingsRepository {
     private val dynamicColorKey = booleanPreferencesKey("dynamic_color")
     private val paginationKey = stringPreferencesKey("pagination_mode")
     private val searchHistoryKey = stringPreferencesKey("search_history")
+    private val readerHorizontalKey = booleanPreferencesKey("reader_horizontal")
+    private val volumeHintKey = booleanPreferencesKey("volume_hint_shown")
+    private val trackMuteKey = longPreferencesKey("track_prompt_mute_until")
 
     override suspend fun themeMode(): ThemeMode =
         context.settingsDataStore.data.first()[themeKey]
@@ -90,5 +94,26 @@ class SettingsStore(private val context: Context) : SettingsRepository {
 
     override suspend fun clearSearchHistory() {
         context.settingsDataStore.edit { it[searchHistoryKey] = "" }
+    }
+
+    override suspend fun readerHorizontal(): Boolean =
+        context.settingsDataStore.data.first()[readerHorizontalKey] ?: false
+
+    override suspend fun setReaderHorizontal(enabled: Boolean) {
+        context.settingsDataStore.edit { it[readerHorizontalKey] = enabled }
+    }
+
+    override suspend fun volumeKeyHintShown(): Boolean =
+        context.settingsDataStore.data.first()[volumeHintKey] ?: false
+
+    override suspend fun markVolumeKeyHintShown() {
+        context.settingsDataStore.edit { it[volumeHintKey] = true }
+    }
+
+    override suspend fun trackPromptMuteUntil(): Long =
+        context.settingsDataStore.data.first()[trackMuteKey] ?: 0L
+
+    override suspend fun setTrackPromptMuteUntil(epochMillis: Long) {
+        context.settingsDataStore.edit { it[trackMuteKey] = epochMillis }
     }
 }

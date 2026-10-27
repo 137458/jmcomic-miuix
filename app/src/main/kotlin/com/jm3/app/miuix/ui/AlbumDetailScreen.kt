@@ -948,7 +948,7 @@ private fun RelatedAlbumCard(related: SearchResult, onClick: () -> Unit) {
 
 /** 评论输入：未登录时引导登录；登录后限 200 字并可发表。 */
 @Composable
-private fun CommentComposer(
+internal fun CommentComposer(
     loggedIn: Boolean,
     text: String,
     busy: Boolean,
@@ -999,7 +999,7 @@ private fun CommentComposer(
 
 /** 只读评论区：作者/日期/赞/内容，回复缩进展示；整体挂在单张卡片内逐条排列。 */
 @Composable
-private fun CommentRow(item: CommentItem, depth: Int = 0) {
+internal fun CommentRow(item: CommentItem, depth: Int = 0) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
