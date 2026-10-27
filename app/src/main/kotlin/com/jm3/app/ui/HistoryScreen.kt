@@ -103,7 +103,8 @@ fun HistoryScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     )
                 } else {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(innerPadding),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = innerPadding,
                     ) {
                         items(entries, key = { it.photoId }) { entry ->
                             BasicComponent(
