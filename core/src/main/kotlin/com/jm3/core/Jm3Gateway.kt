@@ -3,6 +3,7 @@ package com.jm3.core
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.DailyCheckInStatus
@@ -16,7 +17,12 @@ import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.model.TagFavorite
+import com.jm3.core.model.TaskFilter
+import com.jm3.core.model.TaskPage
+import com.jm3.core.model.TaskType
 import com.jm3.core.model.TrackingPage
+import com.jm3.core.model.UserProfile
 import com.jm3.core.model.WeeklyPicks
 import com.jm3.core.model.WeeklyPicksDetail
 import io.github.jukomu.jmcomic.api.enums.ForumMode
@@ -48,6 +54,12 @@ interface Jm3Gateway {
     /** 分类筛选/榜单浏览（categories/filter 接口）。阻塞调用。 */
     fun browse(filter: BrowseFilter, page: Int): SearchPage
 
+    /** 连载更新列表（原版「每周连载更新」域）。阻塞调用。 */
+    fun serialization(page: Int): SearchPage
+
+    /** 分类树（一级分类 + 子分类 + 标签区块）。阻塞调用。 */
+    fun categoriesList(): CategoryTree
+
     /** 相册详情（含章节列表）。阻塞调用。 */
     fun album(albumId: String): AlbumDetail
 
@@ -56,6 +68,9 @@ interface Jm3Gateway {
 
     /** 发表本子评论。阻塞调用。 */
     fun postComment(albumId: String, text: String)
+
+    /** 回复某条评论。阻塞调用。 */
+    fun replyComment(albumId: String, text: String, parentCommentId: String)
 
     /** 切换本子点赞（平台不支持取消）。阻塞调用。 */
     fun toggleLike(albumId: String)
@@ -110,6 +125,30 @@ interface Jm3Gateway {
 
     /** 连载追踪列表。阻塞调用。 */
     fun trackingList(page: Int): TrackingPage
+
+    /** 成就/任务列表（type=称号/勋章，filter=我的/全部）。阻塞调用。 */
+    fun tasks(type: TaskType, filter: TaskFilter): TaskPage
+
+    /** 个人资料。阻塞调用。 */
+    fun userProfile(uid: String): UserProfile
+
+    /** 编辑个人资料并返回更新后的资料。阻塞调用。 */
+    fun editUserProfile(uid: String, fields: Map<String, String>): UserProfile
+
+    /** 服务端观看记录（一页）。阻塞调用。 */
+    fun watchHistory(page: Int): List<SearchResult>
+
+    /** 删除一条服务端观看记录。阻塞调用。 */
+    fun deleteWatchHistory(id: String)
+
+    /** 收藏标签列表。阻塞调用。 */
+    fun tagsFavorite(): List<TagFavorite>
+
+    /** 增加收藏标签。阻塞调用。 */
+    fun addFavoriteTags(tags: List<String>)
+
+    /** 移除收藏标签。阻塞调用。 */
+    fun removeFavoriteTags(tags: List<String>)
 
     /** 收藏夹管理（新建/重命名/移动/删除）。阻塞调用。 */
     fun manageFavoriteFolder(
@@ -174,6 +213,10 @@ class Jm3GatewayImpl internal constructor(
     override fun browse(filter: BrowseFilter, page: Int): SearchPage =
         client.getCategories(filter.toSearchQuery(page)).toPage()
 
+    override fun serialization(page: Int): SearchPage = client.getSerialization(page).toPage()
+
+    override fun categoriesList(): CategoryTree = client.getCategoriesList().toCategoryTree()
+
     override fun album(albumId: String): AlbumDetail {
         val album = client.getAlbum(albumId)
         val domain = imageDomain(albumId)
@@ -191,6 +234,10 @@ class Jm3GatewayImpl internal constructor(
 
     override fun postComment(albumId: String, text: String) {
         client.postComment(albumId, text)
+    }
+
+    override fun replyComment(albumId: String, text: String, parentCommentId: String) {
+        client.replyToComment(albumId, text, parentCommentId)
     }
 
     override fun toggleLike(albumId: String) = client.toggleAlbumLike(albumId)
@@ -241,6 +288,29 @@ class Jm3GatewayImpl internal constructor(
         client.markNotification(id, if (read) 1 else 0)
 
     override fun trackingList(page: Int): TrackingPage = client.getAlbumTrackingList(page).toTrackingPage()
+
+    override fun tasks(type: TaskType, filter: TaskFilter): TaskPage =
+        client.getTasks(type.apiValue, filter.apiValue).toTaskPage()
+
+    override fun userProfile(uid: String): UserProfile = client.getUserProfile(uid).toUserProfile()
+
+    override fun editUserProfile(uid: String, fields: Map<String, String>): UserProfile =
+        client.editUserProfile(uid, fields).toUserProfile()
+
+    override fun watchHistory(page: Int): List<SearchResult> {
+        val metas = client.getWatchHistory(page).orEmpty()
+        val domain = imageDomain(metas.firstOrNull()?.id().orEmpty())
+        return metas.map { it.toSearchResult(coverUrl = CoverUrls.build(it.id(), domain, "_3x4")) }
+    }
+
+    override fun deleteWatchHistory(id: String) = client.deleteWatchHistory(id)
+
+    override fun tagsFavorite(): List<TagFavorite> =
+        client.getTagsFavorite().orEmpty().map { it.toTagFavorite() }
+
+    override fun addFavoriteTags(tags: List<String>) = client.addFavoriteTags(tags)
+
+    override fun removeFavoriteTags(tags: List<String>) = client.removeFavoriteTags(tags)
 
     override fun manageFavoriteFolder(
         action: FavoriteFolderAction,

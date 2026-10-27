@@ -3,6 +3,9 @@ package com.jm3.core
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.CategoryBlock
+import com.jm3.core.model.CategoryNode
+import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
@@ -17,8 +20,12 @@ import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.model.TagFavorite
+import com.jm3.core.model.TaskItem
+import com.jm3.core.model.TaskPage
 import com.jm3.core.model.TrackingItem
 import com.jm3.core.model.TrackingPage
+import com.jm3.core.model.UserProfile
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicks
 import com.jm3.core.model.WeeklyPicksDetail
@@ -30,13 +37,19 @@ import io.github.jukomu.jmcomic.api.enums.TimeOption
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
 import io.github.jukomu.jmcomic.api.model.FavoriteQuery
+import io.github.jukomu.jmcomic.api.model.JmCategoryList
+import io.github.jukomu.jmcomic.api.model.JmCategoryListItem
 import io.github.jukomu.jmcomic.api.model.JmComment
 import io.github.jukomu.jmcomic.api.model.JmCommentList
 import io.github.jukomu.jmcomic.api.model.JmDailyCheckInStatus
 import io.github.jukomu.jmcomic.api.model.JmFavoriteFolderResult
 import io.github.jukomu.jmcomic.api.model.JmFavoritePage
 import io.github.jukomu.jmcomic.api.model.JmNotificationPage
+import io.github.jukomu.jmcomic.api.model.JmTagFavorite
+import io.github.jukomu.jmcomic.api.model.JmTaskItem
+import io.github.jukomu.jmcomic.api.model.JmTaskList
 import io.github.jukomu.jmcomic.api.model.JmTrackingPage
+import io.github.jukomu.jmcomic.api.model.JmUserProfile
 import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksDetail
 import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksList
 import io.github.jukomu.jmcomic.api.model.JmImage
@@ -255,3 +268,70 @@ fun JmFavoriteFolderResult.toFolderOperation(): FolderOperation =
 /** 收藏夹动作映射：core 枚举值即库 FavoriteFolderType 的 API 值。 */
 fun FavoriteFolderAction.toFavoriteFolderType(): FavoriteFolderType =
     FavoriteFolderType.entries.firstOrNull { it.value == apiValue } ?: FavoriteFolderType.ADD
+
+/** 分类条目：总数可能为字符串；缺失按 0。子分类同样递归成节点，供「更多分类」弹窗使用。 */
+fun JmCategoryListItem.toCategoryNode(): CategoryNode = CategoryNode(
+    id = id().orEmpty(),
+    name = name().orEmpty(),
+    slug = slug().orEmpty(),
+    totalAlbums = totalAlbums()?.toIntOrNull() ?: 0,
+    children = subCategories().map { sub ->
+        CategoryNode(
+            id = sub.cid().orEmpty(),
+            name = sub.name().orEmpty(),
+            slug = sub.slug().orEmpty(),
+        )
+    },
+)
+
+/** 分类树：一级分类 + 标签区块。 */
+fun JmCategoryList.toCategoryTree(): CategoryTree = CategoryTree(
+    categories = categories().map { it.toCategoryNode() },
+    blocks = blocks().map { block ->
+        CategoryBlock(
+            title = block.title().orEmpty(),
+            tags = block.content().orEmpty(),
+        )
+    },
+)
+
+/** 任务条目：金币为文本，无法解析时按 0。 */
+fun JmTaskItem.toTaskItem(): TaskItem = TaskItem(
+    id = id().orEmpty(),
+    name = name().orEmpty(),
+    content = content().orEmpty(),
+    coin = coin()?.toIntOrNull() ?: 0,
+    done = isDone,
+    type = type(),
+)
+
+/** 任务列表：status 非 ok 时把 msg 作为失败原因带到 UI。 */
+fun JmTaskList.toTaskPage(): TaskPage = TaskPage(
+    items = list().orEmpty().map { it.toTaskItem() },
+    message = msg()?.takeIf { it.isNotBlank() && !"ok".equals(status(), ignoreCase = true) },
+)
+
+/** 个人资料：空字段统一为 empty string，避免 UI 出现 null 分支。 */
+fun JmUserProfile.toUserProfile(): UserProfile = UserProfile(
+    username = username().orEmpty(),
+    email = email().orEmpty(),
+    nickname = nickname().orEmpty(),
+    birthday = birthday().orEmpty(),
+    relations = relations().orEmpty(),
+    sexuality = sexuality().orEmpty(),
+    website = website().orEmpty(),
+    birthPlace = birthPlace().orEmpty(),
+    city = city().orEmpty(),
+    country = country().orEmpty(),
+    occupation = occupation().orEmpty(),
+    company = company().orEmpty(),
+    school = school().orEmpty(),
+    aboutMe = aboutMe().orEmpty(),
+    favorite = favorite().orEmpty(),
+    hate = hate().orEmpty(),
+)
+
+fun JmTagFavorite.toTagFavorite(): TagFavorite = TagFavorite(
+    tag = tag().orEmpty(),
+    updatedAt = updatedAt()?.takeIf { it.isNotBlank() },
+)
