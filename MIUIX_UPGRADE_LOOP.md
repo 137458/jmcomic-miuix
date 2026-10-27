@@ -72,10 +72,11 @@
 - [x] 未登录、空态、错误重试、下拉刷新齐备
 - [x] Miuix 高阶：分段 `TabRow`（收藏夹/标签收藏）、`Card` + `BasicComponent`、`OverlayBottomSheet`、`OverlayDialog`、`OverlaySpinnerPreference`
 
-### [ ] M08 历史页（HistoryScreen）
-- [ ] 按作品聚合 + 最近阅读章节/页 + 一键续读
-- [ ] 删除单条/清空（复核）
-- [ ] Miuix 高阶：卡式行、`BasicComponent`
+### [x] M08 历史页（HistoryScreen）
+- [x] 按作品聚合：同一 albumId 折叠为一条，显示最近章节、已读话数、最近阅读时间与封面
+- [x] 一键续读（整行点击 + 「继续阅读」按钮直达 `Route.Reader(latest.photoId)`），「详情」进入作品页
+- [x] 删除单部作品记录（`HistoryRepository.deleteAlbum` + Room DAO）与清空全部（二次确认弹窗）
+- [x] Miuix 高阶：`Card` 行、`OverlayDialog` 纵排确认、`IconButton` 删除、分页「加载更多」
 
 ### [ ] M09 我的页（MineScreen）
 - [ ] 成就/任务（`tasks`、`claimTask`）
