@@ -56,13 +56,15 @@
 - [x] Miuix 高阶：`TooltipBox`（分享/下载全部）、`OverlayBottomSheet` 文件夹选择、`Card` + `BasicComponent` 信息块
 - 验证：`:app:compileDebugKotlin` 通过。
 
-### [ ] M06 阅读器（ReaderScreen）
-- [ ] 左右阅读模式（HorizontalPager + `springAnimateToPage` + `pagerGestureOverride`）
-- [ ] 顶栏点击显隐 + 音量键翻页（Activity KeyEvent）
-- [ ] 章节抽屉 + 上一话/下一话
-- [ ] 末页追更引导（三天不再提示）
-- [ ] 阅读器内收藏/点赞/评论抽屉
-- [ ] Miuix 高阶：`FloatingToolbar`、`OverlayBottomSheet`、`NumberPicker`、`VerticalScrollBar`
+### [x] M06 阅读器（ReaderScreen）
+- [x] 左右阅读模式（`HorizontalPager` + `springAnimateToPage` + `pagerGestureOverride` + `PagerGestureNestedScrollConnection`，`userScrollEnabled=false` 避免双份手势）
+- [x] 顶栏点击显隐（点击正文切换上下栏，类似原版 `closeNav`）+ 音量键翻页（`MainActivity.onKeyDown` → `ReaderVolumeKeys`，150ms 节流，首次提示一次）
+- [x] 章节抽屉 + 上一话/下一话（顶栏左右箭头 + 章节 `OverlayBottomSheet`，当前话高亮）
+- [x] 末页追更引导（最后一话最后一页弹「已经最后一话了！」，勾选「3天不要显示」写入静默截止时间，可直接追踪连载）
+- [x] 阅读器内收藏/点赞/评论：底部动作行开关（收藏/喜欢实心回显），评论抽屉含列表 + `CommentComposer` 复用（≤200 字、未登录引导）
+- [x] Miuix 高阶：`FloatingToolbar` 五等分动作行、`OverlayBottomSheet`（跳页/章节/评论）、`OverlayDialog` + `Checkbox`（追更引导）、`NumberPicker`、`VerticalScrollBar`
+- [x] 阅读方向与音量提示持久化：`SettingsRepository.readerHorizontal/volumeKeyHintShown/trackPromptMuteUntil`
+- 验证：`:core:test`（新增阅读器偏好用例）+ `:app:compileDebugKotlin` 通过。
 
 ### [x] M07 收藏页（FavoritesScreen）
 - [x] 收藏夹内移动作品：行尾 `MoveFile` → `OverlayBottomSheet` 选择目标收藏夹（排除“全部”），成功后提示并刷新
@@ -112,3 +114,4 @@
 - 2026-10-27 / M02+M03+M04+M07：首页（连载横滑/热标签/搜索历史/语法帮助/点击分页）、搜索页（时间范围服务端过滤 + 点击分页）、分类页（子分类/更多分类/每周连载/热标签/标签结果）、收藏页（移动收藏夹/标签收藏增删）。新增公共 `ResultPagerBar`/`pagedSearchResultItems` 消除重复。`:core:test` + `:app:compileDebugKotlin` 通过。
 - 替代决策：原版搜索年/月（`y`/`m`）库不支持 → 改用库 `TimeOption`（今日/本周/本月/全部）；原版子分类 `slug` 过滤库未暴露 → 以名称做标签检索。
 - 2026-10-27 / M05：详情页补收藏夹选择/移动、简介与车号复制、禁漫车信息块、四等分动作台（收藏/喜欢/追更/下载），章节分组与已读标记复核通过。`:app:compileDebugKotlin` 通过。
+- 2026-10-27 / M06：阅读器补左右模式（Pager 弹簧翻页 + 手势接管）、点击显隐上下栏、音量键翻页（首提示一次）、最后一话追更引导（3 天静默）、底部收藏/喜欢/评论动作行与评论抽屉；阅读方向/提示/静默时间落 DataStore。`:core:test` + `:app:compileDebugKotlin` 通过。

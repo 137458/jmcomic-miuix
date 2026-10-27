@@ -355,6 +355,8 @@ fun Jm3App() {
                         // 同层替换：返回键回到详情页，而不是逐章回退
                         if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(photoId)
                     },
+                    onOpenLogin = { backStack.add(Route.Login) },
+                    snackbarHostState = snackbarHostState,
                 )
             }
             entry<Route.Search>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->

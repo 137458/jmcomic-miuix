@@ -44,6 +44,21 @@ interface SettingsRepository {
 
     suspend fun clearSearchHistory() {}
 
+    /** 阅读器左右翻页模式（原版「左右阅读/直向阅读」），默认直向。 */
+    suspend fun readerHorizontal(): Boolean = false
+
+    suspend fun setReaderHorizontal(enabled: Boolean) {}
+
+    /** 音量键翻页提示是否已展示过（原版只提示一次）。 */
+    suspend fun volumeKeyHintShown(): Boolean = false
+
+    suspend fun markVolumeKeyHintShown() {}
+
+    /** 末页追更引导的静默截止时间（epoch 毫秒，0 表示未静默）。 */
+    suspend fun trackPromptMuteUntil(): Long = 0L
+
+    suspend fun setTrackPromptMuteUntil(epochMillis: Long) {}
+
     companion object {
         const val SEARCH_HISTORY_LIMIT = 10
     }
@@ -57,6 +72,9 @@ class InMemorySettingsRepository : SettingsRepository {
     private var dynamic = false
     private var pagination = PaginationMode.INFINITE
     private val searchHistory = mutableListOf<String>()
+    private var readerHorizontal = false
+    private var volumeHintShown = false
+    private var trackPromptMuteUntil = 0L
 
     override suspend fun themeMode(): ThemeMode = mode
 
@@ -100,5 +118,23 @@ class InMemorySettingsRepository : SettingsRepository {
 
     override suspend fun clearSearchHistory() {
         searchHistory.clear()
+    }
+
+    override suspend fun readerHorizontal(): Boolean = readerHorizontal
+
+    override suspend fun setReaderHorizontal(enabled: Boolean) {
+        readerHorizontal = enabled
+    }
+
+    override suspend fun volumeKeyHintShown(): Boolean = volumeHintShown
+
+    override suspend fun markVolumeKeyHintShown() {
+        volumeHintShown = true
+    }
+
+    override suspend fun trackPromptMuteUntil(): Long = trackPromptMuteUntil
+
+    override suspend fun setTrackPromptMuteUntil(epochMillis: Long) {
+        trackPromptMuteUntil = epochMillis
     }
 }
