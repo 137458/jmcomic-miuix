@@ -383,6 +383,7 @@ fun NovelDetailScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    val selectionHaptic = rememberSelectionHaptic()
     var ascending by rememberSaveable { mutableStateOf(true) }
     var descriptionExpanded by rememberSaveable { mutableStateOf(false) }
     var actionBusy by remember { mutableStateOf(false) }
@@ -514,7 +515,10 @@ fun NovelDetailScreen(
                             TabRow(
                                 tabs = listOf("目录", "相关", "评论"),
                                 selectedTabIndex = tab,
-                                onTabSelected = { tab = it },
+                                onTabSelected = {
+                                    selectionHaptic()
+                                    tab = it
+                                },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                             )
                         }

@@ -322,7 +322,7 @@ fun LazyListScope.pagedSearchResultItems(
  * 用 pointerInput 旁路监听而不消费事件，因此不会吞掉 Card/列表项自身的点击。
  */
 @Composable
-fun Modifier.pressScale(scaleDown: Float = 0.96f, hapticFeedback: Boolean = false): Modifier {
+fun Modifier.pressScale(scaleDown: Float = 0.96f, hapticFeedback: Boolean = true): Modifier {
     var pressed by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
     val scale by animateFloatAsState(
@@ -344,4 +344,11 @@ fun Modifier.pressScale(scaleDown: Float = 0.96f, hapticFeedback: Boolean = fals
                 pressed = false
             }
         }
+}
+
+/** 切换类控件（Tab/筛选项）的轻触觉反馈；返回可直接调用的回调。 */
+@Composable
+fun rememberSelectionHaptic(): () -> Unit {
+    val haptics = LocalHapticFeedback.current
+    return remember(haptics) { { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) } }
 }

@@ -97,6 +97,7 @@ fun LibraryScreen(
     snackbarHostState: SnackbarHostState,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    val selectionHaptic = rememberSelectionHaptic()
     var query by rememberSaveable { mutableStateOf("") }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var appliedQuery by rememberSaveable { mutableStateOf("") }
@@ -203,7 +204,10 @@ fun LibraryScreen(
                 TabRow(
                     tabs = LIBRARY_TABS,
                     selectedTabIndex = tab,
-                    onTabSelected = { tab = it },
+                    onTabSelected = {
+                        selectionHaptic()
+                        tab = it
+                    },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                 )
             }

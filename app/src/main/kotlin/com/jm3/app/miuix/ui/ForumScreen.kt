@@ -69,6 +69,7 @@ fun ForumScreen(
     val user by Jm3Graph.account.user.collectAsState()
     val pageMode = Jm3Graph.paginationMode
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
+    val selectionHaptic = rememberSelectionHaptic()
     val forumScope = ForumScope.entries[scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)]
     var items by remember { mutableStateOf<List<CommentItem>>(emptyList()) }
     var total by remember { mutableIntStateOf(0) }
@@ -197,7 +198,10 @@ fun ForumScreen(
                 TabRow(
                     tabs = ForumScope.entries.map { it.label },
                     selectedTabIndex = scopeIndex,
-                    onTabSelected = { scopeIndex = it },
+                    onTabSelected = {
+                        selectionHaptic()
+                        scopeIndex = it
+                    },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                 )
             }

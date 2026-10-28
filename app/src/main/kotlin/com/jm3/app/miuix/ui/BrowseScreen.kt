@@ -91,6 +91,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     var requestToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val selectionHaptic = rememberSelectionHaptic()
 
     // 原版分类页的三个增强区块：分类树（子分类/更多分类）、热门标签、每周连载更新。
     // 三者都是可选数据，任一加载失败即隐藏对应区域，不影响主列表。
@@ -257,7 +258,10 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                     TabRow(
                                         tabs = BrowseCategory.entries.map { it.label },
                                         selectedTabIndex = BrowseCategory.entries.indexOf(category),
-                                        onTabSelected = { categoryValue = BrowseCategory.entries[it].apiValue },
+                                        onTabSelected = {
+                                            selectionHaptic()
+                                            categoryValue = BrowseCategory.entries[it].apiValue
+                                        },
                                         modifier = Modifier.weight(1f),
                                     )
                                     // 「更多分类」入口固定在主分类条右侧（原版 Header 的 MoreHoriz 位置）
@@ -293,7 +297,10 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                             TabRow(
                                 tabs = BrowseOrder.entries.map { it.label },
                                 selectedTabIndex = BrowseOrder.entries.indexOf(order),
-                                onTabSelected = { orderValue = BrowseOrder.entries[it].apiValue },
+                                onTabSelected = {
+                                    selectionHaptic()
+                                    orderValue = BrowseOrder.entries[it].apiValue
+                                },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                             )
                             if (mode == BrowseMode.RANK) {
@@ -301,7 +308,10 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                 TabRow(
                                     tabs = BrowseTime.entries.map { it.label },
                                     selectedTabIndex = BrowseTime.entries.indexOf(time),
-                                    onTabSelected = { timeValue = BrowseTime.entries[it].apiValue },
+                                    onTabSelected = {
+                                        selectionHaptic()
+                                        timeValue = BrowseTime.entries[it].apiValue
+                                    },
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 )
                             }
