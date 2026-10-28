@@ -122,7 +122,11 @@ enum class FloatingBottomBarMode {
     None,
 }
 
-private val iosIndicatorSpecular: Highlight = Highlight(
+/**
+ * 玻璃边缘高光：白 12% 双峰 BloomStroke（内辉光 2dp，主光上偏、副光下偏），
+ * 明暗主题共用。顶栏、阅读器工具条与主底栏保持同一光源语言。
+ */
+internal val glassEdgeHighlight: Highlight = Highlight(
     width = 1.dp,
     alpha = 1f,
     style = BloomStroke(
@@ -335,8 +339,8 @@ fun FloatingBottomBar(
             null
         }
 
-    val baseHighlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = -45f)
-    val pillHighlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = 90f)
+    val baseHighlight = rememberGravityRotatedHighlight(glassEdgeHighlight, extraDegrees = -45f)
+    val pillHighlight = rememberGravityRotatedHighlight(glassEdgeHighlight, extraDegrees = 90f)
 
     val combinedBackdrop = backdrop?.let { rememberCombinedBackdrop(it, tabsBackdrop) }
 
