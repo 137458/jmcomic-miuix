@@ -530,15 +530,22 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                     }
                     if (hotTags.isNotEmpty()) {
                         item(key = "hot-tags-title") {
-                            SectionHeader(
-                                text = "热门标签",
-                                actionText = if (hotTags.size > HOT_TAG_COLLAPSED) {
-                                    if (showAllTags) "收起" else "更多"
-                                } else {
-                                    null
-                                },
-                                onAction = { showAllTags = !showAllTags },
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                SmallTitle(text = "热门标签", modifier = Modifier.weight(1f))
+                                if (hotTags.size > HOT_TAG_COLLAPSED) {
+                                    TextButton(
+                                        text = if (showAllTags) "收起" else "更多",
+                                        onClick = { showAllTags = !showAllTags },
+                                        minWidth = 0.dp,
+                                        minHeight = 28.dp,
+                                        insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                        modifier = Modifier.padding(end = 16.dp),
+                                    )
+                                }
+                            }
                         }
                         item(key = "hot-tags") {
                             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -666,34 +673,6 @@ private fun SearchHistoryCard(
     }
 }
 
-/** 区块标题：文本 + 右侧可选文字入口（原版「查看更多」）。 */
-@Composable
-private fun SectionHeader(
-    text: String,
-    actionText: String? = null,
-    onAction: (() -> Unit)? = null,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = text,
-            style = MiuixTheme.textStyles.subtitle,
-            color = MiuixTheme.colorScheme.onBackgroundVariant,
-            modifier = Modifier.weight(1f),
-        )
-        if (actionText != null && onAction != null) {
-            TextButton(
-                text = actionText,
-                onClick = onAction,
-                minWidth = 0.dp,
-                minHeight = 28.dp,
-                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-            )
-        }
-    }
-}
 
 /** 热门标签胶囊流：默认折叠，更多/收起由区块标题控制。 */
 @OptIn(ExperimentalLayoutApi::class)

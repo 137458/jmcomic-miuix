@@ -2,6 +2,7 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -27,12 +28,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import coil3.compose.AsyncImage
 import com.jm3.core.model.SearchPage
@@ -108,6 +111,48 @@ fun CommentReplySheet(
 /** 评论字数上限与原版一致（发帖/评论/回复共用 200）。 */
 const val COMMENT_REPLY_MAX_LENGTH = 200
 
+/** 纵向图标单元：详情动作台与悬浮工具条共用；禁用降灰、激活主色、按压微缩放。 */
+@Composable
+fun ActionCell(
+    icon: ImageVector? = null,
+    glyph: String? = null,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    active: Boolean = false,
+) {
+    val color = when {
+        !enabled -> MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.4f)
+        active -> MiuixTheme.colorScheme.primary
+        else -> MiuixTheme.colorScheme.onSurface
+    }
+    Column(
+        modifier = modifier
+            .clickable(enabled = enabled, onClick = onClick)
+            .pressScale(hapticFeedback = true)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = color,
+                modifier = Modifier.size(22.dp),
+            )
+        } else if (glyph != null) {
+            Text(text = glyph, fontSize = 22.sp, color = color)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            color = color,
+            maxLines = 1,
+        )
+    }
+}
 /** 标题栏返回键。 */
 @Composable
 fun BackButton(onBack: () -> Unit) {

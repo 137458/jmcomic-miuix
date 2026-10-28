@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -832,41 +831,6 @@ private fun DetailHeader(
                 }
             }
         }
-    }
-}
-
-/** 动作台单元：图标 + 标签，禁用态降灰；整格可点，热区覆盖到卡片边缘。 */
-@Composable
-private fun ActionCell(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-) {
-    val contentColor = if (enabled) {
-        MiuixTheme.colorScheme.onSurfaceContainerHigh
-    } else {
-        MiuixTheme.colorScheme.onSurfaceVariantSummary
-    }
-    Column(
-        modifier = modifier
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = contentColor,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
-            color = contentColor,
-        )
     }
 }
 
