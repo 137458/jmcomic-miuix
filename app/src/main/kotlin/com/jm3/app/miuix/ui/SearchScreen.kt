@@ -57,6 +57,8 @@ fun SearchScreen(
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 加载更多失败单独置位，供列表底部给出重试入口
+    var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 排序/下拉刷新会替换第一页，旧的分页响应只在代次未变时落地
@@ -100,7 +102,10 @@ fun SearchScreen(
             }
             loadingMore = false
             if (next != null && token == requestToken) {
+                loadMoreFailed = false
                 state = SearchUiState.Loaded(loaded.page.mergedWith(next))
+            } else if (token == requestToken) {
+                loadMoreFailed = true
             }
         }
     }
@@ -196,6 +201,7 @@ fun SearchScreen(
                             searchResultItems(
                                 page = s.page,
                                 loadingMore = loadingMore,
+                                loadMoreFailed = loadMoreFailed,
                                 onLoadMore = ::loadMore,
                                 onOpenAlbum = onOpenAlbum,
                             )

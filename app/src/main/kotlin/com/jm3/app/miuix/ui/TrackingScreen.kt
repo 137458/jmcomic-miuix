@@ -67,6 +67,8 @@ fun TrackingScreen(
     var nextPage by remember { mutableIntStateOf(2) }
     var endReached by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 加载更多失败单独置位，供列表底部给出重试入口
+    var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var removingId by remember { mutableStateOf<String?>(null) }
@@ -105,13 +107,14 @@ fun TrackingScreen(
             loadingMore = false
             result
                 .onSuccess { next ->
+                    loadMoreFailed = false
                     // 接口按页返回且无总页数，按累计条数对比总数收敛；空页直接视为到底
                     items = (items + next.items).distinctBy { it.id }
                     total = next.total.coerceAtLeast(total)
                     nextPage = page + 1
                     if (next.items.isEmpty() || items.size >= total) endReached = true
                 }
-                .onFailure { endReached = true }
+                .onFailure { loadMoreFailed = true }
         }
     }
 
@@ -186,18 +189,14 @@ fun TrackingScreen(
                                 )
                             }
                         }
-                        if (!endReached) {
+                        if (items.isNotEmpty()) {
                             item(key = "load-more") {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    if (loadingMore) {
-                                        InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                                    } else {
-                                        TextButton(text = "加载更多", onClick = ::loadMore)
-                                    }
-                                }
+                                LoadMoreFooter(
+                                    loadingMore = loadingMore,
+                                    hasMore = !endReached,
+                                    loadMoreFailed = loadMoreFailed,
+                                    onLoadMore = ::loadMore,
+                                )
                             }
                         }
                         item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }

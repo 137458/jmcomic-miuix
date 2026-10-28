@@ -82,6 +82,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     var state by remember { mutableStateOf<BrowseUiState>(BrowseUiState.Loading) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 加载更多失败单独置位，供列表底部给出重试入口
+    var loadMoreFailed by remember { mutableStateOf(false) }
     // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
@@ -142,7 +144,10 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             loadingMore = false
             // 加载期间切换了筛选：这批结果属于旧条件，丢弃以免串页
             if (next != null && token == requestToken) {
+                loadMoreFailed = false
                 state = loaded.copy(page = loaded.page.mergedWith(next))
+            } else if (token == requestToken) {
+                loadMoreFailed = true
             }
         }
     }
@@ -342,6 +347,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                         is BrowseUiState.Loaded -> searchResultItems(
                             page = s.page,
                             loadingMore = loadingMore,
+                            loadMoreFailed = loadMoreFailed,
                             onLoadMore = ::loadMore,
                             onOpenAlbum = onOpenAlbum,
                         )
@@ -465,6 +471,8 @@ private fun TagResultSection(
 ) {
     var state by remember(keyword, order) { mutableStateOf<BrowseUiState>(BrowseUiState.Loading) }
     var loadingMore by remember(keyword, order) { mutableStateOf(false) }
+    // 加载更多失败单独置位，供列表底部给出重试入口
+    var loadMoreFailed by remember(keyword, order) { mutableStateOf(false) }
     var requestToken by remember(keyword, order) { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -495,7 +503,10 @@ private fun TagResultSection(
             }
             loadingMore = false
             if (next != null && token == requestToken) {
+                loadMoreFailed = false
                 state = loaded.copy(page = loaded.page.mergedWith(next))
+            } else if (token == requestToken) {
+                loadMoreFailed = true
             }
         }
     }
@@ -535,6 +546,7 @@ private fun TagResultSection(
                 is BrowseUiState.Loaded -> searchResultItems(
                     page = s.page,
                     loadingMore = loadingMore,
+                    loadMoreFailed = loadMoreFailed,
                     onLoadMore = ::loadMore,
                     onOpenAlbum = onOpenAlbum,
                 )

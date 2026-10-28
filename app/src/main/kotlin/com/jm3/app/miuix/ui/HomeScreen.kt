@@ -105,6 +105,8 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
     var showAllTags by remember { mutableStateOf(false) }
     var showSearchHelp by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 加载更多失败单独置位，供列表底部给出重试入口
+    var loadMoreFailed by remember { mutableStateOf(false) }
     // 仅下拉手势触发的刷新使用顶部指示器；普通加载由列表内进度条表达。
     var refreshing by remember { mutableStateOf(false) }
     // 列表代次：切换搜索/刷新时递增，旧请求的响应只在代次未变时落地。
@@ -240,7 +242,13 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                 }.getOrNull()
             }
             loadingMore = false
-            if (next == null || token != listToken) return@launch
+            if (token != listToken) return@launch
+            // 同一代次内失败可重试；成功即清除失败标记
+            if (next == null) {
+                loadMoreFailed = true
+                return@launch
+            }
+            loadMoreFailed = false
             val merged = current.mergedWith(next)
             if (searching) {
                 if (results != null) results = HomeListState.Loaded(merged)
@@ -469,6 +477,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                                 page = s.page,
                                 clickPaging = clickPaging,
                                 loadingMore = loadingMore,
+                                loadMoreFailed = loadMoreFailed,
                                 onLoadMore = ::loadMore,
                                 onPageChange = ::jumpToPage,
                                 onOpenAlbum = onOpenAlbum,
@@ -561,6 +570,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                                 page = s.page,
                                 clickPaging = clickPaging,
                                 loadingMore = loadingMore,
+                                loadMoreFailed = loadMoreFailed,
                                 onLoadMore = ::loadMore,
                                 onPageChange = ::jumpToPage,
                                 onOpenAlbum = onOpenAlbum,
@@ -739,6 +749,7 @@ private fun LazyListScope.homePageItems(
     page: SearchPage,
     clickPaging: Boolean,
     loadingMore: Boolean,
+    loadMoreFailed: Boolean,
     onLoadMore: () -> Unit,
     onPageChange: (Int) -> Unit,
     onOpenAlbum: (String) -> Unit,
@@ -747,6 +758,7 @@ private fun LazyListScope.homePageItems(
         searchResultItems(
             page = page,
             loadingMore = loadingMore,
+            loadMoreFailed = loadMoreFailed,
             onLoadMore = onLoadMore,
             onOpenAlbum = onOpenAlbum,
         )
