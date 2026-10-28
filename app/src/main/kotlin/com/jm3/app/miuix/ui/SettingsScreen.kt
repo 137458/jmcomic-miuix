@@ -287,6 +287,7 @@ fun SettingsScreen(
                         TextField(
                             value = domainsInput.value,
                             onValueChange = { domainsInput.value = it },
+                            label = "自定义线路域名",
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),
                         )
                     },

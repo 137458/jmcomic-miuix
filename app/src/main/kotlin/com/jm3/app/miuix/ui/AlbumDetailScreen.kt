@@ -752,7 +752,7 @@ private fun DetailHeader(
             Card(modifier = Modifier.fillMaxWidth()) {
                 AsyncImage(
                     model = url,
-                    contentDescription = null,
+                    contentDescription = detail.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
                 )
@@ -880,16 +880,16 @@ private fun DescriptionSection(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "简介",
-                fontSize = MiuixTheme.textStyles.subtitle.fontSize,
-                color = MiuixTheme.colorScheme.onBackgroundVariant,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = onCopy, minWidth = 32.dp, minHeight = 32.dp) {
+            SmallTitle(text = "简介", modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = onCopy,
+                minWidth = 32.dp,
+                minHeight = 32.dp,
+                modifier = Modifier.padding(end = 16.dp),
+            ) {
                 Icon(
                     imageVector = MiuixIcons.Copy,
                     contentDescription = "复制简介",
@@ -994,7 +994,7 @@ private fun RelatedAlbumCard(related: SearchResult, onClick: () -> Unit) {
         if (related.coverUrl != null) {
             AsyncImage(
                 model = related.coverUrl,
-                contentDescription = null,
+                contentDescription = related.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()

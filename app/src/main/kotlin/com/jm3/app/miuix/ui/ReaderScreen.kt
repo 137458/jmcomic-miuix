@@ -750,13 +750,19 @@ private fun ReaderPages(
                     Text(text = "3天不要显示", fontSize = MiuixTheme.textStyles.body2.fontSize)
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                Row(
+                // HyperOS 弹窗惯例：按钮纵向堆叠、各占满宽，避免横排等分与系统弹窗观感不一致
+                TextButton(
+                    text = "追踪连载",
+                    onClick = ::followSeries,
+                    enabled = !trackBusy,
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    TextButton(text = "追踪连载", onClick = ::followSeries, enabled = !trackBusy)
-                    TextButton(text = "关闭", onClick = { closeTrackPrompt() })
-                }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(
+                    text = "关闭",
+                    onClick = { closeTrackPrompt() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

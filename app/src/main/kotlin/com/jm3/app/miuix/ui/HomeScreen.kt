@@ -458,7 +458,10 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                contentPadding = PaddingValues(top = innerPadding.calculateTopPadding()),
+                contentPadding = PaddingValues(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = innerPadding.calculateBottomPadding(),
+                ),
             ) {
                 val searching = results != null
                 if (searching) {
@@ -727,7 +730,7 @@ private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
         if (update.coverUrl != null) {
             AsyncImage(
                 model = update.coverUrl,
-                contentDescription = null,
+                contentDescription = update.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.width(112.dp).height(150.dp),
             )
@@ -818,7 +821,7 @@ private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
         if (pick.coverUrl != null) {
             AsyncImage(
                 model = pick.coverUrl,
-                contentDescription = null,
+                contentDescription = pick.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.width(96.dp).height(128.dp),
             )
