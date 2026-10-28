@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -64,6 +65,8 @@ internal fun RowScope.FloatingBottomBarItem(
             }
             .focusable()
             .fillMaxHeight()
+            // 单项最小宽度：贴近 iOS 悬浮 Tab 栏的项距比例，同时保证 48dp 触控目标
+            .widthIn(min = 64.dp)
             .weight(1f)
             .graphicsLayer {
                 val s = scale()
