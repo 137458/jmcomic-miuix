@@ -186,6 +186,7 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                     totalItems = loaded.total,
                                 ),
                                 loadingMore = false,
+                                loadMoreFailed = false,
                                 onLoadMore = {},
                                 onOpenAlbum = onOpenAlbum,
                             )

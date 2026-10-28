@@ -197,10 +197,34 @@ private fun SearchResultCover(url: String?) {
     )
 }
 
+/** 列表加载更多三态：加载中 / 出错重试 / 没有更多了；与 HyperOS 加载反馈一致。 */
+@Composable
+fun LoadMoreFooter(
+    loadingMore: Boolean,
+    hasMore: Boolean,
+    loadMoreFailed: Boolean,
+    onLoadMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+        when {
+            loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
+            loadMoreFailed -> TextButton(text = "加载失败，点击重试", onClick = onLoadMore, minWidth = 0.dp)
+            !hasMore -> Text(
+                text = "没有更多了",
+                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            else -> TextButton(text = "加载更多", onClick = onLoadMore)
+        }
+    }
+}
+
 /** 搜索/浏览共用的结果列表与加载更多入口；hasMore 由 currentPage/totalPages 推断。 */
 fun LazyListScope.searchResultItems(
     page: SearchPage,
     loadingMore: Boolean,
+    loadMoreFailed: Boolean,
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
@@ -223,15 +247,15 @@ fun LazyListScope.searchResultItems(
             )
         }
     }
-    if (page.currentPage < page.totalPages) {
+    // 单页结果（如每周必看）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
+    if (page.items.isNotEmpty() && page.totalPages > 1) {
         item(key = "load-more") {
-            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                if (loadingMore) {
-                    InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                } else {
-                    TextButton(text = "加载更多", onClick = onLoadMore)
-                }
-            }
+            LoadMoreFooter(
+                loadingMore = loadingMore,
+                hasMore = page.currentPage < page.totalPages,
+                loadMoreFailed = loadMoreFailed,
+                onLoadMore = onLoadMore,
+            )
         }
     }
 }

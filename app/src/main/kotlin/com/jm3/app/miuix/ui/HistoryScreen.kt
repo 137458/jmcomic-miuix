@@ -90,6 +90,8 @@ fun HistoryScreen(
     var nextPage by remember { mutableStateOf(2) }
     var endReached by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 加载更多失败单独置位，供列表底部给出重试入口
+    var loadMoreFailed by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var clearing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -117,15 +119,18 @@ fun HistoryScreen(
         if (loadingMore || endReached || state != HistoryListState.Loaded) return
         loadingMore = true
         scope.launch {
-            val next = runCatching { repository.page(nextPage, pageSize) }.getOrDefault(emptyList())
+            val result = runCatching { repository.page(nextPage, pageSize) }
             loadingMore = false
-            if (next.isEmpty()) {
-                endReached = true
-            } else {
-                entries = entries + next
-                nextPage += 1
-                if (next.size < pageSize) endReached = true
-            }
+            result.onSuccess { next ->
+                loadMoreFailed = false
+                if (next.isEmpty()) {
+                    endReached = true
+                } else {
+                    entries = entries + next
+                    nextPage += 1
+                    if (next.size < pageSize) endReached = true
+                }
+            }.onFailure { loadMoreFailed = true }
         }
     }
 
@@ -196,18 +201,14 @@ fun HistoryScreen(
                                 onDelete = { removeAlbum(album.albumId) },
                             )
                         }
-                        if (!endReached) {
+                        if (albums.isNotEmpty()) {
                             item(key = "load-more") {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    if (loadingMore) {
-                                        InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                                    } else {
-                                        TextButton(text = "加载更多", onClick = ::loadMore)
-                                    }
-                                }
+                                LoadMoreFooter(
+                                    loadingMore = loadingMore,
+                                    hasMore = !endReached,
+                                    loadMoreFailed = loadMoreFailed,
+                                    onLoadMore = ::loadMore,
+                                )
                             }
                         }
                         item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }

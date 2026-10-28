@@ -76,6 +76,8 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     var page by remember { mutableStateOf<SearchPage?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 加载更多失败单独置位，供列表底部给出重试入口
+    var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 收藏夹筛选：0 = 全部；切换后重新拉第一页。
@@ -303,7 +305,10 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
             loadingMore = false
             // 加载期间切换了收藏夹：这批结果属于旧收藏夹，丢弃以免串夹。
             if (next != null && targetFolderId == folderId) {
+                loadMoreFailed = false
                 page = current.mergedWith(SearchPage(next.currentPage, next.totalPages, next.items))
+            } else if (targetFolderId == folderId) {
+                loadMoreFailed = true
             }
         }
     }
@@ -443,18 +448,14 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                 )
                             }
                         }
-                        if (p.currentPage < p.totalPages) {
+                        if (p.items.isNotEmpty()) {
                             item(key = "load-more") {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    if (loadingMore) {
-                                        InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                                    } else {
-                                        TextButton(text = "加载更多", onClick = ::loadMore)
-                                    }
-                                }
+                                LoadMoreFooter(
+                                    loadingMore = loadingMore,
+                                    hasMore = p.currentPage < p.totalPages,
+                                    loadMoreFailed = loadMoreFailed,
+                                    onLoadMore = ::loadMore,
+                                )
                             }
                         }
                         item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }

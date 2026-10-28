@@ -134,6 +134,8 @@ fun AlbumDetailScreen(
     var replyTarget by remember(albumId) { mutableStateOf<CommentItem?>(null) }
     var replyBusy by remember(albumId) { mutableStateOf(false) }
     var commentsLoadingMore by remember(albumId) { mutableStateOf(false) }
+    // 评论加载更多失败单独置位，供底部给出重试入口
+    var commentsLoadFailed by remember(albumId) { mutableStateOf(false) }
     var pullRefreshing by remember(albumId) { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
@@ -284,7 +286,10 @@ fun AlbumDetailScreen(
             }
             commentsLoadingMore = false
             if (next != null) {
+                commentsLoadFailed = false
                 comments = CommentsUiState.Loaded(loaded.page.mergedWith(next), loaded.lastPage + 1)
+            } else {
+                commentsLoadFailed = true
             }
         }
     }
@@ -638,20 +643,14 @@ fun AlbumDetailScreen(
                                                     },
                                                 )
                                             }
-                                            if (cs.page.items.size < cs.page.total) {
-                                                Box(
-                                                    modifier = Modifier.fillMaxWidth().padding(8.dp),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    if (commentsLoadingMore) {
-                                                        InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                                                    } else {
-                                                        TextButton(
-                                                            text = "加载更多评论",
-                                                            onClick = ::loadMoreComments,
-                                                        )
-                                                    }
-                                                }
+                                            if (cs.page.items.isNotEmpty()) {
+                                                LoadMoreFooter(
+                                                    loadingMore = commentsLoadingMore,
+                                                    hasMore = cs.page.items.size < cs.page.total,
+                                                    loadMoreFailed = commentsLoadFailed,
+                                                    onLoadMore = ::loadMoreComments,
+                                                    modifier = Modifier.padding(top = 8.dp),
+                                                )
                                             }
                                         }
                                     }
