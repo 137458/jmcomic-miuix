@@ -40,7 +40,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
@@ -128,7 +128,7 @@ fun LoadingScreen(modifier: Modifier = Modifier, text: String = "加载中…") 
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        CircularProgressIndicator()
+        InfiniteProgressIndicator()
         Spacer(modifier = Modifier.height(12.dp))
         Text(text = text)
     }
@@ -227,7 +227,7 @@ fun LazyListScope.searchResultItems(
         item(key = "load-more") {
             Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                 if (loadingMore) {
-                    CircularProgressIndicator(size = 20.dp)
+                    InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
                 } else {
                     TextButton(text = "加载更多", onClick = onLoadMore)
                 }

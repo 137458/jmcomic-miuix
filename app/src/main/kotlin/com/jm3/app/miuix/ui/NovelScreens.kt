@@ -55,6 +55,7 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.Icon
@@ -1196,7 +1197,7 @@ private fun NovelCommentsPanel(
                     contentAlignment = Alignment.Center,
                 ) {
                     when {
-                        loadingMore -> CircularProgressIndicator(size = 20.dp)
+                        loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
                         hasMore -> TextButton(
                             text = "加载更多",
                             onClick = { load(page + 1, replace = false, showLoading = false) },

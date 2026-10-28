@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
@@ -206,7 +206,7 @@ fun WatchHistoryScreen(
                                             minHeight = 36.dp,
                                         )
                                     }
-                                    loadingMore -> CircularProgressIndicator(size = 20.dp)
+                                    loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
                                     hasNext -> TextButton(
                                         text = "加载更多",
                                         onClick = {

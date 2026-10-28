@@ -1,6 +1,5 @@
 package com.jm3.app.miuix.ui
 
-import android.os.Build
 import android.view.KeyEvent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +56,7 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
+import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -66,12 +66,11 @@ import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -284,9 +283,8 @@ private fun ReaderPages(
     var trackBusy by remember { mutableStateOf(false) }
 
     // 悬浮工具栏毛玻璃：内容层录屏作为 backdrop，工具栏按胶囊形状采样并模糊；
-    // miuix-blur 依赖 API 33 的 RuntimeShader，低版本跳过录屏并退回不透明底色
-    val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-    val toolbarBackdrop = if (supportsBlur) rememberLayerBackdrop() else null
+    // 采样源先垫主题底色，避免页面留白区透明参与模糊产生黑边；不支持 RuntimeShader 时返回 null 退回实色
+    val toolbarBackdrop = rememberBlurBackdrop()
     val toolbarBlurRadius = with(LocalDensity.current) { 22.dp.toPx() }
 
     val prevChapter = chapters.getOrNull(chapterIndex - 1)?.takeIf { chapterIndex > 0 }
@@ -651,7 +649,7 @@ private fun ReaderPages(
                     commentsLoading -> Box(
                         modifier = Modifier.fillMaxWidth().height(120.dp),
                         contentAlignment = Alignment.Center,
-                    ) { CircularProgressIndicator() }
+                    ) { InfiniteProgressIndicator() }
 
                     commentsFailed -> Box(
                         modifier = Modifier.fillMaxWidth().height(120.dp),
