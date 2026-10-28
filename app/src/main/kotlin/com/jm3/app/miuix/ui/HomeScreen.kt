@@ -776,6 +776,7 @@ private fun SearchResultHeader(
     onOrderChange: (BrowseOrder) -> Unit,
     total: Int,
 ) {
+    val selectionHaptic = rememberSelectionHaptic()
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Text(
             text = (if (byTag) "标签：$query" else "“$query”") + if (total > 0) " · 共 $total 结果" else "",
@@ -786,7 +787,10 @@ private fun SearchResultHeader(
         TabRow(
             tabs = BrowseOrder.entries.map { it.label },
             selectedTabIndex = BrowseOrder.entries.indexOf(order),
-            onTabSelected = { onOrderChange(BrowseOrder.entries[it]) },
+            onTabSelected = {
+                selectionHaptic()
+                onOrderChange(BrowseOrder.entries[it])
+            },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
     }

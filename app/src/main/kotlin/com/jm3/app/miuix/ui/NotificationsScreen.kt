@@ -57,6 +57,7 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var marking by remember { mutableStateOf(false) }
     var tabValue by rememberSaveable { mutableStateOf(NotificationTab.ALL.name) }
+    val selectionHaptic = rememberSelectionHaptic()
     val tab = NotificationTab.entries.firstOrNull { it.name == tabValue } ?: NotificationTab.ALL
     val scope = rememberCoroutineScope()
 
@@ -139,7 +140,10 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
                     TabRow(
                         tabs = tabLabels,
                         selectedTabIndex = NotificationTab.entries.indexOf(tab),
-                        onTabSelected = { tabValue = NotificationTab.entries[it].name },
+                        onTabSelected = {
+                            selectionHaptic()
+                            tabValue = NotificationTab.entries[it].name
+                        },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }

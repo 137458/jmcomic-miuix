@@ -139,6 +139,7 @@ fun AlbumDetailScreen(
     var pullRefreshing by remember(albumId) { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
+    val selectionHaptic = rememberSelectionHaptic()
 
     /** 打开收藏夹选择面板；登录后拉取收藏夹名称表，失败时只保留「全部收藏」。 */
     fun openFolderSheet() {
@@ -576,6 +577,7 @@ fun AlbumDetailScreen(
                                     resumeId = resumeId,
                                     readPhotoIds = readPhotoIds,
                                     onToggle = {
+                                        selectionHaptic()
                                         expandedGroups = if (groupIndex in expandedGroups) {
                                             expandedGroups - groupIndex
                                         } else {

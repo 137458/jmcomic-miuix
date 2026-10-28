@@ -72,6 +72,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     val snackbarHostState = remember { SnackbarHostState() }
     // 0 = 收藏夹；1 = 标签收藏
     var tabIndex by rememberSaveable { mutableStateOf(0) }
+    val selectionHaptic = rememberSelectionHaptic()
 
     var page by remember { mutableStateOf<SearchPage?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -355,7 +356,10 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 TabRow(
                     tabs = listOf("收藏夹", "标签收藏"),
                     selectedTabIndex = tabIndex,
-                    onTabSelected = { tabIndex = it },
+                    onTabSelected = {
+                        selectionHaptic()
+                        tabIndex = it
+                    },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }

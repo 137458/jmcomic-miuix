@@ -65,6 +65,7 @@ fun SearchScreen(
     var requestToken by remember { mutableIntStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val selectionHaptic = rememberSelectionHaptic()
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
@@ -156,14 +157,20 @@ fun SearchScreen(
             TabRow(
                 tabs = BrowseOrder.entries.map { it.label },
                 selectedTabIndex = BrowseOrder.entries.indexOf(order),
-                onTabSelected = { orderValue = BrowseOrder.entries[it].apiValue },
+                onTabSelected = {
+                    selectionHaptic()
+                    orderValue = BrowseOrder.entries[it].apiValue
+                },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
             // 时间范围由服务端过滤（原版年/月筛选的等价能力，库只提供 今日/本周/本月/全部）
             TabRow(
                 tabs = BrowseTime.entries.map { it.label },
                 selectedTabIndex = BrowseTime.entries.indexOf(time),
-                onTabSelected = { timeValue = BrowseTime.entries[it].apiValue },
+                onTabSelected = {
+                    selectionHaptic()
+                    timeValue = BrowseTime.entries[it].apiValue
+                },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
             PullToRefresh(
