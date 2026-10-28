@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -19,13 +20,24 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.blur.blur
-import top.yukonga.miuix.kmp.blur.drawBackdrop
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurDefaults
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.ProgressiveBlur
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 顶栏玻璃底色不透明度：过低会让标题与滚动内容糊在一起，过高则失去通透感。 */
-private const val TOP_BAR_TINT_ALPHA = 0.72f
+/**
+ * 悬浮底栏的内容净空（底栏高度 + 底边距 + 呼吸空间）。主框架展示底栏时提供 100.dp，
+ * 无底栏的子页面与宽屏侧栏模式保持默认 0。GlassScaffold 把它叠加进 bottom 内边距，
+ * 让列表末项能滚出胶囊上方，同时内容其余部分可穿透底栏滚动、持续被玻璃采样。
+ */
+val LocalFloatingBarContentPadding = compositionLocalOf { 0.dp }
+
+/** 顶栏渐变模糊半径与过渡曲线：与 MIUIX 官方 BlurredBar 规范一致（HyperOS 沉浸式顶栏）。 */
+private const val TOP_BAR_BLUR_RADIUS = 10f
+private const val TOP_BAR_BLUR_CURVE = 2.2f
 
 /**
  * 玻璃顶栏脚手架：顶栏改为覆盖层，内容穿透到状态栏下方滚动，顶栏实时采样其下方内容。
@@ -52,6 +64,7 @@ fun GlassScaffold(
     // 顶栏高度由测量得出：不同页面的 TopAppBar 可能带副标题，硬编码会错位
     var topBarHeightPx by remember { mutableIntStateOf(0) }
     val topBarHeight = with(LocalDensity.current) { topBarHeightPx.toDp() }
+    val floatingBarContentPadding = LocalFloatingBarContentPadding.current
 
     Scaffold(
         modifier = modifier,
@@ -63,7 +76,7 @@ fun GlassScaffold(
                 content(
                     PaddingValues(
                         top = topBarHeight,
-                        bottom = innerPadding.calculateBottomPadding(),
+                        bottom = innerPadding.calculateBottomPadding() + floatingBarContentPadding,
                     ),
                 )
             }
@@ -74,15 +87,7 @@ fun GlassScaffold(
                     .onSizeChanged { topBarHeightPx = it.height }
                     .then(
                         if (shaderReady) {
-                            // SDF 边缘高光：顶栏矩形只露出下缘一条细高光带，
-                            // 与主底栏同一光源语言
-                            Modifier.drawBackdrop(
-                                backdrop = backdrop!!,
-                                shape = { RectangleShape },
-                                effects = { blur(24.dp.toPx(), 24.dp.toPx()) },
-                                highlight = { glassEdgeHighlight },
-                                onDrawSurface = { drawRect(containerColor.copy(alpha = TOP_BAR_TINT_ALPHA)) },
-                            )
+                            Modifier.topBarProgressiveBlur(backdrop!!)
                         } else {
                             Modifier.background(containerColor)
                         },
@@ -92,4 +97,24 @@ fun GlassScaffold(
             }
         }
     }
+}
+
+/**
+ * 顶栏渐变模糊：状态栏区域满额模糊，沿 Y 轴向下平滑衰减至底缘 0（无硬切边、无描边高光），
+ * 底色以低透明度 surface 混入保证标题可读。与 MIUIX 官方 BlurredBar 同一配方。
+ */
+@Composable
+private fun Modifier.topBarProgressiveBlur(backdrop: LayerBackdrop): Modifier {
+    val blurColors = BlurDefaults.blurColors(
+        blendColors = listOf(
+            BlendColorEntry(color = MiuixTheme.colorScheme.surface.copy(alpha = 0.3f)),
+        ),
+    )
+    return progressiveTextureBlur(
+        backdrop = backdrop,
+        shape = RectangleShape,
+        gradient = ProgressiveBlur.Top.copy(curve = TOP_BAR_BLUR_CURVE),
+        blurRadius = TOP_BAR_BLUR_RADIUS,
+        colors = blurColors,
+    )
 }
