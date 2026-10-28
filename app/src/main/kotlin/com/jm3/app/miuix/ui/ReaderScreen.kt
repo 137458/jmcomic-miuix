@@ -37,7 +37,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -854,57 +853,33 @@ private fun ReaderToolbar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                ReaderActionCell(
+                ActionCell(
                     icon = if (horizontal) MiuixIcons.VerticalSplit else MiuixIcons.HorizontalSplit,
                     label = if (horizontal) "直向阅读" else "左右阅读",
                     onClick = onToggleMode,
+                    modifier = Modifier.width(66.dp),
                 )
-                ReaderActionCell(icon = MiuixIcons.ListView, label = "章节", onClick = onChapters)
-                ReaderActionCell(icon = MiuixIcons.Messages, label = "评论", onClick = onComments)
-                ReaderActionCell(
+                ActionCell(icon = MiuixIcons.ListView, label = "章节", onClick = onChapters, modifier = Modifier.width(66.dp))
+                ActionCell(icon = MiuixIcons.Messages, label = "评论", onClick = onComments, modifier = Modifier.width(66.dp))
+                ActionCell(
                     icon = if (favorited) MiuixIcons.FolderFill else MiuixIcons.Folder,
                     label = "收藏",
                     active = favorited,
                     onClick = onFavorite,
+                    modifier = Modifier.width(66.dp),
                 )
-                ReaderActionCell(
+                ActionCell(
                     icon = if (liked) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
                     label = "喜欢",
                     active = liked,
                     onClick = onLike,
+                    modifier = Modifier.width(66.dp),
                 )
             }
         }
     }
 }
 
-/** 工具栏单项：图标 + 文案，激活态用主题主色回显。 */
-@Composable
-private fun ReaderActionCell(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    active: Boolean = false,
-) {
-    val color = if (active) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface
-    Column(
-        modifier = Modifier
-            .width(66.dp)
-            .clickable(onClick = onClick)
-            .pressScale(hapticFeedback = true)
-            .padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(imageVector = icon, contentDescription = label, tint = color)
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
-            color = color,
-            maxLines = 1,
-        )
-    }
-}
 
 @Composable
 private fun ReaderPage(

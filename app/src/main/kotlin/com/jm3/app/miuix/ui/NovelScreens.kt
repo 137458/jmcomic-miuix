@@ -32,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -680,21 +679,21 @@ private fun NovelDetailHeader(
         }
         Card(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                DetailActionCell(
+                ActionCell(
                     icon = if (detail.favorite) MiuixIcons.FolderFill else MiuixIcons.Folder,
                     label = "收藏",
                     active = detail.favorite,
                     modifier = Modifier.weight(1f),
                     onClick = onToggleFavorite,
                 )
-                DetailActionCell(
+                ActionCell(
                     icon = if (detail.liked) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
                     label = "喜欢",
                     active = detail.liked,
                     modifier = Modifier.weight(1f),
                     onClick = onToggleLike,
                 )
-                DetailActionCell(
+                ActionCell(
                     icon = MiuixIcons.Messages,
                     label = "评论",
                     active = false,
@@ -726,29 +725,6 @@ private fun NovelDetailHeader(
     }
 }
 
-/** 详情三宫格操作项。 */
-@Composable
-private fun DetailActionCell(
-    icon: ImageVector,
-    label: String,
-    active: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val color = if (active) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface
-    Column(
-        modifier = modifier.clickable(onClick = onClick).pressScale().padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(imageVector = icon, contentDescription = label, tint = color)
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
-            color = color,
-        )
-    }
-}
 
 /** 单个章节行：标题 + 已读/new/购买标记。 */
 @Composable
@@ -1066,66 +1042,33 @@ private fun NovelReaderToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            NovelToolbarCell(glyph = "A", label = "字号", onClick = onFont)
-            NovelToolbarCell(
+            ActionCell(glyph = "A", label = "字号", onClick = onFont, modifier = Modifier.width(66.dp))
+            ActionCell(
                 icon = MiuixIcons.ChevronBackward,
                 label = "上一章",
                 enabled = canPrev,
                 onClick = onPrev,
+                modifier = Modifier.width(66.dp),
             )
-            NovelToolbarCell(
+            ActionCell(
                 icon = MiuixIcons.ChevronForward,
                 label = "下一章",
                 enabled = canNext,
                 onClick = onNext,
+                modifier = Modifier.width(66.dp),
             )
-            NovelToolbarCell(icon = MiuixIcons.Messages, label = "评论", onClick = onComments)
-            NovelToolbarCell(
+            ActionCell(icon = MiuixIcons.Messages, label = "评论", onClick = onComments, modifier = Modifier.width(66.dp))
+            ActionCell(
                 icon = if (favorited) MiuixIcons.FolderFill else MiuixIcons.Folder,
                 label = "收藏",
                 active = favorited,
                 onClick = onFavorite,
+                modifier = Modifier.width(66.dp),
             )
         }
     }
 }
 
-/** 工具栏单项：图标或字形 + 文案，禁用态降级、激活态用主题主色。 */
-@Composable
-private fun NovelToolbarCell(
-    label: String,
-    onClick: () -> Unit,
-    icon: ImageVector? = null,
-    glyph: String? = null,
-    enabled: Boolean = true,
-    active: Boolean = false,
-) {
-    val color = when {
-        !enabled -> MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.4f)
-        active -> MiuixTheme.colorScheme.primary
-        else -> MiuixTheme.colorScheme.onSurface
-    }
-    Column(
-        modifier = Modifier
-            .width(66.dp)
-            .clickable(enabled = enabled, onClick = onClick)
-            .pressScale(hapticFeedback = true)
-            .padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        if (icon != null) {
-            Icon(imageVector = icon, contentDescription = label, tint = color)
-        } else if (glyph != null) {
-            Text(text = glyph, fontSize = 22.sp, color = color)
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
-            color = color,
-        )
-    }
-}
 
 /** 小说评论区：列表 + 加载更多 + 发评论 + 回复。详情页与阅读页共用。 */
 @Composable

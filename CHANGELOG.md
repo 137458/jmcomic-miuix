@@ -58,6 +58,7 @@
 - 会话恢复失败时清空本地会话并保持未登录，避免 UI 显示已登录但网关会话失效。
 - 玻璃组件边缘高光统一：主底栏、玻璃顶栏与阅读器工具条共用同一 BloomStroke 双光源 SDF 描边（白 12%、内辉光 2dp），顶栏下缘与工具条胶囊外缘显出细高光带；平台角标底色由 RoundedCornerShape 改为 miuix squircleBackground，与全局超椭圆形状一致。
 - 组件用法一致性收口：历史清空与连载追踪确认弹窗按钮统一为纵向全宽堆叠（与设置页弹窗惯例一致）；详情页「简介」与分类筛选区块标题统一改用 SmallTitle；小说章节列表补充 items key，修复倒序排列切换时条目复用错位；相册封面、相关推荐、连载更新与随机推荐封面图补充无障碍描述；设置页自定义线路输入框补全 label。
+- 手写纵向图标单元收敛：详情动作台（AlbumDetailActionCell）、小说详情与悬浮工具条（DetailActionCell/NovelToolbarCell）、阅读器工具条（ReaderActionCell）四套重复实现合并为 Common.kt 共享 ActionCell（图标/字形双形态，禁用降灰、激活主色、按压微缩放触觉），全部调用点行为一致；首页「热门标签」区块标题由手写 SectionHeader 改为 SmallTitle + TextButton 组合。
 
 ### 修复
 
