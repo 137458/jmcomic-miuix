@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -56,6 +57,7 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -75,7 +77,6 @@ import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.NumberPicker
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
@@ -180,13 +181,27 @@ fun ReaderScreen(
     }
 
     when (val s = state) {
-        is ReaderUiState.Loading -> Scaffold(
-            topBar = { TopAppBar(title = "阅读", navigationIcon = { BackButton(onBack = onBack) }) },
+        is ReaderUiState.Loading -> GlassScaffold(
+            topBar = {
+                TopAppBar(
+                    title = "阅读",
+                    navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                )
+            },
         ) { innerPadding ->
             LoadingScreen(modifier = Modifier.padding(innerPadding))
         }
-        is ReaderUiState.Failed -> Scaffold(
-            topBar = { TopAppBar(title = "阅读", navigationIcon = { BackButton(onBack = onBack) }) },
+        is ReaderUiState.Failed -> GlassScaffold(
+            topBar = {
+                TopAppBar(
+                    title = "阅读",
+                    navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                )
+            },
         ) { innerPadding ->
             ErrorScreen(
                 message = "章节加载失败：${s.message}",
@@ -484,13 +499,15 @@ private fun ReaderPages(
         showTrackPrompt = true
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
             if (chromeVisible) {
                 TopAppBar(
                     title = photo.title,
                     subtitle = "第 $currentPage / ${photo.images.size} 页",
                     navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
                     actions = {
                         IconButton(onClick = { prevChapter?.let { onOpenChapter(it.id) } }, enabled = prevChapter != null) {
                             Icon(imageVector = MiuixIcons.ChevronBackward, contentDescription = "上一话")
@@ -512,22 +529,6 @@ private fun ReaderPages(
             }
         },
         snackbarHost = { SnackbarHost(state = snackbarHostState) },
-        floatingToolbar = {
-            if (chromeVisible) {
-                ReaderToolbar(
-                    horizontal = horizontal,
-                    favorited = favorited,
-                    liked = liked,
-                    backdrop = toolbarBackdrop,
-                    blurRadius = toolbarBlurRadius,
-                    onToggleMode = { switchMode(!horizontal) },
-                    onChapters = { showChapterSheet = true },
-                    onComments = ::openComments,
-                    onFavorite = ::toggleFavorite,
-                    onLike = ::toggleLike,
-                )
-            }
-        },
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize()
@@ -582,6 +583,30 @@ private fun ReaderPages(
                     adapter = rememberScrollBarAdapter(listState),
                     modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                     trackPadding = innerPadding,
+                )
+            }
+        }
+
+        // 底栏原由 Scaffold 的 floatingToolbar 槽承载；GlassScaffold 无该槽，
+        // 改为内容层底部居中的覆盖层，位置与原先一致
+        if (chromeVisible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = innerPadding.calculateBottomPadding() + 4.dp),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                ReaderToolbar(
+                    horizontal = horizontal,
+                    favorited = favorited,
+                    liked = liked,
+                    backdrop = toolbarBackdrop,
+                    blurRadius = toolbarBlurRadius,
+                    onToggleMode = { switchMode(!horizontal) },
+                    onChapters = { showChapterSheet = true },
+                    onComments = ::openComments,
+                    onFavorite = ::toggleFavorite,
+                    onLike = ::toggleLike,
                 )
             }
         }

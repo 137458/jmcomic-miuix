@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,13 +16,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -44,10 +45,12 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
         }
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
             TopAppBar(
                 title = "本地书架",
+                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                color = Color.Transparent,
                 navigationIcon = { BackButton(onBack = onBack) },
             )
         },
@@ -61,7 +64,11 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = innerPadding,
+                // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
+                contentPadding = PaddingValues(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = innerPadding.calculateBottomPadding(),
+                ),
             ) {
                 items(records, key = { it.photoId }) { record ->
                     BasicComponent(

@@ -34,11 +34,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
@@ -58,7 +60,6 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -331,16 +332,86 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         candidates.randomOrNull()?.let { onOpenAlbum(it.id) }
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            TopAppBar(
-                title = "JM3 Miuix",
-                actions = {
-                    IconButton(onClick = onOpenWeek) {
-                        Icon(imageVector = MiuixIcons.Weeks, contentDescription = "每周必看")
-                    }
-                },
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TopAppBar(
+                    title = "JM3 Miuix",
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                    actions = {
+                        IconButton(onClick = onOpenWeek) {
+                            Icon(imageVector = MiuixIcons.Weeks, contentDescription = "每周必看")
+                        }
+                    },
+                )
+                // 搜索栏固定于列表之外：与顶栏同处玻璃层，结果滚动后仍可直接改关键词。
+                SearchBar(
+                    inputField = {
+                        InputField(
+                            query = query,
+                            onQueryChange = {
+                                query = it
+                                // 清空输入即退出搜索态，回到发现流
+                                if (it.isBlank() && results != null) clearSearch()
+                            },
+                            onSearch = { submitSearch() },
+                            expanded = searchExpanded,
+                            onExpandedChange = { searchExpanded = it },
+                            label = "搜索 / 车号",
+                            // 自绘尾部动作：保留清空入口，并常驻「?」语法帮助。
+                            trailingIcon = {
+                                Row(
+                                    modifier = Modifier.padding(end = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (query.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = {
+                                                query = ""
+                                                if (results != null) clearSearch()
+                                            },
+                                            minWidth = 32.dp,
+                                            minHeight = 32.dp,
+                                        ) {
+                                            Icon(
+                                                imageVector = MiuixIcons.Basic.Close,
+                                                contentDescription = "清空输入",
+                                                tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = { showSearchHelp = true },
+                                        minWidth = 32.dp,
+                                        minHeight = 32.dp,
+                                    ) {
+                                        Icon(
+                                            imageVector = MiuixIcons.Help,
+                                            contentDescription = "搜索语法帮助",
+                                            tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    },
+                    onExpandedChange = { searchExpanded = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    expanded = searchExpanded,
+                    outsideEndAction = {
+                        IconButton(onClick = ::submitSearch) {
+                            Icon(
+                                imageVector = MiuixIcons.Search,
+                                contentDescription = "搜索",
+                            )
+                        }
+                    },
+                ) {}
+            }
         },
         floatingActionButton = {
             if (showActions) {
@@ -374,211 +445,148 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
             }
         },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            // 搜索栏固定于列表之外：结果滚动后仍可直接改关键词。
-            SearchBar(
-                inputField = {
-                    InputField(
-                        query = query,
-                        onQueryChange = {
-                            query = it
-                            // 清空输入即退出搜索态，回到发现流
-                            if (it.isBlank() && results != null) clearSearch()
-                        },
-                        onSearch = { submitSearch() },
-                        expanded = searchExpanded,
-                        onExpandedChange = { searchExpanded = it },
-                        label = "搜索 / 车号",
-                        // 自绘尾部动作：保留清空入口，并常驻「?」语法帮助。
-                        trailingIcon = {
-                            Row(
-                                modifier = Modifier.padding(end = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (query.isNotEmpty()) {
-                                    IconButton(
-                                        onClick = {
-                                            query = ""
-                                            if (results != null) clearSearch()
-                                        },
-                                        minWidth = 32.dp,
-                                        minHeight = 32.dp,
-                                    ) {
-                                        Icon(
-                                            imageVector = MiuixIcons.Basic.Close,
-                                            contentDescription = "清空输入",
-                                            tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
-                                }
-                                IconButton(
-                                    onClick = { showSearchHelp = true },
-                                    minWidth = 32.dp,
-                                    minHeight = 32.dp,
-                                ) {
-                                    Icon(
-                                        imageVector = MiuixIcons.Help,
-                                        contentDescription = "搜索语法帮助",
-                                        tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                },
-                onExpandedChange = { searchExpanded = it },
-                modifier = Modifier.fillMaxWidth(),
-                expanded = searchExpanded,
-                outsideEndAction = {
-                    IconButton(onClick = ::submitSearch) {
-                        Icon(
-                            imageVector = MiuixIcons.Search,
-                            contentDescription = "搜索",
+        // 列表内容滚到玻璃顶栏（顶栏 + 搜索栏）下方，顶栏才能采样到真实背景
+        PullToRefresh(
+            isRefreshing = refreshing,
+            onRefresh = { refresh(byPull = true) },
+            modifier = Modifier.fillMaxSize(),
+            pullToRefreshState = refreshState,
+            // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
+            contentPadding = innerPadding,
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                contentPadding = PaddingValues(top = innerPadding.calculateTopPadding()),
+            ) {
+                val searching = results != null
+                if (searching) {
+                    item(key = "search-header") {
+                        SearchResultHeader(
+                            query = activeQuery,
+                            byTag = searchByTag,
+                            order = order,
+                            onOrderChange = { runSearch(activeQuery, searchByTag, it) },
+                            total = (results as? HomeListState.Loaded)?.page?.totalItems ?: 0,
                         )
                     }
-                },
-            ) {}
-            PullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = { refresh(byPull = true) },
-                modifier = Modifier.fillMaxSize(),
-                pullToRefreshState = refreshState,
-            ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    val searching = results != null
-                    if (searching) {
-                        item(key = "search-header") {
-                            SearchResultHeader(
-                                query = activeQuery,
-                                byTag = searchByTag,
-                                order = order,
-                                onOrderChange = { runSearch(activeQuery, searchByTag, it) },
-                                total = (results as? HomeListState.Loaded)?.page?.totalItems ?: 0,
+                    when (val s = results) {
+                        is HomeListState.Loading -> if (!refreshing) {
+                            item(key = "search-loading") { InlineLoading() }
+                        }
+                        is HomeListState.Failed -> item(key = "search-error") {
+                            ErrorScreen(
+                                message = "加载失败：${s.message}",
+                                onRetry = { runSearch(activeQuery, searchByTag, order) },
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
-                        when (val s = results) {
-                            is HomeListState.Loading -> if (!refreshing) {
-                                item(key = "search-loading") { InlineLoading() }
-                            }
-                            is HomeListState.Failed -> item(key = "search-error") {
-                                ErrorScreen(
-                                    message = "加载失败：${s.message}",
-                                    onRetry = { runSearch(activeQuery, searchByTag, order) },
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                )
-                            }
-                            is HomeListState.Loaded -> homePageItems(
-                                page = s.page,
-                                clickPaging = clickPaging,
-                                loadingMore = loadingMore,
-                                loadMoreFailed = loadMoreFailed,
-                                onLoadMore = ::loadMore,
-                                onPageChange = ::jumpToPage,
-                                onOpenAlbum = onOpenAlbum,
-                            )
-                            null -> Unit
-                        }
-                    } else {
-                        // 仅当搜索框为空且未进入搜索态时展示搜索记录
-                        if (query.isBlank() && searchHistory.isNotEmpty()) {
-                            item(key = "search-history") {
-                                SearchHistoryCard(
-                                    history = searchHistory,
-                                    onPick = { word ->
-                                        query = word
-                                        runSearch(word, byTag = false, sort = order)
-                                    },
-                                    onRemove = { word ->
-                                        mutateHistory { Jm3Graph.settings.removeSearchHistory(word) }
-                                    },
-                                    onClear = {
-                                        mutateHistory { Jm3Graph.settings.clearSearchHistory() }
-                                    },
-                                )
-                            }
-                        }
-                        if (serialUpdates.isNotEmpty()) {
-                            item(key = "serial-title") { SmallTitle(text = "连载更新") }
-                            item(key = "serial-row") {
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    items(serialUpdates, key = { it.id }) { update ->
-                                        SerialUpdateCard(update = update, onClick = { onOpenAlbum(update.id) })
-                                    }
-                                }
-                            }
-                        }
-                        if (hotTags.isNotEmpty()) {
-                            item(key = "hot-tags-title") {
-                                SectionHeader(
-                                    text = "热门标签",
-                                    actionText = if (hotTags.size > HOT_TAG_COLLAPSED) {
-                                        if (showAllTags) "收起" else "更多"
-                                    } else {
-                                        null
-                                    },
-                                    onAction = { showAllTags = !showAllTags },
-                                )
-                            }
-                            item(key = "hot-tags") {
-                                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                                    HotTagFlow(
-                                        tags = hotTags,
-                                        expanded = showAllTags,
-                                        onClick = { tag ->
-                                            query = tag
-                                            runSearch(tag, byTag = true, sort = order)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                        if (randomPicks.isNotEmpty()) {
-                            item(key = "random-title") { SmallTitle(text = "随便看看") }
-                            item(key = "random-picks") {
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    items(randomPicks, key = { it.id }) { pick ->
-                                        RandomPickCard(pick = pick, onClick = { onOpenAlbum(pick.id) })
-                                    }
-                                }
-                            }
-                        }
-                        item(key = "latest-title") { SmallTitle(text = "最新上架") }
-                        when (val s = feed) {
-                            is HomeListState.Loading -> if (!refreshing) {
-                                item(key = "feed-loading") { InlineLoading() }
-                            }
-                            is HomeListState.Failed -> item(key = "feed-error") {
-                                ErrorScreen(
-                                    message = "加载失败：${s.message}",
-                                    onRetry = { refresh() },
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                )
-                            }
-                            is HomeListState.Loaded -> homePageItems(
-                                page = s.page,
-                                clickPaging = clickPaging,
-                                loadingMore = loadingMore,
-                                loadMoreFailed = loadMoreFailed,
-                                onLoadMore = ::loadMore,
-                                onPageChange = ::jumpToPage,
-                                onOpenAlbum = onOpenAlbum,
+                        is HomeListState.Loaded -> homePageItems(
+                            page = s.page,
+                            clickPaging = clickPaging,
+                            loadingMore = loadingMore,
+                            loadMoreFailed = loadMoreFailed,
+                            onLoadMore = ::loadMore,
+                            onPageChange = ::jumpToPage,
+                            onOpenAlbum = onOpenAlbum,
+                        )
+                        null -> Unit
+                    }
+                } else {
+                    // 仅当搜索框为空且未进入搜索态时展示搜索记录
+                    if (query.isBlank() && searchHistory.isNotEmpty()) {
+                        item(key = "search-history") {
+                            SearchHistoryCard(
+                                history = searchHistory,
+                                onPick = { word ->
+                                    query = word
+                                    runSearch(word, byTag = false, sort = order)
+                                },
+                                onRemove = { word ->
+                                    mutateHistory { Jm3Graph.settings.removeSearchHistory(word) }
+                                },
+                                onClear = {
+                                    mutateHistory { Jm3Graph.settings.clearSearchHistory() }
+                                },
                             )
                         }
                     }
-                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
+                    if (serialUpdates.isNotEmpty()) {
+                        item(key = "serial-title") { SmallTitle(text = "连载更新") }
+                        item(key = "serial-row") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(serialUpdates, key = { it.id }) { update ->
+                                    SerialUpdateCard(update = update, onClick = { onOpenAlbum(update.id) })
+                                }
+                            }
+                        }
+                    }
+                    if (hotTags.isNotEmpty()) {
+                        item(key = "hot-tags-title") {
+                            SectionHeader(
+                                text = "热门标签",
+                                actionText = if (hotTags.size > HOT_TAG_COLLAPSED) {
+                                    if (showAllTags) "收起" else "更多"
+                                } else {
+                                    null
+                                },
+                                onAction = { showAllTags = !showAllTags },
+                            )
+                        }
+                        item(key = "hot-tags") {
+                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                HotTagFlow(
+                                    tags = hotTags,
+                                    expanded = showAllTags,
+                                    onClick = { tag ->
+                                        query = tag
+                                        runSearch(tag, byTag = true, sort = order)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    if (randomPicks.isNotEmpty()) {
+                        item(key = "random-title") { SmallTitle(text = "随便看看") }
+                        item(key = "random-picks") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(randomPicks, key = { it.id }) { pick ->
+                                    RandomPickCard(pick = pick, onClick = { onOpenAlbum(pick.id) })
+                                }
+                            }
+                        }
+                    }
+                    item(key = "latest-title") { SmallTitle(text = "最新上架") }
+                    when (val s = feed) {
+                        is HomeListState.Loading -> if (!refreshing) {
+                            item(key = "feed-loading") { InlineLoading() }
+                        }
+                        is HomeListState.Failed -> item(key = "feed-error") {
+                            ErrorScreen(
+                                message = "加载失败：${s.message}",
+                                onRetry = { refresh() },
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            )
+                        }
+                        is HomeListState.Loaded -> homePageItems(
+                            page = s.page,
+                            clickPaging = clickPaging,
+                            loadingMore = loadingMore,
+                            loadMoreFailed = loadMoreFailed,
+                            onLoadMore = ::loadMore,
+                            onPageChange = ::jumpToPage,
+                            onOpenAlbum = onOpenAlbum,
+                        )
+                    }
                 }
+                item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
             }
         }
 

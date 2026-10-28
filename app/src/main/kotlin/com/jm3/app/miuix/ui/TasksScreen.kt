@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,8 +20,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
 import com.jm3.core.model.TaskPage
@@ -34,7 +37,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -80,41 +82,48 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
 
     LaunchedEffect(typeIndex, filterIndex) { load() }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            TopAppBar(
-                title = "成就",
-                subtitle = (state as? TasksUiState.Loaded)
-                    ?.page
-                    ?.items
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.let { "共 ${it.size} 项" }
-                    .orEmpty(),
-                navigationIcon = { BackButton(onBack = onBack) },
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TopAppBar(
+                    title = "成就",
+                    subtitle = (state as? TasksUiState.Loaded)
+                        ?.page
+                        ?.items
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { "共 ${it.size} 项" }
+                        .orEmpty(),
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                    navigationIcon = { BackButton(onBack = onBack) },
+                )
+                // 两组筛选页签固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切换
+                TabRow(
+                    tabs = types.map { it.label },
+                    selectedTabIndex = typeIndex,
+                    onTabSelected = { typeIndex = it },
+                )
+                TabRow(
+                    tabs = filters.map { it.label },
+                    selectedTabIndex = filterIndex,
+                    onTabSelected = { filterIndex = it },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            TabRow(
-                tabs = types.map { it.label },
-                selectedTabIndex = typeIndex,
-                onTabSelected = { typeIndex = it },
-            )
-            TabRow(
-                tabs = filters.map { it.label },
-                selectedTabIndex = filterIndex,
-                onTabSelected = { filterIndex = it },
-            )
+        Column(modifier = Modifier.fillMaxSize()) {
             when (val s = state) {
-                TasksUiState.Loading -> LoadingScreen()
+                TasksUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 is TasksUiState.Failed -> ErrorScreen(
                     message = s.message,
                     onRetry = { load() },
+                    modifier = Modifier.padding(innerPadding),
                 )
                 is TasksUiState.Loaded -> TaskList(
                     type = type,
                     page = s.page,
+                    contentPadding = innerPadding,
                     refreshing = refreshing,
                     onRefresh = {
                         refreshing = true
@@ -130,6 +139,7 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
 private fun TaskList(
     type: TaskType,
     page: TaskPage,
+    contentPadding: PaddingValues,
     refreshing: Boolean,
     onRefresh: () -> Unit,
 ) {
@@ -140,8 +150,16 @@ private fun TaskList(
         onRefresh = onRefresh,
         pullToRefreshState = refreshState,
         modifier = Modifier.fillMaxSize(),
+        contentPadding = contentPadding,
     ) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
+            contentPadding = PaddingValues(
+                top = contentPadding.calculateTopPadding(),
+                bottom = contentPadding.calculateBottomPadding(),
+            ),
+        ) {
             item(key = "progress") {
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     BasicComponent(

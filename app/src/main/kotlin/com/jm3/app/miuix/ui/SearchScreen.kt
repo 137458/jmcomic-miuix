@@ -21,8 +21,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
@@ -35,7 +37,6 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TopAppBar
 
@@ -145,77 +146,87 @@ fun SearchScreen(
         }
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            TopAppBar(
-                title = if (scope == SearchScope.SITE) "搜索：$query" else "${scope.label}：$query",
-                navigationIcon = { BackButton(onBack = onBack) },
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TopAppBar(
+                    title = if (scope == SearchScope.SITE) "搜索：$query" else "${scope.label}：$query",
+                    navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                )
+                // 排序/时间筛选固定于列表之外：与顶栏同处玻璃层
+                TabRow(
+                    tabs = BrowseOrder.entries.map { it.label },
+                    selectedTabIndex = BrowseOrder.entries.indexOf(order),
+                    onTabSelected = {
+                        selectionHaptic()
+                        orderValue = BrowseOrder.entries[it].apiValue
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                // 时间范围由服务端过滤（原版年/月筛选的等价能力，库只提供 今日/本周/本月/全部）
+                TabRow(
+                    tabs = BrowseTime.entries.map { it.label },
+                    selectedTabIndex = BrowseTime.entries.indexOf(time),
+                    onTabSelected = {
+                        selectionHaptic()
+                        timeValue = BrowseTime.entries[it].apiValue
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                )
+            }
         },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            TabRow(
-                tabs = BrowseOrder.entries.map { it.label },
-                selectedTabIndex = BrowseOrder.entries.indexOf(order),
-                onTabSelected = {
-                    selectionHaptic()
-                    orderValue = BrowseOrder.entries[it].apiValue
-                },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            // 时间范围由服务端过滤（原版年/月筛选的等价能力，库只提供 今日/本周/本月/全部）
-            TabRow(
-                tabs = BrowseTime.entries.map { it.label },
-                selectedTabIndex = BrowseTime.entries.indexOf(time),
-                onTabSelected = {
-                    selectionHaptic()
-                    timeValue = BrowseTime.entries[it].apiValue
-                },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            )
-            PullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = { loadFirstPage(byPull = true) },
-                pullToRefreshState = refreshState,
+        // 列表内容穿到玻璃顶栏（顶栏 + 筛选条）下方，顶栏才能采样到真实背景
+        PullToRefresh(
+            isRefreshing = refreshing,
+            onRefresh = { loadFirstPage(byPull = true) },
+            pullToRefreshState = refreshState,
+            modifier = Modifier.fillMaxSize(),
+            // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
+            contentPadding = innerPadding,
+        ) {
+            LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding,
             ) {
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    when (val s = state) {
-                        is SearchUiState.Loading -> if (!refreshing) {
-                            item(key = "loading") {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    InfiniteProgressIndicator()
-                                }
+                when (val s = state) {
+                    is SearchUiState.Loading -> if (!refreshing) {
+                        item(key = "loading") {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                InfiniteProgressIndicator()
                             }
                         }
-                        is SearchUiState.Failed -> item(key = "error") {
-                            ErrorScreen(
-                                message = "搜索失败：${s.message}",
-                                onRetry = { loadFirstPage() },
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            )
-                        }
-                        is SearchUiState.Loaded -> if (clickPaging) {
-                            pagedSearchResultItems(
-                                page = s.page,
-                                onPageChange = ::jumpToPage,
-                                onOpenAlbum = onOpenAlbum,
-                            )
-                        } else {
-                            searchResultItems(
-                                page = s.page,
-                                loadingMore = loadingMore,
-                                loadMoreFailed = loadMoreFailed,
-                                onLoadMore = ::loadMore,
-                                onOpenAlbum = onOpenAlbum,
-                            )
-                        }
                     }
-                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
+                    is SearchUiState.Failed -> item(key = "error") {
+                        ErrorScreen(
+                            message = "搜索失败：${s.message}",
+                            onRetry = { loadFirstPage() },
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        )
+                    }
+                    is SearchUiState.Loaded -> if (clickPaging) {
+                        pagedSearchResultItems(
+                            page = s.page,
+                            onPageChange = ::jumpToPage,
+                            onOpenAlbum = onOpenAlbum,
+                        )
+                    } else {
+                        searchResultItems(
+                            page = s.page,
+                            loadingMore = loadingMore,
+                            loadMoreFailed = loadMoreFailed,
+                            onLoadMore = ::loadMore,
+                            onOpenAlbum = onOpenAlbum,
+                        )
+                    }
                 }
+                item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
             }
         }
     }

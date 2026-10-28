@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,11 +21,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.SearchResult
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
@@ -37,7 +40,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
@@ -121,11 +123,13 @@ fun WatchHistoryScreen(
     // 分页模式切换后重新按新形态加载第一页，避免同一份状态混用两种翻页语义
     LaunchedEffect(mode) { fetch(targetPage = 1, replace = true, showLoading = true) }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
             TopAppBar(
                 title = "云端观看记录",
                 subtitle = items.takeIf { it.isNotEmpty() }?.let { "本页 ${it.size} 部" }.orEmpty(),
+                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                color = Color.Transparent,
                 navigationIcon = { BackButton(onBack = onBack) },
             )
         },
@@ -152,10 +156,17 @@ fun WatchHistoryScreen(
                         fetch(targetPage = 1, replace = true, showLoading = false)
                     },
                     pullToRefreshState = refreshState,
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
+                        contentPadding = PaddingValues(
+                            top = innerPadding.calculateTopPadding(),
+                            bottom = innerPadding.calculateBottomPadding(),
+                        ),
+                    ) {
                         items(items, key = { it.id }) { item ->
                             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
                                 BasicComponent(

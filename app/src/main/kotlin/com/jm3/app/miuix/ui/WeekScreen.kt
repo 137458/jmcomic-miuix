@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,8 +18,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicksDetail
@@ -29,7 +32,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
@@ -101,13 +103,46 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
 
     LaunchedEffect(Unit) { loadPeriods() }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            TopAppBar(
-                title = "每周必看",
-                subtitle = "每周五 18:00 更新",
-                navigationIcon = { BackButton(onBack = onBack) },
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TopAppBar(
+                    title = "每周必看",
+                    subtitle = "每周五 18:00 更新",
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                    navigationIcon = { BackButton(onBack = onBack) },
+                )
+                if (periods.isNotEmpty()) {
+                    val topCurrent = periods[selected.coerceIn(0, periods.lastIndex)]
+                    // 期数选择器固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切期
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        OverlaySpinnerPreference(
+                            items = periods.map { DropdownItem(text = it.title, selected = it.id == topCurrent.id) },
+                            selectedIndex = selected.coerceIn(0, periods.lastIndex),
+                            title = "期数",
+                            summary = topCurrent.time.ifBlank { topCurrent.title },
+                            showValue = false,
+                            onSelectedIndexChange = { index ->
+                                val period = periods.getOrNull(index) ?: return@OverlaySpinnerPreference
+                                if (index == selected) return@OverlaySpinnerPreference
+                                selected = index
+                                detail = null
+                                loadDetail(period)
+                            },
+                        )
+                    }
+                    // 期数时间范围紧跟选择器，和原版菜单里的时间文案对应
+                    if (topCurrent.time.isNotBlank()) {
+                        Text(
+                            text = topCurrent.time,
+                            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
         },
     ) { innerPadding ->
         when {
@@ -122,34 +157,7 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 hint = "稍后再来看看",
                 modifier = Modifier.padding(innerPadding),
             )
-            else -> Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    val current = periods[selected.coerceIn(0, periods.lastIndex)]
-                    OverlaySpinnerPreference(
-                        items = periods.map { DropdownItem(text = it.title, selected = it.id == current.id) },
-                        selectedIndex = selected.coerceIn(0, periods.lastIndex),
-                        title = "期数",
-                        summary = current.time.ifBlank { current.title },
-                        showValue = false,
-                        onSelectedIndexChange = { index ->
-                            val period = periods.getOrNull(index) ?: return@OverlaySpinnerPreference
-                            if (index == selected) return@OverlaySpinnerPreference
-                            selected = index
-                            detail = null
-                            loadDetail(period)
-                        },
-                    )
-                }
-                // 期数时间范围紧跟选择器，和原版菜单里的时间文案对应
-                val current = periods[selected.coerceIn(0, periods.lastIndex)]
-                if (current.time.isNotBlank()) {
-                    Text(
-                        text = current.time,
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
-                    )
-                }
+            else -> Column(modifier = Modifier.fillMaxSize()) {
                 PullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = {
@@ -158,8 +166,16 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     },
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
+                    contentPadding = innerPadding,
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
+                        contentPadding = PaddingValues(
+                            top = innerPadding.calculateTopPadding(),
+                            bottom = innerPadding.calculateBottomPadding(),
+                        ),
+                    ) {
                         val loaded = detail
                         when {
                             detailLoading -> item(key = "loading") {

@@ -31,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.NovelChapter
 import com.jm3.core.model.NovelChapterMeta
@@ -62,7 +64,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.PullToRefresh
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -188,13 +189,15 @@ fun NovelListScreen(
         }
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 TopAppBar(
                     title = if (appliedQuery.isBlank()) "小说" else "小说搜索",
                     subtitle = if (total > 0) "共 $total 本" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
                 )
                 // 胶囊搜索框：展开态输入，提交即检索
                 SearchBar(
@@ -215,57 +218,63 @@ fun NovelListScreen(
                         )
                     },
                 ) {}
+                // 排序控件固定在列表之外：与顶栏同处玻璃层，列表从其下方穿过
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+                    OverlaySpinnerPreference(
+                        items = NovelOrder.entries.map { DropdownItem(text = it.label, selected = it == order) },
+                        selectedIndex = NovelOrder.entries.indexOf(order),
+                        title = "排序",
+                        summary = order.label,
+                        showValue = false,
+                        onSelectedIndexChange = { index ->
+                            val next = NovelOrder.entries.getOrNull(index) ?: return@OverlaySpinnerPreference
+                            if (next == order) return@OverlaySpinnerPreference
+                            orderName = next.name
+                        },
+                    )
+                }
             }
         },
         snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
-                OverlaySpinnerPreference(
-                    items = NovelOrder.entries.map { DropdownItem(text = it.label, selected = it == order) },
-                    selectedIndex = NovelOrder.entries.indexOf(order),
-                    title = "排序",
-                    summary = order.label,
-                    showValue = false,
-                    onSelectedIndexChange = { index ->
-                        val next = NovelOrder.entries.getOrNull(index) ?: return@OverlaySpinnerPreference
-                        if (next == order) return@OverlaySpinnerPreference
-                        orderName = next.name
-                    },
-                )
-            }
-            when {
-                loading -> LoadingScreen(modifier = Modifier.fillMaxWidth().padding(24.dp))
-                error != null -> ErrorScreen(
-                    message = "加载失败：$error",
-                    onRetry = { load(order.apiValue, appliedQuery, showLoading = true) },
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                )
-                items.isEmpty() -> EmptyState(
-                    title = if (appliedQuery.isBlank()) "暂无小说" else "没有找到相关小说",
-                    hint = if (appliedQuery.isBlank()) "稍后再来看看" else "换个关键词再试试",
-                )
-                else -> PullToRefresh(
-                    isRefreshing = refreshing,
-                    onRefresh = {
-                        refreshing = true
-                        load(order.apiValue, appliedQuery, showLoading = false)
-                    },
+        when {
+            loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+            error != null -> ErrorScreen(
+                message = "加载失败：$error",
+                onRetry = { load(order.apiValue, appliedQuery, showLoading = true) },
+                modifier = Modifier.padding(innerPadding),
+            )
+            items.isEmpty() -> EmptyState(
+                title = if (appliedQuery.isBlank()) "暂无小说" else "没有找到相关小说",
+                hint = if (appliedQuery.isBlank()) "稍后再来看看" else "换个关键词再试试",
+                modifier = Modifier.padding(innerPadding),
+            )
+            else -> PullToRefresh(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    refreshing = true
+                    load(order.apiValue, appliedQuery, showLoading = false)
+                },
+                modifier = Modifier.fillMaxSize(),
+                pullToRefreshState = refreshState,
+                // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
+                contentPadding = innerPadding,
+            ) {
+                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    pullToRefreshState = refreshState,
+                    contentPadding = innerPadding,
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(items, key = { it.id }) { item ->
-                            NovelListRow(
-                                item = item,
-                                busy = busyId == item.id,
-                                onClick = { onOpenNovel(item.id) },
-                                onLike = { like(item) },
-                                onFavorite = { favorite(item) },
-                            )
-                        }
-                        item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
+                    items(items, key = { it.id }) { item ->
+                        NovelListRow(
+                            item = item,
+                            busy = busyId == item.id,
+                            onClick = { onOpenNovel(item.id) },
+                            onLike = { like(item) },
+                            onFavorite = { favorite(item) },
+                        )
                     }
+                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                 }
             }
         }
@@ -471,12 +480,14 @@ fun NovelDetailScreen(
         }
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
             TopAppBar(
                 title = detail?.name ?: "小说详情",
                 subtitle = detail?.author.orEmpty(),
                 navigationIcon = { BackButton(onBack = onBack) },
+                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                color = Color.Transparent,
             )
         },
         snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
@@ -497,7 +508,11 @@ fun NovelDetailScreen(
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                    // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = innerPadding,
+                    ) {
                         item(key = "header") {
                             NovelDetailHeader(
                                 detail = current,
@@ -895,12 +910,14 @@ fun NovelReaderScreen(
         scope.launch { Jm3Graph.settings.setNovelFontSize(next) }
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
             TopAppBar(
                 title = chapter?.title ?: "阅读",
                 subtitle = detail?.name.orEmpty(),
                 navigationIcon = { BackButton(onBack = onBack) },
+                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                color = Color.Transparent,
                 actions = {
                     TextButton(
                         text = if (lang == "tw") "繁" else "简",
@@ -909,18 +926,6 @@ fun NovelReaderScreen(
                         minHeight = 36.dp,
                     )
                 },
-            )
-        },
-        floatingToolbar = {
-            NovelReaderToolbar(
-                favorited = favorited,
-                canPrev = prevChapter != null,
-                canNext = nextChapter != null,
-                onFont = { fontSheetOpen = true },
-                onPrev = { goTo(prevChapter) },
-                onNext = { goTo(nextChapter) },
-                onComments = { commentsOpen = true },
-                onFavorite = ::toggleFavorite,
             )
         },
         snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
@@ -941,9 +946,14 @@ fun NovelReaderScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(innerPadding)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                        // 内边距放在滚动容器内部，正文才能从玻璃顶栏下方穿过
+                        .padding(
+                            start = 20.dp,
+                            top = innerPadding.calculateTopPadding() + 12.dp,
+                            end = 20.dp,
+                            bottom = 12.dp,
+                        ),
                 ) {
                     Text(
                         text = body.title,
@@ -958,6 +968,26 @@ fun NovelReaderScreen(
                     Spacer(modifier = Modifier.height(96.dp))
                 }
             }
+        }
+
+        // 底栏原由 Scaffold 的 floatingToolbar 槽承载；GlassScaffold 无该槽，
+        // 改为内容层底部居中的覆盖层，位置与原先一致
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = innerPadding.calculateBottomPadding() + 4.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            NovelReaderToolbar(
+                favorited = favorited,
+                canPrev = prevChapter != null,
+                canNext = nextChapter != null,
+                onFont = { fontSheetOpen = true },
+                onPrev = { goTo(prevChapter) },
+                onNext = { goTo(nextChapter) },
+                onComments = { commentsOpen = true },
+                onFavorite = ::toggleFavorite,
+            )
         }
 
         OverlayBottomSheet(

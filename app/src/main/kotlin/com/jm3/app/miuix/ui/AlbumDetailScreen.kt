@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.mergedWith
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
@@ -61,7 +63,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -396,13 +397,27 @@ fun AlbumDetailScreen(
     }
 
     when (val s = state) {
-        is AlbumUiState.Loading -> Scaffold(
-            topBar = { TopAppBar(title = "详情", navigationIcon = { BackButton(onBack = onBack) }) },
+        is AlbumUiState.Loading -> GlassScaffold(
+            topBar = {
+                TopAppBar(
+                    title = "详情",
+                    navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                )
+            },
         ) { innerPadding ->
             LoadingScreen(modifier = Modifier.padding(innerPadding))
         }
-        is AlbumUiState.Failed -> Scaffold(
-            topBar = { TopAppBar(title = "详情", navigationIcon = { BackButton(onBack = onBack) }) },
+        is AlbumUiState.Failed -> GlassScaffold(
+            topBar = {
+                TopAppBar(
+                    title = "详情",
+                    navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                )
+            },
         ) { innerPadding ->
             ErrorScreen(
                 message = "详情加载失败：${s.message}",
@@ -413,11 +428,13 @@ fun AlbumDetailScreen(
         is AlbumUiState.Loaded -> {
             val detail = s.detail
             val resumeId = latestPhotoId?.takeIf { id -> detail.chapters.any { it.id == id } }
-            Scaffold(
+            GlassScaffold(
                 topBar = {
                     TopAppBar(
                         title = detail.title,
                         navigationIcon = { BackButton(onBack = onBack) },
+                        // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                        color = Color.Transparent,
                         actions = {
                             // 纯图标动作挂 Tooltip：长按即可确认语义，避免误触分享/批量下载
                             TooltipBox(text = "分享") {
@@ -451,10 +468,14 @@ fun AlbumDetailScreen(
                     isRefreshing = pullRefreshing,
                     onRefresh = ::refresh,
                     pullToRefreshState = refreshState,
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = innerPadding,
+                    ) {
                         item(key = "header") {
                             DetailHeader(
                                 detail = detail,

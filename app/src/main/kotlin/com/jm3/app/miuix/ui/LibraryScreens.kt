@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
@@ -66,7 +67,6 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.PullToRefresh
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -174,13 +174,15 @@ fun LibraryScreen(
     val total = if (tab == 0) creatorTotal else workTotal
     val totalPages = ((total + LIBRARY_PAGE_SIZE - 1) / LIBRARY_PAGE_SIZE).coerceAtLeast(1)
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 TopAppBar(
                     title = "书库",
                     subtitle = if (total > 0) "共 $total 项" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
                 )
                 // 胶囊搜索框：展开态输入，提交即按当前 Tab 检索
                 SearchBar(
@@ -210,105 +212,111 @@ fun LibraryScreen(
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                 )
+                // 语言/来源筛选固定在列表之外：与顶栏同处玻璃层，列表从其下方穿过
+                if (tab == 1 && !filters.isEmpty) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (filters.languages.isNotEmpty()) {
+                            FilterSpinner(
+                                title = "语言",
+                                options = filters.languages,
+                                selected = lang,
+                                onSelect = { lang = it },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (filters.sources.isNotEmpty()) {
+                            FilterSpinner(
+                                title = "来源",
+                                options = filters.sources,
+                                selected = source,
+                                onSelect = { source = it },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
             }
         },
         snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            if (tab == 1 && !filters.isEmpty) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (filters.languages.isNotEmpty()) {
-                        FilterSpinner(
-                            title = "语言",
-                            options = filters.languages,
-                            selected = lang,
-                            onSelect = { lang = it },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (filters.sources.isNotEmpty()) {
-                        FilterSpinner(
-                            title = "来源",
-                            options = filters.sources,
-                            selected = source,
-                            onSelect = { source = it },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
-            when {
-                loading -> LoadingScreen(modifier = Modifier.fillMaxWidth().padding(24.dp))
-                error != null -> ErrorScreen(
-                    message = "加载失败：$error",
-                    onRetry = { load(page.coerceAtLeast(1), append = false) },
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                )
-                itemCount == 0 -> EmptyState(
-                    title = if (appliedQuery.isBlank()) {
-                        if (tab == 0) "暂无创作者" else "暂无作品"
-                    } else {
-                        "没有找到相关内容"
-                    },
-                    hint = if (appliedQuery.isBlank()) "换个筛选条件再试试" else "换个关键词再试试",
-                )
-                else -> PullToRefresh(
-                    isRefreshing = refreshing,
-                    onRefresh = {
-                        refreshing = true
-                        load(1, append = false)
-                    },
+        when {
+            loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+            error != null -> ErrorScreen(
+                message = "加载失败：$error",
+                onRetry = { load(page.coerceAtLeast(1), append = false) },
+                modifier = Modifier.padding(innerPadding),
+            )
+            itemCount == 0 -> EmptyState(
+                title = if (appliedQuery.isBlank()) {
+                    if (tab == 0) "暂无创作者" else "暂无作品"
+                } else {
+                    "没有找到相关内容"
+                },
+                hint = if (appliedQuery.isBlank()) "换个筛选条件再试试" else "换个关键词再试试",
+                modifier = Modifier.padding(innerPadding),
+            )
+            else -> PullToRefresh(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    refreshing = true
+                    load(1, append = false)
+                },
+                modifier = Modifier.fillMaxSize(),
+                pullToRefreshState = refreshState,
+                // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
+                contentPadding = innerPadding,
+            ) {
+                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    pullToRefreshState = refreshState,
+                    contentPadding = innerPadding,
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        if (tab == 0) {
-                            items(creators, key = { it.id }) { creator ->
-                                CreatorRow(creator = creator, onClick = { onOpenCreator(creator.id) })
-                            }
-                        } else {
-                            items(
-                                items = works.chunked(2),
-                                key = { row -> row.joinToString(",") { it.id } },
-                            ) { row ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                ) {
-                                    row.forEach { work ->
-                                        WorkCard(
-                                            title = work.title,
-                                            coverUrl = work.coverUrl,
-                                            platform = work.platform,
-                                            authorName = work.authorName,
-                                            workDate = work.workDate,
-                                            modifier = Modifier.weight(1f),
-                                            onClick = { onOpenWork(work.id) },
-                                            onOpenAuthor = work.authorId?.let { id ->
-                                                { onOpenCreator(id) }
-                                            },
-                                        )
-                                    }
-                                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                    if (tab == 0) {
+                        items(creators, key = { it.id }) { creator ->
+                            CreatorRow(creator = creator, onClick = { onOpenCreator(creator.id) })
+                        }
+                    } else {
+                        items(
+                            items = works.chunked(2),
+                            key = { row -> row.joinToString(",") { it.id } },
+                        ) { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                row.forEach { work ->
+                                    WorkCard(
+                                        title = work.title,
+                                        coverUrl = work.coverUrl,
+                                        platform = work.platform,
+                                        authorName = work.authorName,
+                                        workDate = work.workDate,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { onOpenWork(work.id) },
+                                        onOpenAuthor = work.authorId?.let { id ->
+                                            { onOpenCreator(id) }
+                                        },
+                                    )
                                 }
+                                if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
                             }
                         }
-                        item(key = "footer") {
-                            LibraryFooter(
-                                itemCount = itemCount,
-                                total = total,
-                                mode = paginationMode,
-                                page = page,
-                                totalPages = totalPages,
-                                loadingMore = loadingMore,
-                                onLoadMore = { load(page + 1, append = true) },
-                                onPageChange = { target -> load(target, append = false) },
-                            )
-                        }
+                    }
+                    item(key = "footer") {
+                        LibraryFooter(
+                            itemCount = itemCount,
+                            total = total,
+                            mode = paginationMode,
+                            page = page,
+                            totalPages = totalPages,
+                            loadingMore = loadingMore,
+                            onLoadMore = { load(page + 1, append = true) },
+                            onPageChange = { target -> load(target, append = false) },
+                        )
                     }
                 }
             }
@@ -369,13 +377,15 @@ fun CreatorWorksScreen(
         }
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 TopAppBar(
                     title = data?.authorName?.takeIf { it.isNotBlank() } ?: "创作者",
                     subtitle = data?.works?.size?.takeIf { it > 0 }?.let { "$it 部作品" } ?: "",
                     navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
                 )
                 // 多层级目录：书库 → 创作者，点击「书库」回到上一层
                 BreadcrumbBar(
@@ -406,10 +416,16 @@ fun CreatorWorksScreen(
                     refreshing = true
                     load(showLoading = false)
                 },
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier.fillMaxSize(),
                 pullToRefreshState = refreshState,
+                // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
+                contentPadding = innerPadding,
             ) {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = innerPadding,
+                ) {
                     item(key = "hero") {
                         val current = data
                         if (current != null) {
@@ -528,13 +544,15 @@ fun CreatorWorkDetailScreen(
 
     val related = work?.related.orEmpty()
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 TopAppBar(
                     title = work?.title?.takeIf { it.isNotBlank() } ?: "作品",
                     subtitle = work?.authorName.orEmpty(),
                     navigationIcon = { BackButton(onBack = onBack) },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
                 )
                 // 多层级目录：书库 → 作品，点击「书库」回到上一层
                 BreadcrumbBar(
@@ -548,18 +566,6 @@ fun CreatorWorkDetailScreen(
                     onItemClick = { index -> if (index == 0) onBack() },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
                 )
-            }
-        },
-        floatingToolbar = {
-            if (related.isNotEmpty()) {
-                FloatingToolbar {
-                    TextButton(
-                        text = "相关作品 ${related.size}",
-                        onClick = { relatedOpen = true },
-                        minWidth = 0.dp,
-                        minHeight = 44.dp,
-                    )
-                }
             }
         },
         snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
@@ -578,7 +584,11 @@ fun CreatorWorkDetailScreen(
             )
             else -> {
                 val body = work!!
-                LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = innerPadding,
+                ) {
                     if (body.contentText.isNotBlank()) {
                         item(key = "content") {
                             Text(
@@ -605,6 +615,26 @@ fun CreatorWorkDetailScreen(
                         }
                     }
                     item(key = "bottom-space") { Spacer(modifier = Modifier.height(16.dp)) }
+                }
+            }
+        }
+
+        // 底栏原由 Scaffold 的 floatingToolbar 槽承载；GlassScaffold 无该槽，
+        // 改为内容层底部居中的覆盖层，位置与原先一致
+        if (related.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = innerPadding.calculateBottomPadding() + 4.dp),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                FloatingToolbar {
+                    TextButton(
+                        text = "相关作品 ${related.size}",
+                        onClick = { relatedOpen = true },
+                        minWidth = 0.dp,
+                        minHeight = 44.dp,
+                    )
                 }
             }
         }
