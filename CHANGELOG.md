@@ -40,8 +40,8 @@
 
 ### 变更
 
-- 顶栏统一改为玻璃覆盖层：新增 `GlassScaffold`，顶栏不再占位，列表内容从顶栏下方穿过滚动，顶栏实时采样背景模糊并叠加半透明底色，不支持 RuntimeShader 的设备降级为实色；19 个页面的固定表头（搜索栏、分段条、筛选/排序控件、期数选择器）随顶栏同处玻璃层，下拉刷新指示器与列表首项按顶栏高度让位；原由 `Scaffold` `floatingToolbar` 槽承载的阅读器/作品底栏改为内容层底部覆盖。
-- 主导航由贴边 `NavigationBar` 演进为液态玻璃胶囊底栏：三层采样渲染（外壳折射、离屏高亮、双重采样透镜滑块），宽度由 24dp 外边距决定而不再限制最小/最大宽度，不支持 RuntimeShader 的设备降级为实色；「我的」角标在未读时显示数字，仅下载在途时显示圆点。
+- 顶栏统一改为玻璃覆盖层：新增 `GlassScaffold`，顶栏不再占位，列表内容从顶栏下方穿过滚动，顶栏实时采样背景做渐变模糊（状态栏区域满额模糊、沿 Y 轴向下平滑衰减至底缘 0，`progressiveTextureBlur` + `ProgressiveBlur.Top`，低透明度 surface 底色保标题可读），不再有硬切边与半透明实色罩，不支持 RuntimeShader 的设备降级为实色；19 个页面的固定表头（搜索栏、分段条、筛选/排序控件、期数选择器）随顶栏同处玻璃层，下拉刷新指示器与列表首项按顶栏高度让位；原由 `Scaffold` `floatingToolbar` 槽承载的阅读器/作品底栏改为内容层底部覆盖。
+- 主导航由贴边 `NavigationBar` 演进为液态玻璃胶囊底栏：三层采样渲染（外壳折射、离屏高亮、双重采样透镜滑块），胶囊宽度由内容决定（单项最小 64dp），大屏上限 540dp 水平居中不再顶满屏幕边缘，不支持 RuntimeShader 的设备降级为实色；「我的」角标在未读时显示数字，仅下载在途时显示圆点。
 - 加载态与列表「加载更多」统一改用 `InfiniteProgressIndicator`，替换 Material 风格转圈，与 HyperOS 风格对齐；抽公共 `LoadMoreFooter` 收敛加载更多三态（加载中指示器 / 「加载失败，点击重试」/「没有更多了」），首页、浏览、搜索、收藏、历史、追踪与详情评论统一复用，失败时页码不推进可原地重试。
 - 交互反馈统一：列表卡片按压微缩放默认带轻触觉反馈，分类/排序/时间/信箱/论坛/书库/小说等分段控件与详情页章节组折叠切换统一接入 `rememberSelectionHaptic()`。
 - 详情页顶栏纯图标动作（分享/收藏/下载全部）挂 `TooltipBox`，长按显示语义提示。
@@ -56,12 +56,14 @@
 - 搜索/浏览/收藏/历史列表统一为卡式行布局，搜索结果补充封面缩略图；空态在可用区域内垂直居中。
 - 我的页退出登录改为二次确认弹窗（纵向全宽按钮）。
 - 会话恢复失败时清空本地会话并保持未登录，避免 UI 显示已登录但网关会话失效。
-- 玻璃组件边缘高光统一：主底栏、玻璃顶栏与阅读器工具条共用同一 BloomStroke 双光源 SDF 描边（白 12%、内辉光 2dp），顶栏下缘与工具条胶囊外缘显出细高光带；平台角标底色由 RoundedCornerShape 改为 miuix squircleBackground，与全局超椭圆形状一致。
+- 玻璃组件边缘高光统一：主底栏与阅读器工具条共用同一 BloomStroke 双光源 SDF 描边（白 12%、内辉光 2dp），工具条胶囊外缘显出细高光带（玻璃顶栏不再描边，见修复）；平台角标底色由 RoundedCornerShape 改为 miuix squircleBackground，与全局超椭圆形状一致。
 - 组件用法一致性收口：历史清空与连载追踪确认弹窗按钮统一为纵向全宽堆叠（与设置页弹窗惯例一致）；详情页「简介」与分类筛选区块标题统一改用 SmallTitle；小说章节列表补充 items key，修复倒序排列切换时条目复用错位；相册封面、相关推荐、连载更新与随机推荐封面图补充无障碍描述；设置页自定义线路输入框补全 label。
 - 手写纵向图标单元收敛：详情动作台（AlbumDetailActionCell）、小说详情与悬浮工具条（DetailActionCell/NovelToolbarCell）、阅读器工具条（ReaderActionCell）四套重复实现合并为 Common.kt 共享 ActionCell（图标/字形双形态，禁用降灰、激活主色、按压微缩放触觉），全部调用点行为一致；首页「热门标签」区块标题由手写 SectionHeader 改为 SmallTitle + TextButton 组合。
 
 ### 修复
 
+- 主框架底部不再用视口裁剪给底栏让位：悬浮底栏净空改为经 `LocalFloatingBarContentPadding` 叠进列表 `contentPadding`（净空 100dp），内容整体可穿透底栏滚动并被玻璃持续采样，消除底栏上方整条空白带。
+- 玻璃顶栏移除 SDF 描边高光：矩形描边会在顶栏四周显出常驻高光环，与 MIUIX 官方 `BlurredBar` 一致改为无描边渐变模糊。
 - 阅读器悬浮工具栏毛玻璃采样源补绘主题底色，消除页面留白区透明像素参与模糊产生的黑边；模糊能力判定改用 `isRuntimeShaderSupported()`，与库的实际支持情况一致。
 - 修复导航返回栈持久化：rememberNavBackStack 未显式指定路由超类型时，压入详情/阅读页后进程回收保存会抛序列化异常或丢栈。
 - 搜索/浏览列表封面改为纯函数构造器一次性解析图片域名，消除逐项 N+1 请求。
@@ -75,3 +77,4 @@
 
 - `:app` 新增 androidx.room（runtime/compiler，KSP）、androidx.datastore-preferences；`:core` 新增 kotlinx-coroutines-core（下载队列协程驱动），测试新增 kotlinx-coroutines-test。
 - `:app` 新增 miuix-preference（设置页 Preference 组件）。
+- 升级 androidx.activity-compose 1.13.0、androidx.core-ktx 1.19.1、androidx.lifecycle 2.11.0（AGP 9.4.1 / Kotlin 2.4.21 / Compose BOM 2026.09.00 / miuix 0.9.4 已为最新稳定版）。

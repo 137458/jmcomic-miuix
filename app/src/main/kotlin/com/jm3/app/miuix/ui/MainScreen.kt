@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.ui.glass.IosLiquidGlassNavigationBar
+import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.core.Jm3Gateway
@@ -54,8 +56,11 @@ private enum class MainTab(val label: String) {
 /** 宽屏阈值：≥600dp 视为平板/折叠展开/桌面，主框架切为可折叠侧栏。 */
 private val WIDE_SCREEN_WIDTH = 600.dp
 
-/** 悬浮底栏占位高度：让列表内容可滚动到胶囊上方，不被玻璃层遮挡。 */
-private val FLOATING_BAR_CONTENT_PADDING = 88.dp
+/**
+ * 底栏内容净空：列表末项需让出的高度（胶囊 64dp + 底边距 + 呼吸空间），
+ * 经 GlassScaffold 叠加进 bottom contentPadding；内容其余部分穿透底栏滚动。
+ */
+private val FLOATING_BAR_CONTENT_PADDING = 100.dp
 
 private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
     MainTab.HOME -> MiuixIcons.Home
@@ -114,95 +119,99 @@ fun MainScreen(
         val wideScreen = maxWidth >= WIDE_SCREEN_WIDTH
         // 底栏玻璃采样源：设备不支持 RuntimeShader 时返回 null，底栏自动降级为实色
         val backdrop = rememberBlurBackdrop()
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-        ) { innerPadding ->
-            // 消费父 Scaffold 的内边距，避免各 tab 自己的 Scaffold 重复应用系统栏 insets。
-            Row(
-                modifier = Modifier.fillMaxSize()
-                    .padding(innerPadding)
-                    .consumeWindowInsets(innerPadding),
-            ) {
-                if (wideScreen) {
-                    // 可展开/收起侧栏：展开宽度由库的连续动画驱动，收起时只留图标
-                    val railState = rememberNavigationRailState()
-                    NavigationRail(
-                        state = railState,
-                        header = {
-                            IconButton(
-                                onClick = { railState.toggle() },
-                                minWidth = 48.dp,
-                                minHeight = 48.dp,
-                            ) {
-                                Icon(
-                                    imageVector = if (railState.isExpanded) {
-                                        MiuixIcons.ChevronBackward
-                                    } else {
-                                        MiuixIcons.ChevronForward
-                                    },
-                                    contentDescription = if (railState.isExpanded) "收起侧栏" else "展开侧栏",
+        // 主框架展示悬浮底栏时给列表提供底部净空，内容其余部分穿透底栏持续被采样
+        CompositionLocalProvider(
+            LocalFloatingBarContentPadding provides if (wideScreen) 0.dp else FLOATING_BAR_CONTENT_PADDING,
+        ) {
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbarHostState) },
+            ) { innerPadding ->
+                // 消费父 Scaffold 的内边距，避免各 tab 自己的 Scaffold 重复应用系统栏 insets。
+                Row(
+                    modifier = Modifier.fillMaxSize()
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding),
+                ) {
+                    if (wideScreen) {
+                        // 可展开/收起侧栏：展开宽度由库的连续动画驱动，收起时只留图标
+                        val railState = rememberNavigationRailState()
+                        NavigationRail(
+                            state = railState,
+                            header = {
+                                IconButton(
+                                    onClick = { railState.toggle() },
+                                    minWidth = 48.dp,
+                                    minHeight = 48.dp,
+                                ) {
+                                    Icon(
+                                        imageVector = if (railState.isExpanded) {
+                                            MiuixIcons.ChevronBackward
+                                        } else {
+                                            MiuixIcons.ChevronForward
+                                        },
+                                        contentDescription = if (railState.isExpanded) "收起侧栏" else "展开侧栏",
+                                    )
+                                }
+                            },
+                        ) {
+                            MainTab.entries.forEachIndexed { index, item ->
+                                NavigationRailItem(
+                                    selected = tab == index,
+                                    onClick = { tab = index },
+                                    icon = tabIcon(item),
+                                    label = item.label,
+                                    badge = badgeFor(item),
                                 )
                             }
-                        },
-                    ) {
-                        MainTab.entries.forEachIndexed { index, item ->
-                            NavigationRailItem(
-                                selected = tab == index,
-                                onClick = { tab = index },
-                                icon = tabIcon(item),
-                                label = item.label,
-                                badge = badgeFor(item),
-                            )
                         }
                     }
-                }
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    // 内容层同时是玻璃采样源；底部留白让内容滚到胶囊上方
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .layerBackdropSource(backdrop)
-                            .padding(bottom = if (wideScreen) 0.dp else FLOATING_BAR_CONTENT_PADDING),
-                    ) {
-                        when (tab) {
-                            0 -> HomeScreen(
-                                gateway = gateway,
-                                onOpenAlbum = onOpenAlbum,
-                                onOpenWeek = onOpenWeek,
-                            )
-                            1 -> BrowseScreen(
-                                mode = BrowseMode.CATEGORY,
-                                gateway = gateway,
-                                onOpenAlbum = onOpenAlbum,
-                            )
-                            2 -> BrowseScreen(
-                                mode = BrowseMode.RANK,
-                                gateway = gateway,
-                                onOpenAlbum = onOpenAlbum,
-                            )
-                            else -> MineScreen(
-                                account = account,
-                                snackbarHostState = snackbarHostState,
-                                onOpenLogin = onOpenLogin,
-                                onOpenFavorites = onOpenFavorites,
-                                onOpenHistory = onOpenHistory,
-                                onOpenShelf = onOpenShelf,
-                                onOpenSettings = onOpenSettings,
-                                onOpenNotifications = onOpenNotifications,
-                                onOpenTracking = onOpenTracking,
-                                onOpenProfile = onOpenProfile,
-                                onOpenTasks = onOpenTasks,
-                                onOpenWatchHistory = onOpenWatchHistory,
-                                onOpenForum = onOpenForum,
-                                onOpenNovel = onOpenNovel,
-                                onOpenLibrary = onOpenLibrary,
-                            )
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        // 内容层同时是玻璃采样源；列表经 contentPadding 让出底栏，其余内容可滚到胶囊下方
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .layerBackdropSource(backdrop),
+                        ) {
+                            when (tab) {
+                                0 -> HomeScreen(
+                                    gateway = gateway,
+                                    onOpenAlbum = onOpenAlbum,
+                                    onOpenWeek = onOpenWeek,
+                                )
+                                1 -> BrowseScreen(
+                                    mode = BrowseMode.CATEGORY,
+                                    gateway = gateway,
+                                    onOpenAlbum = onOpenAlbum,
+                                )
+                                2 -> BrowseScreen(
+                                    mode = BrowseMode.RANK,
+                                    gateway = gateway,
+                                    onOpenAlbum = onOpenAlbum,
+                                )
+                                else -> MineScreen(
+                                    account = account,
+                                    snackbarHostState = snackbarHostState,
+                                    onOpenLogin = onOpenLogin,
+                                    onOpenFavorites = onOpenFavorites,
+                                    onOpenHistory = onOpenHistory,
+                                    onOpenShelf = onOpenShelf,
+                                    onOpenSettings = onOpenSettings,
+                                    onOpenNotifications = onOpenNotifications,
+                                    onOpenTracking = onOpenTracking,
+                                    onOpenProfile = onOpenProfile,
+                                    onOpenTasks = onOpenTasks,
+                                    onOpenWatchHistory = onOpenWatchHistory,
+                                    onOpenForum = onOpenForum,
+                                    onOpenNovel = onOpenNovel,
+                                    onOpenLibrary = onOpenLibrary,
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-        // 液态玻璃胶囊底栏：浮在内容之上以采样页面背景，宽度由 24dp 外边距决定
+        // 液态玻璃胶囊底栏：浮在内容之上以采样页面背景，宽度由内容与官方规范上限决定
         if (!wideScreen) {
             IosLiquidGlassNavigationBar(
                 items = MainTab.entries.map { NavigationItem(label = it.label, icon = tabIcon(it)) },
