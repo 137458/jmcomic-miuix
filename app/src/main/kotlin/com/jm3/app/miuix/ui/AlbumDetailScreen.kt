@@ -56,7 +56,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
@@ -608,7 +608,7 @@ fun AlbumDetailScreen(
                                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    CircularProgressIndicator()
+                                    InfiniteProgressIndicator()
                                 }
                             }
                             is CommentsUiState.Failed -> item(key = "comments-failed") {
@@ -644,7 +644,7 @@ fun AlbumDetailScreen(
                                                     contentAlignment = Alignment.Center,
                                                 ) {
                                                     if (commentsLoadingMore) {
-                                                        CircularProgressIndicator(size = 20.dp)
+                                                        InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
                                                     } else {
                                                         TextButton(
                                                             text = "加载更多评论",

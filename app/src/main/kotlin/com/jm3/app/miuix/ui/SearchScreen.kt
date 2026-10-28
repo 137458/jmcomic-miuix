@@ -32,7 +32,7 @@ import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -175,7 +175,7 @@ fun SearchScreen(
                                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    CircularProgressIndicator()
+                                    InfiniteProgressIndicator()
                                 }
                             }
                         }

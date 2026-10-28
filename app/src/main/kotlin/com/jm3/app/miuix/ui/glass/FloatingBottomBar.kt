@@ -1,0 +1,488 @@
+// SPDX-License-Identifier: Apache-2.0
+// 液态玻璃悬浮底栏，移植自 pixez-flutter-MIUIX（原始来源 InstallerX-Revived /
+// compose-miuix-ui 官方示例，光学与物理内核来自 Kyant0/AndroidLiquidGlass）。
+//
+// 与原实现的差异：
+// - 不套 min/max 宽度约束，胶囊宽度由内容与 24dp 边距决定；
+// - 本应用主框架无 Pager，滑块位置只跟随 DampedDragAnimation，去掉手势位置同步。
+
+package com.jm3.app.miuix.ui.glass
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.fastCoerceIn
+import androidx.compose.ui.util.fastRoundToInt
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.BadgedBox
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.NavigationItem
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.highlight.BloomStroke
+import top.yukonga.miuix.kmp.blur.highlight.Highlight
+import top.yukonga.miuix.kmp.blur.highlight.LightPosition
+import top.yukonga.miuix.kmp.blur.highlight.LightSource
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.sensor.rememberDeviceTilt
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sign
+import kotlin.math.sin
+
+val LocalFloatingBottomBarContentColor = staticCompositionLocalOf { Color.Unspecified }
+val LocalFloatingBottomBarTabScale = staticCompositionLocalOf { { 1f } }
+
+/**
+ * 点击 Tab 时直驱指示器弹簧动画的入口：点击处同步调用，StateFlow 环回因目标值已达自动跳过。
+ */
+@Stable
+class FloatingBottomBarDirectSelector {
+    internal var select: ((Int) -> Unit)? = null
+    operator fun invoke(index: Int) {
+        select?.invoke(index)
+    }
+}
+
+@Immutable
+class FloatingBottomBarColors(
+    val containerColor: Color,
+    val indicatorColor: Color,
+    val contentColor: Color,
+    val activeContentColor: Color,
+)
+
+object FloatingBottomBarDefaults {
+    @Composable
+    fun colors(
+        containerColor: Color = MiuixTheme.colorScheme.surfaceContainer,
+        indicatorColor: Color = MiuixTheme.colorScheme.primary,
+        contentColor: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        activeContentColor: Color = indicatorColor,
+    ): FloatingBottomBarColors = FloatingBottomBarColors(
+        containerColor = containerColor,
+        indicatorColor = indicatorColor,
+        contentColor = contentColor,
+        activeContentColor = activeContentColor,
+    )
+}
+
+enum class FloatingBottomBarMode {
+    LiquidGlass,
+    Blur,
+    None,
+}
+
+private val iosIndicatorSpecular: Highlight = Highlight(
+    width = 1.dp,
+    alpha = 1f,
+    style = BloomStroke(
+        color = Color.White.copy(alpha = 0.12f),
+        innerBlurRadius = 2.0.dp,
+        primaryLight = LightSource(
+            position = LightPosition(0.5f, -0.3f, -0.05f),
+            color = Color.White,
+            intensity = 1f,
+        ),
+        secondaryLight = LightSource(
+            position = LightPosition(0.5f, 0.8f, -0.5f),
+            color = Color.White,
+            intensity = 0.4f,
+        ),
+        dualPeak = true,
+    ),
+)
+
+// 光照参考点（归一化 UV 坐标）
+private const val LIGHT_REF_X = 0.5f
+private const val LIGHT_REF_Y = 0.7f
+private const val GRAVITY_DIR_THRESHOLD_SQ = 0.01f // |g_xy| > 0.1，约 6° 倾角
+private val GRAVITY_ANGLE_STEP_RAD = (3.0 * PI / 180.0).toFloat() // 3° 量化步长
+
+/**
+ * 量化的平面重力方向角（弧度）。以 [State] 暴露，把读取推迟到 Draw 阶段，
+ * 避免 50Hz 传感器触发全量重组。
+ */
+@Composable
+private fun rememberQuantizedGravityAngle(): State<Float> {
+    val tiltState = rememberDeviceTilt()
+    return remember(tiltState) {
+        derivedStateOf {
+            val tilt = tiltState.value
+            val gx = tilt.gravityX
+            val gy = tilt.gravityY
+            val gMagSq = gx * gx + gy * gy
+            if (gMagSq > GRAVITY_DIR_THRESHOLD_SQ) {
+                (atan2(gy, gx) / GRAVITY_ANGLE_STEP_RAD).roundToInt() * GRAVITY_ANGLE_STEP_RAD
+            } else {
+                (-PI / 2).toFloat()
+            }
+        }
+    }
+}
+
+/**
+ * 陀螺仪旋转后的高光：在基础偏角上叠加额外角度。值须在 Draw 阶段闭包内读取。
+ */
+@Composable
+private fun rememberGravityRotatedHighlight(
+    base: Highlight,
+    extraDegrees: Float = 0f,
+): State<Highlight> {
+    val gravityAngle = rememberQuantizedGravityAngle()
+    return remember(gravityAngle, base, extraDegrees) {
+        derivedStateOf {
+            val baseStyle = base.style as BloomStroke
+            val basePrimary = baseStyle.primaryLight
+            val rad = gravityAngle.value + (extraDegrees * PI / 180.0).toFloat()
+            base.copy(
+                style = baseStyle.copy(
+                    primaryLight = basePrimary.copy(
+                        position = LightPosition(
+                            x = LIGHT_REF_X + cos(rad),
+                            y = LIGHT_REF_Y + sin(rad),
+                            z = basePrimary.position.z,
+                        ),
+                    ),
+                ),
+            )
+        }
+    }
+}
+
+/**
+ * 液态玻璃悬浮底栏：物理折射透镜、色散光晕、双重 Backdrop 采样、阻尼拖拽、
+ * 陀螺仪高光与三态降级。三层渲染分别由 [BottomBarBaseLayer] / [BottomBarActiveTabsLayer] /
+ * [BottomBarIndicatorLayer] 承载，本函数只负责状态持有与图层编排。
+ */
+@Composable
+fun FloatingBottomBar(
+    selectedIndex: () -> Int,
+    onSelected: (index: Int) -> Unit,
+    backdrop: Backdrop?,
+    tabsCount: Int,
+    modifier: Modifier = Modifier,
+    mode: FloatingBottomBarMode = if (isRuntimeShaderSupported() && backdrop != null) FloatingBottomBarMode.LiquidGlass else FloatingBottomBarMode.Blur,
+    colors: FloatingBottomBarColors = FloatingBottomBarDefaults.colors(),
+    directSelector: FloatingBottomBarDirectSelector? = null,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val isDark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
+    val pillShape = remember { CircleShape }
+    val isLiquidGlassMode = mode == FloatingBottomBarMode.LiquidGlass && backdrop != null && isRuntimeShaderSupported()
+    val isBlurMode = mode == FloatingBottomBarMode.Blur && backdrop != null
+    val containerColor = if (isLiquidGlassMode) colors.containerColor.copy(alpha = 0.4f) else colors.containerColor
+
+    val tabsBackdrop = rememberLayerBackdrop()
+    val density = LocalDensity.current
+    val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val animationScope = rememberCoroutineScope()
+
+    var tabWidthPx by remember { mutableFloatStateOf(0f) }
+    var totalWidthPx by remember { mutableFloatStateOf(0f) }
+
+    val offsetAnimation = remember { Animatable(0f) }
+    val rubberBandPx = with(density) { 4.dp.toPx() }
+    val panelOffsetState = remember(rubberBandPx) {
+        derivedStateOf {
+            if (totalWidthPx == 0f) {
+                0f
+            } else {
+                val fraction = (offsetAnimation.value / totalWidthPx).fastCoerceIn(-1f, 1f)
+                rubberBandPx * fraction.sign * EaseOut.transform(abs(fraction))
+            }
+        }
+    }
+
+    val currentSelectedIndex by rememberUpdatedState(selectedIndex)
+    val updatedOnSelected by rememberUpdatedState(onSelected)
+
+    class DampedDragAnimationHolder {
+        var instance: DampedDragAnimation? = null
+    }
+
+    val holder = remember { DampedDragAnimationHolder() }
+    var totalDragPx by remember { mutableFloatStateOf(0f) }
+    val touchSlopPx = with(density) { 8.dp.toPx() }
+    var currentDragValue by remember { mutableFloatStateOf(selectedIndex().toFloat()) }
+
+    val dampedDragAnimation = remember(animationScope, tabsCount, density, isLtr) {
+        DampedDragAnimation(
+            animationScope = animationScope,
+            initialValue = selectedIndex().toFloat(),
+            valueRange = 0f..(tabsCount - 1).toFloat(),
+            visibilityThreshold = 0.001f,
+            initialScale = 1f,
+            pressedScale = 78f / 56f,
+            canDrag = { offset ->
+                val anim = holder.instance ?: return@DampedDragAnimation true
+                if (tabWidthPx == 0f) return@DampedDragAnimation false
+
+                val currentValue = anim.value
+                val indicatorX = currentValue * tabWidthPx
+                val padding = with(density) { 4.dp.toPx() }
+                val globalTouchX = if (isLtr) {
+                    padding + indicatorX + offset.x
+                } else {
+                    totalWidthPx - padding - tabWidthPx - indicatorX + offset.x
+                }
+                globalTouchX in 0f..totalWidthPx
+            },
+            onDragStarted = {
+                totalDragPx = 0f
+                currentDragValue = value
+            },
+            onDragStopped = {
+                val dropIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
+                val isTapOnSameTab = (dropIndex == currentSelectedIndex()) && (totalDragPx < touchSlopPx)
+                val isSwitched = dropIndex != currentSelectedIndex()
+
+                animateToValue(dropIndex.toFloat())
+                animationScope.launch {
+                    offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
+                }
+                if (isSwitched || isTapOnSameTab) {
+                    updatedOnSelected(dropIndex)
+                }
+            },
+            onDrag = { _, dragAmount ->
+                totalDragPx += abs(dragAmount.x)
+                if (tabWidthPx > 0f) {
+                    currentDragValue = (currentDragValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
+                        .fastCoerceIn(0f, (tabsCount - 1).toFloat())
+                    updateValue(currentDragValue)
+                    animationScope.launch {
+                        offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x)
+                    }
+                }
+            },
+        ).also { holder.instance = it }
+    }
+
+    LaunchedEffect(dampedDragAnimation) {
+        snapshotFlow { currentSelectedIndex() }.collectLatest { index ->
+            val coercedIndex = index.coerceIn(0, tabsCount - 1)
+            if (abs(dampedDragAnimation.value - coercedIndex.toFloat()) > 0.001f) {
+                dampedDragAnimation.animateToValue(coercedIndex.toFloat())
+            }
+        }
+    }
+
+    val interactiveHighlight =
+        if (isLiquidGlassMode) {
+            remember(animationScope, tabWidthPx, isLtr) {
+                InteractiveHighlight(
+                    animationScope = animationScope,
+                    position = { size, _ ->
+                        Offset(
+                            if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffsetState.value
+                            else size.width - (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffsetState.value,
+                            size.height / 2f,
+                        )
+                    },
+                )
+            }
+        } else {
+            null
+        }
+
+    val baseHighlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = -45f)
+    val pillHighlight = rememberGravityRotatedHighlight(iosIndicatorSpecular, extraDegrees = 90f)
+
+    val combinedBackdrop = backdrop?.let { rememberCombinedBackdrop(it, tabsBackdrop) }
+
+    // 注册点击直驱：组合期把内部弹簧动画器交给外部 holder
+    if (directSelector != null) {
+        directSelector.select = { index ->
+            dampedDragAnimation.animateToValue(index.toFloat())
+        }
+    }
+
+    Box(
+        modifier = modifier.width(IntrinsicSize.Min),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        // ── 1. Base Layer（未选中状态底层外壳） ──
+        BottomBarBaseLayer(
+            colors = colors,
+            pillShape = pillShape,
+            panelOffsetState = panelOffsetState,
+            isDark = isDark,
+            isLiquidGlassMode = isLiquidGlassMode,
+            isBlurMode = isBlurMode,
+            containerColor = containerColor,
+            backdrop = backdrop,
+            dampedDragAnimation = dampedDragAnimation,
+            baseHighlight = baseHighlight,
+            interactiveHighlight = interactiveHighlight,
+            onSizeChanged = { coords ->
+                totalWidthPx = coords.width.toFloat()
+                val contentWidthPx = totalWidthPx - with(density) { 8.dp.toPx() }
+                tabWidthPx = (contentWidthPx / tabsCount).coerceAtLeast(0f)
+            },
+            content = content,
+        )
+
+        // ── 2. Active Tabs Layer（激活状态隐藏层，供 tabsBackdrop 录制高亮状态） ──
+        BottomBarActiveTabsLayer(
+            isLiquidGlassMode = isLiquidGlassMode,
+            backdrop = backdrop,
+            pillShape = pillShape,
+            panelOffsetState = panelOffsetState,
+            dampedDragAnimation = dampedDragAnimation,
+            colors = colors,
+            containerColor = containerColor,
+            interactiveHighlight = interactiveHighlight,
+            tabsBackdrop = tabsBackdrop,
+            content = content,
+        )
+
+        // ── 3. Indicator Layer（双重背景采样透镜折射滑块） ──
+        BottomBarIndicatorLayer(
+            tabWidthPx = tabWidthPx,
+            totalWidthPx = totalWidthPx,
+            density = density,
+            isLiquidGlassMode = isLiquidGlassMode,
+            combinedBackdrop = combinedBackdrop,
+            dampedDragAnimation = dampedDragAnimation,
+            panelOffsetState = panelOffsetState,
+            interactiveHighlight = interactiveHighlight,
+            pillHighlight = pillHighlight,
+            pillShape = pillShape,
+            colors = colors,
+            isDark = isDark,
+            isLtr = isLtr,
+            content = content,
+        )
+    }
+}
+
+/**
+ * 便捷包装：由 [NavigationItem] 列表快速构建液态玻璃悬浮底栏。
+ */
+@Composable
+fun IosLiquidGlassNavigationBar(
+    items: List<NavigationItem>,
+    selectedIndex: Int,
+    onItemClick: (Int) -> Unit,
+    backdrop: Backdrop?,
+    modifier: Modifier = Modifier,
+    mode: FloatingBottomBarMode = if (isRuntimeShaderSupported() && backdrop != null) FloatingBottomBarMode.LiquidGlass else FloatingBottomBarMode.Blur,
+    colors: FloatingBottomBarColors = FloatingBottomBarDefaults.colors(),
+    badge: (Int) -> (@Composable () -> Unit)? = { null },
+) {
+    val hapticFeedback = LocalHapticFeedback.current
+    val onItemClickUpdated by rememberUpdatedState(onItemClick)
+    val directSelector = remember { FloatingBottomBarDirectSelector() }
+
+    val navBarBottomPadding = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom).asPaddingValues().calculateBottomPadding()
+    val bottomPaddingValue = if (navBarBottomPadding != 0.dp) 8.dp + navBarBottomPadding else 20.dp
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = bottomPaddingValue, start = 24.dp, end = 24.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        FloatingBottomBar(
+            selectedIndex = { selectedIndex },
+            onSelected = { index ->
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                onItemClickUpdated(index)
+            },
+            backdrop = backdrop,
+            tabsCount = items.size,
+            mode = mode,
+            colors = colors,
+            directSelector = directSelector,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            items.forEachIndexed { index, item ->
+                FloatingBottomBarItem(
+                    onClick = {
+                        // 点击瞬间直驱指示器弹簧（零环回延迟），StateFlow 环回因值已达自动跳过。
+                        directSelector(index)
+                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onItemClickUpdated(index)
+                    },
+                    modifier = Modifier.semantics {
+                        selected = index == selectedIndex
+                    },
+                ) {
+                    val currentBadge = badge(index)
+                    if (currentBadge != null) {
+                        BadgedBox(badge = { currentBadge() }) {
+                            Icon(
+                                modifier = Modifier.size(24.dp),
+                                imageVector = item.icon,
+                                contentDescription = null,
+                            )
+                        }
+                    } else {
+                        Icon(
+                            modifier = Modifier.size(24.dp),
+                            imageVector = item.icon,
+                            contentDescription = null,
+                        )
+                    }
+                    Text(
+                        text = item.label,
+                        fontSize = 11.sp,
+                        fontWeight = if (index == selectedIndex) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}

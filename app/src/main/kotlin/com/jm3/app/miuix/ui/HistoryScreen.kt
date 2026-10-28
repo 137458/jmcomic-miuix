@@ -35,7 +35,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -203,7 +203,7 @@ fun HistoryScreen(
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (loadingMore) {
-                                        CircularProgressIndicator(size = 20.dp)
+                                        InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
                                     } else {
                                         TextButton(text = "加载更多", onClick = ::loadMore)
                                     }

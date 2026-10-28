@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
@@ -328,7 +328,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    CircularProgressIndicator()
+                                    InfiniteProgressIndicator()
                                 }
                             }
                         }
@@ -378,7 +378,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    InfiniteProgressIndicator()
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
@@ -406,7 +406,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (weeklyLoadingMore) {
-                                    CircularProgressIndicator(size = 20.dp)
+                                    InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
                                 } else {
                                     TextButton(text = "加载更多", onClick = ::loadMoreWeekly)
                                 }
@@ -522,7 +522,7 @@ private fun TagResultSection(
                         modifier = Modifier.fillMaxWidth().padding(24.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator()
+                        InfiniteProgressIndicator()
                     }
                 }
                 is BrowseUiState.Failed -> item(key = "tag-error") {
