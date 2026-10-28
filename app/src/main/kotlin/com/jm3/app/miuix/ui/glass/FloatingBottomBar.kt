@@ -3,8 +3,8 @@
 // compose-miuix-ui 官方示例，光学与物理内核来自 Kyant0/AndroidLiquidGlass）。
 //
 // 与原实现的差异：
-// - 不套 min/max 宽度约束，胶囊宽度由内容与 24dp 边距决定；
-// - 本应用主框架无 Pager，滑块位置只跟随 DampedDragAnimation，去掉手势位置同步。
+// - 本应用主框架无 Pager，滑块位置只跟随 DampedDragAnimation，去掉手势位置同步；
+// - 胶囊宽度由内容决定（单项最小 64dp），不设 320dp 下限；大屏上限 540dp 居中。
 
 package com.jm3.app.miuix.ui.glass
 
@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -81,6 +82,9 @@ import kotlin.math.sin
 
 val LocalFloatingBottomBarContentColor = staticCompositionLocalOf { Color.Unspecified }
 val LocalFloatingBottomBarTabScale = staticCompositionLocalOf { { 1f } }
+
+/** 胶囊大屏宽度上限（MIUIX_Spec §4.3：底栏不得顶满屏幕边缘）。 */
+private val FLOATING_BAR_MAX_WIDTH = 540.dp
 
 /**
  * 点击 Tab 时直驱指示器弹簧动画的入口：点击处同步调用，StateFlow 环回因目标值已达自动跳过。
@@ -437,54 +441,59 @@ fun IosLiquidGlassNavigationBar(
             .padding(bottom = bottomPaddingValue, start = 24.dp, end = 24.dp),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        FloatingBottomBar(
-            selectedIndex = { selectedIndex },
-            onSelected = { index ->
-                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                onItemClickUpdated(index)
-            },
-            backdrop = backdrop,
-            tabsCount = items.size,
-            mode = mode,
-            colors = colors,
-            directSelector = directSelector,
-            modifier = Modifier.fillMaxWidth(),
+        // 内层胶囊按内容收紧，大屏封顶 540dp 后水平居中
+        Box(
+            modifier = Modifier.widthIn(max = FLOATING_BAR_MAX_WIDTH),
+            contentAlignment = Alignment.Center,
         ) {
-            items.forEachIndexed { index, item ->
-                FloatingBottomBarItem(
-                    onClick = {
-                        // 点击瞬间直驱指示器弹簧（零环回延迟），StateFlow 环回因值已达自动跳过。
-                        directSelector(index)
-                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onItemClickUpdated(index)
-                    },
-                    modifier = Modifier.semantics {
-                        selected = index == selectedIndex
-                    },
-                ) {
-                    val currentBadge = badge(index)
-                    if (currentBadge != null) {
-                        BadgedBox(badge = { currentBadge() }) {
+            FloatingBottomBar(
+                selectedIndex = { selectedIndex },
+                onSelected = { index ->
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onItemClickUpdated(index)
+                },
+                backdrop = backdrop,
+                tabsCount = items.size,
+                mode = mode,
+                colors = colors,
+                directSelector = directSelector,
+            ) {
+                items.forEachIndexed { index, item ->
+                    FloatingBottomBarItem(
+                        onClick = {
+                            // 点击瞬间直驱指示器弹簧（零环回延迟），StateFlow 环回因值已达自动跳过。
+                            directSelector(index)
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onItemClickUpdated(index)
+                        },
+                        modifier = Modifier.semantics {
+                            selected = index == selectedIndex
+                        },
+                    ) {
+                        val currentBadge = badge(index)
+                        if (currentBadge != null) {
+                            BadgedBox(badge = { currentBadge() }) {
+                                Icon(
+                                    modifier = Modifier.size(24.dp),
+                                    imageVector = item.icon,
+                                    contentDescription = null,
+                                )
+                            }
+                        } else {
                             Icon(
                                 modifier = Modifier.size(24.dp),
                                 imageVector = item.icon,
                                 contentDescription = null,
                             )
                         }
-                    } else {
-                        Icon(
-                            modifier = Modifier.size(24.dp),
-                            imageVector = item.icon,
-                            contentDescription = null,
+                        Text(
+                            text = item.label,
+                            fontSize = 11.sp,
+                            fontWeight = if (index == selectedIndex) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Text(
-                        text = item.label,
-                        fontSize = 11.sp,
-                        fontWeight = if (index == selectedIndex) FontWeight.Bold else FontWeight.Normal,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
         }
