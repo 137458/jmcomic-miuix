@@ -74,10 +74,13 @@ fun GlassScaffold(
                     .onSizeChanged { topBarHeightPx = it.height }
                     .then(
                         if (shaderReady) {
+                            // SDF 边缘高光：顶栏矩形只露出下缘一条细高光带，
+                            // 与主底栏同一光源语言
                             Modifier.drawBackdrop(
                                 backdrop = backdrop!!,
                                 shape = { RectangleShape },
                                 effects = { blur(24.dp.toPx(), 24.dp.toPx()) },
+                                highlight = { glassEdgeHighlight },
                                 onDrawSurface = { drawRect(containerColor.copy(alpha = TOP_BAR_TINT_ALPHA)) },
                             )
                         } else {

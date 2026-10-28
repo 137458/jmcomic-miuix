@@ -58,6 +58,7 @@ import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.glassEdgeHighlight
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -825,10 +826,12 @@ private fun ReaderToolbar(
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .then(
                 if (backdrop != null) {
+                    // SDF 边缘高光与主底栏同源：胶囊外缘描出细高光带
                     Modifier.drawBackdrop(
                         backdrop = backdrop,
                         shape = { RoundedCornerShape(50.dp) },
                         effects = { blur(blurRadius) },
+                        highlight = { glassEdgeHighlight },
                     )
                 } else {
                     Modifier
