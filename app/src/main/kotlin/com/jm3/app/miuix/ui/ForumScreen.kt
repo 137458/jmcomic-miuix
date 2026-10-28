@@ -24,8 +24,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.ForumScope
 import com.jm3.core.settings.PaginationMode
@@ -39,7 +41,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -179,9 +180,9 @@ fun ForumScreen(
         fetch(targetPage = 1, replace = true, showLoading = true)
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 TopAppBar(
                     title = "社区论坛",
                     subtitle = if (state == ForumUiState.Loaded && total > 0) "共 $total 条" else "",
@@ -194,7 +195,10 @@ fun ForumScreen(
                             minHeight = 36.dp,
                         )
                     },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
                 )
+                // 档位筛选固定于列表之外：与顶栏同处玻璃层
                 TabRow(
                     tabs = ForumScope.entries.map { it.label },
                     selectedTabIndex = scopeIndex,
@@ -222,6 +226,7 @@ fun ForumScreen(
                     modifier = Modifier.padding(innerPadding),
                 )
             } else {
+                // 列表内容穿到玻璃顶栏（顶栏 + 档位条）下方，顶栏才能采样到真实背景
                 PullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = {
@@ -229,10 +234,14 @@ fun ForumScreen(
                         fetch(targetPage = 1, replace = true, showLoading = false)
                     },
                     pullToRefreshState = refreshState,
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    modifier = Modifier.fillMaxSize(),
+                    // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                     contentPadding = innerPadding,
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = innerPadding,
+                    ) {
                         if (forumScope == ForumScope.CHAT) {
                             item(key = "rules") {
                                 Card(

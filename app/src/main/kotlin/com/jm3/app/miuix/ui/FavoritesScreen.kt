@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.mergedWith
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.SearchPage
@@ -47,7 +48,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -324,9 +324,9 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     }
     val currentFolderName = folderOptions.firstOrNull { it.first == folderId }?.second ?: "全部"
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 TopAppBar(
                     title = "我的收藏",
                     navigationIcon = { BackButton(onBack = onBack) },
@@ -352,7 +352,10 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                             )
                         }
                     },
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
                 )
+                // 分段切换固定于列表之外：与顶栏同处玻璃层
                 TabRow(
                     tabs = listOf("收藏夹", "标签收藏"),
                     selectedTabIndex = tabIndex,
@@ -376,15 +379,18 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     modifier = Modifier.padding(innerPadding),
                 )
                 p == null -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+                // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
                 else -> PullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = ::refresh,
                     pullToRefreshState = refreshState,
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    modifier = Modifier.fillMaxSize(),
+                    // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                     contentPadding = innerPadding,
                 ) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
+                        contentPadding = innerPadding,
                     ) {
                         item(key = "folder-selector") {
                             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -486,7 +492,11 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     hint = "点击右上角「+」添加标签，这里就会显示",
                     modifier = Modifier.padding(innerPadding),
                 )
-                else -> LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = innerPadding,
+                ) {
                     item(key = "add-tag") {
                         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                             BasicComponent(

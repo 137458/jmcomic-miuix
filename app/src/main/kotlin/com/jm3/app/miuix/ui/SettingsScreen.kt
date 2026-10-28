@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
@@ -38,7 +39,6 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -200,8 +200,15 @@ fun SettingsScreen(
 
     val clearingHistory = confirmClear == "history"
 
-    Scaffold(
-        topBar = { TopAppBar(title = "设置", navigationIcon = { BackButton(onBack = onBack) }) },
+    GlassScaffold(
+        topBar = {
+            TopAppBar(
+                title = "设置",
+                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                color = Color.Transparent,
+                navigationIcon = { BackButton(onBack = onBack) },
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(

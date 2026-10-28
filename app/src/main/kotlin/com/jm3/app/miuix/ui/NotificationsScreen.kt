@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,9 +21,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.NotificationItem
 import com.jm3.core.model.NotificationPage
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +35,6 @@ import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -118,24 +120,17 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
         if (count > 0) "${entry.label} $count" else entry.label
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
-            TopAppBar(
-                title = "信箱",
-                subtitle = if (page == null) "" else if (unread > 0) "$unread 条未读" else "全部已读",
-                navigationIcon = { BackButton(onBack = onBack) },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
-        when {
-            error != null -> ErrorScreen(
-                message = error.orEmpty(),
-                onRetry = { load() },
-                modifier = Modifier.padding(innerPadding),
-            )
-            loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            else -> Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                TopAppBar(
+                    title = "信箱",
+                    subtitle = if (page == null) "" else if (unread > 0) "$unread 条未读" else "全部已读",
+                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                    color = Color.Transparent,
+                    navigationIcon = { BackButton(onBack = onBack) },
+                )
+                // 分类页签固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切换
                 if (items.isNotEmpty()) {
                     TabRow(
                         tabs = tabLabels,
@@ -147,6 +142,18 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { innerPadding ->
+        when {
+            error != null -> ErrorScreen(
+                message = error.orEmpty(),
+                onRetry = { load() },
+                modifier = Modifier.padding(innerPadding),
+            )
+            loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+            else -> Column(modifier = Modifier.fillMaxSize()) {
                 PullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = {
@@ -155,8 +162,16 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
                     },
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
+                    contentPadding = innerPadding,
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
+                        contentPadding = PaddingValues(
+                            top = innerPadding.calculateTopPadding(),
+                            bottom = innerPadding.calculateBottomPadding(),
+                        ),
+                    ) {
                         if (visible.isEmpty()) {
                             item(key = "empty") {
                                 EmptyState(

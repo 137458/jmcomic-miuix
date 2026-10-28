@@ -30,7 +30,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseCategory
@@ -53,7 +55,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
@@ -197,7 +198,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             }
     }
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
             val activeTag = tagKeyword
             TopAppBar(
@@ -218,6 +219,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                         }
                     }
                 },
+                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                color = Color.Transparent,
             )
         },
     ) { innerPadding ->
@@ -228,19 +231,23 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                 keyword = activeTag,
                 order = order,
                 onOpenAlbum = onOpenAlbum,
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding,
             )
         } else {
+            // 列表内容穿到玻璃顶栏（顶栏 + 筛选条）下方，顶栏才能采样到真实背景
             PullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { refresh(byPull = true) },
                 pullToRefreshState = refreshState,
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier.fillMaxSize(),
+                // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                 contentPadding = innerPadding,
             ) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
+                    contentPadding = innerPadding,
                 ) {
                     item(key = "filters") {
                         // 当前主分类的子分类（分类树尚未返回时为空，区域自动隐藏）
@@ -478,6 +485,7 @@ private fun TagResultSection(
     order: BrowseOrder,
     onOpenAlbum: (String) -> Unit,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(),
 ) {
     var state by remember(keyword, order) { mutableStateOf<BrowseUiState>(BrowseUiState.Loading) }
     var loadingMore by remember(keyword, order) { mutableStateOf(false) }
@@ -536,6 +544,7 @@ private fun TagResultSection(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding,
         ) {
             when (val s = state) {
                 is BrowseUiState.Loading -> item(key = "tag-loading") {
