@@ -236,13 +236,18 @@ fun HistoryScreen(
                     fontSize = MiuixTheme.textStyles.body2.fontSize,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(
+                // HyperOS 弹窗惯例：按钮纵向堆叠、各占满宽，避免横排等分与系统弹窗观感不一致
+                TextButton(
+                    text = "取消",
+                    onClick = { showClearConfirm = false },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    TextButton(text = "取消", onClick = { showClearConfirm = false })
-                    TextButton(text = if (clearing) "清空中…" else "清空", onClick = ::clearAll, enabled = !clearing)
-                }
+                )
+                TextButton(
+                    text = if (clearing) "清空中…" else "清空",
+                    onClick = ::clearAll,
+                    enabled = !clearing,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

@@ -454,8 +454,8 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
     } else {
         LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
             items(blocks) { block ->
+                SmallTitle(text = block.title)
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    BasicComponent(title = block.title)
                     FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

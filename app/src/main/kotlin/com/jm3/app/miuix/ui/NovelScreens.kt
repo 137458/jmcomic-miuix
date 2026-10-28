@@ -559,7 +559,7 @@ fun NovelDetailScreen(
                                     }
                                 }
                                 val chapters = if (ascending) current.chapters else current.chapters.reversed()
-                                items(chapters) { chapter ->
+                                items(chapters, key = { it.ncid }) { chapter ->
                                     NovelChapterRow(
                                         chapter = chapter,
                                         read = chapter.ncid == savedChapter,
