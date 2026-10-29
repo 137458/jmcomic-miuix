@@ -1,0 +1,27 @@
+jm3
+Copyright (c) 2026 jm3 contributors
+
+本仓库整体以 MIT 许可证分发（见 LICENSE）。
+
+第三方代码说明
+
+app/src/main/kotlin/com/jm3/app/miuix/ui/glass/ 下的以下文件源自 Apache License 2.0
+许可的液态玻璃渲染实现，保留原始 SPDX 标注并按 Apache-2.0 分发：
+
+  BackdropSupport.kt
+  CombinedBackdrop.kt
+  DampedDragAnimation.kt
+  FloatingBottomBar.kt
+  FloatingBottomBarItems.kt
+  FloatingBottomBarLayers.kt
+  GlassPullToRefresh.kt
+  GlassScaffold.kt
+  InnerShadow.kt
+  InteractiveHighlight.kt
+  Lens.kt
+  Vibrancy.kt
+
+上述文件头部均带 "SPDX-License-Identifier: Apache-2.0"。
+Apache License 2.0 全文见 https://www.apache.org/licenses/LICENSE-2.0 。
+
+其余依赖的许可证见设置页「开源许可」清单与应用打包的 META-INF 声明。
