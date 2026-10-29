@@ -651,7 +651,8 @@ private val BrowseOrder.shortLabel: String
         BrowseOrder.MOST_LIKED -> "喜欢"
     }
 
-private const val RANK_GRID_COLUMNS = 2
+// 列宽自适应阈值：同 pixez 的 GRID_CARD_MIN_WIDTH_DP，手机排 2 列、平板自动排 3 列以上
+private val RANK_GRID_MIN_CARD_WIDTH = 180.dp
 private val RANK_GRID_VERTICAL_SPACING = 8.dp
 private val RANK_GRID_HORIZONTAL_PADDING = 16.dp
 
@@ -673,7 +674,7 @@ private fun RankResultGrid(
     onOpenAlbum: (String) -> Unit,
 ) {
     LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Fixed(RANK_GRID_COLUMNS),
+        columns = StaggeredGridCells.Adaptive(RANK_GRID_MIN_CARD_WIDTH),
         state = gridState,
         modifier = Modifier.fillMaxSize(),
         // 顶部让出玻璃顶栏高度，再加 8dp 与筛选条脱开
