@@ -25,6 +25,7 @@ class SettingsStore(private val context: Context) : SettingsRepository {
     private val searchHistoryKey = stringPreferencesKey("search_history")
     private val readerHorizontalKey = booleanPreferencesKey("reader_horizontal")
     private val volumeHintKey = booleanPreferencesKey("volume_hint_shown")
+    private val notificationAskedKey = booleanPreferencesKey("notification_permission_asked")
     private val trackMuteKey = longPreferencesKey("track_prompt_mute_until")
     private val novelFontSizeKey = intPreferencesKey("novel_font_size")
     private val novelLangKey = stringPreferencesKey("novel_lang")
@@ -111,6 +112,14 @@ class SettingsStore(private val context: Context) : SettingsRepository {
 
     override suspend fun markVolumeKeyHintShown() {
         context.settingsDataStore.edit { it[volumeHintKey] = true }
+    }
+
+    /** 通知权限询问标记与其它一次性提示同层：只经 DataStore，避免再引入裸 SharedPreferences。 */
+    override suspend fun notificationPermissionAsked(): Boolean =
+        context.settingsDataStore.data.first()[notificationAskedKey] ?: false
+
+    override suspend fun markNotificationPermissionAsked() {
+        context.settingsDataStore.edit { it[notificationAskedKey] = true }
     }
 
     override suspend fun trackPromptMuteUntil(): Long =

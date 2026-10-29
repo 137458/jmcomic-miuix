@@ -49,4 +49,16 @@ class SettingsRepositoryTest {
         r.setDynamicColor(false)
         assertEquals(false, r.dynamicColor())
     }
+
+    @Test
+    fun 通知权限标记默认未询问() = runTest {
+        assertEquals(false, repo().notificationPermissionAsked())
+    }
+
+    @Test
+    fun 标记通知权限已询问后可读回() = runTest {
+        val r = repo()
+        r.markNotificationPermissionAsked()
+        assertEquals(true, r.notificationPermissionAsked())
+    }
 }
