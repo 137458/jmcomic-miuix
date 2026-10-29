@@ -196,10 +196,7 @@ fun HistoryScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
-                        contentPadding = PaddingValues(
-                            top = innerPadding.calculateTopPadding(),
-                            bottom = innerPadding.calculateBottomPadding(),
-                        ),
+                        contentPadding = innerPadding,
                     ) {
                         items(albums, key = { it.albumId }) { album ->
                             AlbumHistoryCard(
@@ -232,7 +229,7 @@ fun HistoryScreen(
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
                 Text(
                     text = "将删除本机全部阅读记录，已下载的章节不受影响。",
-                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    style = MiuixTheme.textStyles.body2,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 // HyperOS 弹窗惯例：按钮纵向堆叠、各占满宽，避免横排等分与系统弹窗观感不一致
@@ -285,14 +282,14 @@ private fun AlbumHistoryCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = album.latest.title,
-                    fontSize = MiuixTheme.textStyles.body1.fontSize,
+                    style = MiuixTheme.textStyles.body1,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "共读 ${album.chapters} 话 · ${historyDateFormat.format(Date(album.latest.updatedAt))}",
-                    fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                    style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(modifier = Modifier.height(2.dp))

@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.CommentItem
@@ -39,8 +40,6 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -51,8 +50,8 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 论坛单页条数；接口不返回分页总数，以返回条数推断是否还有下一页。 */
-private const val FORUM_PAGE_SIZE = 20
+/** 论坛每页条数：接口固定一页 10 条，原版 ForumList 的 pageSize 也是 10。 */
+private const val FORUM_PAGE_SIZE = 10
 
 private sealed interface ForumUiState {
     data object Loading : ForumUiState
@@ -60,12 +59,17 @@ private sealed interface ForumUiState {
     data class Failed(val message: String) : ForumUiState
 }
 
-/** 独立论坛页：全部/漫画评论/闲聊三档，支持发帖、回复与两种分页模式。 */
+/**
+ * 独立论坛页：全部/漫画评论/闲聊三档，支持发帖、回复与两种分页模式。
+ *
+ * 分页总数由接口 total 推算（原版 pageLimit = ceil(total / 10)），不再以单页条数猜是否有下一页。
+ */
 @Composable
 fun ForumScreen(
     onBack: () -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    onOpenAlbum: (albumId: String) -> Unit = {},
 ) {
     val user by Jm3Graph.account.user.collectAsState()
     val pageMode = Jm3Graph.paginationMode
@@ -78,6 +82,7 @@ fun ForumScreen(
     var hasNext by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf<ForumUiState>(ForumUiState.Loading) }
     var loadingMore by remember { mutableStateOf(false) }
+    var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
@@ -86,6 +91,9 @@ fun ForumScreen(
     var composeBusy by remember { mutableStateOf(false) }
     var rulesExpanded by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    /** 总页数：接口 total 可用时按每页 10 条折算，否则退化为当前页。 */
+    val totalPages = if (total > 0) (total + FORUM_PAGE_SIZE - 1) / FORUM_PAGE_SIZE else page
 
     fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
         if (showLoading) state = ForumUiState.Loading
@@ -104,18 +112,22 @@ fun ForumScreen(
                     }
                     total = resultPage.total
                     page = targetPage
-                    hasNext = resultPage.items.size >= FORUM_PAGE_SIZE
+                    // total 可用时按已加载到的页与总页数比较；接口没给 total 才回落到单页条数
+                    hasNext = if (resultPage.total > 0) {
+                        targetPage * FORUM_PAGE_SIZE < resultPage.total
+                    } else {
+                        resultPage.items.size >= FORUM_PAGE_SIZE
+                    }
+                    loadMoreFailed = false
                     state = ForumUiState.Loaded
                 }
                 .onFailure {
                     if (replace) {
                         state = ForumUiState.Failed(it.message ?: "论坛加载失败")
                     } else {
-                        // 追加失败保留已有列表，只提示并停止继续翻页
-                        hasNext = false
-                        scope.launch {
-                            snackbarHostState.showSnackbar("加载失败：" + (it.message ?: "请稍后重试"))
-                        }
+                        // 追加失败保留已有列表，标记失败态让底栏给出重试入口
+                        loadMoreFailed = true
+                        snackbarHostState.showSnackbar("加载失败：" + (it.message ?: "请稍后重试"))
                     }
                 }
         }
@@ -185,7 +197,6 @@ fun ForumScreen(
             Column(modifier = Modifier.fillMaxWidth()) {
                 GlassTopAppBar(
                     title = "社区论坛",
-                    subtitle = if (state == ForumUiState.Loaded && total > 0) "共 $total 条" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
                     actions = {
                         TextButton(
@@ -221,13 +232,13 @@ fun ForumScreen(
             )
             ForumUiState.Loaded -> if (items.isEmpty()) {
                 CenteredEmptyState(
-                    title = "暂无帖子",
+                    title = "暂无评论",
                     hint = "换个档位看看，或发一条新帖",
                     modifier = Modifier.padding(innerPadding),
                 )
             } else {
                 // 列表内容穿到玻璃顶栏（顶栏 + 档位条）下方，顶栏才能采样到真实背景
-                PullToRefresh(
+                GlassPullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = {
                         refreshing = true
@@ -260,7 +271,7 @@ fun ForumScreen(
                                         endActions = {
                                             Text(
                                                 text = if (rulesExpanded) "收起" else "展开",
-                                                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                                                style = MiuixTheme.textStyles.footnote1,
                                                 color = MiuixTheme.colorScheme.primary,
                                             )
                                         },
@@ -269,58 +280,29 @@ fun ForumScreen(
                             }
                         }
                         items(items, key = { it.id }) { item ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                            ) {
-                                CommentRow(item = item, onReply = ::startReply)
-                            }
+                            ForumTopicCard(
+                                item = item,
+                                onReply = ::startReply,
+                                onOpenAlbum = onOpenAlbum,
+                            )
                         }
                         item(key = "footer") {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                when {
-                                    pageMode == PaginationMode.CLICK -> Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        TextButton(
-                                            text = "上一页",
-                                            onClick = { fetch(page - 1, replace = true, showLoading = false) },
-                                            enabled = page > 1,
-                                            minWidth = 0.dp,
-                                            minHeight = 36.dp,
-                                        )
-                                        Text(
-                                            text = "第 $page 页",
-                                            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        )
-                                        TextButton(
-                                            text = "下一页",
-                                            onClick = { fetch(page + 1, replace = true, showLoading = false) },
-                                            enabled = hasNext,
-                                            minWidth = 0.dp,
-                                            minHeight = 36.dp,
-                                        )
-                                    }
-                                    loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                                    hasNext -> TextButton(
-                                        text = "加载更多",
-                                        onClick = {
-                                            loadingMore = true
-                                            fetch(page + 1, replace = false, showLoading = false)
-                                        },
-                                    )
-                                    else -> Text(
-                                        text = "已经到底了",
-                                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
-                                }
+                            if (pageMode == PaginationMode.CLICK) {
+                                PagerBar(
+                                    page = page,
+                                    totalPages = totalPages,
+                                    onPageChange = { fetch(it, replace = true, showLoading = false) },
+                                )
+                            } else {
+                                LoadMoreFooter(
+                                    loadingMore = loadingMore,
+                                    hasMore = hasNext,
+                                    loadMoreFailed = loadMoreFailed,
+                                    onLoadMore = {
+                                        loadingMore = true
+                                        fetch(page + 1, replace = false, showLoading = false)
+                                    },
+                                )
                             }
                         }
                     }
@@ -342,6 +324,44 @@ fun ForumScreen(
             onDismiss = { replyTarget = null },
             onSend = ::sendReply,
         )
+    }
+}
+
+/**
+ * 论坛单条：楼层内容沿用评论区排版（头像/等级/徽章/分段正文），底部补关联作品按钮。
+ *
+ * 原版作品按钮文案就是条目里的作品名（形如 JM123456），点击跳作品详情。
+ */
+@Composable
+private fun ForumTopicCard(
+    item: CommentItem,
+    onReply: (CommentItem) -> Unit,
+    onOpenAlbum: (albumId: String) -> Unit,
+) {
+    val albumId = item.albumId
+        ?: item.albumName?.filter { it.isDigit() }?.takeIf { it.isNotBlank() }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            CommentRow(item = item, onReply = onReply, onOpenAlbum = onOpenAlbum)
+            val albumName = item.albumName
+            if (albumName != null && albumId != null) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    TextButton(
+                        text = albumName,
+                        onClick = { onOpenAlbum(albumId) },
+                        minWidth = 0.dp,
+                        minHeight = 28.dp,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -380,7 +400,7 @@ private fun ForumComposeSheet(
                 ) {
                     Text(
                         text = "${text.length}/$COMMENT_REPLY_MAX_LENGTH",
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                     Button(

@@ -265,7 +265,7 @@ fun SettingsScreen(
                 diagError?.let { message ->
                     Text(
                         text = "线路诊断失败：$message",
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.error,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     )
@@ -490,7 +490,7 @@ fun SettingsScreen(
                 text = "本应用为第三方客户端，与禁漫官方无关，仅供学习交流；" +
                     "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +
                     "未满 18 周岁（或当地法定年龄）请勿使用；因使用本应用产生的一切后果由使用者自行承担。",
-                fontSize = MiuixTheme.textStyles.body2.fontSize,
+                style = MiuixTheme.textStyles.body2,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             )
             TextButton(
@@ -508,9 +508,9 @@ private fun DiagnosticRow(label: String, value: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = label,
-            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+            style = MiuixTheme.textStyles.footnote1,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )
-        Text(text = value, fontSize = MiuixTheme.textStyles.body2.fontSize)
+        Text(text = value, style = MiuixTheme.textStyles.body2)
     }
 }

@@ -644,7 +644,7 @@ private fun ReaderPages(
             if (chapters.isEmpty()) {
                 Text(
                     text = "暂无章节信息",
-                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    style = MiuixTheme.textStyles.body2,
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                 )
             } else {
@@ -686,7 +686,7 @@ private fun ReaderPages(
 
                     page == null || page.items.isEmpty() -> Text(
                         text = "还没有评论，来抢沙发吧",
-                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                        style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         modifier = Modifier.fillMaxWidth().padding(24.dp),
                     )
@@ -732,7 +732,7 @@ private fun ReaderPages(
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
                 Text(
                     text = "随时追踪最新连载漫画更新，不错过每一集精彩内容",
-                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    style = MiuixTheme.textStyles.body2,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
@@ -747,7 +747,7 @@ private fun ReaderPages(
                         onClick = { trackMuteChecked = !trackMuteChecked },
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "3天不要显示", fontSize = MiuixTheme.textStyles.body2.fontSize)
+                    Text(text = "3天不要显示", style = MiuixTheme.textStyles.body2)
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 // HyperOS 弹窗惯例：按钮纵向堆叠、各占满宽，避免横排等分与系统弹窗观感不一致

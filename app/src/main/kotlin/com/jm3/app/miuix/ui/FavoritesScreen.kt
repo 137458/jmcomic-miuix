@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.ui.graphics.Color
@@ -47,7 +48,6 @@ import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -380,7 +380,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 )
                 p == null -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
-                else -> PullToRefresh(
+                else -> GlassPullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = ::refresh,
                     pullToRefreshState = refreshState,
@@ -551,7 +551,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = message,
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.error,
                     )
                 }
@@ -596,7 +596,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 folderError?.let { message ->
                     Text(
                         text = message,
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.error,
                     )
                 }
@@ -638,7 +638,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 moveError?.let { message ->
                     Text(
                         text = message,
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.error,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -646,7 +646,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 if (movableFolders.isEmpty()) {
                     Text(
                         text = "暂无其他收藏夹，请先新建收藏夹",
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 } else {
@@ -701,7 +701,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = message,
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.error,
                     )
                 }
@@ -743,7 +743,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 tagError?.let { message ->
                     Text(
                         text = message,
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.error,
                     )
                 }

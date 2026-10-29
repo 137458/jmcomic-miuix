@@ -234,7 +234,7 @@ fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
                 if (saving) {
                     Text(
                         text = "正在提交…",
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                     )

@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.SearchPage
@@ -31,7 +32,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownItem
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
@@ -136,7 +136,7 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     if (topCurrent.time.isNotBlank()) {
                         Text(
                             text = topCurrent.time,
-                            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                            style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
                         )
@@ -158,7 +158,7 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 modifier = Modifier.padding(innerPadding),
             )
             else -> Column(modifier = Modifier.fillMaxSize()) {
-                PullToRefresh(
+                GlassPullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = {
                         refreshing = true
@@ -171,10 +171,7 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
-                        contentPadding = PaddingValues(
-                            top = innerPadding.calculateTopPadding(),
-                            bottom = innerPadding.calculateBottomPadding(),
-                        ),
+                        contentPadding = innerPadding,
                     ) {
                         val loaded = detail
                         when {
