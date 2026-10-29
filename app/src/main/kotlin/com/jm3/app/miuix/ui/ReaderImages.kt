@@ -1,7 +1,6 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import coil3.ComponentRegistry
 import coil3.ImageLoader
@@ -90,32 +89,64 @@ class ReaderFetcherFactory(
     }
 }
 
+// 进程级共享的阅读器 ImageLoader。Coil3 对同一磁盘目录只保留一个 DiskCache 实例，
+// 按屏创建再按屏 shutdown 会让旧屏在换章重叠时序下关掉新屏正在用的缓存，
+// 表现为换章后所有图片加载失败；因此共享实例只在网关或下载源变化时重建，
+// 生命周期跟随进程，页面销毁时不做 shutdown。
+private val sharedLoaderLock = Any()
+
+@Volatile
+private var sharedLoader: ImageLoader? = null
+
+@Volatile
+private var sharedLoaderKey: Pair<Jm3Gateway, DownloadStore?>? = null
+
+private fun acquireReaderImageLoader(
+    gateway: Jm3Gateway,
+    store: DownloadStore?,
+    build: () -> ImageLoader,
+): ImageLoader = synchronized(sharedLoaderLock) {
+    val key = gateway to store
+    val existing = sharedLoader
+    if (existing != null && sharedLoaderKey == key) {
+        existing
+    } else {
+        // 先摘引用再关旧实例：构建失败时不会留下指向已关闭实例的缓存
+        sharedLoader = null
+        sharedLoaderKey = null
+        existing?.shutdown()
+        build().also {
+            sharedLoader = it
+            sharedLoaderKey = key
+        }
+    }
+}
+
 @Composable
 fun rememberReaderImageLoader(
     gateway: Jm3Gateway,
     store: DownloadStore? = null,
 ): ImageLoader {
     val context = LocalPlatformContext.current
-    val loader = remember(gateway, store) {
-        ImageLoader.Builder(context)
-            .components(
-                ComponentRegistry.Builder()
-                    .add(ReaderKeyer())
-                    .add(ReaderFetcherFactory(gateway, store))
-                    .build(),
-            )
-            // 阅读器的分块超采样（telephoto）只能从磁盘缓存快照构造分段位图，
-            // 自建 ImageLoader 默认不带缓存，这里补一个，页图才会按视口分块解码。
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.absolutePath.toPath().resolve("reader_images"))
-                    .maxSizePercent(0.02)
-                    .build()
-            }
-            .build()
+    // remember 保证 composition 内稳定返回同一实例；真正跨屏复用的是上面的进程级缓存
+    return remember(gateway, store) {
+        acquireReaderImageLoader(gateway, store) {
+            ImageLoader.Builder(context)
+                .components(
+                    ComponentRegistry.Builder()
+                        .add(ReaderKeyer())
+                        .add(ReaderFetcherFactory(gateway, store))
+                        .build(),
+                )
+                // 阅读器的分块超采样（telephoto）只能从磁盘缓存快照构造分段位图，
+                // 自建 ImageLoader 默认不带缓存，这里补一个，页图才会按视口分块解码。
+                .diskCache {
+                    DiskCache.Builder()
+                        .directory(context.cacheDir.absolutePath.toPath().resolve("reader_images"))
+                        .maxSizePercent(0.02)
+                        .build()
+                }
+                .build()
+        }
     }
-    DisposableEffect(loader) {
-        onDispose { loader.shutdown() }
-    }
-    return loader
 }

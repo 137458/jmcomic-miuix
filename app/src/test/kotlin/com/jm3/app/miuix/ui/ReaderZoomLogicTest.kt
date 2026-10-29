@@ -19,12 +19,13 @@ class ReaderZoomLogicTest {
 
     @Test
     fun 恰好在阈值上不算放大() {
-        assertFalse(isPageZoomed(ZOOMED_THRESHOLD))
+        // 写死 0.02f 而不是引用常量：常量值漂移时这条边界断言才会真的失败
+        assertFalse(isPageZoomed(0.02f))
     }
 
     @Test
     fun 超过阈值才认为已放大() {
-        assertTrue(isPageZoomed(ZOOMED_THRESHOLD + 0.001f))
+        assertTrue(isPageZoomed(0.021f))
         assertTrue(isPageZoomed(2.5f))
     }
 
