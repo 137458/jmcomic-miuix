@@ -29,6 +29,15 @@ interface SettingsRepository {
     /** 默认空实现，理由同 [dynamicColor]。 */
     suspend fun setDynamicColor(enabled: Boolean) {}
 
+    /**
+     * 通知权限是否已询问过（Android 13+ 首次进入时请求一次，拒绝后不再打扰）。
+     * 默认返回 false：未覆盖的实现按「还没问过」处理，宁可多问一次也不漏掉首次引导。
+     */
+    suspend fun notificationPermissionAsked(): Boolean = false
+
+    /** 默认空实现，理由同 [notificationPermissionAsked]。 */
+    suspend fun markNotificationPermissionAsked() {}
+
     /** 列表分页模式，默认无限滚动。 */
     suspend fun paginationMode(): PaginationMode = PaginationMode.INFINITE
 
@@ -90,6 +99,7 @@ class InMemorySettingsRepository : SettingsRepository {
     private var mode: ThemeMode = ThemeMode.SYSTEM
     private var domains: List<String> = emptyList()
     private var dynamic = false
+    private var notificationAsked = false
     private var pagination = PaginationMode.INFINITE
     private val searchHistory = mutableListOf<String>()
     private var readerHorizontal = false
@@ -115,6 +125,12 @@ class InMemorySettingsRepository : SettingsRepository {
 
     override suspend fun setDynamicColor(enabled: Boolean) {
         this.dynamic = enabled
+    }
+
+    override suspend fun notificationPermissionAsked(): Boolean = notificationAsked
+
+    override suspend fun markNotificationPermissionAsked() {
+        notificationAsked = true
     }
 
     override suspend fun paginationMode(): PaginationMode = pagination
