@@ -9,3 +9,4 @@ local.properties
 # 工作草稿与私密调研文档不入库（工程约束：Git 仅公开交付物）
 implementation_plan.md
 research/
+.screenshots/

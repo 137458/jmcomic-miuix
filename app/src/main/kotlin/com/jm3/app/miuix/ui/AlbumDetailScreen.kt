@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.mergedWith
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
@@ -68,7 +69,6 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.TooltipBox
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -398,7 +398,7 @@ fun AlbumDetailScreen(
     when (val s = state) {
         is AlbumUiState.Loading -> GlassScaffold(
             topBar = {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "详情",
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -410,7 +410,7 @@ fun AlbumDetailScreen(
         }
         is AlbumUiState.Failed -> GlassScaffold(
             topBar = {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "详情",
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -429,7 +429,7 @@ fun AlbumDetailScreen(
             val resumeId = latestPhotoId?.takeIf { id -> detail.chapters.any { it.id == id } }
             GlassScaffold(
                 topBar = {
-                    TopAppBar(
+                    GlassTopAppBar(
                         title = detail.title,
                         navigationIcon = { BackButton(onBack = onBack) },
                         // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -679,7 +679,6 @@ fun AlbumDetailScreen(
                                 }
                             }
                         }
-                        item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                     }
                 }
                 // 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏
@@ -763,22 +762,36 @@ private fun DetailHeader(
             fontSize = MiuixTheme.textStyles.title4.fontSize,
             fontWeight = FontWeight.Medium,
         )
-        val meta = buildList {
+        // 作者与热度分开成两行：单行拼接在窄屏会从中间折行，读起来像丢字
+        val credits = buildList {
             if (detail.authors.isNotEmpty()) add("作者：${detail.authors.joinToString()}")
             if (detail.works.isNotEmpty()) add("社团：${detail.works.joinToString()}")
             if (detail.actors.isNotEmpty()) add("角色：${detail.actors.joinToString()}")
             if (detail.pageCount > 0) add("页数：${detail.pageCount}")
-            detail.likes?.let { add("喜欢：$it") }
-            detail.views?.let { add("浏览：$it") }
-            if (detail.commentCount > 0) add("评论：${detail.commentCount}")
         }
-        if (meta.isNotEmpty()) {
+        val metrics = buildList {
+            detail.likes?.let { add("喜欢 $it") }
+            detail.views?.let { add("浏览 $it") }
+            if (detail.commentCount > 0) add("评论 ${detail.commentCount}")
+        }
+        if (credits.isNotEmpty() || metrics.isNotEmpty()) {
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = meta.joinToString(" · "),
-                fontSize = MiuixTheme.textStyles.body2.fontSize,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
+            val metaColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+            if (credits.isNotEmpty()) {
+                Text(
+                    text = credits.joinToString(" · "),
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    color = metaColor,
+                )
+            }
+            if (metrics.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = metrics.joinToString(" · "),
+                    fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                    color = metaColor,
+                )
+            }
         }
         Spacer(modifier = Modifier.height(12.dp))
         val startId = resumeId ?: detail.chapters.firstOrNull()?.id
@@ -924,7 +937,7 @@ private fun ChapterGroupCard(
 ) {
     val first = group.first()
     val last = group.last()
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         BasicComponent(
             title = if (group.size > 1) "${first.title} ~ ${last.title}" else first.title,
             summary = "${group.size} 话 · 点击${if (expanded) "收起" else "展开"}",

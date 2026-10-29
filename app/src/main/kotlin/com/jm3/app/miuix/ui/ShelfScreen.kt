@@ -17,13 +17,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Pause
@@ -47,7 +47,7 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
 
     GlassScaffold(
         topBar = {
-            TopAppBar(
+            GlassTopAppBar(
                 title = "本地书架",
                 // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                 color = Color.Transparent,

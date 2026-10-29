@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
@@ -72,7 +73,6 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.blur.ProgressiveBlur
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -178,7 +178,7 @@ fun LibraryScreen(
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "书库",
                     subtitle = if (total > 0) "共 $total 项" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
@@ -381,7 +381,7 @@ fun CreatorWorksScreen(
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = data?.authorName?.takeIf { it.isNotBlank() } ?: "创作者",
                     subtitle = data?.works?.size?.takeIf { it > 0 }?.let { "$it 部作品" } ?: "",
                     navigationIcon = { BackButton(onBack = onBack) },
@@ -502,7 +502,6 @@ fun CreatorWorksScreen(
                             }
                         }
                     }
-                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                 }
             }
         }
@@ -548,7 +547,7 @@ fun CreatorWorkDetailScreen(
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = work?.title?.takeIf { it.isNotBlank() } ?: "作品",
                     subtitle = work?.authorName.orEmpty(),
                     navigationIcon = { BackButton(onBack = onBack) },
@@ -615,7 +614,6 @@ fun CreatorWorkDetailScreen(
                             EmptyState(title = "暂无内容", hint = "该作品还在补充中")
                         }
                     }
-                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(16.dp)) }
                 }
             }
         }

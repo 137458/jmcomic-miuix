@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
@@ -45,7 +46,6 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -202,7 +202,7 @@ fun SettingsScreen(
 
     GlassScaffold(
         topBar = {
-            TopAppBar(
+            GlassTopAppBar(
                 title = "设置",
                 // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                 color = Color.Transparent,
@@ -214,9 +214,10 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(innerPadding),
+                .verticalScroll(rememberScrollState()),
         ) {
+            // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样
+            Spacer(modifier = Modifier.height(innerPadding.calculateTopPadding()))
             SmallTitle(text = "主题")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ThemeMode.entries.forEach { mode ->
@@ -372,7 +373,8 @@ fun SettingsScreen(
                     onClick = { showDisclaimer = true },
                 )
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            // 底部净空由 GlassScaffold 统一给出（导航条 inset + 呼吸空间）
+            Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding()))
         }
 
         // 分页模式选择：两档语义在 summary 中说明，避免只改名字造成困惑

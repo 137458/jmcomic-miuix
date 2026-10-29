@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,12 +35,15 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import coil3.compose.AsyncImage
 import com.jm3.core.model.SearchPage
+import com.jm3.core.model.SearchResult
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -242,6 +247,24 @@ private fun SearchResultCover(url: String?) {
     )
 }
 
+/** 榜单名次：前三名用主色强调，其余用次级文字色；固定宽度保证纵向对齐成列。 */
+@Composable
+private fun RankIndexBadge(rank: Int) {
+    val highlighted = rank <= 3
+    Box(modifier = Modifier.width(26.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text = rank.toString(),
+            fontSize = MiuixTheme.textStyles.title4.fontSize,
+            fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Medium,
+            color = if (highlighted) {
+                MiuixTheme.colorScheme.primary
+            } else {
+                MiuixTheme.colorScheme.onSurfaceVariantSummary
+            },
+        )
+    }
+}
+
 /** 列表加载更多三态：加载中 / 出错重试 / 没有更多了；与 HyperOS 加载反馈一致。 */
 @Composable
 fun LoadMoreFooter(
@@ -265,32 +288,79 @@ fun LoadMoreFooter(
     }
 }
 
-/** 搜索/浏览共用的结果列表与加载更多入口；hasMore 由 currentPage/totalPages 推断。 */
+/**
+ * 逐行结果卡：封面 + 标题 + 作者标签摘要，榜单模式在封面前补名次。
+ *
+ * 标题与摘要都限行：超长日文标题会撑到四行，把整行拉得高矮不一，两侧留白全被吃掉。
+ */
+@Composable
+private fun SearchResultCard(
+    result: SearchResult,
+    onClick: () -> Unit,
+    rank: Int? = null,
+) {
+    val summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
+        .ifBlank { null }
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).pressScale()) {
+        BasicComponent(
+            startAction = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (rank != null) {
+                        RankIndexBadge(rank = rank)
+                        Spacer(modifier = Modifier.width(10.dp))
+                    }
+                    SearchResultCover(result.coverUrl)
+                }
+            },
+            onClick = onClick,
+        ) {
+            Text(
+                text = result.title,
+                fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                fontWeight = FontWeight.Medium,
+                color = MiuixTheme.colorScheme.onBackground,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (summary != null) {
+                Text(
+                    text = summary,
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 搜索/浏览共用的结果列表与加载更多入口；hasMore 由 currentPage/totalPages 推断。
+ *
+ * @param ranked 榜单模式：在封面前补名次序号（跨页累加，合并多页后依然连续）。
+ */
 fun LazyListScope.searchResultItems(
     page: SearchPage,
     loadingMore: Boolean,
     loadMoreFailed: Boolean,
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
+    ranked: Boolean = false,
 ) {
     if (page.items.isEmpty()) {
         item(key = "empty") {
             EmptyState(title = "无结果", hint = "换个关键词再试试")
         }
     }
-    items(page.items, key = { it.id }) { result ->
-        // 逐行卡片：封面 + 标题/作者标签摘要，与其他页的卡式布局保持一致
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp).pressScale()) {
-            BasicComponent(
-                title = result.title,
-                summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · ")
-                    .ifBlank { null },
-                startAction = { SearchResultCover(result.coverUrl) },
-                onClick = { onOpenAlbum(result.id) },
-            )
-        }
+    itemsIndexed(page.items, key = { _, result -> result.id }) { index, result ->
+        SearchResultCard(
+            result = result,
+            rank = if (ranked) index + 1 else null,
+            onClick = { onOpenAlbum(result.id) },
+        )
     }
     // 单页结果（如每周必看）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
     if (page.items.isNotEmpty() && page.totalPages > 1) {
@@ -347,17 +417,7 @@ fun LazyListScope.pagedSearchResultItems(
         item(key = "empty") { EmptyState(title = "无结果", hint = "换个关键词再试试") }
     }
     items(page.items, key = { it.id }) { result ->
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp).pressScale()) {
-            BasicComponent(
-                title = result.title,
-                summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · ")
-                    .ifBlank { null },
-                startAction = { SearchResultCover(result.coverUrl) },
-                onClick = { onOpenAlbum(result.id) },
-            )
-        }
+        SearchResultCard(result = result, onClick = { onOpenAlbum(result.id) })
     }
     item(key = "pager") { ResultPagerBar(page = page, onPageChange = onPageChange) }
 }

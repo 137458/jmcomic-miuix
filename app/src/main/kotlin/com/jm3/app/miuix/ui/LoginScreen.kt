@@ -20,13 +20,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -39,7 +39,7 @@ fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
 
     GlassScaffold(
         topBar = {
-            TopAppBar(
+            GlassTopAppBar(
                 title = "登录",
                 // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                 color = Color.Transparent,

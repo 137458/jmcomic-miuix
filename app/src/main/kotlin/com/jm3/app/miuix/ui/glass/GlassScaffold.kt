@@ -5,9 +5,14 @@ package com.jm3.app.miuix.ui.glass
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -15,11 +20,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.TopAppBarState
+import top.yukonga.miuix.kmp.basic.TopAppBarDefaults
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
@@ -35,17 +51,37 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 val LocalFloatingBarContentPadding = compositionLocalOf { 0.dp }
 
+/**
+ * GlassScaffold 提供的顶栏折叠行为。[GlassTopAppBar] 自动取用；页面无需关心嵌套滚动的挂载。
+ * 允许为 null：脱离 GlassScaffold 使用玻璃顶栏时退化为不折叠。
+ */
+val LocalGlassScrollBehavior = compositionLocalOf<ScrollBehavior?> { null }
+
 /** 顶栏渐变模糊半径与过渡曲线：与 MIUIX 官方 BlurredBar 规范一致（HyperOS 沉浸式顶栏）。 */
 private const val TOP_BAR_BLUR_RADIUS = 10f
 private const val TOP_BAR_BLUR_CURVE = 2.2f
 
+/** 折叠遮罩：完全折叠时的顶部不透明度、渐变终点不透明度与渐变截止位置。 */
+private const val TOP_BAR_SCRIM_ALPHA = 0.9f
+private const val TOP_BAR_SCRIM_FADE_ALPHA = 0.55f
+private const val TOP_BAR_SCRIM_FADE_STOP = 0.7f
+
 /**
- * 玻璃顶栏脚手架：顶栏改为覆盖层，内容穿透到状态栏下方滚动，顶栏实时采样其下方内容。
+ * 内容底部的隐式呼吸空间。系统导航条 inset 只保证"不被系统遮挡"，末项贴着屏幕底缘仍然拥挤，
+ * 因此统一再留一段间距；页面不必各自补 Spacer，子页面与带底栏的主页面因此保持同一收尾节奏。
+ */
+private val BottomContentBreathingSpace = 20.dp
+
+/**
+ * 玻璃顶栏脚手架：顶栏改为覆盖层，内容穿透到状态栏下方滚动，顶栏实时采样其下方内容，
+ * 并随内容滚动折叠成大标题 → 小标题。
  *
- * 与 Miuix `Scaffold` 的差异只有两点：
+ * 与 Miuix `Scaffold` 的差异：
  * 1. 顶栏不再占位，而是作为浮层叠在内容之上；
- * 2. 传给 [content] 的 top 内边距是顶栏实际高度，调用方需把它作为滚动容器的
- *    `contentPadding`（而非 `Modifier.padding`），否则内容退到顶栏下方就无法被采样。
+ * 2. 传给 [content] 的 top 内边距是顶栏展开态高度，调用方需把它作为滚动容器的
+ *    `contentPadding`（而非 `Modifier.padding`），否则内容退到顶栏下方就无法被采样；
+ * 3. bottom 内边距额外叠加 [BottomContentBreathingSpace]，末项不会贴到导航条上；
+ * 4. 内容容器挂上折叠行为的嵌套滚动节点，页内任意滚动容器都能驱动顶栏折叠。
  *
  * 非滚动内容（表单、居中空态/错误态）继续用 `Modifier.padding(innerPadding)` 即可，
  * 顶栏此时按实色兜底渲染。
@@ -61,42 +97,146 @@ fun GlassScaffold(
     val backdrop = rememberBlurBackdrop()
     val shaderReady = backdrop != null && isRuntimeShaderSupported()
     val containerColor = MiuixTheme.colorScheme.surface
-    // 顶栏高度由测量得出：不同页面的 TopAppBar 可能带副标题，硬编码会错位
-    var topBarHeightPx by remember { mutableIntStateOf(0) }
-    val topBarHeight = with(LocalDensity.current) { topBarHeightPx.toDp() }
+    val scrollBehavior = MiuixScrollBehavior()
+    // 取展开态的最大高度：折叠过程中顶栏实测高度会收缩，若跟着收缩会让 content 内边距逐帧抖动
+    var topBarMaxHeightPx by remember { mutableIntStateOf(0) }
+    val topBarHeight = with(LocalDensity.current) { topBarMaxHeightPx.toDp() }
     val floatingBarContentPadding = LocalFloatingBarContentPadding.current
+    // 主框架已经消费过系统栏 inset，这里取"剩余 inset"与安全值中的较大者：
+    // 子页面（未被消费）不会贴到手势条/三键导航上，主 tab 也不会重复让位。
+    val systemBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Scaffold(
         modifier = modifier,
         snackbarHost = snackbarHost,
         floatingActionButton = floatingActionButton,
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.fillMaxSize().layerBackdropSource(backdrop)) {
-                content(
-                    PaddingValues(
-                        top = topBarHeight,
-                        bottom = innerPadding.calculateBottomPadding() + floatingBarContentPadding,
-                    ),
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .onSizeChanged { topBarHeightPx = it.height }
-                    .then(
-                        if (shaderReady) {
-                            Modifier.topBarProgressiveBlur(backdrop!!)
-                        } else {
-                            Modifier.background(containerColor)
-                        },
-                    ),
-            ) {
-                topBar()
+        // 折叠行为对内容同样可见：页面里的 GlassTopBarScrollSync 需要它补同步
+        CompositionLocalProvider(LocalGlassScrollBehavior provides scrollBehavior) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .layerBackdropSource(backdrop)
+                        .nestedScroll(scrollBehavior.nestedScrollConnection),
+                ) {
+                    content(
+                        PaddingValues(
+                            top = topBarHeight,
+                            bottom = maxOf(innerPadding.calculateBottomPadding(), systemBarBottom) +
+                                floatingBarContentPadding +
+                                BottomContentBreathingSpace,
+                        ),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .onSizeChanged { topBarMaxHeightPx = maxOf(topBarMaxHeightPx, it.height) }
+                        .then(
+                            if (shaderReady) {
+                                Modifier.topBarProgressiveBlur(backdrop)
+                            } else {
+                                Modifier.background(containerColor)
+                            },
+                        ),
+                ) {
+                    // 折叠进度越高，同色遮罩越实：渐变模糊在底缘衰减到 0，只靠模糊时小标题
+                    // 下方的正文仍然清晰可读，观感杂乱；补一层渐变底色把标题区压实。
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .topBarScrim(state = scrollBehavior.state, color = containerColor),
+                    )
+                    topBar()
+                }
             }
         }
     }
+}
+
+/**
+ * 玻璃顶栏：把 Miuix `TopAppBar` 接到 [GlassScaffold] 的折叠行为上。
+ *
+ * 默认背景透明，由 GlassScaffold 的渐变模糊层负责底色，因此页面里只需替换组件名，
+ * 不必再写 `color = Color.Transparent`，也不必自己挂 `nestedScroll`。
+ */
+@Composable
+fun GlassTopAppBar(
+    title: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Transparent,
+    titleColor: Color = MiuixTheme.colorScheme.onSurface,
+    largeTitle: String = title,
+    largeTitleColor: Color = MiuixTheme.colorScheme.onSurface,
+    subtitle: String = "",
+    subtitleColor: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    navigationIcon: @Composable () -> Unit = {},
+    actions: @Composable RowScope.() -> Unit = {},
+    defaultWindowInsetsPadding: Boolean = true,
+    titlePadding: Dp = TopAppBarDefaults.TitlePadding,
+    navigationIconPadding: Dp = TopAppBarDefaults.NavigationIconPadding,
+    actionIconPadding: Dp = TopAppBarDefaults.ActionIconPadding,
+    bottomContent: @Composable () -> Unit = {},
+) {
+    TopAppBar(
+        title = title,
+        modifier = modifier,
+        color = color,
+        titleColor = titleColor,
+        largeTitle = largeTitle,
+        largeTitleColor = largeTitleColor,
+        subtitle = subtitle,
+        subtitleColor = subtitleColor,
+        navigationIcon = navigationIcon,
+        actions = actions,
+        scrollBehavior = LocalGlassScrollBehavior.current,
+        defaultWindowInsetsPadding = defaultWindowInsetsPadding,
+        titlePadding = titlePadding,
+        navigationIconPadding = navigationIconPadding,
+        actionIconPadding = actionIconPadding,
+        bottomContent = bottomContent,
+    )
+}
+
+/**
+ * 不折叠的玻璃顶栏：用于阅读等沉浸页，标题单行展示，把纵向空间让给内容。
+ *
+ * 转调 Miuix [SmallTopAppBar]；同一 ScrollBehavior 会因此被钉在展开态，滚动时高度恒定。
+ */
+@Composable
+fun GlassSmallTopAppBar(
+    title: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Transparent,
+    titleColor: Color = MiuixTheme.colorScheme.onSurface,
+    subtitle: String = "",
+    subtitleColor: Color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    navigationIcon: @Composable () -> Unit = {},
+    actions: @Composable RowScope.() -> Unit = {},
+    defaultWindowInsetsPadding: Boolean = true,
+    titlePadding: Dp = TopAppBarDefaults.TitlePadding,
+    navigationIconPadding: Dp = TopAppBarDefaults.NavigationIconPadding,
+    actionIconPadding: Dp = TopAppBarDefaults.ActionIconPadding,
+    bottomContent: @Composable () -> Unit = {},
+) {
+    SmallTopAppBar(
+        title = title,
+        modifier = modifier,
+        color = color,
+        titleColor = titleColor,
+        subtitle = subtitle,
+        subtitleColor = subtitleColor,
+        navigationIcon = navigationIcon,
+        actions = actions,
+        scrollBehavior = LocalGlassScrollBehavior.current,
+        defaultWindowInsetsPadding = defaultWindowInsetsPadding,
+        titlePadding = titlePadding,
+        navigationIconPadding = navigationIconPadding,
+        actionIconPadding = actionIconPadding,
+        bottomContent = bottomContent,
+    )
 }
 
 /**
@@ -116,5 +256,24 @@ private fun Modifier.topBarProgressiveBlur(backdrop: LayerBackdrop): Modifier {
         gradient = ProgressiveBlur.Top.copy(curve = TOP_BAR_BLUR_CURVE),
         blurRadius = TOP_BAR_BLUR_RADIUS,
         colors = blurColors,
+    )
+}
+
+/**
+ * 顶栏折叠遮罩：按折叠进度叠加同色渐变，把标题区从背景内容里分离出来。
+ * 颜色读取放在绘制阶段，滚动过程中只触发重绘，不触发重组。
+ */
+private fun Modifier.topBarScrim(state: TopAppBarState, color: Color): Modifier = drawBehind {
+    val fraction = state.collapsedFraction.coerceIn(0f, 1f)
+    if (fraction <= 0f) return@drawBehind
+    drawRect(
+        brush = Brush.verticalGradient(
+            0f to color.copy(alpha = TOP_BAR_SCRIM_ALPHA * fraction),
+            TOP_BAR_SCRIM_FADE_STOP to color.copy(alpha = TOP_BAR_SCRIM_FADE_ALPHA * fraction),
+            1f to Color.Transparent,
+            startY = 0f,
+            endY = size.height,
+        ),
+        size = size,
     )
 }

@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.NovelChapter
 import com.jm3.core.model.NovelChapterMeta
@@ -69,7 +70,6 @@ import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
@@ -191,7 +191,7 @@ fun NovelListScreen(
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = if (appliedQuery.isBlank()) "小说" else "小说搜索",
                     subtitle = if (total > 0) "共 $total 本" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
@@ -218,7 +218,7 @@ fun NovelListScreen(
                     },
                 ) {}
                 // 排序控件固定在列表之外：与顶栏同处玻璃层，列表从其下方穿过
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                     OverlaySpinnerPreference(
                         items = NovelOrder.entries.map { DropdownItem(text = it.label, selected = it == order) },
                         selectedIndex = NovelOrder.entries.indexOf(order),
@@ -273,7 +273,6 @@ fun NovelListScreen(
                             onFavorite = { favorite(item) },
                         )
                     }
-                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                 }
             }
         }
@@ -292,7 +291,7 @@ private fun NovelListRow(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 3.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .pressScale(),
     ) {
         Row(
@@ -481,7 +480,7 @@ fun NovelDetailScreen(
 
     GlassScaffold(
         topBar = {
-            TopAppBar(
+            GlassTopAppBar(
                 title = detail?.name ?: "小说详情",
                 subtitle = detail?.author.orEmpty(),
                 navigationIcon = { BackButton(onBack = onBack) },
@@ -590,7 +589,6 @@ fun NovelDetailScreen(
                                 )
                             }
                         }
-                        item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                     }
                 }
             }
@@ -888,7 +886,7 @@ fun NovelReaderScreen(
 
     GlassScaffold(
         topBar = {
-            TopAppBar(
+            GlassTopAppBar(
                 title = chapter?.title ?: "阅读",
                 subtitle = detail?.name.orEmpty(),
                 navigationIcon = { BackButton(onBack = onBack) },

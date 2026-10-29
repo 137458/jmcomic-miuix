@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
 import com.jm3.core.model.TaskPage
@@ -41,7 +42,6 @@ import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Favorites
 import top.yukonga.miuix.kmp.icon.extended.FavoritesFill
@@ -85,7 +85,7 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "成就",
                     subtitle = (state as? TasksUiState.Loaded)
                         ?.page
@@ -194,7 +194,6 @@ private fun TaskList(
                 }
             }
             items(page.items, key = { it.id }) { item -> TaskRow(type = type, item = item) }
-            item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
@@ -210,7 +209,7 @@ private fun TaskRow(type: TaskType, item: TaskItem) {
             append("奖励 ${item.coin} 金币")
         }
     }.ifBlank { null }
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         BasicComponent(
             title = title,
             summary = summary,
