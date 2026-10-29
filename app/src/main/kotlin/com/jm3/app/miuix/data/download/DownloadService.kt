@@ -7,15 +7,14 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.R
 import com.jm3.core.download.DownloadTask
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -46,6 +45,8 @@ class DownloadService : Service() {
         }
         running = true
         startForegroundSafely(notification)
+        // 新下载已经开跑，上一次超时留下的「已暂停」提示已经过期，撤掉避免误导。
+        DownloadNotifier.cancelPaused(this)
         // 进程被杀后不自动重建：任务由落库记录恢复，避免死循环拉起空服务。
         return START_NOT_STICKY
     }
@@ -58,15 +59,15 @@ class DownloadService : Service() {
     }
 
     /**
-     * Android 15+：dataSync 前台服务累计运行 6 小时后系统回调（API 35 单参，
-     * API 36 起改为双参）。按时限要求把在途任务置 PAUSED 并退出前台，
+     * Android 15+：dataSync 前台服务累计运行 6 小时后系统回调（双参 onTimeout 是 API 35 新增，
+     * 单参 onTimeout 是 API 34 新增）。按时限要求把在途任务置 PAUSED 并退出前台，
      * 用户下次进入应用可手动续传，不做任何保活。
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
         handleTimeout()
     }
 
-    @Deprecated("Android 16 起由 onTimeout(startId, fgsType) 取代")
+    @Deprecated("Android 15 起由 onTimeout(startId, fgsType) 取代")
     override fun onTimeout(startId: Int) {
         handleTimeout()
     }
@@ -74,6 +75,8 @@ class DownloadService : Service() {
     private fun handleTimeout() {
         runCatching { Jm3Graph.downloadManager.pauseActive() }
         DownloadNotifier.cancel(this)
+        // 前台通知会随退场一起消失：不留一条可见提示，用户只会看到通知无声消失、以为下载完成。
+        DownloadNotifier.notifyPaused(this, getString(R.string.notification_download_paused_text))
         running = false
         stopSelf()
     }
@@ -87,20 +90,22 @@ class DownloadService : Service() {
         }
         runCatching {
             ServiceCompat.startForeground(this, DownloadNotifier.NOTIFICATION_ID, notification, type)
-        }.onFailure {
+        }.onFailure { e ->
+            // 服务已 started 却没进入前台，5 秒后系统会抛 RemoteServiceException，必须主动结束。
+            Log.w(TAG, "startForeground 失败", e)
             running = false
+            stopSelf()
         }
     }
 
     companion object {
 
+        private const val TAG = "DownloadService"
+
         private const val ACTION_START = "com.jm3.app.miuix.download.action.START"
 
-        /** 后台启动前台服务被系统拒绝后的重试间隔。 */
+        /** 同一批任务内两次拉起尝试的最小间隔：只压抖动，不构成保活。 */
         private const val START_RETRY_INTERVAL_MS = 5_000L
-
-        /** 进程级作用域：必须比任何 Activity / Service 实例活得久。 */
-        private val observerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         private val attached = AtomicBoolean(false)
         private val throttle = DownloadThrottle(DownloadNotifier.MIN_PROGRESS_INTERVAL_MS)
@@ -113,6 +118,7 @@ class DownloadService : Service() {
         @Volatile
         private var lastActiveCount = -1
 
+        /** 上次拉起尝试的时间戳：与 [START_RETRY_INTERVAL_MS] 配对，只用于压同一次任务数变化内的抖动。 */
         private var lastStartAttemptAt = 0L
 
         /** 节流窗口末尾的补发任务：保证进度条最终能停在真实值上。 */
@@ -125,16 +131,20 @@ class DownloadService : Service() {
         fun attach(context: Context) {
             if (!attached.compareAndSet(false, true)) return
             val app = context.applicationContext
-            observerScope.launch {
+            // 全应用只允许一处长期协程作用域：appScope 随进程存活，attach 的幂等由 attached 保证。
+            Jm3Graph.appScope.launch {
                 var previous: Map<String, DownloadTask> = emptyMap()
                 Jm3Graph.downloadManager.queue.updates.collect { tasks ->
                     val active = tasks.activeDownloadCount()
+                    // 首次 attach 时 lastActiveCount 为 -1，本身就算一次变化。
                     val countChanged = active != lastActiveCount
                     lastActiveCount = active
 
                     if (active > 0) {
-                        // running 由服务实例回写：未起来时按退避间隔重试（后台启动可能被拒）。
-                        if (!running && canAttemptStart()) start(app)
+                        // 只在活动任务数变化时尝试拉起：集合不变还周期性重试就成了保活，
+                        // 违背「生命周期唯一驱动量是活动任务数」。
+                        // canAttemptStart 的间隔只用于压住同一次变化内的抖动（后台启动可能被拒）。
+                        if (!running && countChanged && canAttemptStart()) start(app)
                         if (running) {
                             val immediate = countChanged || tasks.hasTerminalTransitionFrom(previous)
                             if (throttle.shouldEmit(System.currentTimeMillis(), immediate)) {
@@ -155,6 +165,10 @@ class DownloadService : Service() {
             val intent = Intent(context, DownloadService::class.java).setAction(ACTION_START)
             // minSdk 26：统一走 startForegroundService，由 onStartCommand 在 5s 内 startForeground。
             runCatching { context.startForegroundService(intent) }
+                .onFailure { e ->
+                    // 后台启动被拒（ForegroundServiceStartNotAllowedException）时界面毫无反馈，至少留痕。
+                    Log.w(TAG, "启动下载前台服务失败", e)
+                }
         }
 
         fun stop(context: Context) {
@@ -176,7 +190,7 @@ class DownloadService : Service() {
 
         private fun scheduleFlush(app: Context) {
             if (flushJob?.isActive == true) return
-            flushJob = observerScope.launch {
+            flushJob = Jm3Graph.appScope.launch {
                 delay(DownloadNotifier.MIN_PROGRESS_INTERVAL_MS)
                 if (running) publish(app, currentTasks())
             }
