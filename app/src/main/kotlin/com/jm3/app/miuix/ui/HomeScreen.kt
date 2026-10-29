@@ -497,78 +497,75 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                         null -> Unit
                     }
                 } else {
-                    // 仅当搜索框为空且未进入搜索态时展示搜索记录
-                    if (query.isBlank() && searchHistory.isNotEmpty()) {
-                        item(key = "search-history") {
-                            SearchHistoryCard(
-                                history = searchHistory,
-                                onPick = { word ->
-                                    query = word
-                                    runSearch(word, byTag = false, sort = order)
-                                },
-                                onRemove = { word ->
-                                    mutateHistory { Jm3Graph.settings.removeSearchHistory(word) }
-                                },
-                                onClear = {
-                                    mutateHistory { Jm3Graph.settings.clearSearchHistory() }
-                                },
-                            )
-                        }
-                    }
-                    if (serialUpdates.isNotEmpty()) {
-                        item(key = "serial-title") { SmallTitle(text = "连载更新") }
-                        item(key = "serial-row") {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                items(serialUpdates, key = { it.id }) { update ->
-                                    SerialUpdateCard(update = update, onClick = { onOpenAlbum(update.id) })
-                                }
-                            }
-                        }
-                    }
-                    if (hotTags.isNotEmpty()) {
-                        item(key = "hot-tags-title") {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                SmallTitle(text = "热门标签", modifier = Modifier.weight(1f))
-                                if (hotTags.size > HOT_TAG_COLLAPSED) {
-                                    TextButton(
-                                        text = if (showAllTags) "收起" else "更多",
-                                        onClick = { showAllTags = !showAllTags },
-                                        minWidth = 0.dp,
-                                        minHeight = 28.dp,
-                                        insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                        modifier = Modifier.padding(end = 16.dp),
-                                    )
-                                }
-                            }
-                        }
-                        item(key = "hot-tags") {
-                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                                HotTagFlow(
-                                    tags = hotTags,
-                                    expanded = showAllTags,
-                                    onClick = { tag ->
-                                        query = tag
-                                        runSearch(tag, byTag = true, sort = order)
+                    // 附属区块（搜索记录/连载更新/热门标签/随便看看）的数据是异步到达的，
+                    // 这里合并成单个 item：若各自作为独立 item 插到列表头部，LazyColumn 会按 key
+                    // 锚定原首个可见项「最新上架」，首页打开后就不是真正的顶部了。
+                    item(key = "discovery-header") {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // 仅当搜索框为空且未进入搜索态时展示搜索记录
+                            if (query.isBlank() && searchHistory.isNotEmpty()) {
+                                SearchHistoryCard(
+                                    history = searchHistory,
+                                    onPick = { word ->
+                                        query = word
+                                        runSearch(word, byTag = false, sort = order)
+                                    },
+                                    onRemove = { word ->
+                                        mutateHistory { Jm3Graph.settings.removeSearchHistory(word) }
+                                    },
+                                    onClear = {
+                                        mutateHistory { Jm3Graph.settings.clearSearchHistory() }
                                     },
                                 )
                             }
-                        }
-                    }
-                    if (randomPicks.isNotEmpty()) {
-                        item(key = "random-title") { SmallTitle(text = "随便看看") }
-                        item(key = "random-picks") {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                items(randomPicks, key = { it.id }) { pick ->
-                                    RandomPickCard(pick = pick, onClick = { onOpenAlbum(pick.id) })
+                            if (serialUpdates.isNotEmpty()) {
+                                SmallTitle(text = "连载更新")
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    items(serialUpdates, key = { it.id }) { update ->
+                                        SerialUpdateCard(update = update, onClick = { onOpenAlbum(update.id) })
+                                    }
+                                }
+                            }
+                            if (hotTags.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    SmallTitle(text = "热门标签", modifier = Modifier.weight(1f))
+                                    if (hotTags.size > HOT_TAG_COLLAPSED) {
+                                        TextButton(
+                                            text = if (showAllTags) "收起" else "更多",
+                                            onClick = { showAllTags = !showAllTags },
+                                            minWidth = 0.dp,
+                                            minHeight = 28.dp,
+                                            insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                            modifier = Modifier.padding(end = 16.dp),
+                                        )
+                                    }
+                                }
+                                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                    HotTagFlow(
+                                        tags = hotTags,
+                                        expanded = showAllTags,
+                                        onClick = { tag ->
+                                            query = tag
+                                            runSearch(tag, byTag = true, sort = order)
+                                        },
+                                    )
+                                }
+                            }
+                            if (randomPicks.isNotEmpty()) {
+                                SmallTitle(text = "随便看看")
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    items(randomPicks, key = { it.id }) { pick ->
+                                        RandomPickCard(pick = pick, onClick = { onOpenAlbum(pick.id) })
+                                    }
                                 }
                             }
                         }
