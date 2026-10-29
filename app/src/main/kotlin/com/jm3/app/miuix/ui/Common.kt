@@ -567,7 +567,7 @@ fun LazyStaggeredGridScope.rankResultGrid(
     }
 }
 
-/** 榜单封面卡：封面 + 左上角名次角标 + 两行标题 + 一行作者。 */
+/** 榜单封面卡：封面 + 左上角名次角标 + 单行标题与作者，字号层级与 pixez 封面卡一致。 */
 @Composable
 private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
     Card(
@@ -596,25 +596,25 @@ private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
                 modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
             )
         }
-        Text(
-            text = result.title,
-            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
-            fontWeight = FontWeight.Medium,
-            color = MiuixTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp),
-        )
-        Text(
-            text = result.authors.joinToString(" / ").ifBlank { "未知作者" },
-            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 8.dp),
-        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = result.title,
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = result.authors.joinToString(" / ").ifBlank { "未知作者" },
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
 }
 
