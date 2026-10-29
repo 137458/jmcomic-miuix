@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseCategory
@@ -59,10 +60,10 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Weeks
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 浏览模式：分类走 categories/filter，榜单为排序+时间参数近似（同一接口）。 */
 enum class BrowseMode(val title: String) {
@@ -201,7 +202,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     GlassScaffold(
         topBar = {
             val activeTag = tagKeyword
-            TopAppBar(
+            GlassTopAppBar(
                 title = if (activeTag != null) "标签：$activeTag" else mode.title,
                 navigationIcon = {
                     // 标签结果页返回分类浏览；分类浏览本身是底部 tab，无需返回键。
@@ -224,6 +225,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             )
         },
     ) { innerPadding ->
+        // 主框架切换 tab 会重建页面，滚动容器恢复到原位置后顶栏要跟上，否则大标题压在已滚内容上
         val activeTag = tagKeyword
         if (activeTag != null) {
             TagResultSection(
@@ -301,8 +303,9 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                     }
                                 }
                             }
+                            FilterGroupLabel(text = "排序")
                             TabRow(
-                                tabs = BrowseOrder.entries.map { it.label },
+                                tabs = BrowseOrder.entries.map { it.shortLabel },
                                 selectedTabIndex = BrowseOrder.entries.indexOf(order),
                                 onTabSelected = {
                                     selectionHaptic()
@@ -311,7 +314,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                             )
                             if (mode == BrowseMode.RANK) {
-                                Spacer(modifier = Modifier.height(8.dp))
+                                FilterGroupLabel(text = "时间范围")
                                 TabRow(
                                     tabs = BrowseTime.entries.map { it.label },
                                     selectedTabIndex = BrowseTime.entries.indexOf(time),
@@ -321,9 +324,11 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                     },
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 )
+                                // 榜单口径标题：两条分段控件各选了什么，在这里合成一句人话
+                                SmallTitle(text = "${time.label} · ${order.label}排行")
                             }
-                            // 热门标签行：取前若干项，横向滚动，点击按标签检索
-                            if (hotTags.isNotEmpty()) {
+                            // 热门标签行：取前若干项，横向滚动，点击按标签检索；榜单页不提供标签导航
+                            if (mode == BrowseMode.CATEGORY && hotTags.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 SmallTitle(text = "热门标签")
                                 LazyRow(
@@ -367,9 +372,9 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                             loadMoreFailed = loadMoreFailed,
                             onLoadMore = ::loadMore,
                             onOpenAlbum = onOpenAlbum,
+                            ranked = mode == BrowseMode.RANK,
                         )
                     }
-                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                 }
             }
         }
@@ -406,7 +411,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
                     items(page.items, key = { it.id }) { result ->
-                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                             BasicComponent(
                                 title = result.title,
                                 summary = listOf(
@@ -494,6 +499,7 @@ private fun TagResultSection(
     var requestToken by remember(keyword, order) { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    // 从其他 tab 切回时列表已恢复滚动位置，顶栏需要补同步
 
     fun load() {
         requestToken++
@@ -570,7 +576,29 @@ private fun TagResultSection(
                     onOpenAlbum = onOpenAlbum,
                 )
             }
-            item(key = "tag-bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
+
+/** 筛选分组标题：分段控件只放得下一屏标签，分组语境靠这行小字承担。 */
+@Composable
+private fun FilterGroupLabel(text: String) {
+    Text(
+        text = text,
+        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+    )
+}
+
+/**
+ * 排序短标签：4 个分段在 369dp 宽度下约 78dp 一格，全称（如「最多观看」）会被省略号截断。
+ * 排序语义由分组标题「排序」给定，这里只保留可区分的两字。
+ */
+private val BrowseOrder.shortLabel: String
+    get() = when (this) {
+        BrowseOrder.LATEST -> "最新"
+        BrowseOrder.MOST_VIEWED -> "观看"
+        BrowseOrder.MOST_IMAGES -> "图片"
+        BrowseOrder.MOST_LIKED -> "喜欢"
+    }

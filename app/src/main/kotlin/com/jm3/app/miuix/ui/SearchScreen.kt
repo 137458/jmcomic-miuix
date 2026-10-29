@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
@@ -38,7 +39,6 @@ import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.TabRow
-import top.yukonga.miuix.kmp.basic.TopAppBar
 
 private sealed interface SearchUiState {
     data object Loading : SearchUiState
@@ -149,7 +149,7 @@ fun SearchScreen(
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = if (scope == SearchScope.SITE) "搜索：$query" else "${scope.label}：$query",
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -226,7 +226,6 @@ fun SearchScreen(
                         )
                     }
                 }
-                item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
             }
         }
     }

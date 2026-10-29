@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.ForumScope
 import com.jm3.core.settings.PaginationMode
@@ -47,7 +48,6 @@ import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -183,7 +183,7 @@ fun ForumScreen(
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "社区论坛",
                     subtitle = if (state == ForumUiState.Loaded && total > 0) "共 $total 条" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
@@ -247,7 +247,7 @@ fun ForumScreen(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 3.dp),
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
                                 ) {
                                     BasicComponent(
                                         title = "社区规则",
@@ -272,7 +272,7 @@ fun ForumScreen(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 3.dp),
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
                             ) {
                                 CommentRow(item = item, onReply = ::startReply)
                             }

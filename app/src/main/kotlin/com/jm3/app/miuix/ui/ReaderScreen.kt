@@ -49,6 +49,8 @@ import coil3.request.ImageRequest
 import coil3.size.Size
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.data.download.decodePhotoPages
+import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.model.Chapter
@@ -81,7 +83,6 @@ import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.VerticalScrollBar
 import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -183,7 +184,7 @@ fun ReaderScreen(
     when (val s = state) {
         is ReaderUiState.Loading -> GlassScaffold(
             topBar = {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "阅读",
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -195,7 +196,7 @@ fun ReaderScreen(
         }
         is ReaderUiState.Failed -> GlassScaffold(
             topBar = {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "阅读",
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -502,9 +503,9 @@ private fun ReaderPages(
     GlassScaffold(
         topBar = {
             if (chromeVisible) {
-                TopAppBar(
+                // 阅读页顶栏不折叠：大标题在长书名下会吃掉三行，与看图抢空间
+                GlassSmallTopAppBar(
                     title = photo.title,
-                    subtitle = "第 $currentPage / ${photo.images.size} 页",
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                     color = Color.Transparent,

@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.NotificationItem
 import com.jm3.core.model.NotificationPage
 import kotlinx.coroutines.Dispatchers
@@ -39,7 +40,6 @@ import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 信箱分类：全部 / 漫画追更 / 站内通知，与原版页签一致。 */
@@ -123,7 +123,7 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "信箱",
                     subtitle = if (page == null) "" else if (unread > 0) "$unread 条未读" else "全部已读",
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -182,7 +182,7 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
                         }
                         items(visible, key = { it.id }) { item ->
                             Card(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                                 onClick = { markRead(item) },
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -212,7 +212,6 @@ fun NotificationsScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState
                                 }
                             }
                         }
-                        item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                     }
                 }
             }

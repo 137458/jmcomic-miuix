@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -54,7 +55,6 @@ import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -327,7 +327,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "我的收藏",
                     navigationIcon = { BackButton(onBack = onBack) },
                     actions = {
@@ -436,7 +436,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                             }
                         }
                         items(p.items, key = { it.id }) { result ->
-                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                                 BasicComponent(
                                     title = result.title,
                                     summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
@@ -468,7 +468,6 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                 )
                             }
                         }
-                        item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                     }
                 }
             }
@@ -511,7 +510,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                         }
                     }
                     items(list, key = { it.tag }) { item ->
-                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                             BasicComponent(
                                 title = "#${item.tag}",
                                 summary = item.updatedAt?.let { "更新于 $it" } ?: "更新时间未知",
@@ -528,7 +527,6 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                             )
                         }
                     }
-                    item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                 }
             }
         }

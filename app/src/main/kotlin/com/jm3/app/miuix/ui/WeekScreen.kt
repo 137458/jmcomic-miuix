@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicksDetail
@@ -33,7 +34,6 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -106,7 +106,7 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                TopAppBar(
+                GlassTopAppBar(
                     title = "每周必看",
                     subtitle = "每周五 18:00 更新",
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -207,7 +207,6 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                 onOpenAlbum = onOpenAlbum,
                             )
                         }
-                        item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                     }
                 }
             }

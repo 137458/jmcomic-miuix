@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.data.AccountManager
+import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.model.DailyCheckInStatus
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +36,6 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
@@ -121,13 +122,17 @@ fun MineScreen(
         if (user != null) loadCheckInStatus()
     }
 
-    Scaffold { innerPadding ->
+    GlassScaffold(
+        topBar = { GlassTopAppBar(title = "我的") },
+    ) { innerPadding ->
+        // 主框架切换 tab 会重建页面，滚动容器恢复到原位置后顶栏要跟上，否则大标题压在已滚内容上
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(innerPadding),
+                .verticalScroll(rememberScrollState()),
         ) {
+            // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样
+            Spacer(modifier = Modifier.height(innerPadding.calculateTopPadding()))
             SmallTitle(text = "账号")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 val u = user
@@ -269,7 +274,8 @@ fun MineScreen(
                 )
                 ArrowPreference(title = "设置", onClick = onOpenSettings)
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            // 底部净空由 GlassScaffold 统一给出（导航条 inset + 呼吸空间）
+            Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding()))
         }
 
         // 登出属于会话级操作：与清空数据一致，采用纵向全宽按钮二次确认

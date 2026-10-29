@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,7 +44,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -160,7 +160,7 @@ fun HistoryScreen(
 
     GlassScaffold(
         topBar = {
-            TopAppBar(
+            GlassTopAppBar(
                 title = "阅读历史",
                 // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                 color = Color.Transparent,
@@ -219,7 +219,6 @@ fun HistoryScreen(
                                 )
                             }
                         }
-                        item(key = "bottom-space") { Spacer(modifier = Modifier.height(24.dp)) }
                     }
                 }
             }
@@ -261,7 +260,7 @@ private fun AlbumHistoryCard(
     onOpenDetail: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
