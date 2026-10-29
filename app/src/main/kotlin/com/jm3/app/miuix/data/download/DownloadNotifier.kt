@@ -18,8 +18,8 @@ import com.jm3.core.download.DownloadTask
 /**
  * 下载通知：单渠道（IMPORTANCE_LOW，无声，不出横幅）。
  *
- * Android 16+ 走提升型持续通知（状态栏胶囊，[Notification.Builder.setRequestPromotedOngoing] +
- * [Notification.Builder.setShortCriticalText]）；低版本走 NotificationCompat 进度条形态。
+ * Android 16.1+ 才走提升型持续通知（状态栏胶囊，[Notification.Builder.setRequestPromotedOngoing] +
+ * [Notification.Builder.setShortCriticalText]）；16.0 及更低版本走 NotificationCompat 进度条形态。
  */
 internal object DownloadNotifier {
 
@@ -28,11 +28,19 @@ internal object DownloadNotifier {
     /** 前台服务通知 ID；与 [CHANNEL_DOWNLOADS] 一一对应，全应用仅此一条下载通知。 */
     const val NOTIFICATION_ID = 1001
 
+    /** 暂停提示的独立 ID：前台通知被服务退出移除后，这条提示仍要留在通知栏。 */
+    const val NOTIFICATION_ID_PAUSED = 1002
+
     /** 进度刷新最小间隔（毫秒）。完成/失败/活动任务数变化不受此限制。 */
     const val MIN_PROGRESS_INTERVAL_MS = 300L
 
+    /** 渠道是否已在本进程内创建：进度刷新时 build 每秒可被调多次，重复建渠道要走 Binder。 */
+    @Volatile
+    private var channelReady = false
+
     /** 通知渠道：幂等创建，IMPORTANCE_LOW 保证无声音、不弹横幅。 */
     fun ensureChannel(context: Context) {
+        if (channelReady) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
             CHANNEL_DOWNLOADS,
@@ -45,6 +53,7 @@ internal object DownloadNotifier {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         manager.createNotificationChannel(channel)
+        channelReady = true
     }
 
     /**
@@ -55,6 +64,35 @@ internal object DownloadNotifier {
 
     fun cancel(context: Context) {
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
+    }
+
+    /** 撤掉上一次超时留下的暂停提示：新的下载开始时旧提示会误导用户。 */
+    fun cancelPaused(context: Context) {
+        NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID_PAUSED)
+    }
+
+    /**
+     * 一次性「已暂停」提示：前台服务退场时前台通知会随之消失，只静默停服会让用户以为下载已完成。
+     * 同渠道（IMPORTANCE_LOW，无声音）、非前台、可点击回主界面，点击后自动消失。
+     */
+    fun notifyPaused(context: Context, reason: CharSequence) {
+        if (!canPostNotifications(context)) return
+        ensureChannel(context)
+        val notification = NotificationCompat.Builder(context, CHANNEL_DOWNLOADS)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(context.getString(R.string.notification_download_paused_title))
+            .setContentText(reason)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(reason))
+            .setOngoing(false)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(contentIntent(context))
+            .build()
+        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PAUSED, notification)
     }
 
     /**
@@ -120,8 +158,12 @@ internal object DownloadNotifier {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(contentIntent)
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-            .setRequestPromotedOngoing(true)
             .setShortCriticalText(shortText(context, task))
+        // 只有 16.1 及以上才有 setRequestPromotedOngoing：16.0 设备上直接调用会 NoSuchMethodError，
+        // 而本方法由 onStartCommand 直调、异常没人接，会把前台服务整体带崩。
+        if (supportsPromotedOngoing()) {
+            builder.setRequestPromotedOngoing(true)
+        }
         if (task.total > 0) {
             builder.setProgress(task.total, task.index, false)
         } else {
@@ -129,6 +171,15 @@ internal object DownloadNotifier {
         }
         return builder.build()
     }
+
+    /**
+     * 提升型持续通知只从 Android 16.1（API 36.1）起可用：setRequestPromotedOngoing 是 36.1 新增，
+     * 而模拟器/真机上的 16.0 只有 setShortCriticalText（36.0）。
+     * SDK_INT_FULL 本身是 36 新增的静态字段，必须先判 SDK_INT >= 36 短路，否则低版本会 NoSuchFieldError。
+     */
+    @RequiresApi(36)
+    private fun supportsPromotedOngoing(): Boolean =
+        Build.VERSION.SDK_INT >= 36 && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1
 
     /** Android 8~15：NotificationCompat 进度形态（indeterminate 表示 total 尚未解析出来）。 */
     private fun buildCompat(
@@ -151,6 +202,8 @@ internal object DownloadNotifier {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(contentIntent)
+            // 不给 IMMEDIATE 时 Android 12+ 会把首条前台通知压后约 10 秒，进度一开始是空白。
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setProgress(
                 if (indeterminate) 0 else task.total,
                 if (indeterminate) 0 else task.index,
@@ -159,13 +212,16 @@ internal object DownloadNotifier {
             .build()
     }
 
-    /** 胶囊上的极短文本：进度未知时退回章节标题（setShortCriticalText 只接受 String）。 */
+    /**
+     * 胶囊上的极短文本：只放「3/12」这类数字，进度未知时用固定的「下载中」。
+     * 胶囊宽度只够几个字符，塞章节标题会被系统拦腰截断。
+     */
     @RequiresApi(36)
     private fun shortText(context: Context, task: DownloadTask): String =
         if (task.total > 0) {
             context.getString(R.string.notification_download_short, task.index, task.total)
         } else {
-            task.title
+            context.getString(R.string.notification_download_short_pending)
         }
 
     /** 优先 RUNNING，其次队首 QUEUED。 */

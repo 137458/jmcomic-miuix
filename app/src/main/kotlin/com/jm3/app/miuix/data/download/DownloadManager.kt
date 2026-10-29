@@ -108,7 +108,15 @@ class DownloadManager(
     /** 章节入队（total 未知，开跑前由 resolver 补齐）。 */
     fun enqueueChapter(photoId: String, albumId: String, title: String) {
         ensureStarted()
-        queue.enqueue(DownloadTask(photoId = photoId, albumId = albumId, title = title, total = 0))
+        // 标题可能为空（详情页未拿到章节名）：空串会让书架/任务列表出现无文字的空行。
+        queue.enqueue(
+            DownloadTask(
+                photoId = photoId,
+                albumId = albumId,
+                title = title.ifBlank { UNTITLED_CHAPTER_TITLE },
+                total = 0,
+            ),
+        )
     }
 
     suspend fun records(): List<DownloadRecord> = recordStore.all()
@@ -149,6 +157,9 @@ class DownloadManager(
      * 供 dataSync 前台服务的 onTimeout 使用：Android 15+ 对 dataSync 前台服务有累计
      * 6 小时配额，用尽后系统回调 onTimeout，此时必须让出前台，任务转暂停等待用户续传，
      * 而不是被系统直接杀掉留下半截记录。不动 :core 的队列实现，只调公开的 pause。
+     *
+     * 这里只改状态、不发通知：本层拿不到 Context，可见的「已暂停」提示由
+     * [DownloadService] 在超时处理里发布。
      */
     fun pauseActive() {
         queue.updates.value.values
@@ -156,6 +167,9 @@ class DownloadManager(
             .forEach { queue.pause(it.photoId) }
     }
 }
+
+/** 空标题兜底文案：:core 层无 Context，取不到 string 资源，只能在此固定。 */
+private const val UNTITLED_CHAPTER_TITLE = "未命名章节"
 
 /** 活动任务数（QUEUED + RUNNING）：前台服务生命周期的唯一驱动量。 */
 internal fun Map<String, DownloadTask>.activeDownloadCount(): Int =
