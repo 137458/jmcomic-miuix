@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -33,6 +34,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -55,11 +58,24 @@ import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 成就网格列数：与原版成就页的 grid-cols-4 一致。 */
-private const val TASK_GRID_COLUMNS = 4
+/**
+ * 成就格最小宽度：360dp 屏扣掉两栏 16dp 内边距后可用 328dp，格间距 8dp，
+ * Adaptive 的列数 = floor((可宽 + 间距) / (最小格宽 + 间距))。
+ * 取 72dp → floor(336 / 80) = 4 列，与原版成就页的四列一致；
+ * 320dp 窄屏可宽 288dp → floor(296 / 80) = 3 列，单格仍有约 90dp，放得下 50dp 勋章图。
+ */
+private val TaskGridMinCellWidth = 72.dp
 
-/** 成就格子高度：容纳 50dp 勋章图或称号名 + 两行说明。 */
-private val TaskCellHeight = 132.dp
+/**
+ * 成就格最小高度（只是下限，不封顶）：按 fontScale 1.3 的大字号推算，
+ * 标题 footnote1 两行约 44dp、副标题 footnote2 两行约 40dp、间距与「佩戴中」标签约 20dp、
+ * 上下内边距 20dp，合计约 124dp；带勋章图的格子再多占 56dp，由内容撑开，不再被固定高度裁切。
+ */
+private val TaskCellMinHeight = 124.dp
+
+/** 成就状态的无障碍描述：达成与否原本只体现在配色和透明度上，TalkBack 读不到。 */
+private const val TASK_STATE_DONE = "已达成"
+private const val TASK_STATE_UNDONE = "未达成"
 
 private sealed interface TasksUiState {
     data object Loading : TasksUiState
@@ -86,16 +102,26 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
     val type = types[typeIndex]
     val filter = filters[filterIndex]
 
+    // 快速切换页签时旧响应不能覆盖新条件的结果，慢网下否则会把 A 类型的结果画在 B 类型的格子位置
+    var requestToken by remember { mutableIntStateOf(0) }
+
     fun load(showLoading: Boolean = true) {
         if (showLoading) state = TasksUiState.Loading
+        requestToken++
+        val token = requestToken
+        // 请求发出时定住筛选条件：响应回来时页签可能已经切走
+        val requestType = type
+        val requestFilter = filter
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     // 勋章图与 API 同域，域名解析失败时退化为不展示图片
                     val host = runCatching { Jm3Graph.gateway.imageHost() }.getOrDefault("")
-                    TasksUiState.Loaded(Jm3Graph.gateway.tasks(type, filter), host)
+                    TasksUiState.Loaded(Jm3Graph.gateway.tasks(requestType, requestFilter), host)
                 }
             }
+            // 令牌已被更新的请求替换：这次响应属于旧条件，整体丢弃（含刷新态复位）
+            if (token != requestToken) return@launch
             refreshing = false
             result
                 .onSuccess { state = it }
@@ -181,7 +207,8 @@ private fun TaskGrid(
         contentPadding = contentPadding,
     ) {
         LazyVerticalGrid(
-            columns = GridCells.Fixed(TASK_GRID_COLUMNS),
+            // 自适应列宽：窄屏自动降到 3 列，避免单格被压到放不下勋章图
+            columns = GridCells.Adaptive(minSize = TaskGridMinCellWidth),
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
             contentPadding = contentPadding,
@@ -243,14 +270,17 @@ private fun TaskCell(type: TaskType, item: TaskItem, imageHost: String, equipped
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(TaskCellHeight)
+            // 只留最小高度：大字号下由内容自己撑开，同排高度取该排最高格，不会被截断
+            .heightIn(min = TaskCellMinHeight)
             .border(1.dp, MiuixTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp))
+            .semantics { stateDescription = if (item.done) TASK_STATE_DONE else TASK_STATE_UNDONE }
             .padding(horizontal = 6.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         if (type == TaskType.BADGE) {
-            val url = imageUrl(item.content, imageHost)
+            // 图片地址由内容与域名拼成：两者不变就不该跟着重组反复重算
+            val url = remember(item.content, imageHost) { imageUrl(item.content, imageHost) }
             if (url != null) {
                 AsyncImage(
                     model = url,

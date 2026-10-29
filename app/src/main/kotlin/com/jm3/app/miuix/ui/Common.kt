@@ -153,6 +153,8 @@ fun ActionCell(
                 modifier = Modifier.size(22.dp),
             )
         } else if (glyph != null) {
+            // 这里是图标字形单元而非正文：字号与 22dp 图标对齐，随 fontScale 放大属于预期，
+            // 因此不用 textStyles 收口，避免行高被样式带偏
             Text(text = glyph, fontSize = 22.sp, color = color)
         }
         Spacer(modifier = Modifier.height(4.dp))

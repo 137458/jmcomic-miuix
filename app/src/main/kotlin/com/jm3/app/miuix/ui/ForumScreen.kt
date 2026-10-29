@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -84,6 +83,8 @@ fun ForumScreen(
     var loadingMore by remember { mutableStateOf(false) }
     var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    // 记录最近一次失败的页码：重试要回到失败的那一页，而不是一律回到第一页
+    var failedPage by remember { mutableIntStateOf(1) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
     var replyBusy by remember { mutableStateOf(false) }
@@ -96,7 +97,11 @@ fun ForumScreen(
     val totalPages = if (total > 0) (total + FORUM_PAGE_SIZE - 1) / FORUM_PAGE_SIZE else page
 
     fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
+        // 翻页请求在途时不再发起新的翻页：连点会并发打同一页，返回顺序错乱后列表会重复
+        if (!replace && loadingMore) return
         if (showLoading) state = ForumUiState.Loading
+        // 追加请求要立刻进入加载态，页脚才能显示进度；置位同时充当在途守卫
+        if (!replace) loadingMore = true
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { Jm3Graph.gateway.forum(forumScope, targetPage) }
@@ -122,10 +127,14 @@ fun ForumScreen(
                     state = ForumUiState.Loaded
                 }
                 .onFailure {
-                    if (replace) {
+                    failedPage = targetPage
+                    if (items.isEmpty()) {
+                        // 列表为空时没有可回退的内容，才进整屏错误态
                         state = ForumUiState.Failed(it.message ?: "论坛加载失败")
                     } else {
-                        // 追加失败保留已有列表，标记失败态让底栏给出重试入口
+                        // 已有内容时失败不回退成错误页：否则整块内容会被错误页顶掉，
+                        // 翻页失败只标记页脚可重试，刷新失败靠 snackbar 告知并保留旧内容
+                        state = ForumUiState.Loaded
                         loadMoreFailed = true
                         snackbarHostState.showSnackbar("加载失败：" + (it.message ?: "请稍后重试"))
                     }
@@ -227,7 +236,7 @@ fun ForumScreen(
             ForumUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
             is ForumUiState.Failed -> ErrorScreen(
                 message = s.message,
-                onRetry = { fetch(targetPage = 1, replace = true, showLoading = true) },
+                onRetry = { fetch(targetPage = failedPage, replace = true, showLoading = true) },
                 modifier = Modifier.padding(innerPadding),
             )
             ForumUiState.Loaded -> if (items.isEmpty()) {
@@ -291,17 +300,21 @@ fun ForumScreen(
                                 PagerBar(
                                     page = page,
                                     totalPages = totalPages,
-                                    onPageChange = { fetch(it, replace = true, showLoading = false) },
+                                    // 翻页期间用 loadingMore 挡住重复点击并给出进度
+                                    onPageChange = { target ->
+                                        if (!loadingMore) {
+                                            loadingMore = true
+                                            fetch(target, replace = true, showLoading = false)
+                                        }
+                                    },
                                 )
                             } else {
                                 LoadMoreFooter(
                                     loadingMore = loadingMore,
                                     hasMore = hasNext,
                                     loadMoreFailed = loadMoreFailed,
-                                    onLoadMore = {
-                                        loadingMore = true
-                                        fetch(page + 1, replace = false, showLoading = false)
-                                    },
+                                    // 加载态与在途守卫由 fetch 统一处理，这里只发起请求
+                                    onLoadMore = { fetch(page + 1, replace = false, showLoading = false) },
                                 )
                             }
                         }
@@ -357,7 +370,7 @@ private fun ForumTopicCard(
                         text = albumName,
                         onClick = { onOpenAlbum(albumId) },
                         minWidth = 0.dp,
-                        minHeight = 28.dp,
+                        minHeight = 36.dp,
                     )
                 }
             }

@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -17,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,7 +71,13 @@ fun NotificationsScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var markingId by remember { mutableStateOf<String?>(null) }
-    var expandedIds by remember { mutableStateOf(emptySet<String>()) }
+    // 展开态要跟相邻页签一样熬过旋屏重建：Set 不在 Bundle 可存类型里，拆成 List 存取
+    var expandedIds by rememberSaveable(
+        stateSaver = listSaver(
+            save = { it.toList() },
+            restore = { it.toSet() },
+        ),
+    ) { mutableStateOf(emptySet<String>()) }
     var tabValue by rememberSaveable { mutableStateOf(NotificationTab.ALL.name) }
     val selectionHaptic = rememberSelectionHaptic()
     val tab = NotificationTab.entries.firstOrNull { it.name == tabValue } ?: NotificationTab.ALL
@@ -187,7 +195,12 @@ fun NotificationsScreen(
                             item(key = "empty") {
                                 EmptyState(
                                     title = if (items.isEmpty()) "暂无消息" else "暂无此类消息",
-                                    hint = "订阅作品更新后会收到通知",
+                                    // 站内页签下不存在「订阅作品更新」，提示语要按当前页签区分
+                                    hint = when (tab) {
+                                        NotificationTab.NOTICE -> "暂无站内消息"
+                                        NotificationTab.FOLLOW -> "订阅作品更新后会在这里收到通知"
+                                        NotificationTab.ALL -> "订阅更新与站内消息都会出现在这里"
+                                    },
                                 )
                             }
                         }
@@ -310,19 +323,24 @@ private fun NotificationCard(
             }
             Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (marking) "处理中…" else if (item.read) "标记未读" else "标记已读",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = if (marking) {
-                        MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    } else {
-                        MiuixTheme.colorScheme.primary
-                    },
+                // 点按区包一层 40dp 的盒子：原来只有文字本身约 20dp 高，够不到触控下限
+                Box(
                     modifier = Modifier
                         .pressScale()
-                        .clickable(enabled = !marking, onClick = onToggleRead)
-                        .padding(vertical = 2.dp),
-                )
+                        .sizeIn(minWidth = 40.dp, minHeight = 40.dp)
+                        .clickable(enabled = !marking, onClick = onToggleRead),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (marking) "处理中…" else if (item.read) "标记未读" else "标记已读",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = if (marking) {
+                            MiuixTheme.colorScheme.onSurfaceVariantSummary
+                        } else {
+                            MiuixTheme.colorScheme.primary
+                        },
+                    )
+                }
             }
         }
     }
