@@ -19,12 +19,12 @@
 ## 一、State：状态归属
 
 1. 全局单例只允许出现在 `Jm3Graph`（app/src/main/kotlin/com/jm3/app/miuix/Jm3App.kt:83）。网关、会话、设置、账号、数据库、进程级 scope 都在这里组装；屏幕代码通过参数或 Jm3Graph 读取，禁止自建平行单例。
-2. 唯一长期协程作用域是 `appScope`（app/src/main/kotlin/com/jm3/app/miuix/Jm3App.kt:137，`SupervisorJob() + Dispatchers.IO`）。它的现有使用点只有 Jm3App.kt:115、:137、:150 与 app/src/main/kotlin/com/jm3/app/miuix/data/download/DownloadManager.kt 的 5 处。新增用途必须说明为什么不能挂在屏幕的 `rememberCoroutineScope` 上。禁止 `GlobalScope`。
+2. 唯一长期协程作用域是 `appScope`（app/src/main/kotlin/com/jm3/app/miuix/Jm3App.kt:137，`SupervisorJob() + Dispatchers.IO`）。它的现有使用点只有 Jm3App.kt:115、:137、:150、app/src/main/kotlin/com/jm3/app/miuix/data/download/DownloadManager.kt:64、:67、:69、:141 与同目录 DownloadService.kt:135、:193。新增用途必须说明为什么不能挂在屏幕的 `rememberCoroutineScope` 上。禁止 `GlobalScope`。
 3. 本仓库没有 ViewModel（app/src/main 全量 grep `ViewModel` 零命中）。约定是：屏幕数据状态用 `remember` + `LaunchedEffect` 持有，网络与磁盘读写在 `withContext(Dispatchers.IO)` 内完成（例 AlbumDetailScreen.kt:156 起）。不要为了“规范”引入 ViewModel 层；要引入就是一次架构变更，走 Issue。
 4. 下载任务状态的真源只有一个：`DownloadQueue.updates`（core/src/main/kotlin/com/jm3/core/download/DownloadQueue.kt:29-30，`_updates` + `asStateFlow()`）。UI 只做投影，不得另建进度表、不得在 UI 里累加已完成页数。
-5. 设置项与会话只经 DataStore 读写：`jm3_settings`（app/src/main/kotlin/com/jm3/app/miuix/data/SettingsStore.kt:16）与 `jm3_session`（app/src/main/kotlin/com/jm3/app/miuix/data/SessionStore.kt:11）。会话内容一律走 `SessionCodec.encode/decode` 单键 JSON（SessionStore.kt:19、:22），禁止把 cookie 拆成多个键。
+5. 设置项与会话只经 DataStore 读写：`jm3_settings`（app/src/main/kotlin/com/jm3/app/miuix/data/SettingsStore.kt:16）与 `jm3_session`（app/src/main/kotlin/com/jm3/app/miuix/data/SessionStore.kt:11）。会话内容一律走 `SessionCodec.encode/decode` 单键 JSON（SessionStore.kt:19、:22），禁止把 cookie 拆成多个键。一次性标记类持久化（如通知权限已询问）同样归 `jm3_settings`（SettingsStore.kt:119-123 的 `notificationPermissionAsked`），禁止为省事另开 `SharedPreferences`。
 6. 持久化接口定义在 :core，:app 只提供实现：
-   - core/src/main/kotlin/com/jm3/core/settings/SettingsRepository.kt:13（含 InMemorySettingsRepository，:88）
+   - core/src/main/kotlin/com/jm3/core/settings/SettingsRepository.kt:13（含 InMemorySettingsRepository，:97）
    - core/src/main/kotlin/com/jm3/core/download/DownloadRepository.kt:15（InMemory 在 :51）、core/src/main/kotlin/com/jm3/core/download/DownloadStore.kt:9
    - core/src/main/kotlin/com/jm3/core/history/HistoryRepository.kt:13（InMemory 在 :37）
    新增存储能力先加接口和 InMemory 实现，再有 Android 实现，最后接 UI。
@@ -35,10 +35,10 @@
 1. 网络唯一入口是 `Jm3Gateway`（core/src/main/kotlin/com/jm3/core/Jm3Gateway.kt:45）。它的所有方法都是阻塞调用（接口注释逐条标注，见 :46、:55、:58、:61、:64），调用方必须已经在 IO 线程上：`withContext(Dispatchers.IO)` 或 `appScope`。
 2. 协议库（io.github.jukomu.jmcomic）只允许出现在 :core。:app 的依赖里没有 `jmcomic-api`，它只通过 `api(libs.jmcomic.api)`（core/build.gradle.kts:18）传递可见。新增功能要新的网络能力时，先在 :core 的网关接口上加方法，不要在 :app 里直接 new 协议客户端。
 3. 网关实例的切换走 `Jm3Graph.gatewayOverride` 与 `GatewayFactory`（Jm3App.kt:88-95、core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:7）。线路（域名）只能通过 `Domains`（core/src/main/kotlin/com/jm3/core/settings/Domains.kt:4）与设置项改动，禁止在屏幕里硬编码 URL。
-4. 图片不走网关文本接口：阅读器用 `ReaderFetcherFactory` 自取（app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderImages.kt:37-91），字节来源只有一处 —— 先 `imageLoader.diskCache.openSnapshot(cacheKey)`，命中即复用（:45-53）；未命中再取字节（本地已下载文件优先，否则网关，:55-60），随后 `openEditor(cacheKey)` → 写 `editor.data` → `commitAndOpenSnapshot()`（:62-84），返回 `ImageSource(snapshot.data, diskCache.fileSystem, cacheKey, snapshot)`；写盘失败必须 `editor.abort()` 再抛（:85-89）。
+4. 图片不走网关文本接口：阅读器用 `ReaderFetcherFactory` 自取（app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderImages.kt:36-90），字节来源只有一处 —— 先 `imageLoader.diskCache.openSnapshot(cacheKey)`，命中即复用（:46-52）；未命中再取字节（本地已下载文件优先，否则网关，:54-59），随后 `openEditor(cacheKey)` → 写 `editor.data` → `commitAndOpenSnapshot()`（:61-83），返回 `ImageSource(snapshot.data, diskCache.fileSystem, cacheKey, snapshot)`；写盘失败必须 `editor.abort()` 再抛（:84-88）。
    - 关键约束：禁止把字节塞进 `okio.Buffer` 直接返回。telephoto 的分块超采样只认 `SuccessResult.diskCacheKey`，而 coil3 只在 fetch 结果源是 `FileImageSource` 时才带这个键（EngineInterceptor 里 `diskCacheKey = (fetchResult.source as? FileImageSource)?.diskCacheKey`），塞 Buffer 会让超采样永久失效、放大后发糊（同文件 :42-44、:61-67 注释）。无磁盘缓存或快照打不开时退回内存流只是兜底，不是常规路径。
    - 新增图片入口必须复用同一套 Keyer/Fetcher，否则内存与磁盘缓存会分裂。
-5. 缓存键统一由 `ReaderKeyer.keyOf(data)` 生成（ReaderImages.kt:27-34，格式 `jm3-reader/<photoId>/<index>`），内存键与磁盘键共用一份，不得在别处再拼前缀。自建 `ImageLoader` 必须带磁盘缓存：ReaderImages.kt:107-114 用 `DiskCache.directory(cacheDir/reader_images).maxSizePercent(0.02)`，并在 `DisposableEffect` 里 `shutdown()`（:117-119）；自建 loader 默认不带缓存，去掉它超采样直接失效。
+5. 缓存键统一由 `ReaderKeyer.keyOf(data)` 生成（ReaderImages.kt:29-32，格式 `jm3-reader/<photoId>/<index>`），内存键与磁盘键共用一份，不得在别处再拼前缀。自建 `ImageLoader` 必须带磁盘缓存：ReaderImages.kt:143-148 用 `DiskCache.directory(cacheDir/reader_images).maxSizePercent(0.02)`；自建 loader 默认不带缓存，去掉它超采样直接失效。loader 是进程级共享实例（:92-123），只在网关或下载源变化时重建，页面销毁时不 `shutdown()`：Coil3 对同一目录只保留一个 DiskCache，按屏创建再按屏关闭，会在换章重叠时序下关掉新屏正在用的缓存。
 6. 分页一律“按 id 去重 + 页码游标”：`PageNumbers`（core/src/main/kotlin/com/jm3/core/download/PageNumbers.kt:12）负责 1 基页码换算，搜索与评论分页各自有测试（SearchPagesTest、CommentPagesTest）。新增分页必须先在 :core 写成纯函数并测试。
 7. 网络失败不得静默：`refreshUnreadNotifications` 失败时保留上一次结果而非清零（Jm3App.kt:110-119）。这类“降级”必须在注释里写清楚为什么，未写清楚的按 bug 处理。
 
@@ -47,9 +47,9 @@
 1. 禁止吞掉 `CancellationException`。范本在 core/src/main/kotlin/com/jm3/core/download/DownloadQueue.kt:143-145（`catch (e: CancellationException) { throw e }`）与 :201-202（重试循环里取消不消耗重试次数）。任何 `catch` 之前先问：这里会不会吞取消？
 2. 单任务失败必须隔离：worker 循环里 `catch (Exception)` 只把该任务置失败，不能让整个队列退出（core/src/main/kotlin/com/jm3/core/download/DownloadQueue.kt:138-151）。
 3. 状态机转移用 `check` 硬断言，不用 if 悄悄跳过：`core/src/main/kotlin/com/jm3/core/download/DownloadTask.kt:36` `check(status.canTransitionTo(next)) { "非法状态转移：$status -> $next" }`。失败可见好过状态错乱。
-4. 用户可见的错误必须可重试，文案复用现成组件：全屏 `ErrorScreen(message, onRetry)`（Common.kt:195）、列表三态 `LoadMoreFooter(loadingMore, hasMore, loadMoreFailed, onLoadMore)`（Common.kt:276-295）。禁止屏幕里自造“加载失败”布局。
+4. 用户可见的错误必须可重试，文案复用现成组件：全屏 `ErrorScreen(message, onRetry)`（Common.kt:197）、列表三态 `LoadMoreFooter(loadingMore, hasMore, loadMoreFailed, onLoadMore)`（Common.kt:278-297）。禁止屏幕里自造“加载失败”布局。
 5. 阻塞调用不得进主线程，Composable 体内只做状态编排。用 `LaunchedEffect`/`rememberCoroutineScope` 起协程，用 `withContext(Dispatchers.IO)` 包住 IO。
-6. 取消要显式：pager 翻页、缩放复位这类“跟手动画”用 `springAnimateToPage`（ReaderScreen.kt:604）而不是新起 Job 抢滚动状态。
+6. 取消要显式：pager 翻页、缩放复位这类“跟手动画”用 `springAnimateToPage`（ReaderScreen.kt:615，另一处调用在 :347）而不是新起 Job 抢滚动状态。
 7. 日志与异常只报告事实（哪个任务、哪个文件、哪次重试），不带情绪化修饰；用户提示文案统一中文，全角标点。
 
 ## 四、构建、依赖与产物
@@ -65,17 +65,17 @@
 
 ## 五、UI 与阅读器
 
-1. 组件库只有一个：Miuix。:app 依赖里没有 Material3（app/build.gradle.kts:68-99），全量 grep `androidx.compose.material3` 零命中，版本目录也没有该条目。新增界面一律用 Miuix，禁止“先引一下 material3 的 Icon”。
-2. 三态与常用件复用 `Common.kt`：`LoadingScreen`（:181）、`ErrorScreen`（:195）、`EmptyState`/`CenteredEmptyState`（:213、:233）、`LoadMoreFooter`（:276-295）、`PagerBar`/`ResultPagerBar`（:392、:386）、`Modifier.pressScale`（:443）、`rememberSelectionHaptic()`（:469）。新屏自造加载/空态视为重复实现。
+1. 组件库只有一个：Miuix。:app 依赖里没有 Material3（app/build.gradle.kts:72-105），全量 grep `androidx.compose.material3` 零命中，版本目录也没有该条目。新增界面一律用 Miuix，禁止“先引一下 material3 的 Icon”。
+2. 三态与常用件复用 `Common.kt`：`LoadingScreen`（:183）、`ErrorScreen`（:197）、`EmptyState`/`CenteredEmptyState`（:215、:235）、`LoadMoreFooter`（:278-297）、`PagerBar`/`ResultPagerBar`（:394、:388）、`Modifier.pressScale`（:445）、`rememberSelectionHaptic()`（:471）。新屏自造加载/空态视为重复实现。
 3. 阅读器手势是一条有优先级的状态机，新增手势必须在这套状态机里排队（主文件 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt）：
-   - 缩放状态只由当前页写入（ReaderScreen.kt:584-587），翻页即复位（:294、:955-957）。
-   - pager 的横向手势在放大时被接管：`pagerGestureOverride(pagerState, enabled = !pageZoomed)` 且 `userScrollEnabled = false`（ReaderScreen.kt:571、:573），嵌套滚动交给 `PagerGestureNestedScrollConnection`（:574）。
-   - 放大后拖到边界继续拖才翻页：`onHorizontalEdgeDrag` → `decideEdgePageTurn` → `springAnimateToPage`（:589-609）。判定逻辑在 ReaderZoomLogic.kt:26-44，不在 Composable 里。
-4. 阈值与判定必须是纯函数并集中：`ZOOMED_THRESHOLD = 0.02f`、`EDGE_PAGE_DISTANCE_RATIO = 0.25f`、`EDGE_PAGE_FLING_VELOCITY = 1_000f`（ReaderZoomLogic.kt:4、:10、:13），`isPageZoomed`（:16-17）与 `decideEdgePageTurn`（:26-44）已有真实调用点（ReaderScreen.kt:591、:998）。不许把这些数字散落回 Composable。
-5. 缩放路径不得写死解码尺寸：`zoomEnabled` 分支只挂 listener 不写 `size`（ReaderScreen.kt:924、:935 注释：写死尺寸会让放大后发糊），普通路径必须写与预取相同的 `pageSize`（:941-942，保证内存缓存可复用）。改这一处会同时影响清晰度与内存。
-6. 纵向长图模式不要做就地缩放：3:4 页框会把放大内容裁掉（ReaderScreen.kt:624 注释），双击改为打开整屏覆盖层（:296、:625）。同类“想当然”的交互改动先在真机上验证再提。
-7. 动效收敛：缩放跟随用 telephoto 自带的 `rememberZoomableImageState` + `resetZoom`，按压缩放用 `Modifier.pressScale(0.96f)`，触感用 `rememberSelectionHaptic()`。不新增自研动画框架。
-8. 边缘到边与返回：`enableEdgeToEdge()` 在 MainActivity.kt:13 统一开启，屏幕自己处理 `innerPadding`；音量键翻页由 `onKeyDown` 交给 `ReaderVolumeKeys`（MainActivity.kt:21-25；ReaderVolumeKeys 定义在 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt:128，dispatch 在 :132），不要再在屏幕里重复拦截。
+   - 缩放状态只由当前页写入（ReaderScreen.kt:596 `if (index == pagerState.currentPage) pageZoomed = zoomed`，信号源是 :1008-1011 的 `derivedStateOf` + `LaunchedEffect(zoomed)`），翻页即复位（状态 :293 与 :294 的 `LaunchedEffect(pagerState.currentPage)`，另有 :1013-1015 在页翻走时 `resetZoom()`）。
+   - pager 的横向手势在放大时被接管：`pagerGestureOverride(pagerState, enabled = !pageZoomed)` 且 `userScrollEnabled = false`（ReaderScreen.kt:581、:583），嵌套滚动交给 `PagerGestureNestedScrollConnection`（:584）。
+   - 放大后拖到边界继续拖才翻页：`onHorizontalEdgeDrag` → `decideEdgePageTurn` → `springAnimateToPage`（:599-619，判定调用 :601、动画 :615）。判定逻辑在 ReaderZoomLogic.kt:26-44，不在 Composable 里。
+4. 阈值与判定必须是纯函数并集中：`ZOOMED_THRESHOLD = 0.02f`、`EDGE_PAGE_DISTANCE_RATIO = 0.25f`、`EDGE_PAGE_FLING_VELOCITY = 1_000f`（ReaderZoomLogic.kt:4、:10、:13），`isPageZoomed`（:16-17）与 `decideEdgePageTurn`（:26-44）已有真实调用点（ReaderScreen.kt:601、:1009）。不许把这些数字散落回 Composable。
+5. 缩放路径不得写死解码尺寸：`zoomEnabled` 分支只挂 listener 不写 `size`（ReaderScreen.kt:992-1003，:993 注释：写死尺寸会让放大后发糊），普通路径必须写与预取相同的 `pageSize`（:1000；预取侧 :869、:890 用同一尺寸，保证内存缓存可复用）。改这一处会同时影响清晰度与内存。
+6. 纵向长图模式不要做就地缩放：3:4 页框会把放大内容裁掉（ReaderScreen.kt:635 注释），双击改为打开整屏覆盖层（状态 :296、进入 :636、渲染 :680-696）。同类“想当然”的交互改动先在真机上验证再提。
+7. 动效收敛：缩放跟随用 telephoto 自带的 `rememberZoomableImageState` + `resetZoom`，按压缩放用 `Modifier.pressScale(0.96f)`（默认值见 Common.kt:445），触感用 `rememberSelectionHaptic()`（:471）。不新增自研动画框架。
+8. 边缘到边与返回：`enableEdgeToEdge()` 在 app/src/main/kotlin/com/jm3/app/miuix/MainActivity.kt:25 统一开启，屏幕自己处理 `innerPadding`；音量键翻页由 `onKeyDown` 交给 `ReaderVolumeKeys`（MainActivity.kt:60-62；ReaderVolumeKeys 定义在 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt:128，dispatch 在 :132），不要再在屏幕里重复拦截。阅读器在长图覆盖层等浮层打开时必须让音量键返回 false，且 `onDispose` 只在 handler 仍是自己时才置空（ReaderScreen.kt:489-521），否则换章重叠会把新屏注册的 handler 清掉。
 
 ## 六、Agent 工作流与测试
 
@@ -88,13 +88,13 @@
    - 先确认红灯：写完测试先跑一次，必须看到业务断言失败（例如 `15 tests completed, 1 failed`），再用最小实现转绿。编译错误、导入错误、类型错误不算红灯，不许拿它们冒充。绿灯后禁止改弱期望值来迁就实现。
    - 纯 UI 样式改动可只保证编译，但涉及状态与数据的部分仍要有测试。
    - 如果因为并发构建无法验证，必须在汇报里明说“未验证”和原因，不许假装通过。
-4. 测试放哪：`:core` 逻辑写 `core/src/test/kotlin/com/jm3/core/<包名>/<被测类>Test.kt`，`:app` 纯逻辑写 `app/src/test/kotlin/com/jm3/app/miuix/.../<被测类>Test.kt`，命名 `XxxTest`。现状：`:core` 21 个测试类（最重的是 `download/DownloadQueueTest.kt`，约 18 KB，另有 `download/DownloadRecoveryTest.kt`），`:app` 1 个（`app/src/test/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogicTest.kt`，15 个用例）。
+4. 测试放哪：`:core` 逻辑写 `core/src/test/kotlin/com/jm3/core/<包名>/<被测类>Test.kt`，`:app` 纯逻辑写 `app/src/test/kotlin/com/jm3/app/miuix/.../<被测类>Test.kt`，命名 `XxxTest`。现状：`:core` 21 个测试类（最重的是 `download/DownloadQueueTest.kt`，约 18 KB，另有 `download/DownloadRecoveryTest.kt`），`:app` 3 个（`app/src/test/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogicTest.kt` 15 用例、`app/src/test/kotlin/com/jm3/app/miuix/data/download/DownloadTaskMapsTest.kt` 11 用例、`app/src/test/kotlin/com/jm3/app/miuix/data/download/DownloadThrottleTest.kt` 8 用例，合 34 用例）。
 5. `:app` 已有测试源集：`testImplementation(kotlin("test"))`（app/build.gradle.kts:104）与 `tasks.withType<Test>().configureEach { useJUnitPlatform() }`（app/build.gradle.kts:68-70），现有 `app/src/test/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogicTest.kt` 共 15 个用例，覆盖 `isPageZoomed` 的 null / 0f / 阈值边界，以及 `decideEdgePageTurn` 的页宽非法、页数非法、位移与速度都不达标、位移达标、仅甩动达标、距离达标时忽略反向甩动、首页无上一页、末页无下一页、阈值随页宽缩放。
    心智模型：Composable 只做编排，判定逻辑提成 `*Logic.kt` 纯函数（范例 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogic.kt），测试打在纯函数上。不要为了“能测”去写假 Composable 测试，也不要把判定塞回 Composable 再喊测不了。
 6. 边界清单（新增或改动这些逻辑时，测试必须覆盖；每条都已存在对应断言或测试类）：
    - 状态机非法转移必须抛错：core/src/main/kotlin/com/jm3/core/download/DownloadTask.kt:36 → DownloadTaskTest。
    - 同 photoId 去重、FAILED 重入从 0 重来：core/src/main/kotlin/com/jm3/core/download/DownloadQueue.kt:44-65 → DownloadQueueTest。
-   - 并发上限 2、重试 2 次、取消不消耗重试：core/src/main/kotlin/com/jm3/core/download/DownloadQueue.kt:21、:197-208 → DownloadQueueTest / DownloadContractTest。
+   - 并发上限 2、重试 2 次、取消不消耗重试：core/src/main/kotlin/com/jm3/core/download/DownloadQueue.kt:25、:197-208 → DownloadQueueTest / DownloadContractTest。
    - 断点续传与重启恢复：DownloadRecoveryTest、DownloadRepositoryTest。
    - 页码换算 1 基且越界安全：PageNumbers.kt:12 → PageNumbersTest。
    - 分页结果按 id 去重与游标推进：SearchPagesTest、CommentPagesTest。
@@ -112,17 +112,18 @@
 后续改动若与这些决策冲突，先推翻决策再改代码，不许悄悄绕过。
 
 1. **阅读器缩放用 telephoto，不用 net.engawapg.lib:zoomable**。坐标 `me.saket.telephoto:zoomable-image-coil3` 0.19.0（Apache-2.0），见 gradle/libs.versions.toml:16、:30 与 app/build.gradle.kts:85。理由是它同时给到分块超采样与缩放感知解码，一次依赖解决“放大发糊”；pixez 那条 zoomable 路线缺超采样。
-2. **手势让渡必须显式关掉 Miuix 的翻页拦截**。Miuix 的 `PagerSwipeNode` 在 PointerEventPass.Initial 判 `change.isConsumed`，而 telephoto 在 Main pass 消费，Initial 先于 Main，因此放大时保持 `enabled = true` 会“一边平移一边翻页”（.tools/miuix-src/x/commonMain/top/yukonga/miuix/kmp/utils/PagerGestureUtils.kt:168-198）。所以 HorizontalPager 恒为 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt:571）。
-3. **放大后“内容到边界再翻页”由自研 Main-pass 旁路实现**：父层只在子节点不消费（`change.isConsumed == false`）时累计 dragX 与速度，松手用纯函数判定（ReaderScreen.kt:1016-1042 + ReaderZoomLogic.kt:26-44）。不跟手、不做橡皮筋。
-4. **长图模式不就地缩放**：3:4 页框会裁掉放大后的内容，且与 LazyColumn 竖向滚动抢手势；改为双击进整屏覆盖层（ReaderScreen.kt:296、:626、:670-686），单击或返回键退出。
-5. **图片必须经 DiskCache 快照复用，禁止塞 okio.Buffer**（理由与判定位置见第二章第 4 条）。`ReaderKeyer.keyOf` 是内存键与磁盘键的唯一来源（ReaderImages.kt:27-34），不许在别处拼字符串。
-6. **下载前台服务只做“持有前台状态 + 展示通知”，不做调度**：调度与状态真源仍是 DownloadQueue，服务生命周期唯一驱动量是活动任务数（DownloadService.kt:125-152）。不引入 WorkManager 之类的新依赖。
-7. **通知进度节流 300ms，终态立即刷新**（DownloadThrottle，DownloadNotifier.kt:181-200）；dataSync 累计 6 小时配额用尽时把在途任务置 PAUSED 并退出前台（DownloadService.kt:65-79 → DownloadManager.kt:153），不做保活。
-8. **许可证口径**：只有 Apache-2.0 / MIT 的代码可直接复制；GPL-3.0 / AGPL-3.0（含 EhViewer 主仓、yunxi、cu guis）一律只采思路、自行重写，不粘贴源码文本、不照搬结构命名。当前仓库没有任何外部复制的代码。
+2. **手势让渡必须显式关掉 Miuix 的翻页拦截**。Miuix 的 `PagerSwipeNode` 在 PointerEventPass.Initial 判 `change.isConsumed`，而 telephoto 在 Main pass 消费，Initial 先于 Main，因此放大时保持 `enabled = true` 会“一边平移一边翻页”（.tools/miuix-src/x/commonMain/top/yukonga/miuix/kmp/utils/PagerGestureUtils.kt:168-198）。所以 HorizontalPager 恒为 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt:581）。
+3. **放大后“内容到边界再翻页”由自研 Main-pass 旁路实现**：父层只在子节点不消费（`change.isConsumed == false`）时累计 dragX 与速度，松手用纯函数判定（ReaderScreen.kt:1024-1055 + ReaderZoomLogic.kt:26-44）。不跟手、不做橡皮筋。
+4. **长图模式不就地缩放**：3:4 页框会裁掉放大后的内容，且与 LazyColumn 竖向滚动抢手势；改为双击进整屏覆盖层（ReaderScreen.kt:296、:636、:680-696），单击或返回键退出。
+5. **图片必须经 DiskCache 快照复用，禁止塞 okio.Buffer**（理由与判定位置见第二章第 4 条）。`ReaderKeyer.keyOf` 是内存键与磁盘键的唯一来源（ReaderImages.kt:29-32），不许在别处拼字符串。
+6. **下载前台服务只做“持有前台状态 + 展示通知”，不做调度**：调度与状态真源仍是 DownloadQueue，服务生命周期唯一驱动量是活动任务数（DownloadService.kt:131-162）。不引入 WorkManager 之类的新依赖。
+7. **通知进度节流 300ms，终态立即刷新**（DownloadThrottle，DownloadNotifier.kt:237；周期常量 :35）；dataSync 累计 6 小时配额用尽时把在途任务置 PAUSED、退出前台并留一条可见通知（DownloadService.kt:66-82 → DownloadManager.kt:164），不做保活：前台服务启动失败时不再定时重试，只等下一次活动任务数变化（DownloadService.kt:131-162 的 `countChanged`）。
+8. **许可证口径**：只有 Apache-2.0 / MIT 的代码可直接复制；GPL-3.0 / AGPL-3.0（含 EhViewer 主仓、yunxi、cu guis）一律只采思路、自行重写，不粘贴源码文本、不照搬结构命名。仓库整体以 MIT 分发（LICENSE:1），但 app/src/main/kotlin/com/jm3/app/miuix/ui/glass/ 下 12 个文件（BackdropSupport、CombinedBackdrop、DampedDragAnimation、FloatingBottomBar、FloatingBottomBarItems、FloatingBottomBarLayers、GlassPullToRefresh、GlassScaffold、InnerShadow、InteractiveHighlight、Lens、Vibrancy）保留 `// SPDX-License-Identifier: Apache-2.0` 头，按 Apache-2.0 分发；再复制第三方代码时必须同步更新 LICENSE、本文件与依赖清单，不许含糊其辞。
+9. **提升型持续通知必须按 API 36.1 判版本**：`setRequestPromotedOngoing` 的 `since` 是 36.1，`setShortCriticalText` 是 36.0，共用 `SDK_INT >= 36` 一个守卫会让 Android 16.0 直接 `NoSuchMethodError` 崩掉前台服务。判定写成 `Build.VERSION.SDK_INT >= 36 && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1`（DownloadNotifier.kt:175-182），前一段短路避免 `SDK_INT_FULL` 的 `NoSuchFieldError`；`BAKLAVA_1` 是编译期内联常量，不会在旧系统上触发字段解析。
 
 ## 附录 B：明确不做的待办与原因
 
 1. **Baseline Profile / macrobenchmark：暂不接入**。需要真机或模拟器反复采集（当前 `adb devices` 为空，SDK 里没有 emulator 组件），且它只提供度量、不提供功能。等有稳定真机后按 androidx.baselineprofile 插件加独立 :benchmark 模块，接入时以“冷启动时间”为唯一验收指标。
 2. **ktlint / detekt：暂不接入**。仓库现在没有任何静态检查配置，接入要新增插件依赖并全量格式化，会产出与功能改动无关的巨量 diff。当前以第六章的“提交前跑测试”与人工审查代替；真要接入就单独一次提交、一次性格式化。
 3. **放大后的边缘翻页只做松手判定，不做跟手拖拽**。跟手需要 pager 与内容共享 offset，改动面大，且当前无真机可验，风险大于收益。
-4. **运行验证缺口（必须如实交代）**：本次改动只做到编译 + 单元测试 + release 打包验证，没有在真机或模拟器上跑过；手势优先级、通知提升胶囊（Android 16+）、`onTimeout` 超时回调都未经实测。
+4. **运行验证缺口（必须如实交代）**：仓库目前只做到编译、单元测试（`:core:test` + `:app:testDebugUnitTest`，共 180 用例）与 release 打包（含 R8 与 lintVital）验证，没有在真机或模拟器上跑过；手势优先级、通知提升胶囊（Android 16.1+）、`onTimeout` 超时回调、状态栏玻璃延伸的横向硬边、窄屏榜单列数都未经实测。CHANGELOG 涉及时按「已实现、待真机验证」措辞，不写成肯定结论。
