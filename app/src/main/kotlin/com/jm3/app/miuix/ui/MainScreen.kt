@@ -2,7 +2,10 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.data.AccountManager
@@ -126,11 +130,20 @@ fun MainScreen(
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbarHostState) },
             ) { innerPadding ->
-                // 消费父 Scaffold 的内边距，避免各 tab 自己的 Scaffold 重复应用系统栏 insets。
+                // 顶栏玻璃要采样状态栏背后的内容：这里只让出手势条与侧边安全区，状态栏高度
+                // 不由外层让位，改由各页 TopAppBar 自己补（对应的 inset 也不能消费）。
+                // 否则内容整体下移一个状态栏高度，状态栏那条只剩外层 Surface 实色，玻璃会出现硬边。
+                val layoutDirection = LocalLayoutDirection.current
+                val tabContentPadding = PaddingValues(
+                    start = innerPadding.calculateStartPadding(layoutDirection),
+                    end = innerPadding.calculateEndPadding(layoutDirection),
+                    bottom = innerPadding.calculateBottomPadding(),
+                )
+                // 消费父 Scaffold 的非顶部内边距，避免各 tab 自己的 Scaffold 重复应用系统栏 insets。
                 Row(
                     modifier = Modifier.fillMaxSize()
-                        .padding(innerPadding)
-                        .consumeWindowInsets(innerPadding),
+                        .padding(tabContentPadding)
+                        .consumeWindowInsets(tabContentPadding),
                 ) {
                     if (wideScreen) {
                         // 可展开/收起侧栏：展开宽度由库的连续动画驱动，收起时只留图标
