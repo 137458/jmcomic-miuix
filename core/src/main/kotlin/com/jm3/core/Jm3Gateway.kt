@@ -142,6 +142,9 @@ interface Jm3Gateway {
     /** 成就/任务列表（type=称号/勋章，filter=我的/全部）。阻塞调用。 */
     fun tasks(type: TaskType, filter: TaskFilter): TaskPage
 
+    /** 图片域名（媒体与 API 同域），用于拼接勋章图等相对路径；未就绪时返回空串。阻塞调用。 */
+    fun imageHost(): String
+
     /** 个人资料。阻塞调用。 */
     fun userProfile(uid: String): UserProfile
 
@@ -301,7 +304,7 @@ class Jm3GatewayImpl internal constructor(
 
     override fun comments(albumId: String, page: Int): CommentPage {
         val query = ForumQuery.album(albumId).mode(ForumMode.ALL).page(page).build()
-        return client.getComments(query).toCommentPage()
+        return client.getComments(query).toCommentPage(novelImageHost())
     }
 
     override fun postComment(albumId: String, text: String) {
@@ -321,7 +324,7 @@ class Jm3GatewayImpl internal constructor(
         // 库的 ForumQuery 强制要求实体 ID（entityId 为空直接抛异常），而原版全站论坛请求不带 aid。
         // 以 "0" 作为无实体占位，服务端按 mode 返回；若接口不支持则表现为空列表，由页面空态兜底。
         val query = ForumQuery.album("0").mode(mode).page(page).build()
-        return client.getComments(query).toCommentPage()
+        return client.getComments(query).toCommentPage(novelImageHost())
     }
 
     override fun toggleLike(albumId: String) = client.toggleAlbumLike(albumId)
@@ -375,6 +378,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun tasks(type: TaskType, filter: TaskFilter): TaskPage =
         client.getTasks(type.apiValue, filter.apiValue).toTaskPage()
+
+    override fun imageHost(): String = novelImageHost()
 
     override fun userProfile(uid: String): UserProfile = client.getUserProfile(uid).toUserProfile()
 
@@ -437,7 +442,7 @@ class Jm3GatewayImpl internal constructor(
 
     override fun novelComments(novelId: String, page: Int): CommentPage {
         val query = ForumQuery.novel(novelId).mode(ForumMode.ALL).page(page).build()
-        return client.getComments(query).toCommentPage()
+        return client.getComments(query).toCommentPage(novelImageHost())
     }
 
     override fun postNovelComment(novelId: String, text: String, chapterId: String) {
