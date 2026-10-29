@@ -142,4 +142,34 @@ class DownloadManager(
             recordStore.delete(record.photoId)
         }
     }
+
+    /**
+     * 把全部在途任务置 PAUSED（QUEUED / RUNNING）。
+     *
+     * 供 dataSync 前台服务的 onTimeout 使用：Android 15+ 对 dataSync 前台服务有累计
+     * 6 小时配额，用尽后系统回调 onTimeout，此时必须让出前台，任务转暂停等待用户续传，
+     * 而不是被系统直接杀掉留下半截记录。不动 :core 的队列实现，只调公开的 pause。
+     */
+    fun pauseActive() {
+        queue.updates.value.values
+            .filter { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.RUNNING }
+            .forEach { queue.pause(it.photoId) }
+    }
+}
+
+/** 活动任务数（QUEUED + RUNNING）：前台服务生命周期的唯一驱动量。 */
+internal fun Map<String, DownloadTask>.activeDownloadCount(): Int =
+    values.count { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.RUNNING }
+
+/**
+ * 是否有任务从在途变为 DONE/FAILED。
+ *
+ * 这类终态转换要让通知立即刷新（不受进度节流限制），否则最后一条进度会一直停在
+ * N-1 页、用户以为下载卡住。
+ */
+internal fun Map<String, DownloadTask>.hasTerminalTransitionFrom(
+    previous: Map<String, DownloadTask>,
+): Boolean = values.any { task ->
+    val terminal = task.status == DownloadStatus.DONE || task.status == DownloadStatus.FAILED
+    terminal && previous[task.photoId]?.status != task.status
 }

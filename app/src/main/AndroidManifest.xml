@@ -2,6 +2,11 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 下载前台服务：dataSync 类型（API 34+ 需单独声明类型权限） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 13+ 通知需运行时授权；被拒时下载仍可用，仅无可见进度通知 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- miuix-blur 声明 minSdk 33；模糊仅在高版本启用，低版本运行时已降级为纯色 -->
     <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
@@ -23,5 +28,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 下载后台存续：仅本进程内部启动，不导出 -->
+        <service
+            android:name=".data.download.DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
