@@ -25,6 +25,7 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.model.DailyCheckInStatus
 import kotlinx.coroutines.Dispatchers
@@ -132,7 +133,7 @@ fun MineScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样
-            Spacer(modifier = Modifier.height(innerPadding.calculateTopPadding()))
+            TopBarContentSpacer(paddingValues = innerPadding)
             SmallTitle(text = "账号")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 val u = user

@@ -14,6 +14,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.PullToRefresh
@@ -33,6 +34,10 @@ import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
  *
  * 转发的是 [GlassExpandScrollBehavior] 而不是原始行为：原行为的连接已经挂在 GlassScaffold 的内容
  * 容器上，同一个连接被两层同时调用会导致折叠/展开被计两次，这里只保留"顶端下拉展开"这一段。
+ *
+ * 传给库的 [contentPadding] 会把 top 换成常量 [LocalGlassTopBarExpandedHeight]（顶栏展开高度），
+ * 而不是页面的实时净空：指示器只在列表顶端可见，那一刻顶栏必然是展开态，两者取值相同；
+ * 换成常量后库内定位指示器的 offset() 不再在组合期读折叠位移。
  */
 @Composable
 fun GlassPullToRefresh(
@@ -52,12 +57,18 @@ fun GlassPullToRefresh(
     val expandScrollBehavior = remember(glassScrollBehavior) {
         glassScrollBehavior?.let(::GlassExpandScrollBehavior)
     }
+    // 刷新指示器只在列表顶端出现，此时顶栏必然处于展开态，因此它的下移量恒等于顶栏展开高度。
+    // 若原样转发页面的净空，库内的 offset() 会在组合期读折叠位移，折叠与惯性收尾期间逐帧重组。
+    val expandedTopPadding = LocalGlassTopBarExpandedHeight.current
+    val headerOffsetPadding = remember(contentPadding, expandedTopPadding) {
+        FixedTopPaddingValues(delegate = contentPadding, top = expandedTopPadding)
+    }
     PullToRefresh(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
         modifier = modifier,
         pullToRefreshState = pullToRefreshState,
-        contentPadding = contentPadding,
+        contentPadding = headerOffsetPadding,
         topAppBarScrollBehavior = expandScrollBehavior,
         color = color,
         circleSize = circleSize,
@@ -66,6 +77,25 @@ fun GlassPullToRefresh(
         onPullProgress = onPullProgress,
         content = content,
     )
+}
+
+/**
+ * 只替换 top 的净空：库内只用 top 定位刷新指示器；bottom/left/right 不含折叠位移，是常量，原样转发。
+ */
+private class FixedTopPaddingValues(
+    private val delegate: PaddingValues,
+    private val top: Dp,
+) : PaddingValues {
+
+    override fun calculateTopPadding(): Dp = top
+
+    override fun calculateBottomPadding(): Dp = delegate.calculateBottomPadding()
+
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+        delegate.calculateLeftPadding(layoutDirection)
+
+    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+        delegate.calculateRightPadding(layoutDirection)
 }
 
 /**
