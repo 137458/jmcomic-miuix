@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
@@ -217,7 +218,7 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样
-            Spacer(modifier = Modifier.height(innerPadding.calculateTopPadding()))
+            TopBarContentSpacer(paddingValues = innerPadding)
             SmallTitle(text = "主题")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ThemeMode.entries.forEach { mode ->

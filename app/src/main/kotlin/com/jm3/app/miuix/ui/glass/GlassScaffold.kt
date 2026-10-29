@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -58,6 +59,14 @@ val LocalFloatingBarContentPadding = compositionLocalOf { 0.dp }
  * 允许为 null：脱离 GlassScaffold 使用玻璃顶栏时退化为不折叠。
  */
 val LocalGlassScrollBehavior = compositionLocalOf<ScrollBehavior?> { null }
+
+/**
+ * 顶栏展开态实测高度。[GlassPullToRefresh] 用它作为刷新指示器的恒定下移量：
+ * 指示器只在列表顶端出现，此时顶栏必然是展开态，取展开高度就是正确值。
+ * 若改为转发页面的净空，库内的 Modifier.offset 会在组合期读折叠位移，折叠与惯性收尾期间逐帧重组。
+ * 默认 0.dp：脱离 GlassScaffold 使用时指示器从容器顶端起排。
+ */
+val LocalGlassTopBarExpandedHeight = compositionLocalOf { 0.dp }
 
 /** 顶栏渐变模糊半径与过渡曲线：与 MIUIX 官方 BlurredBar 规范一致（HyperOS 沉浸式顶栏）。 */
 private const val TOP_BAR_BLUR_RADIUS = 10f
@@ -114,8 +123,30 @@ fun GlassScaffold(
         snackbarHost = snackbarHost,
         floatingActionButton = floatingActionButton,
     ) { innerPadding ->
+        // bottom 不含折叠位移，是常量；折叠位移由 CollapsingContentPadding 留到测量期再读。
+        val contentBottomPadding = maxOf(innerPadding.calculateBottomPadding(), systemBarBottom) +
+            floatingBarContentPadding +
+            BottomContentBreathingSpace
+        // 固定实例身份：每次重组都新建 PaddingValues 会让调用侧拿到的参数每次都不相等，
+        // 内容子树的测量缓存因此作废，本与折叠无关的重组（主题切换、页面状态刷新）也被放大成整页重新测量。
+        val contentPadding = remember(
+            topBarExpandedHeight,
+            contentBottomPadding,
+            scrollBehavior.state,
+            density,
+        ) {
+            CollapsingContentPadding(
+                expandedTop = topBarExpandedHeight,
+                state = scrollBehavior.state,
+                density = density,
+                bottom = contentBottomPadding,
+            )
+        }
         // 折叠行为对内容同样可见：页面里的 GlassTopBarScrollSync 需要它补同步
-        CompositionLocalProvider(LocalGlassScrollBehavior provides scrollBehavior) {
+        CompositionLocalProvider(
+            LocalGlassScrollBehavior provides scrollBehavior,
+            LocalGlassTopBarExpandedHeight provides topBarExpandedHeight,
+        ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Box(
                     modifier = Modifier
@@ -123,16 +154,7 @@ fun GlassScaffold(
                         .layerBackdropSource(backdrop)
                         .nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
-                    content(
-                        CollapsingContentPadding(
-                            expandedTop = topBarExpandedHeight,
-                            state = scrollBehavior.state,
-                            density = density,
-                            bottom = maxOf(innerPadding.calculateBottomPadding(), systemBarBottom) +
-                                floatingBarContentPadding +
-                                BottomContentBreathingSpace,
-                        ),
-                    )
+                    content(contentPadding)
                 }
                 Box(
                     modifier = Modifier
@@ -272,6 +294,8 @@ private fun Modifier.topBarProgressiveBlur(backdrop: LayerBackdrop): Modifier {
  *
  * top = 展开态高度 + 折叠位移（`TopAppBarState.heightOffset` 为 0 ~ -展开增量的负值）：
  * 折叠时内容跟着上移，不会在顶栏与首项之间留下静态空缺；回顶展开时内容同步下移。
+ *
+ * 实例由 [GlassScaffold] 的 remember 固定：折叠位移的状态读取只在测量期发生，重组不会换掉传下去的对象。
  */
 private class CollapsingContentPadding(
     private val expandedTop: Dp,
@@ -311,6 +335,29 @@ fun PaddingValues.withSpacing(
 
     override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
         this@withSpacing.calculateRightPadding(layoutDirection) + horizontal
+}
+
+/**
+ * 顶栏占位：垂直滚动页面的内容起点要落在浮层顶栏下沿，高度取 [paddingValues] 当前的 top
+ * （顶栏展开高度 + 折叠位移）。
+ *
+ * 组合期写 Spacer(Modifier.height(paddingValues.calculateTopPadding())) 会把折叠位移读在组合阶段：
+ * 顶栏移动一帧就重组整页 Column。这里把读取放进 [Layout] 的测量阶段，
+ * 位移变化只触发重新测量，占位高度仍随折叠平滑变化，页面内容不重组。
+ */
+@Composable
+fun TopBarContentSpacer(paddingValues: PaddingValues) {
+    Layout(content = {}) { _, constraints ->
+        val topPx = paddingValues.calculateTopPadding().roundToPx()
+        // 宽度沿用 Spacer 的策略：只有父级给到固定宽度才占满，否则不参与 Column 的宽度协商
+        val width = if (constraints.hasFixedWidth) constraints.maxWidth else 0
+        val height = if (constraints.hasBoundedHeight) {
+            topPx.coerceIn(constraints.minHeight, constraints.maxHeight)
+        } else {
+            topPx
+        }
+        layout(width, height) {}
+    }
 }
 
 /**
