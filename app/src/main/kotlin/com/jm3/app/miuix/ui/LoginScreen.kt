@@ -77,7 +77,7 @@ fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
                     error?.let { message ->
                         Text(
                             text = message,
-                            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                            style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.error,
                         )
                     }

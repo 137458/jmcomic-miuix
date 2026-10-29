@@ -39,8 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.NovelChapter
 import com.jm3.core.model.NovelChapterMeta
@@ -63,7 +65,6 @@ import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -248,7 +249,7 @@ fun NovelListScreen(
                 hint = if (appliedQuery.isBlank()) "稍后再来看看" else "换个关键词再试试",
                 modifier = Modifier.padding(innerPadding),
             )
-            else -> PullToRefresh(
+            else -> GlassPullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = {
                     refreshing = true
@@ -303,21 +304,21 @@ private fun NovelListRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.name,
-                    fontSize = MiuixTheme.textStyles.body1.fontSize,
+                    style = MiuixTheme.textStyles.body1,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = item.author.ifBlank { "佚名" },
-                    fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                    style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 item.lastChapterTitle?.let { chapter ->
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "更新至 $chapter",
-                        fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                        style = MiuixTheme.textStyles.footnote2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -330,13 +331,13 @@ private fun NovelListRow(
                     item.likes?.let { likes ->
                         Text(
                             text = "♥ $likes",
-                            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                            style = MiuixTheme.textStyles.footnote2,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
                     Text(
                         text = formatUnixSeconds(item.updateAt),
-                        fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                        style = MiuixTheme.textStyles.footnote2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
@@ -545,7 +546,7 @@ fun NovelDetailScreen(
                                     ) {
                                         Text(
                                             text = "共 ${current.chapters.size} 章",
-                                            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                                            style = MiuixTheme.textStyles.footnote1,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                         )
                                         TextButton(
@@ -616,14 +617,14 @@ private fun NovelDetailHeader(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = detail.name,
-                    fontSize = MiuixTheme.textStyles.title4.fontSize,
+                    style = MiuixTheme.textStyles.title4,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "NVL${detail.id} · ${detail.author.ifBlank { "佚名" }}",
-                    fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                    style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -633,7 +634,7 @@ private fun NovelDetailHeader(
                         if (detail.serialStatus.isNotBlank()) append(" · ${detail.serialStatus}")
                         append(" · ${detail.chapters.size} 章")
                     },
-                    fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                    style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(modifier = Modifier.height(2.dp))
@@ -644,7 +645,7 @@ private fun NovelDetailHeader(
                         detail.totalViews?.let { append(" · 阅 $it") }
                         detail.likes?.let { append(" · ♥ $it") }
                     },
-                    fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                    style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
@@ -705,14 +706,14 @@ private fun NovelDetailHeader(
                 Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleDescription).padding(14.dp)) {
                     Text(
                         text = detail.description,
-                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                        style = MiuixTheme.textStyles.body2,
                         maxLines = if (descriptionExpanded) Int.MAX_VALUE else 3,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = if (descriptionExpanded) "收起" else "展开简介",
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.primary,
                     )
                 }
@@ -738,13 +739,13 @@ private fun NovelChapterRow(
         ) {
             Text(
                 text = chapter.sort?.let { "#$it" } ?: "·",
-                fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                style = MiuixTheme.textStyles.footnote2,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.width(38.dp),
             )
             Text(
                 text = chapter.title.ifBlank { "未命名章节" },
-                fontSize = MiuixTheme.textStyles.body2.fontSize,
+                style = MiuixTheme.textStyles.body2,
                 color = if (read) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -753,7 +754,7 @@ private fun NovelChapterRow(
             if (chapter.isNew) {
                 Text(
                     text = "new",
-                    fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                    style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.primary,
                 )
                 Spacer(modifier = Modifier.width(6.dp))
@@ -761,13 +762,13 @@ private fun NovelChapterRow(
             if (chapter.needBuy) {
                 Text(
                     text = "需购买",
-                    fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                    style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             } else if (read) {
                 Text(
                     text = "已读",
-                    fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                    style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
@@ -923,15 +924,12 @@ fun NovelReaderScreen(
                         .verticalScroll(rememberScrollState())
                         // 内边距放在滚动容器内部，正文才能从玻璃顶栏下方穿过
                         .padding(
-                            start = 20.dp,
-                            top = innerPadding.calculateTopPadding() + 12.dp,
-                            end = 20.dp,
-                            bottom = 12.dp,
+                            innerPadding.withSpacing(horizontal = 20.dp, extraTop = 12.dp, bottom = 12.dp),
                         ),
                 ) {
                     Text(
                         text = body.title,
-                        fontSize = MiuixTheme.textStyles.title4.fontSize,
+                        style = MiuixTheme.textStyles.title4,
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
@@ -973,7 +971,7 @@ fun NovelReaderScreen(
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(
                         text = "当前字号 ${fontSize}sp",
-                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                        style = MiuixTheme.textStyles.body2,
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Row(
@@ -1179,7 +1177,7 @@ private fun NovelCommentsPanel(
                         )
                         else -> Text(
                             text = "已经到底了",
-                            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                            style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
@@ -1205,7 +1203,7 @@ private fun NovelCommentsPanel(
                 ) {
                     Text(
                         text = "${draft.length}/$COMMENT_REPLY_MAX_LENGTH",
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                     Button(
@@ -1258,7 +1256,7 @@ private fun NovelCover(url: String?, width: Dp, height: Dp) {
         } else {
             Text(
                 text = "无封面",
-                fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                style = MiuixTheme.textStyles.footnote2,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }

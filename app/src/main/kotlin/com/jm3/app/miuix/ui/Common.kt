@@ -102,7 +102,7 @@ fun CommentReplySheet(
                 ) {
                     Text(
                         text = "${text.length}/$COMMENT_REPLY_MAX_LENGTH",
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                     Button(
@@ -158,7 +158,7 @@ fun ActionCell(
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = label,
-            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            style = MiuixTheme.textStyles.footnote2,
             color = color,
             maxLines = 1,
         )
@@ -220,7 +220,7 @@ fun EmptyState(title: String, hint: String? = null, modifier: Modifier = Modifie
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = hint,
-                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                style = MiuixTheme.textStyles.footnote1,
                 textAlign = TextAlign.Center,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
@@ -260,7 +260,7 @@ private fun RankIndexBadge(rank: Int) {
     Box(modifier = Modifier.width(26.dp), contentAlignment = Alignment.Center) {
         Text(
             text = rank.toString(),
-            fontSize = MiuixTheme.textStyles.title4.fontSize,
+            style = MiuixTheme.textStyles.title4,
             fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Medium,
             color = if (highlighted) {
                 MiuixTheme.colorScheme.primary
@@ -286,7 +286,7 @@ fun LoadMoreFooter(
             loadMoreFailed -> TextButton(text = "加载失败，点击重试", onClick = onLoadMore, minWidth = 0.dp)
             !hasMore -> Text(
                 text = "没有更多了",
-                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
             else -> TextButton(text = "加载更多", onClick = onLoadMore)
@@ -324,7 +324,7 @@ private fun SearchResultCard(
         ) {
             Text(
                 text = result.title,
-                fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                style = MiuixTheme.textStyles.headline1,
                 fontWeight = FontWeight.Medium,
                 color = MiuixTheme.colorScheme.onBackground,
                 maxLines = 2,
@@ -333,7 +333,7 @@ private fun SearchResultCard(
             if (summary != null) {
                 Text(
                     text = summary,
-                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -384,7 +384,14 @@ fun LazyListScope.searchResultItems(
 /** 点击分页条：上一页 / 页码 / 下一页，供任意结果列表在“点击切换分页”模式下复用。 */
 @Composable
 fun ResultPagerBar(page: SearchPage, onPageChange: (Int) -> Unit) {
-    val total = page.totalPages.coerceAtLeast(1)
+    PagerBar(page = page.currentPage, totalPages = page.totalPages, onPageChange = onPageChange)
+}
+
+/** 通用点击分页条；页码与总页数由调用方给出，避免各页自己拼一套翻页控件。 */
+@Composable
+fun PagerBar(page: Int, totalPages: Int, onPageChange: (Int) -> Unit) {
+    val current = page.coerceAtLeast(1)
+    val total = totalPages.coerceAtLeast(1)
     Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
         androidx.compose.foundation.layout.Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -392,20 +399,20 @@ fun ResultPagerBar(page: SearchPage, onPageChange: (Int) -> Unit) {
         ) {
             TextButton(
                 text = "上一页",
-                onClick = { onPageChange(page.currentPage - 1) },
-                enabled = page.currentPage > 1,
+                onClick = { onPageChange(current - 1) },
+                enabled = current > 1,
                 minWidth = 0.dp,
                 minHeight = 36.dp,
             )
             Text(
-                text = "${page.currentPage} / $total",
-                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                text = "$current / $total",
+                style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
             TextButton(
                 text = "下一页",
-                onClick = { onPageChange(page.currentPage + 1) },
-                enabled = page.currentPage < total,
+                onClick = { onPageChange(current + 1) },
+                enabled = current < total,
                 minWidth = 0.dp,
                 minHeight = 36.dp,
             )
@@ -508,7 +515,7 @@ fun FilterChipRow(
 private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         text = text,
-        fontSize = MiuixTheme.textStyles.body2.fontSize,
+        style = MiuixTheme.textStyles.body2,
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         color = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
         maxLines = 1,
@@ -624,7 +631,7 @@ private fun RankCoverBadge(rank: Int, modifier: Modifier = Modifier) {
     val highlighted = rank <= 3
     Text(
         text = rank.toString(),
-        fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+        style = MiuixTheme.textStyles.footnote2,
         fontWeight = FontWeight.Bold,
         color = if (highlighted) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
         modifier = modifier

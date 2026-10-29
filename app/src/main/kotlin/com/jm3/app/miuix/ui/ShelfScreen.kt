@@ -65,10 +65,7 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
-                contentPadding = PaddingValues(
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = innerPadding.calculateBottomPadding(),
-                ),
+                contentPadding = innerPadding,
             ) {
                 items(records, key = { it.photoId }) { record ->
                     BasicComponent(

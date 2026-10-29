@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.CreatorAuthorWorks
@@ -67,7 +68,6 @@ import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.InputField
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -259,7 +259,7 @@ fun LibraryScreen(
                 hint = if (appliedQuery.isBlank()) "换个筛选条件再试试" else "换个关键词再试试",
                 modifier = Modifier.padding(innerPadding),
             )
-            else -> PullToRefresh(
+            else -> GlassPullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = {
                     refreshing = true
@@ -411,7 +411,7 @@ fun CreatorWorksScreen(
                 onRetry = { load(showLoading = true) },
                 modifier = Modifier.padding(innerPadding),
             )
-            else -> PullToRefresh(
+            else -> GlassPullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = {
                     refreshing = true
@@ -595,7 +595,7 @@ fun CreatorWorkDetailScreen(
                                 text = body.contentText,
                                 modifier = Modifier.fillMaxWidth()
                                     .padding(horizontal = 20.dp, vertical = 12.dp),
-                                fontSize = MiuixTheme.textStyles.body2.fontSize,
+                                style = MiuixTheme.textStyles.body2,
                             )
                         }
                     }
@@ -694,7 +694,7 @@ private fun CreatorRow(creator: CreatorMeta, onClick: () -> Unit) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = creator.name.ifBlank { creator.id },
-                        fontSize = MiuixTheme.textStyles.title4.fontSize,
+                        style = MiuixTheme.textStyles.title4,
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -703,7 +703,7 @@ private fun CreatorRow(creator: CreatorMeta, onClick: () -> Unit) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "更新于 $update",
-                            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                            style = MiuixTheme.textStyles.footnote1,
                             color = Color.White.copy(alpha = 0.8f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -746,14 +746,14 @@ private fun WorkCard(
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = title.ifBlank { "无题" },
-            fontSize = MiuixTheme.textStyles.body2.fontSize,
+            style = MiuixTheme.textStyles.body2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         if (!authorName.isNullOrBlank() && onOpenAuthor != null) {
             Text(
                 text = authorName,
-                fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                style = MiuixTheme.textStyles.footnote2,
                 color = MiuixTheme.colorScheme.primary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -763,7 +763,7 @@ private fun WorkCard(
         workDate?.takeIf { it.isNotBlank() }?.let { date ->
             Text(
                 text = date,
-                fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+                style = MiuixTheme.textStyles.footnote2,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -819,7 +819,7 @@ private fun CreatorHero(author: CreatorAuthorWorks) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = author.authorName.ifBlank { "未知创作者" },
-                    fontSize = MiuixTheme.textStyles.title3.fontSize,
+                    style = MiuixTheme.textStyles.title3,
                     color = Color.White,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -828,7 +828,7 @@ private fun CreatorHero(author: CreatorAuthorWorks) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "${author.works.size} 部作品",
-                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                        style = MiuixTheme.textStyles.footnote1,
                         color = Color.White.copy(alpha = 0.8f),
                     )
                 }
@@ -859,7 +859,7 @@ private fun RelatedWorkCard(work: CreatorRelatedWork, onClick: () -> Unit) {
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = work.title.ifBlank { "无题" },
-            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+            style = MiuixTheme.textStyles.footnote1,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -922,7 +922,7 @@ private fun LibraryFooter(
                 )
                 Text(
                     text = "$page / $totalPages",
-                    fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                    style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 TextButton(
@@ -936,7 +936,7 @@ private fun LibraryFooter(
             itemCount < total -> TextButton(text = "加载更多", onClick = onLoadMore)
             else -> Text(
                 text = "没有更多了",
-                fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }
@@ -948,7 +948,7 @@ private fun LibraryFooter(
 private fun PlatformBadge(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+        style = MiuixTheme.textStyles.footnote2,
         color = Color.White,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

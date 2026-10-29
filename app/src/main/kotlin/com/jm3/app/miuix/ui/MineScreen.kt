@@ -183,12 +183,12 @@ fun MineScreen(
                                 ) {
                                     Text(
                                         text = status.currentProgress.ifBlank { "本月签到" },
-                                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                                        style = MiuixTheme.textStyles.footnote1,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                     )
                                     Text(
                                         text = "${status.signedDays}/${status.totalDays} 天",
-                                        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                                        style = MiuixTheme.textStyles.footnote1,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                     )
                                 }
@@ -204,7 +204,7 @@ fun MineScreen(
                             checkInError?.let { message ->
                                 Text(
                                     text = message,
-                                    fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                                    style = MiuixTheme.textStyles.footnote1,
                                     color = MiuixTheme.colorScheme.error,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                                 )

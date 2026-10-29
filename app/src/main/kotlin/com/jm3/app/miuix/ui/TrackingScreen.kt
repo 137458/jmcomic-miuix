@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.ui.layout.ContentScale
@@ -37,7 +38,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -164,7 +164,7 @@ fun TrackingScreen(
                     modifier = Modifier.padding(innerPadding),
                 )
             } else {
-                PullToRefresh(
+                GlassPullToRefresh(
                     isRefreshing = refreshing,
                     onRefresh = {
                         refreshing = true
@@ -177,10 +177,7 @@ fun TrackingScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
-                        contentPadding = PaddingValues(
-                            top = innerPadding.calculateTopPadding(),
-                            bottom = innerPadding.calculateBottomPadding(),
-                        ),
+                        contentPadding = innerPadding,
                     ) {
                         items(items, key = { it.id }) { item ->
                             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {

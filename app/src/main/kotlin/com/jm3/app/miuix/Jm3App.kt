@@ -390,6 +390,7 @@ fun Jm3App() {
             entry<Route.Notifications>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                 NotificationsScreen(
                     onBack = { backStack.removeLastOrNull() },
+                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                     snackbarHostState = snackbarHostState,
                 )
             }
@@ -424,6 +425,7 @@ fun Jm3App() {
                     onBack = { backStack.removeLastOrNull() },
                     onOpenLogin = { backStack.add(Route.Login) },
                     snackbarHostState = snackbarHostState,
+                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                 )
             }
             entry<Route.AlbumDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->

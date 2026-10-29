@@ -24,9 +24,11 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -78,8 +80,8 @@ private val BottomContentBreathingSpace = 20.dp
  *
  * 与 Miuix `Scaffold` 的差异：
  * 1. 顶栏不再占位，而是作为浮层叠在内容之上；
- * 2. 传给 [content] 的 top 内边距是顶栏展开态高度，调用方需把它作为滚动容器的
- *    `contentPadding`（而非 `Modifier.padding`），否则内容退到顶栏下方就无法被采样；
+ * 2. 传给 [content] 的 top 内边距随顶栏折叠实时收缩（等价于顶栏当前高度），调用方需把它作为
+ *    滚动容器的 `contentPadding`（而非 `Modifier.padding`），否则内容退到顶栏下方就无法被采样；
  * 3. bottom 内边距额外叠加 [BottomContentBreathingSpace]，末项不会贴到导航条上；
  * 4. 内容容器挂上折叠行为的嵌套滚动节点，页内任意滚动容器都能驱动顶栏折叠。
  *
@@ -98,9 +100,10 @@ fun GlassScaffold(
     val shaderReady = backdrop != null && isRuntimeShaderSupported()
     val containerColor = MiuixTheme.colorScheme.surface
     val scrollBehavior = MiuixScrollBehavior()
-    // 取展开态的最大高度：折叠过程中顶栏实测高度会收缩，若跟着收缩会让 content 内边距逐帧抖动
+    // 展开态的最大高度：折叠过程中顶栏实测高度会收缩，这里只记录最大值，再由折叠位移把当前高度算回来
     var topBarMaxHeightPx by remember { mutableIntStateOf(0) }
-    val topBarHeight = with(LocalDensity.current) { topBarMaxHeightPx.toDp() }
+    val density = LocalDensity.current
+    val topBarExpandedHeight = with(density) { topBarMaxHeightPx.toDp() }
     val floatingBarContentPadding = LocalFloatingBarContentPadding.current
     // 主框架已经消费过系统栏 inset，这里取"剩余 inset"与安全值中的较大者：
     // 子页面（未被消费）不会贴到手势条/三键导航上，主 tab 也不会重复让位。
@@ -121,8 +124,10 @@ fun GlassScaffold(
                         .nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
                     content(
-                        PaddingValues(
-                            top = topBarHeight,
+                        CollapsingContentPadding(
+                            expandedTop = topBarExpandedHeight,
+                            state = scrollBehavior.state,
+                            density = density,
                             bottom = maxOf(innerPadding.calculateBottomPadding(), systemBarBottom) +
                                 floatingBarContentPadding +
                                 BottomContentBreathingSpace,
@@ -257,6 +262,55 @@ private fun Modifier.topBarProgressiveBlur(backdrop: LayerBackdrop): Modifier {
         blurRadius = TOP_BAR_BLUR_RADIUS,
         colors = blurColors,
     )
+}
+
+/**
+ * 内容净空：top 跟着顶栏折叠实时收缩，bottom 为固定净空。
+ *
+ * 折叠过程中的取值全部发生在布局阶段（滚动容器的 `contentPadding`、`Modifier.padding` 都在测量期
+ * 读取），因此顶栏收缩只触发重新测量，不触发重组。
+ *
+ * top = 展开态高度 + 折叠位移（`TopAppBarState.heightOffset` 为 0 ~ -展开增量的负值）：
+ * 折叠时内容跟着上移，不会在顶栏与首项之间留下静态空缺；回顶展开时内容同步下移。
+ */
+private class CollapsingContentPadding(
+    private val expandedTop: Dp,
+    private val state: TopAppBarState,
+    private val density: Density,
+    private val bottom: Dp,
+) : PaddingValues {
+
+    override fun calculateTopPadding(): Dp =
+        (expandedTop + with(density) { state.heightOffset.toDp() }).coerceAtLeast(0.dp)
+
+    override fun calculateBottomPadding(): Dp = bottom
+
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp = 0.dp
+
+    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp = 0.dp
+}
+
+/**
+ * 在 [GlassScaffold] 的内容净空上叠加水平内缩与额外的上下间距（列表自身的内缩、与筛选条的间隙等）。
+ *
+ * 直接 `PaddingValues(top = innerPadding.calculateTopPadding() + 8.dp)` 会在组合阶段读折叠位移，
+ * 折叠过程中逐帧重组；用本函数包一层，读取推迟到布局阶段，顶栏收缩只触发重新测量。
+ * [bottom] 非空时替换原 bottom（个别页面只保留自身的内缩）。
+ */
+fun PaddingValues.withSpacing(
+    horizontal: Dp = 0.dp,
+    extraTop: Dp = 0.dp,
+    bottom: Dp? = null,
+): PaddingValues = object : PaddingValues {
+    override fun calculateTopPadding(): Dp = this@withSpacing.calculateTopPadding() + extraTop
+
+    override fun calculateBottomPadding(): Dp = bottom ?: this@withSpacing.calculateBottomPadding()
+
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+        this@withSpacing.calculateLeftPadding(layoutDirection) + horizontal
+
+    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+        this@withSpacing.calculateRightPadding(layoutDirection) + horizontal
 }
 
 /**

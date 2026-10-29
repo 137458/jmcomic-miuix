@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.Jm3Gateway
@@ -59,7 +60,6 @@ import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -446,7 +446,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         },
     ) { innerPadding ->
         // 列表内容滚到玻璃顶栏（顶栏 + 搜索栏）下方，顶栏才能采样到真实背景
-        PullToRefresh(
+        GlassPullToRefresh(
             isRefreshing = refreshing,
             onRefresh = { refresh(byPull = true) },
             modifier = Modifier.fillMaxSize(),
@@ -458,10 +458,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                contentPadding = PaddingValues(
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = innerPadding.calculateBottomPadding(),
-                ),
+                contentPadding = innerPadding,
             ) {
                 val searching = results != null
                 if (searching) {
@@ -714,14 +711,14 @@ private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
         }
         Text(
             text = update.title,
-            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            style = MiuixTheme.textStyles.footnote2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
         )
         Text(
             text = update.authors.joinToString(" / ").ifBlank { "未知作者" },
-            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            style = MiuixTheme.textStyles.footnote2,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -766,7 +763,7 @@ private fun SearchResultHeader(
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Text(
             text = (if (byTag) "标签：$query" else "“$query”") + if (total > 0) " · 共 $total 结果" else "",
-            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+            style = MiuixTheme.textStyles.footnote1,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         )
@@ -805,7 +802,7 @@ private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
         }
         Text(
             text = pick.title,
-            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            style = MiuixTheme.textStyles.footnote2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth().padding(6.dp),

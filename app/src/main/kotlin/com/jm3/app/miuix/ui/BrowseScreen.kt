@@ -37,8 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseCategory
@@ -59,7 +61,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -280,7 +281,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             )
         } else if (mode == BrowseMode.RANK) {
             // 榜单：筛选条常驻玻璃顶栏，内容区只保留两列瀑布流
-            PullToRefresh(
+            GlassPullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { refresh(byPull = true) },
                 pullToRefreshState = refreshState,
@@ -301,7 +302,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             }
         } else {
             // 列表内容穿到玻璃顶栏（顶栏 + 筛选条）下方，顶栏才能采样到真实背景
-            PullToRefresh(
+            GlassPullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { refresh(byPull = true) },
                 pullToRefreshState = refreshState,
@@ -633,7 +634,7 @@ private fun TagResultSection(
 private fun FilterGroupLabel(text: String) {
     Text(
         text = text,
-        fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+        style = MiuixTheme.textStyles.footnote1,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
     )
@@ -679,12 +680,10 @@ private fun RankResultGrid(
         columns = StaggeredGridCells.Adaptive(RANK_GRID_MIN_CARD_WIDTH),
         state = gridState,
         modifier = Modifier.fillMaxSize(),
-        // 顶部让出玻璃顶栏高度，再加 8dp 与筛选条脱开
-        contentPadding = PaddingValues(
-            start = RANK_GRID_HORIZONTAL_PADDING,
-            end = RANK_GRID_HORIZONTAL_PADDING,
-            top = contentPadding.calculateTopPadding() + 8.dp,
-            bottom = contentPadding.calculateBottomPadding(),
+        // 顶部让出玻璃顶栏高度（随折叠实时收缩），再加 8dp 与筛选条脱开
+        contentPadding = contentPadding.withSpacing(
+            horizontal = RANK_GRID_HORIZONTAL_PADDING,
+            extraTop = 8.dp,
         ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalItemSpacing = RANK_GRID_VERTICAL_SPACING,
