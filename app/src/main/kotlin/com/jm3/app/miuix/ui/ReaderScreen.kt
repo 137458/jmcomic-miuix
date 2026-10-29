@@ -489,26 +489,36 @@ private fun ReaderPages(
         }
     }
 
-    // 音量键翻页：150ms 节流，与原生桥一致
+    // 音量键翻页：150ms 节流，与原生桥一致。
+    // ReaderVolumeKeys.handler 是进程级单值，换章时新旧屏会短暂同时挂载，
+    // 所以必须记住自己写入的实例，否则旧屏 onDispose 会把新屏刚写进去的 handler 清成 null。
     DisposableEffect(Unit) {
-        ReaderVolumeKeys.handler = { keyCode ->
+        val mine: (Int) -> Boolean = { keyCode ->
             val delta = when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> -1
                 KeyEvent.KEYCODE_VOLUME_DOWN -> 1
                 else -> 0
             }
-            if (delta == 0) {
-                false
-            } else {
-                val now = System.currentTimeMillis()
-                if (now - lastVolumeAt >= VOLUME_THROTTLE_MS) {
-                    lastVolumeAt = now
-                    goToPage(currentPage + delta)
+            when {
+                delta == 0 -> false
+                // 长图整屏覆盖层打开时按键不属于底层的页：既不翻页也不消费，
+                // 否则关掉覆盖层会发现自己已经被换到别的页了。
+                zoomOverlayIndex != null -> false
+                else -> {
+                    val now = System.currentTimeMillis()
+                    if (now - lastVolumeAt >= VOLUME_THROTTLE_MS) {
+                        lastVolumeAt = now
+                        goToPage(currentPage + delta)
+                    }
+                    true
                 }
-                true
             }
         }
-        onDispose { ReaderVolumeKeys.handler = null }
+        ReaderVolumeKeys.handler = mine
+        onDispose {
+            // 只清自己写进去的那一个，避免踩掉后挂载的新屏
+            if (ReaderVolumeKeys.handler === mine) ReaderVolumeKeys.handler = null
+        }
     }
 
     // 最后一话最后一页弹追更引导；勾选静默后三天内不再出现
