@@ -46,7 +46,7 @@
 - 交互反馈统一：列表卡片按压微缩放默认带轻触觉反馈，分类/排序/时间/信箱/论坛/书库/小说等分段控件与详情页章节组折叠切换统一接入 `rememberSelectionHaptic()`。
 - 详情页顶栏纯图标动作（分享/收藏/下载全部）挂 `TooltipBox`，长按显示语义提示。
 - 收藏页收藏夹选择卡新增改名/删除图标操作，沿用纵向全宽弹窗按钮惯例。
-- 界面组件规范化：首页搜索改用 Miuix SearchBar/InputField（聚焦展开、清除键、IME 搜索）；分类/榜单筛选由手写横向 Chip 改为 TabRow 分段控件；收藏夹选择改用 OverlaySpinnerPreference 弹出选择；下载书架状态操作收敛为图标按钮并叠加 LinearProgressIndicator 进度条；阅读器增加垂直滚动条；导航转场启用设备圆角裁剪与底色衬底。
+- 界面组件规范化：首页搜索改用 Miuix SearchBar/InputField（聚焦展开、清除键、IME 搜索）；分类筛选由手写横向 Chip 改为 TabRow 分段控件；收藏夹选择改用 OverlaySpinnerPreference 弹出选择；下载书架状态操作收敛为图标按钮并叠加 LinearProgressIndicator 进度条；阅读器增加垂直滚动条；导航转场启用设备圆角裁剪与底色衬底。
 - 界面字号层级统一改为 MiuixTheme.textStyles（title4/body1/body2/footnote1/footnote2），替换散落的 sp 硬编码。
 - 阅读历史仓储接口改为挂起函数（suspend），内存实现与 Room 实现同步适配。
 - 下载恢复：进程重启时将中断任务收敛为暂停态，书架“继续/重试”按已完成页数续传。
@@ -60,7 +60,7 @@
 - 组件用法一致性收口：历史清空与连载追踪确认弹窗按钮统一为纵向全宽堆叠（与设置页弹窗惯例一致）；详情页「简介」与分类筛选区块标题统一改用 SmallTitle；小说章节列表补充 items key，修复倒序排列切换时条目复用错位；相册封面、相关推荐、连载更新与随机推荐封面图补充无障碍描述；设置页自定义线路输入框补全 label。
 - 手写纵向图标单元收敛：详情动作台（AlbumDetailActionCell）、小说详情与悬浮工具条（DetailActionCell/NovelToolbarCell）、阅读器工具条（ReaderActionCell）四套重复实现合并为 Common.kt 共享 ActionCell（图标/字形双形态，禁用降灰、激活主色、按压微缩放触觉），全部调用点行为一致；首页「热门标签」区块标题由手写 SectionHeader 改为 SmallTitle + TextButton 组合。
 - 顶栏随滚动折叠：`GlassScaffold` 内建 `MiuixScrollBehavior` 并经 `LocalGlassScrollBehavior` 下发，新增 `GlassTopAppBar` 转调 Miuix `TopAppBar`，19 个页面的固定顶栏换用后大标题在滚动中收成顶部居中小标题；折叠进度叠加同色渐变遮罩（`drawBehind` 绘制期取色），标题区与穿过的正文不再互相压叠。新增不折叠的 `GlassSmallTopAppBar`，阅读器顶栏改用它，长书名不再折成三行挤占画面。
-- 榜单页信息明确化：排序与时间范围两组分段控件补「排序」「时间范围」说明标签，结果卡在封面前补名次序号（1-3 主色、其后次级色），口径标题显示当前排序与时间组合。
+- 榜单页改为两列封面瀑布流：封面卡左上角叠名次角标（前三名主色实底、其后半透明底），标题限两行、作者限一行，触底翻页改为按两列最大可见索引判定；排序与时间范围筛选从列表内分段控件收进玻璃顶栏常驻的横滑胶囊条（选中主色实底、未选中 surfaceContainer，带按压回弹与轻触觉），顶栏新增刷新入口，空态/加载中/失败态与加载更多沿用全站统一组件。
 - 列表排版收口：搜索/浏览/榜单/收藏共用结果卡抽为 `SearchResultCard`，标题限两行、作者标签摘要限一行，超长日文标题不再撑高整行；卡片行距由 3dp 统一为 6dp。
 
 ### 修复

@@ -2,6 +2,7 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -9,8 +10,10 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,8 +21,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -456,4 +462,180 @@ fun Modifier.pressScale(scaleDown: Float = 0.96f, hapticFeedback: Boolean = true
 fun rememberSelectionHaptic(): () -> Unit {
     val haptics = LocalHapticFeedback.current
     return remember(haptics) { { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) } }
+}
+
+/** 筛选胶囊圆角：与 Miuix 卡片同档曲率，避免玻璃层内出现两种曲率。 */
+private val FilterChipCornerRadius = 16.dp
+
+/**
+ * 横滑胶囊筛选条：选中项主色实底白字，未选中项 surfaceContainer，按压回弹并带轻触感。
+ *
+ * 与 Miuix TabRow 的差异：分段控件把选项均分到一屏，条目多时逐个缩到只剩省略号；胶囊条
+ * 按内容宽度排布并允许横滑，选项全集都能保持可读。
+ */
+@Composable
+fun FilterChipRow(
+    labels: List<String>,
+    selectedIndex: Int,
+    onSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+) {
+    val haptic = rememberSelectionHaptic()
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = contentPadding,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items(labels.size) { index ->
+            FilterChip(
+                text = labels[index],
+                selected = index == selectedIndex,
+                onClick = {
+                    if (index != selectedIndex) {
+                        haptic()
+                        onSelected(index)
+                    }
+                },
+            )
+        }
+    }
+}
+
+/** 单个筛选胶囊：选中与未选中共用同一按压回弹，切换后手感不中断。 */
+@Composable
+private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        text = text,
+        fontSize = MiuixTheme.textStyles.body2.fontSize,
+        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        color = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
+        maxLines = 1,
+        modifier = Modifier
+            .pressScale(hapticFeedback = false)
+            .squircleClip(FilterChipCornerRadius)
+            .background(
+                if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainer,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    )
+}
+
+/** 榜单封面卡的封面比例：3:4 竖版略扁，封面原始比例跨度大时以裁切换齐整。 */
+private const val RANK_COVER_ASPECT = 0.72f
+
+/**
+ * 榜单瀑布流结果：两列封面卡，名次叠在封面左上角。
+ *
+ * 单页结果不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈。
+ */
+fun LazyStaggeredGridScope.rankResultGrid(
+    page: SearchPage,
+    loadingMore: Boolean,
+    loadMoreFailed: Boolean,
+    onLoadMore: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+) {
+    if (page.items.isEmpty()) {
+        item(key = "rank-empty", span = StaggeredGridItemSpan.FullLine) {
+            EmptyState(title = "无结果", hint = "换个筛选条件再试试")
+        }
+    }
+    items(
+        count = page.items.size,
+        key = { index -> page.items[index].id },
+        contentType = { "rank_card" },
+    ) { index ->
+        val result = page.items[index]
+        RankGridCard(
+            result = result,
+            rank = index + 1,
+            onClick = { onOpenAlbum(result.id) },
+        )
+    }
+    if (page.items.isNotEmpty() && page.totalPages > 1) {
+        item(key = "rank-load-more", span = StaggeredGridItemSpan.FullLine) {
+            LoadMoreFooter(
+                loadingMore = loadingMore,
+                hasMore = page.currentPage < page.totalPages,
+                loadMoreFailed = loadMoreFailed,
+                onLoadMore = onLoadMore,
+            )
+        }
+    }
+}
+
+/** 榜单封面卡：封面 + 左上角名次角标 + 两行标题 + 一行作者。 */
+@Composable
+private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().pressScale(),
+        insideMargin = PaddingValues(0.dp),
+        onClick = onClick,
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            if (result.coverUrl != null) {
+                AsyncImage(
+                    model = result.coverUrl,
+                    contentDescription = result.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(RANK_COVER_ASPECT),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(RANK_COVER_ASPECT)
+                        .background(MiuixTheme.colorScheme.surfaceContainer),
+                )
+            }
+            RankCoverBadge(
+                rank = rank,
+                modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+            )
+        }
+        Text(
+            text = result.title,
+            fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+            fontWeight = FontWeight.Medium,
+            color = MiuixTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 6.dp),
+        )
+        Text(
+            text = result.authors.joinToString(" / ").ifBlank { "未知作者" },
+            fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 8.dp),
+        )
+    }
+}
+
+/** 封面名次角标：前三名主色实底，其余半透明底，保证在任意封面上可读。 */
+@Composable
+private fun RankCoverBadge(rank: Int, modifier: Modifier = Modifier) {
+    val highlighted = rank <= 3
+    Text(
+        text = rank.toString(),
+        fontSize = MiuixTheme.textStyles.footnote2.fontSize,
+        fontWeight = FontWeight.Bold,
+        color = if (highlighted) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
+        modifier = modifier
+            .squircleClip(8.dp)
+            .background(
+                if (highlighted) {
+                    MiuixTheme.colorScheme.primary
+                } else {
+                    MiuixTheme.colorScheme.surface.copy(alpha = 0.86f)
+                },
+            )
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+    )
 }

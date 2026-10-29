@@ -18,6 +18,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +66,7 @@ import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Weeks
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -93,6 +99,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     var requestToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    // 榜单走两列瀑布流，滚动状态与分类页的逐行列表分开保存
+    val gridState = rememberLazyStaggeredGridState()
     val selectionHaptic = rememberSelectionHaptic()
 
     // 原版分类页的三个增强区块：分类树（子分类/更多分类）、热门标签、每周连载更新。
@@ -199,6 +207,16 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             }
     }
 
+    // 榜单瀑布流的触底判定：取两列可见项的最大索引，保留与列表相同的提前两行触发
+    LaunchedEffect(loadedNow?.page, mode) {
+        if (mode != BrowseMode.RANK) return@LaunchedEffect
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.index } }
+            .collect { last ->
+                val page = (state as? BrowseUiState.Loaded)?.page ?: return@collect
+                if (last != null && last >= page.items.size - 2) loadMore()
+            }
+    }
+
     GlassScaffold(
         topBar = {
             val activeTag = tagKeyword
@@ -209,6 +227,13 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                     if (activeTag != null) BackButton(onBack = { tagKeyword = null })
                 },
                 actions = {
+                    IconButton(onClick = { refresh(byPull = true) }, enabled = !refreshing) {
+                        Icon(
+                            imageVector = MiuixIcons.Refresh,
+                            contentDescription = "刷新",
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
                     // 连载更新无数据（接口失败或为空）时不展示入口
                     if (weeklyPage?.items?.isNotEmpty() == true) {
                         IconButton(onClick = { showWeeklySheet = true }) {
@@ -216,6 +241,23 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                 imageVector = MiuixIcons.Weeks,
                                 contentDescription = "每周连载更新",
                                 modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+                },
+                // 榜单筛选条常驻玻璃顶栏：横滑胶囊替代分段控件，与内容同处玻璃采样区
+                bottomContent = {
+                    if (mode == BrowseMode.RANK && activeTag == null) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                            FilterChipRow(
+                                labels = BrowseTime.entries.map { it.label },
+                                selectedIndex = BrowseTime.entries.indexOf(time),
+                                onSelected = { timeValue = BrowseTime.entries[it].apiValue },
+                            )
+                            FilterChipRow(
+                                labels = BrowseOrder.entries.map { it.shortLabel },
+                                selectedIndex = BrowseOrder.entries.indexOf(order),
+                                onSelected = { orderValue = BrowseOrder.entries[it].apiValue },
                             )
                         }
                     }
@@ -236,6 +278,27 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = innerPadding,
             )
+        } else if (mode == BrowseMode.RANK) {
+            // 榜单：筛选条常驻玻璃顶栏，内容区只保留两列瀑布流
+            PullToRefresh(
+                isRefreshing = refreshing,
+                onRefresh = { refresh(byPull = true) },
+                pullToRefreshState = refreshState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding,
+            ) {
+                RankResultGrid(
+                    state = state,
+                    gridState = gridState,
+                    contentPadding = innerPadding,
+                    refreshing = refreshing,
+                    loadingMore = loadingMore,
+                    loadMoreFailed = loadMoreFailed,
+                    onRetry = ::refresh,
+                    onLoadMore = ::loadMore,
+                    onOpenAlbum = onOpenAlbum,
+                )
+            }
         } else {
             // 列表内容穿到玻璃顶栏（顶栏 + 筛选条）下方，顶栏才能采样到真实背景
             PullToRefresh(
@@ -313,20 +376,6 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                 },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                             )
-                            if (mode == BrowseMode.RANK) {
-                                FilterGroupLabel(text = "时间范围")
-                                TabRow(
-                                    tabs = BrowseTime.entries.map { it.label },
-                                    selectedTabIndex = BrowseTime.entries.indexOf(time),
-                                    onTabSelected = {
-                                        selectionHaptic()
-                                        timeValue = BrowseTime.entries[it].apiValue
-                                    },
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                )
-                                // 榜单口径标题：两条分段控件各选了什么，在这里合成一句人话
-                                SmallTitle(text = "${time.label} · ${order.label}排行")
-                            }
                             // 热门标签行：取前若干项，横向滚动，点击按标签检索；榜单页不提供标签导航
                             if (mode == BrowseMode.CATEGORY && hotTags.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(4.dp))
@@ -372,7 +421,6 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                             loadMoreFailed = loadMoreFailed,
                             onLoadMore = ::loadMore,
                             onOpenAlbum = onOpenAlbum,
-                            ranked = mode == BrowseMode.RANK,
                         )
                     }
                 }
@@ -602,3 +650,67 @@ private val BrowseOrder.shortLabel: String
         BrowseOrder.MOST_IMAGES -> "图片"
         BrowseOrder.MOST_LIKED -> "喜欢"
     }
+
+private const val RANK_GRID_COLUMNS = 2
+private val RANK_GRID_VERTICAL_SPACING = 8.dp
+private val RANK_GRID_HORIZONTAL_PADDING = 16.dp
+
+/**
+ * 榜单结果区：两列封面瀑布流，加载中/失败态占整行。
+ *
+ * 筛选条件已常驻玻璃顶栏，这里不再重复展示口径，只负责结果与加载更多。
+ */
+@Composable
+private fun RankResultGrid(
+    state: BrowseUiState,
+    gridState: LazyStaggeredGridState,
+    contentPadding: PaddingValues,
+    refreshing: Boolean,
+    loadingMore: Boolean,
+    loadMoreFailed: Boolean,
+    onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+) {
+    LazyVerticalStaggeredGrid(
+        columns = StaggeredGridCells.Fixed(RANK_GRID_COLUMNS),
+        state = gridState,
+        modifier = Modifier.fillMaxSize(),
+        // 顶部让出玻璃顶栏高度，再加 8dp 与筛选条脱开
+        contentPadding = PaddingValues(
+            start = RANK_GRID_HORIZONTAL_PADDING,
+            end = RANK_GRID_HORIZONTAL_PADDING,
+            top = contentPadding.calculateTopPadding() + 8.dp,
+            bottom = contentPadding.calculateBottomPadding(),
+        ),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalItemSpacing = RANK_GRID_VERTICAL_SPACING,
+    ) {
+        when (state) {
+            is BrowseUiState.Loading -> if (!refreshing) {
+                item(key = "rank-loading", span = StaggeredGridItemSpan.FullLine) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        InfiniteProgressIndicator()
+                    }
+                }
+            }
+            is BrowseUiState.Failed -> item(key = "rank-error", span = StaggeredGridItemSpan.FullLine) {
+                ErrorScreen(
+                    message = "加载失败：${state.message}",
+                    onRetry = onRetry,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                )
+            }
+            is BrowseUiState.Loaded -> rankResultGrid(
+                page = state.page,
+                loadingMore = loadingMore,
+                loadMoreFailed = loadMoreFailed,
+                onLoadMore = onLoadMore,
+                onOpenAlbum = onOpenAlbum,
+            )
+        }
+    }
+}
