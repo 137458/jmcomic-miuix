@@ -651,8 +651,10 @@ private val BrowseOrder.shortLabel: String
         BrowseOrder.MOST_LIKED -> "喜欢"
     }
 
-// 列宽自适应阈值：同 pixez 的 GRID_CARD_MIN_WIDTH_DP，手机排 2 列、平板自动排 3 列以上
-private val RANK_GRID_MIN_CARD_WIDTH = 180.dp
+// 列宽自适应阈值：StaggeredGridCells.Adaptive 按 (可用宽度+间距)/(阈值+间距) 取整定列数，
+// 369dp 宽的手机扣除左右各 16dp 后只有 337dp，180dp 阈值会被压成 1 列；
+// 160dp 保证 360dp 及以上宽度的手机仍排 2 列，平板则自动排 3 列以上。
+private val RANK_GRID_MIN_CARD_WIDTH = 160.dp
 private val RANK_GRID_VERTICAL_SPACING = 8.dp
 private val RANK_GRID_HORIZONTAL_PADDING = 16.dp
 
