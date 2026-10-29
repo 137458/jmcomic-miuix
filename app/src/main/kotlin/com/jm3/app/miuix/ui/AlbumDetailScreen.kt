@@ -94,6 +94,12 @@ private const val CHAPTER_GROUP_SIZE = 10
 private const val COMMENT_MAX_LENGTH = 200
 /** 折叠态默认展示的回复条数；超出部分由「展开 N 条回复」控制。 */
 private const val COMMENT_VISIBLE_REPLIES = 2
+/** 回复缩进的最大层级：更深的回复不再追加缩进，否则正文宽度会被挤没。 */
+private const val COMMENT_MAX_INDENT_DEPTH = 4
+/** 单条评论正文最多展示的行数；超长评论折叠成省略号，避免整条铺满一屏。 */
+private const val COMMENT_BODY_MAX_LINES = 12
+/** 徽章图的无障碍描述：徽章本身无文字，读屏需要知道这里是一枚徽章。 */
+private const val COMMENT_BADGE_DESCRIPTION = "徽章"
 
 sealed interface AlbumUiState {
     data object Loading : AlbumUiState
@@ -504,11 +510,12 @@ fun AlbumDetailScreen(
                                 onDownloadAll = if (detail.chapters.isEmpty()) {
                                     null
                                 } else {
-                                    { detail.chapters.forEach { chapter ->
+                                    // 与顶栏「下载全部」同一套标题兜底：空标题不能进书架
+                                    { detail.chapters.forEachIndexed { index, chapter ->
                                         Jm3Graph.downloadManager.enqueueChapter(
                                             photoId = chapter.id,
                                             albumId = detail.id,
-                                            title = chapter.title,
+                                            title = ChapterLabels.chapterTitle(chapter.title, index),
                                         )
                                     } }
                                 },
@@ -1055,11 +1062,13 @@ internal fun CommentRow(
 ) {
     val lineColor = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.25f)
     val muted = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    // 缩进只按层级累加到上限：层级仍然逐层传下去（回复线照画），但不再继续吃掉正文宽度
+    val indentDepth = depth.coerceAtMost(COMMENT_MAX_INDENT_DEPTH)
     var repliesExpanded by remember(item.id) { mutableStateOf(item.replies.size <= COMMENT_VISIBLE_REPLIES) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 12.dp + (depth * 12).dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+            .padding(start = 12.dp + (indentDepth * 12).dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
             .drawBehind {
                 if (depth > 0) {
                     // 回复线：贴在缩进区外侧的竖线，标识回复归属层级
@@ -1118,7 +1127,11 @@ internal fun CommentRow(
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (badge in item.badges) {
-                        CommentAvatar(url = badge, size = 24.dp)
+                        CommentAvatar(
+                            url = badge,
+                            size = 24.dp,
+                            contentDescription = COMMENT_BADGE_DESCRIPTION,
+                        )
                     }
                 }
             }
@@ -1129,7 +1142,7 @@ internal fun CommentRow(
                     text = "回复",
                     onClick = { onReply(item) },
                     minWidth = 0.dp,
-                    minHeight = 28.dp,
+                    minHeight = 36.dp,
                 )
             }
             if (item.replies.isNotEmpty()) {
@@ -1147,7 +1160,7 @@ internal fun CommentRow(
                         text = if (repliesExpanded) "收起回复" else "展开 ${item.replies.size} 条回复",
                         onClick = { repliesExpanded = !repliesExpanded },
                         minWidth = 0.dp,
-                        minHeight = 28.dp,
+                        minHeight = 36.dp,
                     )
                 }
             }
@@ -1155,19 +1168,28 @@ internal fun CommentRow(
     }
 }
 
-/** 头像与徽章统一的圆形图片：缺图时留一个底色圆形占位，避免行高跳动。 */
+/**
+ * 头像与徽章统一的圆形图片：底色圆垫在图片下方，缺图、加载中、加载失败都不会露出透明空洞。
+ *
+ * @param contentDescription 徽章这类无文字的图片需要可读语义；头像留 null，作者名由正文承担。
+ */
 @Composable
-private fun CommentAvatar(url: String?, size: Dp) {
+private fun CommentAvatar(url: String?, size: Dp, contentDescription: String? = null) {
     val shape = CircleShape
-    if (url.isNullOrBlank()) {
-        Box(modifier = Modifier.size(size).clip(shape).background(MiuixTheme.colorScheme.surfaceContainer))
-    } else {
-        AsyncImage(
-            model = url,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(size).clip(shape),
-        )
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(shape)
+            .background(MiuixTheme.colorScheme.surfaceContainer),
+    ) {
+        if (!url.isNullOrBlank()) {
+            AsyncImage(
+                model = url,
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(size).clip(shape),
+            )
+        }
     }
 }
 
@@ -1179,7 +1201,13 @@ private fun CommentBody(item: CommentItem, onOpenAlbum: ((albumId: String) -> Un
         for (segment in segments) {
             when (segment) {
                 is CommentSegment.Text -> if (segment.text.isNotBlank()) {
-                    Text(text = segment.text, style = MiuixTheme.textStyles.body1)
+                    // 正文限行：超长评论会铺满整屏并顶掉后续楼层，超出部分省略
+                    Text(
+                        text = segment.text,
+                        style = MiuixTheme.textStyles.body1,
+                        maxLines = COMMENT_BODY_MAX_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
 
                 is CommentSegment.Album -> Text(

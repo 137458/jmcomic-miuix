@@ -537,7 +537,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                                             text = if (showAllTags) "收起" else "更多",
                                             onClick = { showAllTags = !showAllTags },
                                             minWidth = 0.dp,
-                                            minHeight = 28.dp,
+                                            minHeight = 36.dp,
                                             insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                             modifier = Modifier.padding(end = 16.dp),
                                         )
@@ -639,7 +639,7 @@ private fun SearchHistoryCard(
                 text = "清除",
                 onClick = onClear,
                 minWidth = 0.dp,
-                minHeight = 28.dp,
+                minHeight = 36.dp,
                 insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
             )
         }

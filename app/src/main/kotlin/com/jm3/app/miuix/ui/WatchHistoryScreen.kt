@@ -1,7 +1,6 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,7 +36,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -71,13 +69,18 @@ fun WatchHistoryScreen(
     var hasNext by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf<WatchUiState>(WatchUiState.Loading) }
     var loadingMore by remember { mutableStateOf(false) }
+    // 追加失败与「没有更多」必须分开：失败时页脚要留重试入口，不能显示已经到底
+    var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var deletingId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
+        // 翻页请求在途时不再发起新的翻页，避免连点并发打同一页导致列表重复
+        if (!replace && loadingMore) return
         if (showLoading) state = WatchUiState.Loading
+        if (!replace) loadingMore = true
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { Jm3Graph.gateway.watchHistory(targetPage) }
@@ -89,15 +92,17 @@ fun WatchHistoryScreen(
                     items = if (replace) list else (items + list).distinctBy { it.id }
                     page = targetPage
                     hasNext = list.size >= WATCH_PAGE_SIZE
+                    loadMoreFailed = false
                     state = WatchUiState.Loaded
                 }
                 .onFailure {
                     if (replace) {
                         state = WatchUiState.Failed(it.message ?: "观看记录加载失败")
                     } else {
-                        // 追加失败不影响已有列表，仅提示并停止继续翻页
-                        hasNext = false
-                        scope.launch { snackbarHostState.showSnackbar("加载失败：" + (it.message ?: "请稍后重试")) }
+                        // 追加失败保留已有列表：hasNext 不动，交给页脚的重试入口，
+                        // 否则失败会被误画成「已经到底了」，用户再也翻不动
+                        loadMoreFailed = true
+                        snackbarHostState.showSnackbar("加载失败：" + (it.message ?: "请稍后重试"))
                     }
                 }
         }
@@ -186,14 +191,13 @@ fun WatchHistoryScreen(
                             }
                         }
                         item(key = "footer") {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                when {
-                                    mode == PaginationMode.CLICK -> Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
+                            if (mode == PaginationMode.CLICK) {
+                                // 点击分页要靠页码定位，不能用「加载更多」式页脚
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                         TextButton(
                                             text = "上一页",
                                             onClick = { fetch(page - 1, replace = true, showLoading = false) },
@@ -214,20 +218,15 @@ fun WatchHistoryScreen(
                                             minHeight = 36.dp,
                                         )
                                     }
-                                    loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                                    hasNext -> TextButton(
-                                        text = "加载更多",
-                                        onClick = {
-                                            loadingMore = true
-                                            fetch(page + 1, replace = false, showLoading = false)
-                                        },
-                                    )
-                                    else -> Text(
-                                        text = "已经到底了",
-                                        style = MiuixTheme.textStyles.footnote1,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
                                 }
+                            } else {
+                                // 三态页脚与其他列表保持一致：加载中 / 失败重试 / 没有更多
+                                LoadMoreFooter(
+                                    loadingMore = loadingMore,
+                                    hasMore = hasNext,
+                                    loadMoreFailed = loadMoreFailed,
+                                    onLoadMore = { fetch(page + 1, replace = false, showLoading = false) },
+                                )
                             }
                         }
                     }
