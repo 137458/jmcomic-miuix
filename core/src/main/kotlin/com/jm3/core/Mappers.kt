@@ -10,6 +10,7 @@ import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
+import com.jm3.core.model.CommentSegment
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
@@ -24,8 +25,10 @@ import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.FavoritePage
 import com.jm3.core.model.FolderOperation
 import com.jm3.core.model.Jm3User
+import com.jm3.core.model.NotificationBody
 import com.jm3.core.model.NotificationItem
 import com.jm3.core.model.NotificationPage
+import com.jm3.core.model.NotificationUpdate
 import com.jm3.core.model.NovelChapter
 import com.jm3.core.model.NovelChapterMeta
 import com.jm3.core.model.NovelDetail
@@ -88,6 +91,14 @@ import io.github.jukomu.jmcomic.api.model.JmPhotoMeta
 import io.github.jukomu.jmcomic.api.model.JmUserInfo
 import io.github.jukomu.jmcomic.api.model.SearchQuery
 import kotlin.math.roundToInt
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 // 库为 Java record，组件访问器无 get 前缀，统一函数调用语法。
 
@@ -211,20 +222,68 @@ fun PageImage.toJmImage(): JmImage = JmImage(
     index + 1,
 )
 
+/** 推荐作品标记：正文里以「[ 我推荐这本书 JM123456 ]」形式出现，繁体写作「推薦」。 */
+private val COMMENT_RECOMMEND =
+    Regex("""\[\s*(?:我推荐这本书|我推薦這本書)\s+(?:JM)?(\d+)\s*\]""")
+
+/**
+ * 评论正文分段：接口给的是 HTML，先转段落文本，再把推荐作品标记单独拆成可点链接。
+ *
+ * contentHtml 为空时回落到纯文本 content；纯文本不再过 HTML 清洗，避免吃掉正文里的尖括号。
+ */
+fun commentSegments(content: String?, contentHtml: String? = null): List<CommentSegment> {
+    val html = contentHtml?.takeIf { it.isNotBlank() }
+    val source = html ?: content?.takeIf { it.isNotBlank() } ?: return emptyList()
+    val text = if (html != null) htmlToText(html) else source
+    val segments = mutableListOf<CommentSegment>()
+    var cursor = 0
+    for (match in COMMENT_RECOMMEND.findAll(text)) {
+        text.substring(cursor, match.range.first).trim()
+            .takeIf { it.isNotEmpty() }
+            ?.let { segments += CommentSegment.Text(it) }
+        segments += CommentSegment.Album(albumId = match.groupValues[1], label = match.value)
+        cursor = match.range.last + 1
+    }
+    text.substring(cursor).trim()
+        .takeIf { it.isNotEmpty() }
+        ?.let { segments += CommentSegment.Text(it) }
+    return segments
+}
+
+/** 库把徽章数组元素原样转成 JSON 字符串透传，这里取出其中的 content 图片路径。 */
+fun badgeImagePaths(raw: List<String>): List<String> = raw.mapNotNull { entry ->
+    val trimmed = entry.trim()
+    when {
+        trimmed.isEmpty() -> null
+        trimmed.startsWith("{") -> runCatching {
+            Json.parseToJsonElement(trimmed).jsonObject["content"]?.jsonPrimitive?.contentOrNull
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        else -> trimmed
+    }
+}
+
 // 评论字段可能缺失，逐级回退；回复列表递归映射。
-fun JmComment.toCommentItem(): CommentItem = CommentItem(
+fun JmComment.toCommentItem(imageHost: String = ""): CommentItem = CommentItem(
     id = commentId() ?: "",
     author = nickname() ?: username() ?: name() ?: "匿名",
     content = content() ?: "",
     postDate = postDate(),
     likes = likes(),
-    replies = replys().orEmpty().map { it.toCommentItem() },
+    replies = replys().orEmpty().map { it.toCommentItem(imageHost) },
     albumId = aid()?.takeIf { it.isNotBlank() && it != "0" },
+    // 头像由库拼成绝对地址（/media/users/{photo}），无需再拼图片域名
+    avatarUrl = photo()?.takeIf { it.isNotBlank() },
+    level = expinfoData()?.level(),
+    levelName = expinfoData()?.levelName()?.takeIf { it.isNotBlank() },
+    badges = badgeImagePaths(expinfoData()?.badges().orEmpty())
+        .mapNotNull { imageUrl(it, imageHost) },
+    albumName = name()?.takeIf { it.isNotBlank() },
+    body = commentSegments(content(), contentHtml()),
 )
 
-fun JmCommentList.toCommentPage(): CommentPage = CommentPage(
+fun JmCommentList.toCommentPage(imageHost: String = ""): CommentPage = CommentPage(
     total = total(),
-    items = list().orEmpty().map { it.toCommentItem() },
+    items = list().orEmpty().map { it.toCommentItem(imageHost) },
 )
 
 /** 收藏夹列表查询：folderId=0 表示全部收藏。 */
@@ -281,6 +340,51 @@ fun JmNotificationPage.toNotificationPage(): NotificationPage = NotificationPage
         )
     },
 )
+
+/** 追更通知的类型标识，与接口 type 字段一致。 */
+const val NOTIFICATION_TYPE_FOLLOW: String = "comic_follow"
+
+/**
+ * 解析通知正文。接口 content 有两种形态：站内通知是 HTML，追更通知是作品更新数组；
+ * 库的 ApiParser 把数组整体 toString，因此拿到的仍是 "[{...}]" 文本。数组解析失败时
+ * 按纯文本降级，避免把 JSON 原文直接显示给用户。
+ */
+fun notificationBody(content: String?): NotificationBody {
+    val raw = content?.trim().orEmpty()
+    if (raw.isEmpty()) return NotificationBody.Text("")
+    if (raw.startsWith("[")) {
+        val array = runCatching { Json.parseToJsonElement(raw) }.getOrNull() as? JsonArray
+        if (array != null) {
+            return NotificationBody.Updates(array.mapNotNull { it.toNotificationUpdate() })
+        }
+    }
+    return NotificationBody.Text(htmlToText(raw))
+}
+
+private fun JsonElement.toNotificationUpdate(): NotificationUpdate? {
+    val fields = this as? JsonObject ?: return null
+    val title = fields.fieldText("comicTitle") ?: return null
+    return NotificationUpdate(
+        comicId = fields.fieldText("comicId"),
+        comicTitle = title,
+        updateDate = fields.fieldText("updateDate"),
+    )
+}
+
+private fun JsonObject.fieldText(key: String): String? =
+    (this[key] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+
+/**
+ * 信箱条目展示标题。追更通知按更新条数生成（对照原版 NotificationList：
+ * 「[连载更新]你追踪的漫画有 N 部作品更新」），站内通知直接用接口标题。
+ */
+fun notificationDisplayTitle(item: NotificationItem): String {
+    val apiTitle = item.title.trim()
+    if (item.type != NOTIFICATION_TYPE_FOLLOW) return apiTitle.ifBlank { "站内通知" }
+    val updates = (notificationBody(item.content) as? NotificationBody.Updates)?.items.orEmpty()
+    if (updates.isEmpty()) return apiTitle.ifBlank { "连载更新" }
+    return "[连载更新]你追踪的漫画有 ${updates.size} 部作品更新"
+}
 
 /** 连载追踪列表；totalCnt 为字符串类型，无法解析时按当前页条数计。 */
 fun JmTrackingPage.toTrackingPage(): TrackingPage {

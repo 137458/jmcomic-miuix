@@ -206,6 +206,22 @@ data class NotificationPage(
     val items: List<NotificationItem>,
 )
 
+/** 追更通知正文里的单条作品更新，字段名与接口 JSON 一致。 */
+data class NotificationUpdate(
+    val comicId: String?,
+    val comicTitle: String,
+    val updateDate: String?,
+)
+
+/** 通知正文形态：站内通知是 HTML（转纯文本渲染），追更通知是更新条目数组。 */
+sealed interface NotificationBody {
+    /** 纯文本正文；content 缺失时为空串。 */
+    data class Text(val text: String) : NotificationBody
+
+    /** 追更通知的更新条目；接口返回空数组时 items 为空。 */
+    data class Updates(val items: List<NotificationUpdate>) : NotificationBody
+}
+
 /** 连载追踪条目；updateAt 为 Unix 秒字符串，接口未提供时不展示时间。 */
 data class TrackingItem(
     val id: String,
@@ -233,6 +249,14 @@ data class FolderOperation(
     val message: String?,
 )
 
+/** 评论正文分段：原版把正文按「[ 我推荐这本书 JMxxx ]」拆成普通文本与作品链接。 */
+sealed interface CommentSegment {
+    data class Text(val text: String) : CommentSegment
+
+    /** 推荐作品链接：albumId 已去掉 JM 前缀，label 保留原样方括号文案。 */
+    data class Album(val albumId: String, val label: String) : CommentSegment
+}
+
 data class CommentItem(
     val id: String,
     val author: String,
@@ -242,6 +266,18 @@ data class CommentItem(
     val replies: List<CommentItem>,
     /** 所属作品 ID；闲聊帖为 0/空，回复时需要它定位接口实体。 */
     val albumId: String? = null,
+    /** 头像绝对地址；接口未给时为空。 */
+    val avatarUrl: String? = null,
+    /** 用户等级数值，对应「Lv.N」。 */
+    val level: Int? = null,
+    /** 等级称号，与等级数值并排展示。 */
+    val levelName: String? = null,
+    /** 徽章图片绝对地址。 */
+    val badges: List<String> = emptyList(),
+    /** 关联作品名（形如 JM123456）；论坛条目底部的可点作品按钮用它。 */
+    val albumName: String? = null,
+    /** 正文分段；空表表示调用方直接展示 content。 */
+    val body: List<CommentSegment> = emptyList(),
 )
 
 data class CommentPage(
