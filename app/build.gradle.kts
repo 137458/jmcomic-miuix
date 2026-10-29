@@ -65,6 +65,10 @@ kotlin {
     }
 }
 
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+}
+
 dependencies {
     implementation(project(":core"))
 
@@ -78,6 +82,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.telephoto.zoomable.image.coil3)
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.androidx.room.runtime)
@@ -95,4 +100,6 @@ dependencies {
     implementation(libs.jmcomic.android.support) {
         exclude(group = "io.github.darkxanter", module = "webp-imageio")
     }
+
+    testImplementation(kotlin("test"))
 }

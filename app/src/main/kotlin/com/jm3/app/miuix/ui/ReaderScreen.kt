@@ -1,9 +1,15 @@
 package com.jm3.app.miuix.ui
 
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,17 +32,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -66,6 +80,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
+import me.saket.telephoto.zoomable.rememberZoomableImageState
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
@@ -273,6 +289,11 @@ private fun ReaderPages(
     }
     // 已发起预加载的页号；翻页向前向后都只发一次
     val prefetched = remember { mutableSetOf<Int>() }
+    // 当前页是否处于放大态：放大时让出翻页手势，交给缩放层自己消费
+    var pageZoomed by remember(photo) { mutableStateOf(false) }
+    LaunchedEffect(pagerState.currentPage) { pageZoomed = false }
+    // 长图模式下双击打开的整屏缩放层：存放 photo.images 下标，null 表示未打开
+    var zoomOverlayIndex by remember(photo) { mutableStateOf<Int?>(null) }
     var currentPage by remember(photo) { mutableStateOf(if (photo.images.isEmpty()) 0 else 1) }
     var showPageSheet by remember { mutableStateOf(false) }
     var showChapterSheet by remember { mutableStateOf(false) }
@@ -546,7 +567,8 @@ private fun ReaderPages(
                     state = pagerState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .pagerGestureOverride(pagerState),
+                        // 放大时整条手势链都交给缩放层，未放大才允许翻页
+                        .pagerGestureOverride(pagerState, enabled = !pageZoomed),
                     // 手势由 pagerGestureOverride 驱动，避免与原生拖拽竞争
                     userScrollEnabled = false,
                     pageNestedScrollConnection = PagerGestureNestedScrollConnection,
@@ -556,7 +578,36 @@ private fun ReaderPages(
                         imageLoader = imageLoader,
                         pageSize = screenSize,
                         modifier = Modifier.fillMaxSize(),
+                        zoomEnabled = true,
+                        isCurrentPage = index == pagerState.currentPage,
                         onTap = { chromeVisible = !chromeVisible },
+                        onZoomChanged = { zoomed ->
+                            // 只有当前页的缩放状态才约束翻页，预加载的邻页不参与
+                            if (index == pagerState.currentPage) pageZoomed = zoomed
+                        },
+                        // 放大后内容已到边界仍继续横拖时接翻页：此时缩放层不再消费手势
+                        onHorizontalEdgeDrag = if (pageZoomed) {
+                            { dragX, velocityX ->
+                                val turn = decideEdgePageTurn(
+                                    dragX = dragX,
+                                    velocityX = velocityX,
+                                    // 左右模式整屏一页，页宽就是窗口宽（Size 的 width 是 Dimension，不宜参与算术）
+                                    pageWidth = pageWidthPx.toFloat(),
+                                    currentPage = pagerState.currentPage,
+                                    pageCount = photo.images.size,
+                                )
+                                if (turn != EdgePageTurn.None) {
+                                    val target = if (turn == EdgePageTurn.Next) {
+                                        pagerState.currentPage + 1
+                                    } else {
+                                        pagerState.currentPage - 1
+                                    }
+                                    scope.launch { pagerState.springAnimateToPage(target) }
+                                }
+                            }
+                        } else {
+                            null
+                        },
                     )
                 }
             } else {
@@ -571,6 +622,8 @@ private fun ReaderPages(
                             imageLoader = imageLoader,
                             pageSize = pageSize,
                             modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                            // 长图就地缩放会被 3:4 页框裁掉，双击改为打开整屏缩放层
+                            onDoubleTap = { zoomOverlayIndex = photo.images.indexOf(image) },
                             onTap = { chromeVisible = !chromeVisible },
                         )
                     }
@@ -610,6 +663,27 @@ private fun ReaderPages(
                     onLike = ::toggleLike,
                 )
             }
+        }
+
+        // 长图模式的整屏缩放层：双击页面打开，单击或返回键退出。
+        // 放在工具栏之后，保证盖住内容与工具栏而不是被它们压住
+        val overlayImage = zoomOverlayIndex?.let { photo.images.getOrNull(it) }
+        if (overlayImage != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+            ) {
+                ReaderPage(
+                    image = overlayImage,
+                    imageLoader = imageLoader,
+                    pageSize = screenSize,
+                    modifier = Modifier.fillMaxSize(),
+                    zoomEnabled = true,
+                    onTap = { zoomOverlayIndex = null },
+                )
+            }
+            BackHandler { zoomOverlayIndex = null }
         }
 
         OverlayBottomSheet(
@@ -888,30 +962,114 @@ private fun ReaderPage(
     imageLoader: ImageLoader,
     pageSize: Size,
     modifier: Modifier = Modifier,
+    zoomEnabled: Boolean = false,
+    isCurrentPage: Boolean = true,
     onTap: (() -> Unit)? = null,
+    onZoomChanged: ((Boolean) -> Unit)? = null,
+    onDoubleTap: (() -> Unit)? = null,
+    onHorizontalEdgeDrag: ((dragX: Float, velocityX: Float) -> Unit)? = null,
 ) {
     val context = LocalPlatformContext.current
     var retryKey by remember(image) { mutableIntStateOf(0) }
-    // 与预取请求同一尺寸，保证内存缓存可复用；重试时重建请求绕过失败缓存
-    val request = remember(image, pageSize, context, retryKey) {
-        ImageRequest.Builder(context).data(image).size(pageSize).build()
-    }
     var failed by remember(image, retryKey) { mutableStateOf(false) }
-    Box(modifier = if (onTap != null) modifier.clickable(onClick = onTap) else modifier) {
-        if (failed) {
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(text = "图片加载失败")
-                TextButton(
-                    text = "重试",
-                    onClick = { failed = false; retryKey++ },
-                    minWidth = 0.dp,
-                    minHeight = 32.dp,
-                )
+    // 与预取请求同一尺寸，保证内存缓存可复用；重试时重建请求绕过失败缓存。
+    // 缩放路径没有 onSuccess/onError 形参，失败态改由请求自带的 listener 上报，
+    // 普通路径仍用 AsyncImage 的回调，两条路径写同一个 failed。
+    val request = remember(image, pageSize, context, retryKey, zoomEnabled) {
+        ImageRequest.Builder(context)
+            .data(image)
+            .apply {
+                if (zoomEnabled) {
+                    // 解码尺寸交给 telephoto 按视口与缩放级别决定，写死尺寸会让放大后发糊
+                    listener(
+                        onSuccess = { _, _ -> failed = false },
+                        onError = { _, _ -> failed = true },
+                    )
+                } else {
+                    // 与预取请求同一尺寸，保证内存缓存可复用
+                    size(pageSize)
+                }
             }
+            .build()
+    }
+    if (zoomEnabled) {
+        val zoomableState = rememberZoomableImageState()
+        // derivedStateOf 让缩放比例变化只触发读取方重组，不必每帧重算整页
+        val zoomed by remember(zoomableState) {
+            derivedStateOf { isPageZoomed(zoomableState.zoomableState.zoomFraction) }
         }
+        LaunchedEffect(zoomed) { onZoomChanged?.invoke(zoomed) }
+        // 翻走即复位：回到本页时不会残留放大态与翻页手势叠加
+        LaunchedEffect(isCurrentPage) {
+            if (!isCurrentPage) zoomableState.zoomableState.resetZoom()
+        }
+        val tapHandler: ((Offset) -> Unit)? = if (onTap != null) {
+            { onTap() }
+        } else {
+            null
+        }
+        // 缩放层是子节点，在 Main pass 先于父节点拿到手势：只有它不再消费（内容到边界）
+        // 时父节点才接管，用松手位移与速度判定是否翻页
+        val edgeDrag = rememberUpdatedState(onHorizontalEdgeDrag)
+        Box(
+            modifier = if (onHorizontalEdgeDrag != null) {
+                modifier.pointerInput(zoomableState) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val tracker = VelocityTracker()
+                        var dragX = 0f
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
+                            // 多指是捏合缩放，不参与翻页判定
+                            if (event.changes.size > 1) break
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.isConsumed) {
+                                // 缩放层仍在平移内容，边界从它停下的那一刻算起
+                                dragX = 0f
+                                tracker.resetTracking()
+                            } else {
+                                tracker.addPointerInputChange(change)
+                                dragX += change.positionChange().x
+                            }
+                            if (!change.pressed) {
+                                if (dragX != 0f) {
+                                    edgeDrag.value?.invoke(dragX, tracker.calculateVelocity().x)
+                                }
+                                break
+                            }
+                        }
+                    }
+                }
+            } else {
+                modifier
+            },
+        ) {
+            if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
+            ZoomableAsyncImage(
+                model = request,
+                contentDescription = null,
+                imageLoader = imageLoader,
+                state = zoomableState,
+                contentScale = ContentScale.Fit,
+                onClick = tapHandler,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        return
+    }
+    // 需要区分双击时用 detectTapGestures 自己起手势识别，单击回调顺延到双击超时之后
+    val tapModifier = when {
+        onDoubleTap != null -> Modifier.pointerInput(onTap, onDoubleTap) {
+            detectTapGestures(
+                onTap = { onTap?.invoke() },
+                onDoubleTap = { onDoubleTap() },
+            )
+        }
+        onTap != null -> Modifier.clickable(onClick = onTap)
+        else -> Modifier
+    }
+    Box(modifier = modifier.then(tapModifier)) {
+        if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
         AsyncImage(
             model = request,
             contentDescription = null,
@@ -920,6 +1078,23 @@ private fun ReaderPage(
             onSuccess = { failed = false },
             onError = { failed = true },
             modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+/** 单页加载失败时的居中提示与重试入口，缩放与普通两条渲染路径共用。 */
+@Composable
+private fun BoxScope.ReaderLoadFailedHint(onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier.align(Alignment.Center),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(text = "图片加载失败")
+        TextButton(
+            text = "重试",
+            onClick = onRetry,
+            minWidth = 0.dp,
+            minHeight = 32.dp,
         )
     }
 }
