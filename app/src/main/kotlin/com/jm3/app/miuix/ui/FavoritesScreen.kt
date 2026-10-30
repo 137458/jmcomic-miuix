@@ -456,7 +456,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                         }
                                     },
                                     onClick = {
-                                        heroHost?.startForward(result.id, result.coverUrl, FAVORITE_COVER_CORNER_DP)
+                                        heroHost?.startForward(result.id, result.coverUrl, HERO_FAVORITE_ROW_CORNER_DP)
                                         onOpenAlbum(result.id)
                                     },
                                 )
@@ -775,8 +775,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     }
 }
 
-/** 收藏行封面圆角；形变飞行两端要复刻同一个值。 */
-private const val FAVORITE_COVER_CORNER_DP = 6f
+
 
 /** 收藏行封面：与其他列表统一尺寸，缺失时留空占位保持行高稳定。 */
 @Composable
@@ -791,7 +790,7 @@ private fun FavoriteRowCover(albumId: String, url: String?) {
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
-            .squircleClip(FAVORITE_COVER_CORNER_DP.dp)
-            .albumHeroCover(albumId, url, FAVORITE_COVER_CORNER_DP),
+            .squircleClip(HERO_FAVORITE_ROW_CORNER_DP.dp)
+            .albumHeroCover(albumId, url, HERO_FAVORITE_ROW_CORNER_DP),
     )
 }

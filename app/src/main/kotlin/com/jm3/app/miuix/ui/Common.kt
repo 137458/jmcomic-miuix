@@ -65,8 +65,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 搜索结果行封面的圆角；形变飞行两端要复刻同一个值。 */
-private const val SEARCH_COVER_CORNER_DP = 6f
+
 
 /** 评论回复面板：显示被回复作者、200 字上限与发送状态；换目标时清空草稿。 */
 @Composable
@@ -254,8 +253,8 @@ private fun SearchResultCover(albumId: String, url: String?) {
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
-            .squircleClip(SEARCH_COVER_CORNER_DP.dp)
-            .albumHeroCover(albumId, url, SEARCH_COVER_CORNER_DP),
+            .squircleClip(HERO_SEARCH_ROW_CORNER_DP.dp)
+            .albumHeroCover(albumId, url, HERO_SEARCH_ROW_CORNER_DP),
     )
 }
 
@@ -328,7 +327,7 @@ private fun SearchResultCard(
                 }
             },
             onClick = {
-                heroHost?.startForward(result.id, result.coverUrl, SEARCH_COVER_CORNER_DP)
+                heroHost?.startForward(result.id, result.coverUrl, HERO_SEARCH_ROW_CORNER_DP)
                 onClick()
             },
         ) {
