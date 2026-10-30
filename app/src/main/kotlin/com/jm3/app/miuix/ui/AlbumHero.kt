@@ -62,25 +62,37 @@ class AlbumHeroHost {
 
     fun registerCover(albumId: String, url: String?, rect: HeroRect, cornerDp: Float) {
         if (!isFiniteHeroRect(rect)) return
+        if (coverRects[albumId] == rect && coverCorners[albumId] == cornerDp && (url == null || urls[albumId] == url)) return
         coverRects[albumId] = rect
         coverCorners[albumId] = cornerDp
         if (url != null) urls[albumId] = url
     }
 
     fun unregisterCover(albumId: String, rect: HeroRect?) {
-        if (rect != null && coverRects[albumId] == rect) coverRects.remove(albumId)
+        if (rect != null && coverRects[albumId] == rect) {
+            coverRects.remove(albumId)
+            coverCorners.remove(albumId)
+            if (albumId !in headerRects) urls.remove(albumId)
+        }
     }
 
     fun registerHeader(albumId: String, url: String?, rect: HeroRect, cornerDp: Float) {
         if (!isFiniteHeroRect(rect)) return
+        if (headerRects[albumId] == rect && headerCorners[albumId] == cornerDp && (url == null || urls[albumId] == url)) return
         headerRects[albumId] = rect
         headerCorners[albumId] = cornerDp
         if (url != null) urls[albumId] = url
     }
 
     fun unregisterHeader(albumId: String, rect: HeroRect?) {
-        if (rect != null && headerRects[albumId] == rect) headerRects.remove(albumId)
+        if (rect != null && headerRects[albumId] == rect) {
+            headerRects.remove(albumId)
+            headerCorners.remove(albumId)
+            if (albumId !in coverRects) urls.remove(albumId)
+        }
     }
+
+    fun coverRect(albumId: String): HeroRect? = coverRects[albumId]
 
     fun headerRect(albumId: String): HeroRect? = headerRects[albumId]
 
@@ -209,6 +221,7 @@ fun Modifier.albumHeroCover(albumId: String, url: String?, cornerDp: Float): Mod
     }
     return this
         .onGloballyPositioned { coordinates ->
+            if (!coordinates.isAttached) return@onGloballyPositioned
             val position = coordinates.positionInRoot()
             val rect = HeroRect(
                 left = position.x,
@@ -216,8 +229,10 @@ fun Modifier.albumHeroCover(albumId: String, url: String?, cornerDp: Float): Mod
                 width = coordinates.size.width.toFloat(),
                 height = coordinates.size.height.toFloat(),
             )
-            registered.value = rect
-            host.registerCover(albumId, url, rect, cornerDp)
+            if (isFiniteHeroRect(rect)) {
+                registered.value = rect
+                host.registerCover(albumId, url, rect, cornerDp)
+            }
         }
         .graphicsLayer { alpha = if (host.isCoverHidden(albumId)) 0f else 1f }
 }
@@ -232,6 +247,7 @@ fun Modifier.albumHeroHeader(albumId: String, url: String?, cornerDp: Float): Mo
     }
     return this
         .onGloballyPositioned { coordinates ->
+            if (!coordinates.isAttached) return@onGloballyPositioned
             val position = coordinates.positionInRoot()
             val rect = HeroRect(
                 left = position.x,
@@ -239,8 +255,10 @@ fun Modifier.albumHeroHeader(albumId: String, url: String?, cornerDp: Float): Mo
                 width = coordinates.size.width.toFloat(),
                 height = coordinates.size.height.toFloat(),
             )
-            registered.value = rect
-            host.registerHeader(albumId, url, rect, cornerDp)
+            if (isFiniteHeroRect(rect)) {
+                registered.value = rect
+                host.registerHeader(albumId, url, rect, cornerDp)
+            }
         }
         .graphicsLayer { alpha = if (host.isHeaderHidden(albumId)) 0f else 1f }
 }
