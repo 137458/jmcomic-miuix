@@ -51,13 +51,14 @@ class AlbumHeroHost {
     private val urls = mutableStateMapOf<String, String>()
     private var sequence = 0
 
-    /** 已点开详情、等头图测量结果的待飞记录。 */
-    var pending by mutableStateOf<HeroPending?>(null)
+    var state by mutableStateOf(HeroState())
         private set
 
+    /** 已点开详情、等头图测量结果的待飞记录。 */
+    val pending: HeroPending? get() = state.pending
+
     /** 正在播放的飞行；同一时刻最多一个。 */
-    var flight by mutableStateOf<HeroPlan?>(null)
-        private set
+    val flight: HeroPlan? get() = state.flight
 
     fun registerCover(albumId: String, url: String?, rect: HeroRect, cornerDp: Float) {
         if (!isFiniteHeroRect(rect)) return
@@ -97,31 +98,34 @@ class AlbumHeroHost {
         val from = coverRects[albumId]
         if (from == null || !isFiniteHeroRect(from)) return false
         if (url != null) urls[albumId] = url
-        pending = HeroPending(albumId, url ?: urls[albumId], from, cornerDp)
-        return true
+        val resolvedUrl = url ?: urls[albumId]
+        val oldPending = state.pending
+        state = state.startForward(
+            id = ++sequence,
+            albumId = albumId,
+            url = resolvedUrl,
+            from = from,
+            cornerDp = cornerDp,
+        )
+        return state.pending != null && state.pending != oldPending
     }
 
     /** 详情头图测量完成后补上终点；返回 true 表示已起飞。 */
     fun resolvePending(): Boolean {
-        val current = pending ?: return false
-        val plan = planForwardFlight(
-            id = ++sequence,
-            pending = current,
-            headerRect = headerRects[current.albumId],
-            headerCornerDp = headerCorners[current.albumId] ?: current.cornerFromDp,
-        ) ?: return false
-        pending = null
-        flight = plan
-        return true
+        val current = state.pending ?: return false
+        val header = headerRects[current.albumId]
+        val corner = headerCorners[current.albumId] ?: current.cornerFromDp
+        state = state.resolveForward(headerRect = header, headerCornerDp = corner)
+        return state.flight != null
     }
 
     fun cancelPending() {
-        pending = null
+        state = state.cancelPending()
     }
 
     /** 退栈时调用：详情头图飞回列表卡片。 */
     fun startBackward(albumId: String): Boolean {
-        val plan = planBackwardFlight(
+        state = state.startBackward(
             id = ++sequence,
             albumId = albumId,
             url = urls[albumId],
@@ -129,14 +133,12 @@ class AlbumHeroHost {
             headerCornerDp = headerCorners[albumId] ?: 0f,
             coverRect = coverRects[albumId],
             coverCornerDp = coverCorners[albumId] ?: 0f,
-        ) ?: return false
-        pending = null
-        flight = plan
-        return true
+        )
+        return state.flight != null
     }
 
     fun finishFlight(id: Int) {
-        if (flight?.id == id) flight = null
+        state = state.finishFlight(id)
     }
 }
 
