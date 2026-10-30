@@ -35,6 +35,7 @@ data class HeroPending(
     val url: String?,
     val from: HeroRect,
     val cornerFromDp: Float,
+    val id: Int = 0,
 )
 
 /** 位移小于 2px 说明两端几乎重合，飞一次只会露出重影。 */
