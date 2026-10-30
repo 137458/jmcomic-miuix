@@ -77,6 +77,7 @@
 6. 纵向长图模式不要做就地缩放：3:4 页框会把放大内容裁掉（ReaderScreen.kt:635 注释），双击改为打开整屏覆盖层（状态 :294、进入 :636、渲染 :680-698）。同类“想当然”的交互改动先在真机上验证再提。
 7. 动效收敛：缩放跟随用 telephoto 自带的 `rememberZoomableImageState` + `resetZoom`，按压缩放用 `Modifier.pressScale(0.96f)`（默认值见 Common.kt:445），触感用 `rememberSelectionHaptic()`（:471）。不新增自研动画框架。
 8. 边缘到边与返回：`enableEdgeToEdge()` 在 app/src/main/kotlin/com/jm3/app/miuix/MainActivity.kt:25 统一开启，屏幕自己处理 `innerPadding`；音量键翻页由 `onKeyDown` 交给 `ReaderVolumeKeys`（MainActivity.kt:60-62；ReaderVolumeKeys 定义在 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt:128，dispatch 在 :132），不要再在屏幕里重复拦截。阅读器在长图覆盖层等浮层打开时必须让音量键返回 false，且 `onDispose` 只在 handler 仍是自己时才置空（ReaderScreen.kt:489-521），否则换章重叠会把新屏注册的 handler 清掉。
+9. 共享元素飞行的规矩：列表侧封面挂 `.albumHeroCover(albumId, url, cornerDp)`、详情页头图挂 `.albumHeroHeader(albumId, url, cornerDp)`（app/src/main/kotlin/com/jm3/app/miuix/ui/AlbumHero.kt:202、:225），`cornerDp` 必须等于该卡片真实的 `squircleClip` 圆角（Common.kt 的 `SEARCH_COVER_CORNER_DP = 6f`、HistoryScreen.kt 的 `HISTORY_COVER_CORNER_DP = 8f`、FavoritesScreen.kt 的 `FAVORITE_COVER_CORNER_DP = 6f`、卡片默认为 AlbumHero.kt:151 的 `MIUIX_CARD_CORNER_DP = 16f`），随手写一个近似值会在飞行中露出圆角跳变。详情页路由转场必须是纯 alpha（Jm3App.kt 的 `albumDetailTransition`），不许改成水平位移：hero 矩形取自 `LayoutCoordinates.positionInRoot()`，页面滑动会把 graphicsLayer 的平移算进矩形，飞行端点每帧漂移。
 
 ## 六、Agent 工作流与测试
 
@@ -89,8 +90,8 @@
    - 先确认红灯：写完测试先跑一次，必须看到业务断言失败（例如 `15 tests completed, 1 failed`），再用最小实现转绿。编译错误、导入错误、类型错误不算红灯，不许拿它们冒充。绿灯后禁止改弱期望值来迁就实现。
    - 纯 UI 样式改动可只保证编译，但涉及状态与数据的部分仍要有测试。
    - 如果因为并发构建无法验证，必须在汇报里明说“未验证”和原因，不许假装通过。
-4. 测试放哪：`:core` 逻辑写 `core/src/test/kotlin/com/jm3/core/<包名>/<被测类>Test.kt`，`:app` 纯逻辑写 `app/src/test/kotlin/com/jm3/app/miuix/.../<被测类>Test.kt`，命名 `XxxTest`。现状：`:core` 21 个测试类（最重的是 `download/DownloadQueueTest.kt`，约 18 KB，另有 `download/DownloadRecoveryTest.kt`），`:app` 3 个（`app/src/test/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogicTest.kt` 15 用例、`app/src/test/kotlin/com/jm3/app/miuix/data/download/DownloadTaskMapsTest.kt` 11 用例、`app/src/test/kotlin/com/jm3/app/miuix/data/download/DownloadThrottleTest.kt` 8 用例，合 34 用例）。
-5. `:app` 已有测试源集：`testImplementation(kotlin("test"))`（app/build.gradle.kts:104）与 `tasks.withType<Test>().configureEach { useJUnitPlatform() }`（app/build.gradle.kts:68-70），现有 `app/src/test/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogicTest.kt` 共 15 个用例，覆盖 `isPageZoomed` 的 null / 0f / 阈值边界，以及 `decideEdgePageTurn` 的页宽非法、页数非法、位移与速度都不达标、位移达标、仅甩动达标、距离达标时忽略反向甩动、首页无上一页、末页无下一页、阈值随页宽缩放。
+4. 测试放哪：`:core` 逻辑写 `core/src/test/kotlin/com/jm3/core/<包名>/<被测类>Test.kt`，`:app` 纯逻辑写 `app/src/test/kotlin/com/jm3/app/miuix/.../<被测类>Test.kt`，命名 `XxxTest`。现状：`:core` 21 个测试类（最重的是 `download/DownloadQueueTest.kt`，约 18 KB，另有 `download/DownloadRecoveryTest.kt`），`:app` 4 个（`app/src/test/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogicTest.kt` 22 用例、`app/src/test/kotlin/com/jm3/app/miuix/ui/AlbumHeroLogicTest.kt` 22 用例、`app/src/test/kotlin/com/jm3/app/miuix/data/download/DownloadTaskMapsTest.kt` 11 用例、`app/src/test/kotlin/com/jm3/app/miuix/data/download/DownloadThrottleTest.kt` 8 用例，合 63 用例）。
+5. `:app` 已有测试源集：`testImplementation(kotlin("test"))`（app/build.gradle.kts:104）与 `tasks.withType<Test>().configureEach { useJUnitPlatform() }`（app/build.gradle.kts:68-70），现有 `app/src/test/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogicTest.kt` 共 22 个用例，覆盖 `isPageZoomed` 的 null / 0f / 阈值边界，以及 `decideEdgePageTurn` 的页宽非法、页数非法、位移与速度都不达标、位移达标、仅甩动达标、距离达标时忽略反向甩动、首页无上一页、末页无下一页、阈值随页宽缩放。
    心智模型：Composable 只做编排，判定逻辑提成 `*Logic.kt` 纯函数（范例 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogic.kt），测试打在纯函数上。不要为了“能测”去写假 Composable 测试，也不要把判定塞回 Composable 再喊测不了。
 6. 边界清单（新增或改动这些逻辑时，测试必须覆盖；每条都已存在对应断言或测试类）：
    - 状态机非法转移必须抛错：core/src/main/kotlin/com/jm3/core/download/DownloadTask.kt:36 → DownloadTaskTest。
@@ -103,6 +104,7 @@
    - 分割图还原算法：Scramble.kt:14 → ScrambleTest。
    - 封面 URL 与域名拼接：CoverUrls.kt:4、Domains.kt:4 → CoverUrlsTest、DomainsTest。
    - 阅读器缩放判定与边缘翻页阈值：app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogic.kt:13-14、:23-41、:58-82 → ReaderZoomLogicTest（22 用例；改阈值、改判定分支或改 `EdgeDragTracker` 口径必须同步改这里）。
+   - 共享元素飞行几何：app/src/main/kotlin/com/jm3/app/miuix/ui/AlbumHeroLogic.kt:41-121 → AlbumHeroLogicTest（22 用例；改 `HERO_MIN_TRAVEL_PX`、`HERO_FLIGHT_DURATION_MS`、`HERO_PENDING_TIMEOUT_MS` 或 `shouldRunHero` 判据必须同步改这里，且超时值必须大于飞行时长）。
    - 章节标签与通知文案：ChapterLabels.kt:10 → ChapterLabelsTest、NotificationBodyTest。
    - 设置项映射与默认值：core/src/main/kotlin/com/jm3/core/settings/SettingsRepository.kt:13 → SettingsRepositoryTest。
 7. 断言纪律：只测公共入口；不打桩自身控制的协作者；不用 `Thread.sleep` 等时序；一个用例只表达一个业务规则；计算与规则逻辑至少用两组差异数据（常规 + 边界）验证。
@@ -121,10 +123,11 @@
 7. **通知进度节流 300ms，终态立即刷新**（DownloadThrottle，DownloadNotifier.kt:237；周期常量 :35）；dataSync 累计 6 小时配额用尽时把在途任务置 PAUSED、退出前台并留一条可见通知（DownloadService.kt:66-82 → DownloadManager.kt:164），不做保活：前台服务启动失败时不再定时重试，只等下一次活动任务数变化（DownloadService.kt:131-162 的 `countChanged`）。
 8. **许可证口径**：只有 Apache-2.0 / MIT 的代码可直接复制；GPL-3.0 / AGPL-3.0（含 EhViewer 主仓、yunxi、cu guis）一律只采思路、自行重写，不粘贴源码文本、不照搬结构命名。仓库整体以 MIT 分发（LICENSE:1），但 app/src/main/kotlin/com/jm3/app/miuix/ui/glass/ 下 12 个文件（BackdropSupport、CombinedBackdrop、DampedDragAnimation、FloatingBottomBar、FloatingBottomBarItems、FloatingBottomBarLayers、GlassPullToRefresh、GlassScaffold、InnerShadow、InteractiveHighlight、Lens、Vibrancy）保留 `// SPDX-License-Identifier: Apache-2.0` 头，按 Apache-2.0 分发；再复制第三方代码时必须同步更新 LICENSE、本文件与依赖清单，不许含糊其辞。
 9. **提升型持续通知必须按 API 36.1 判版本**：`setRequestPromotedOngoing` 的 `since` 是 36.1，`setShortCriticalText` 是 36.0，共用 `SDK_INT >= 36` 一个守卫会让 Android 16.0 直接 `NoSuchMethodError` 崩掉前台服务。判定写成 `Build.VERSION.SDK_INT >= 36 && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1`（DownloadNotifier.kt:175-182），前一段短路避免 `SDK_INT_FULL` 的 `NoSuchFieldError`；`BAKLAVA_1` 是编译期内联常量，不会在旧系统上触发字段解析。
+10. **共享元素飞行自绘 overlay，不用 Compose 原生 `Modifier.sharedBounds`**。原生方案要求两端节点处于同一个 `AnimatedVisibilityScope`，或在 `SharedTransitionLayout` 下切换 `AnimatedVisibility`；jm3 的导航是 miuix-nav 0.9.4，转场靠 `graphicsLayer` 直接改写（`NavTransition.transformEntry`），源码里既没有 AnimatedVisibilityScope 也没有 EnterTransition 接线，原生 sharedBounds 无处挂载；引入 compose-destinations 或 material-motion 只为动效不划算。因此改为：列表与详情各自用 `onGloballyPositioned` 把矩形登记进 `AlbumHeroHost`（AlbumHero.kt:47-51、:202、:225），飞行用一个覆盖在 NavDisplay 之上的 `AlbumHeroOverlay` 按 `Animatable` 插值绘制（AlbumHero.kt:155-199），几何算法全在 AlbumHeroLogic.kt。代价与取舍：hero 图用列表侧缩略图 URL + `crossfade(false)`（避免换高清 URL 出现空窗）；拿不到任一端矩形直接退化为普通页转场（`startForward` 返回 false）；同一 albumId 若在两层同时可见，`coverRects` 只保留最后登记的矩形，返回落点可能落在被遮挡那个上，属于已知局限。
 
 ## 附录 B：明确不做的待办与原因
 
 1. **Baseline Profile / macrobenchmark：暂不接入**。需要真机或模拟器反复采集（只有临时接入的单台真机，SDK 里没有 emulator 组件），且它只提供度量、不提供功能。等有稳定真机后按 androidx.baselineprofile 插件加独立 :benchmark 模块，接入时以“冷启动时间”为唯一验收指标。
 2. **ktlint / detekt：暂不接入**。仓库现在没有任何静态检查配置，接入要新增插件依赖并全量格式化，会产出与功能改动无关的巨量 diff。当前以第六章的“提交前跑测试”与人工审查代替；真要接入就单独一次提交、一次性格式化。
 3. **放大后的边缘翻页只做松手判定，不做跟手拖拽**。跟手要求 pager 与内容共享同一份 offset（翻页时内容跟着手指走、松手再决定归位还是切页），需要改 pager 的滚动源，改动面大于当前收益；现有实现是松手后整页 `springAnimateToPage`。
-4. **运行验证缺口（必须如实交代）**：仓库已在 Xiaomi 15 / Android 17（targetSdk 36）真机上实测阅读器缩放与边缘翻页、双击整屏覆盖层、dataSync 前台服务与进度通知（含提升型通知分支）；其余只有编译、单元测试（`:core:test` 146 用例 + `:app:testDebugUnitTest` 41 用例）与 release 打包（含 R8 与 lintVital）验证。仍未实测：`onTimeout` 超时回调、状态栏玻璃延伸的横向硬边、窄屏榜单列数、不同 ROM 下的通知拒绝路径。CHANGELOG 涉及时按「已实现、部分真机验证」措辞，不写成肯定结论。
+4. **运行验证缺口（必须如实交代）**：仓库已在 Xiaomi 15 / Android 17（targetSdk 36）真机上实测阅读器缩放与边缘翻页、双击整屏覆盖层、dataSync 前台服务与进度通知（含提升型通知分支）；其余只有编译、单元测试（`:core:test` 146 用例 + `:app:testDebugUnitTest` 63 用例）与 release 打包（含 R8 与 lintVital）验证。仍未实测：共享元素飞行（列表 → 详情的飞行轨迹、返回落点与 380ms 时长的观感，等设备可用后必须补测）、`onTimeout` 超时回调、状态栏玻璃延伸的横向硬边、窄屏榜单列数、不同 ROM 下的通知拒绝路径。CHANGELOG 涉及时按「已实现、部分真机验证」措辞，不写成肯定结论。
