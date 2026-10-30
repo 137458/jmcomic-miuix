@@ -48,6 +48,8 @@ class AlbumHeroHost {
     private val headerRects = mutableStateMapOf<String, HeroRect>()
     private val coverCorners = mutableStateMapOf<String, Float>()
     private val headerCorners = mutableStateMapOf<String, Float>()
+    private val lastHeaderRects = mutableMapOf<String, HeroRect>()
+    private val lastHeaderCorners = mutableMapOf<String, Float>()
     private val urls = mutableStateMapOf<String, String>()
     private var sequence = 0
 
@@ -78,6 +80,8 @@ class AlbumHeroHost {
 
     fun registerHeader(albumId: String, url: String?, rect: HeroRect, cornerDp: Float) {
         if (!isFiniteHeroRect(rect)) return
+        lastHeaderRects[albumId] = rect
+        lastHeaderCorners[albumId] = cornerDp
         if (headerRects[albumId] == rect && headerCorners[albumId] == cornerDp && (url == null || urls[albumId] == url)) return
         headerRects[albumId] = rect
         headerCorners[albumId] = cornerDp
@@ -135,17 +139,21 @@ class AlbumHeroHost {
         state = state.cancelPending()
     }
 
-    /** 退栈时调用：详情头图飞回列表卡片。 */
+    /** 退栈时调用：详情头图飞回列表卡片。优先使用当前头图矩形，已被注销时降级使用最近一次测得的有效矩形。 */
     fun startBackward(albumId: String): Boolean {
+        val hRect = headerRects[albumId] ?: lastHeaderRects[albumId]
+        val hCorner = headerCorners[albumId] ?: lastHeaderCorners[albumId] ?: 0f
         state = state.startBackward(
             id = ++sequence,
             albumId = albumId,
             url = urls[albumId],
-            headerRect = headerRects[albumId],
-            headerCornerDp = headerCorners[albumId] ?: 0f,
+            headerRect = hRect,
+            headerCornerDp = hCorner,
             coverRect = coverRects[albumId],
             coverCornerDp = coverCorners[albumId] ?: 0f,
         )
+        lastHeaderRects.remove(albumId)
+        lastHeaderCorners.remove(albumId)
         return state.flight != null
     }
 
@@ -197,6 +205,9 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
                 .data(flight.url)
                 // 覆盖层自己做形变，再叠一次 Coil 淡入会出现半透明重影
                 .crossfade(false)
+                .placeholderMemoryCacheKey(flight.url?.let { coil3.memory.MemoryCache.Key(it) })
+                .memoryCacheKey(flight.url?.let { coil3.memory.MemoryCache.Key(it) })
+                .size(coil3.size.Size.ORIGINAL)
                 .build(),
             contentDescription = null,
             contentScale = ContentScale.Crop,

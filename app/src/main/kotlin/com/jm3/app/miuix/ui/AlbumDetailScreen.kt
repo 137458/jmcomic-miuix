@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import androidx.activity.compose.BackHandler
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -124,6 +125,7 @@ fun AlbumDetailScreen(
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
+    BackHandler(onBack = onBack)
     val context = LocalContext.current
     val user by Jm3Graph.account.user.collectAsState()
 
