@@ -68,12 +68,13 @@
 1. 组件库只有一个：Miuix。:app 依赖里没有 Material3（app/build.gradle.kts:72-105），全量 grep `androidx.compose.material3` 零命中，版本目录也没有该条目。新增界面一律用 Miuix，禁止“先引一下 material3 的 Icon”。
 2. 三态与常用件复用 `Common.kt`：`LoadingScreen`（:183）、`ErrorScreen`（:197）、`EmptyState`/`CenteredEmptyState`（:215、:235）、`LoadMoreFooter`（:278-297）、`PagerBar`/`ResultPagerBar`（:394、:388）、`Modifier.pressScale`（:445）、`rememberSelectionHaptic()`（:471）。新屏自造加载/空态视为重复实现。
 3. 阅读器手势是一条有优先级的状态机，新增手势必须在这套状态机里排队（主文件 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt）：
-   - 缩放状态只由当前页写入（ReaderScreen.kt:596 `if (index == pagerState.currentPage) pageZoomed = zoomed`，信号源是 :1008-1011 的 `derivedStateOf` + `LaunchedEffect(zoomed)`），翻页即复位（状态 :293 与 :294 的 `LaunchedEffect(pagerState.currentPage)`，另有 :1013-1015 在页翻走时 `resetZoom()`）。
-   - pager 的横向手势在放大时被接管：`pagerGestureOverride(pagerState, enabled = !pageZoomed)` 且 `userScrollEnabled = false`（ReaderScreen.kt:581、:583），嵌套滚动交给 `PagerGestureNestedScrollConnection`（:584）。
-   - 放大后拖到边界继续拖才翻页：`onHorizontalEdgeDrag` → `decideEdgePageTurn` → `springAnimateToPage`（:599-619，判定调用 :601、动画 :615）。判定逻辑在 ReaderZoomLogic.kt:26-44，不在 Composable 里。
-4. 阈值与判定必须是纯函数并集中：`ZOOMED_THRESHOLD = 0.02f`、`EDGE_PAGE_DISTANCE_RATIO = 0.25f`、`EDGE_PAGE_FLING_VELOCITY = 1_000f`（ReaderZoomLogic.kt:4、:10、:13），`isPageZoomed`（:16-17）与 `decideEdgePageTurn`（:26-44）已有真实调用点（ReaderScreen.kt:601、:1009）。不许把这些数字散落回 Composable。
-5. 缩放路径不得写死解码尺寸：`zoomEnabled` 分支只挂 listener 不写 `size`（ReaderScreen.kt:992-1003，:993 注释：写死尺寸会让放大后发糊），普通路径必须写与预取相同的 `pageSize`（:1000；预取侧 :869、:890 用同一尺寸，保证内存缓存可复用）。改这一处会同时影响清晰度与内存。
-6. 纵向长图模式不要做就地缩放：3:4 页框会把放大内容裁掉（ReaderScreen.kt:635 注释），双击改为打开整屏覆盖层（状态 :296、进入 :636、渲染 :680-696）。同类“想当然”的交互改动先在真机上验证再提。
+   - 缩放状态只由当前页写入（ReaderScreen.kt:594 `if (index == pagerState.currentPage) pageZoomed = zoomed`，信号源是 :1008-1011 的 `derivedStateOf` + `LaunchedEffect(zoomed)`），翻页即复位（状态 :291-292 的 `LaunchedEffect(pagerState.currentPage)`，另有 :1013-1015 在页翻走时 `resetZoom()`）。
+   - pager 的横向手势在放大时被接管：`pagerGestureOverride(pagerState, enabled = !pageZoomed)` 且 `userScrollEnabled = false`（ReaderScreen.kt:579、:581），嵌套滚动交给 `PagerGestureNestedScrollConnection`（:582）。
+   - 放大后拖到边界继续拖才翻页：`onHorizontalEdgeDrag` → `decideEdgePageTurn` → `springAnimateToPage`（:597-619，判定调用 :599、复核与动画 :613-614）。判定逻辑在 ReaderZoomLogic.kt:23-41，不在 Composable 里。
+   - 边界位移必须在 `PointerEventPass.Initial` 自己数：telephoto 越过触摸阈值后即使内容已不能移动，也会在 Main pass 之前把所有 `positionChanged()` 消费掉（transformable.kt:245-249），父节点在 Main pass 只能看到 `isConsumed == true`。手势采集实现在 ReaderScreen.kt:1026-1062，位移口径是「累计手势位移 − 内容偏移变化」（`EdgeDragTracker`，ReaderZoomLogic.kt:58-82），不是逐帧判断是否被消费。
+4. 阈值与判定必须是纯函数并集中：`ZOOMED_THRESHOLD = 0.02f`、`EDGE_PAGE_DISTANCE_RATIO = 0.18f`、`CONTENT_PIN_TOLERANCE_PX = 24f`、`EDGE_CONFIRM_DELAY_MS = 120L`、`EDGE_CONFIRM_MOVE_PX = 8f`（ReaderZoomLogic.kt:4、:10、:43、:46、:49），`isPageZoomed`（:13-14）、`decideEdgePageTurn`（:23-41）与 `EdgeDragTracker`（:58-82）已有真实调用点（ReaderScreen.kt:599、:1009、:1031）。不许把这些数字散落回 Composable。
+5. 缩放路径不得写死解码尺寸：`zoomEnabled` 分支只挂 listener 不写 `size`（ReaderScreen.kt:992-997，:993 注释：写死尺寸会让放大后发糊），普通路径必须写与预取相同的 `pageSize`（:1000；预取侧用同一尺寸，保证内存缓存可复用）。改这一处会同时影响清晰度与内存。
+6. 纵向长图模式不要做就地缩放：3:4 页框会把放大内容裁掉（ReaderScreen.kt:635 注释），双击改为打开整屏覆盖层（状态 :294、进入 :636、渲染 :680-698）。同类“想当然”的交互改动先在真机上验证再提。
 7. 动效收敛：缩放跟随用 telephoto 自带的 `rememberZoomableImageState` + `resetZoom`，按压缩放用 `Modifier.pressScale(0.96f)`（默认值见 Common.kt:445），触感用 `rememberSelectionHaptic()`（:471）。不新增自研动画框架。
 8. 边缘到边与返回：`enableEdgeToEdge()` 在 app/src/main/kotlin/com/jm3/app/miuix/MainActivity.kt:25 统一开启，屏幕自己处理 `innerPadding`；音量键翻页由 `onKeyDown` 交给 `ReaderVolumeKeys`（MainActivity.kt:60-62；ReaderVolumeKeys 定义在 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt:128，dispatch 在 :132），不要再在屏幕里重复拦截。阅读器在长图覆盖层等浮层打开时必须让音量键返回 false，且 `onDispose` 只在 handler 仍是自己时才置空（ReaderScreen.kt:489-521），否则换章重叠会把新屏注册的 handler 清掉。
 
@@ -101,7 +102,7 @@
    - 会话编解码往返与坏数据降级：SessionCodec.kt:7 → SessionCodecTest。
    - 分割图还原算法：Scramble.kt:14 → ScrambleTest。
    - 封面 URL 与域名拼接：CoverUrls.kt:4、Domains.kt:4 → CoverUrlsTest、DomainsTest。
-   - 阅读器缩放判定与边缘翻页阈值：app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogic.kt:16-17、:26-44 → ReaderZoomLogicTest（15 用例；改阈值或改判定分支必须同步改这里）。
+   - 阅读器缩放判定与边缘翻页阈值：app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogic.kt:13-14、:23-41、:58-82 → ReaderZoomLogicTest（22 用例；改阈值、改判定分支或改 `EdgeDragTracker` 口径必须同步改这里）。
    - 章节标签与通知文案：ChapterLabels.kt:10 → ChapterLabelsTest、NotificationBodyTest。
    - 设置项映射与默认值：core/src/main/kotlin/com/jm3/core/settings/SettingsRepository.kt:13 → SettingsRepositoryTest。
 7. 断言纪律：只测公共入口；不打桩自身控制的协作者；不用 `Thread.sleep` 等时序；一个用例只表达一个业务规则；计算与规则逻辑至少用两组差异数据（常规 + 边界）验证。
@@ -113,7 +114,7 @@
 
 1. **阅读器缩放用 telephoto，不用 net.engawapg.lib:zoomable**。坐标 `me.saket.telephoto:zoomable-image-coil3` 0.19.0（Apache-2.0），见 gradle/libs.versions.toml:16、:30 与 app/build.gradle.kts:85。理由是它同时给到分块超采样与缩放感知解码，一次依赖解决“放大发糊”；pixez 那条 zoomable 路线缺超采样。
 2. **手势让渡必须显式关掉 Miuix 的翻页拦截**。Miuix 的 `PagerSwipeNode` 在 PointerEventPass.Initial 判 `change.isConsumed`，而 telephoto 在 Main pass 消费，Initial 先于 Main，因此放大时保持 `enabled = true` 会“一边平移一边翻页”（.tools/miuix-src/x/commonMain/top/yukonga/miuix/kmp/utils/PagerGestureUtils.kt:168-198）。所以 HorizontalPager 恒为 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderScreen.kt:581）。
-3. **放大后“内容到边界再翻页”由自研 Main-pass 旁路实现**：父层只在子节点不消费（`change.isConsumed == false`）时累计 dragX 与速度，松手用纯函数判定（ReaderScreen.kt:1024-1055 + ReaderZoomLogic.kt:26-44）。不跟手、不做橡皮筋。
+3. **放大后“内容到边界再翻页”由自研 Initial-pass 旁路实现**：telephoto 一旦越过触摸阈值就无条件消费全部位移（内容到边界也不放手），Main-pass 拿不到未消费事件，所以父层改在 `PointerEventPass.Initial` 抢先取原始位移，用「累计手势位移 − 内容偏移变化」得到贴边空拖量，松手 120ms 后再复核内容是否仍在移动，仍在动就判为平移（ReaderScreen.kt:1026-1062 + ReaderZoomLogic.kt:23-41、:58-82）。不跟手、不做橡皮筋。
 4. **长图模式不就地缩放**：3:4 页框会裁掉放大后的内容，且与 LazyColumn 竖向滚动抢手势；改为双击进整屏覆盖层（ReaderScreen.kt:296、:636、:680-696），单击或返回键退出。
 5. **图片必须经 DiskCache 快照复用，禁止塞 okio.Buffer**（理由与判定位置见第二章第 4 条）。`ReaderKeyer.keyOf` 是内存键与磁盘键的唯一来源（ReaderImages.kt:29-32），不许在别处拼字符串。
 6. **下载前台服务只做“持有前台状态 + 展示通知”，不做调度**：调度与状态真源仍是 DownloadQueue，服务生命周期唯一驱动量是活动任务数（DownloadService.kt:131-162）。不引入 WorkManager 之类的新依赖。
@@ -123,7 +124,7 @@
 
 ## 附录 B：明确不做的待办与原因
 
-1. **Baseline Profile / macrobenchmark：暂不接入**。需要真机或模拟器反复采集（当前 `adb devices` 为空，SDK 里没有 emulator 组件），且它只提供度量、不提供功能。等有稳定真机后按 androidx.baselineprofile 插件加独立 :benchmark 模块，接入时以“冷启动时间”为唯一验收指标。
+1. **Baseline Profile / macrobenchmark：暂不接入**。需要真机或模拟器反复采集（只有临时接入的单台真机，SDK 里没有 emulator 组件），且它只提供度量、不提供功能。等有稳定真机后按 androidx.baselineprofile 插件加独立 :benchmark 模块，接入时以“冷启动时间”为唯一验收指标。
 2. **ktlint / detekt：暂不接入**。仓库现在没有任何静态检查配置，接入要新增插件依赖并全量格式化，会产出与功能改动无关的巨量 diff。当前以第六章的“提交前跑测试”与人工审查代替；真要接入就单独一次提交、一次性格式化。
-3. **放大后的边缘翻页只做松手判定，不做跟手拖拽**。跟手需要 pager 与内容共享 offset，改动面大，且当前无真机可验，风险大于收益。
-4. **运行验证缺口（必须如实交代）**：仓库目前只做到编译、单元测试（`:core:test` + `:app:testDebugUnitTest`，共 180 用例）与 release 打包（含 R8 与 lintVital）验证，没有在真机或模拟器上跑过；手势优先级、通知提升胶囊（Android 16.1+）、`onTimeout` 超时回调、状态栏玻璃延伸的横向硬边、窄屏榜单列数都未经实测。CHANGELOG 涉及时按「已实现、待真机验证」措辞，不写成肯定结论。
+3. **放大后的边缘翻页只做松手判定，不做跟手拖拽**。跟手要求 pager 与内容共享同一份 offset（翻页时内容跟着手指走、松手再决定归位还是切页），需要改 pager 的滚动源，改动面大于当前收益；现有实现是松手后整页 `springAnimateToPage`。
+4. **运行验证缺口（必须如实交代）**：仓库已在 Xiaomi 15 / Android 17（targetSdk 36）真机上实测阅读器缩放与边缘翻页、双击整屏覆盖层、dataSync 前台服务与进度通知（含提升型通知分支）；其余只有编译、单元测试（`:core:test` 146 用例 + `:app:testDebugUnitTest` 41 用例）与 release 打包（含 R8 与 lintVital）验证。仍未实测：`onTimeout` 超时回调、状态栏玻璃延伸的横向硬边、窄屏榜单列数、不同 ROM 下的通知拒绝路径。CHANGELOG 涉及时按「已实现、部分真机验证」措辞，不写成肯定结论。
