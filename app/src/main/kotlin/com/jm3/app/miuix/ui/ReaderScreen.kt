@@ -49,8 +49,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -597,10 +595,9 @@ private fun ReaderPages(
                         },
                         // 放大后内容已到边界仍继续横拖时接翻页：此时缩放层不再消费手势
                         onHorizontalEdgeDrag = if (pageZoomed) {
-                            { dragX, velocityX ->
+                            { dragX, stillPinned ->
                                 val turn = decideEdgePageTurn(
                                     dragX = dragX,
-                                    velocityX = velocityX,
                                     // 左右模式整屏一页，页宽就是窗口宽（Size 的 width 是 Dimension，不宜参与算术）
                                     pageWidth = pageWidthPx.toFloat(),
                                     currentPage = pagerState.currentPage,
@@ -612,7 +609,10 @@ private fun ReaderPages(
                                     } else {
                                         pagerState.currentPage - 1
                                     }
-                                    scope.launch { pagerState.springAnimateToPage(target) }
+                                    // 惯性带不走内容才算真的贴边，否则这次手势只是在平移
+                                    scope.launch {
+                                        if (stillPinned()) pagerState.springAnimateToPage(target)
+                                    }
                                 }
                             }
                         } else {
@@ -977,7 +977,7 @@ private fun ReaderPage(
     onTap: (() -> Unit)? = null,
     onZoomChanged: ((Boolean) -> Unit)? = null,
     onDoubleTap: (() -> Unit)? = null,
-    onHorizontalEdgeDrag: ((dragX: Float, velocityX: Float) -> Unit)? = null,
+    onHorizontalEdgeDrag: ((dragX: Float, stillPinned: suspend () -> Boolean) -> Unit)? = null,
 ) {
     val context = LocalPlatformContext.current
     var retryKey by remember(image) { mutableIntStateOf(0) }
@@ -1018,32 +1018,39 @@ private fun ReaderPage(
         } else {
             null
         }
-        // 缩放层是子节点，在 Main pass 先于父节点拿到手势：只有它不再消费（内容到边界）
-        // 时父节点才接管，用松手位移与速度判定是否翻页
+        // telephoto 越过触摸阈值后会无条件消费全部位移事件，内容到边界之后也不放手，
+        // 父节点在 Main pass 只能看到「已消费」。改在 Initial pass 抢先读原始位移，再用内容
+        // 偏移判断内容是否还在跟随手势：内容停下后累计的位移才算边界空拖，参与翻页判定。
         val edgeDrag = rememberUpdatedState(onHorizontalEdgeDrag)
         Box(
             modifier = if (onHorizontalEdgeDrag != null) {
                 modifier.pointerInput(zoomableState) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        val tracker = VelocityTracker()
-                        var dragX = 0f
+                        val zoomable = zoomableState.zoomableState
+                        val edgeTracker = EdgeDragTracker()
+                            .apply { start(zoomable.contentTransformation.offset.x) }
                         while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Main)
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
                             // 多指是捏合缩放，不参与翻页判定
                             if (event.changes.size > 1) break
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (change.isConsumed) {
-                                // 缩放层仍在平移内容，边界从它停下的那一刻算起
-                                dragX = 0f
-                                tracker.resetTracking()
-                            } else {
-                                tracker.addPointerInputChange(change)
-                                dragX += change.positionChange().x
-                            }
+                            edgeTracker.onDrag(
+                                deltaX = change.positionChange().x,
+                                offsetX = zoomable.contentTransformation.offset.x,
+                            )
                             if (!change.pressed) {
-                                if (dragX != 0f) {
-                                    edgeDrag.value?.invoke(dragX, tracker.calculateVelocity().x)
+                                val pinnedDragX = edgeTracker.pinnedDragX()
+                                if (pinnedDragX != 0f) {
+                                    // 快甩时 telephoto 要等松手后才用惯性把内容带走，拖动期间内容
+                                    // 几乎不动，会把整段位移误算成空拖。这里把复核推迟到惯性起步之后。
+                                    val offsetAtRelease = zoomable.contentTransformation.offset.x
+                                    edgeDrag.value?.invoke(pinnedDragX) {
+                                        kotlinx.coroutines.delay(EDGE_CONFIRM_DELAY_MS)
+                                        kotlin.math.abs(
+                                            zoomable.contentTransformation.offset.x - offsetAtRelease,
+                                        ) < EDGE_CONFIRM_MOVE_PX
+                                    }
                                 }
                                 break
                             }
