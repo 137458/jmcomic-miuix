@@ -698,13 +698,23 @@ private fun HotTagFlow(tags: List<String>, expanded: Boolean, onClick: (String) 
 /** 连载更新卡：封面 + 标题 + 作者，横向滑动浏览。 */
 @Composable
 private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
-    Card(modifier = Modifier.width(112.dp), onClick = onClick) {
+    val heroHost = LocalAlbumHeroHost.current
+    Card(
+        modifier = Modifier.width(112.dp),
+        onClick = {
+            heroHost?.startForward(update.id, update.coverUrl, MIUIX_CARD_CORNER_DP)
+            onClick()
+        },
+    ) {
         if (update.coverUrl != null) {
             AsyncImage(
                 model = update.coverUrl,
                 contentDescription = update.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.width(112.dp).height(150.dp),
+                modifier = Modifier
+                    .width(112.dp)
+                    .height(150.dp)
+                    .albumHeroCover(update.id, update.coverUrl, MIUIX_CARD_CORNER_DP),
             )
         } else {
             Spacer(modifier = Modifier.width(112.dp).height(150.dp))
@@ -789,13 +799,23 @@ private fun InlineLoading() {
 /** 随机推荐卡：封面 + 两行标题，横向滑动浏览。 */
 @Composable
 private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
-    Card(modifier = Modifier.width(96.dp), onClick = onClick) {
+    val heroHost = LocalAlbumHeroHost.current
+    Card(
+        modifier = Modifier.width(96.dp),
+        onClick = {
+            heroHost?.startForward(pick.id, pick.coverUrl, MIUIX_CARD_CORNER_DP)
+            onClick()
+        },
+    ) {
         if (pick.coverUrl != null) {
             AsyncImage(
                 model = pick.coverUrl,
                 contentDescription = pick.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.width(96.dp).height(128.dp),
+                modifier = Modifier
+                    .width(96.dp)
+                    .height(128.dp)
+                    .albumHeroCover(pick.id, pick.coverUrl, MIUIX_CARD_CORNER_DP),
             )
         } else {
             Spacer(modifier = Modifier.width(96.dp).height(128.dp))

@@ -65,6 +65,9 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** 搜索结果行封面的圆角；形变飞行两端要复刻同一个值。 */
+private const val SEARCH_COVER_CORNER_DP = 6f
+
 /** 评论回复面板：显示被回复作者、200 字上限与发送状态；换目标时清空草稿。 */
 @Composable
 fun CommentReplySheet(
@@ -240,7 +243,7 @@ fun CenteredEmptyState(title: String, hint: String? = null, modifier: Modifier =
 
 /** 搜索结果行封面：统一尺寸，缺失时留空占位，保持行高稳定。 */
 @Composable
-private fun SearchResultCover(url: String?) {
+private fun SearchResultCover(albumId: String, url: String?) {
     if (url == null) {
         Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
         return
@@ -251,7 +254,8 @@ private fun SearchResultCover(url: String?) {
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
-            .squircleClip(6.dp),
+            .squircleClip(SEARCH_COVER_CORNER_DP.dp)
+            .albumHeroCover(albumId, url, SEARCH_COVER_CORNER_DP),
     )
 }
 
@@ -311,6 +315,7 @@ private fun SearchResultCard(
         .filter { it.isNotBlank() }
         .joinToString(" · ")
         .ifBlank { null }
+    val heroHost = LocalAlbumHeroHost.current
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).pressScale()) {
         BasicComponent(
             startAction = {
@@ -319,10 +324,13 @@ private fun SearchResultCard(
                         RankIndexBadge(rank = rank)
                         Spacer(modifier = Modifier.width(10.dp))
                     }
-                    SearchResultCover(result.coverUrl)
+                    SearchResultCover(result.id, result.coverUrl)
                 }
             },
-            onClick = onClick,
+            onClick = {
+                heroHost?.startForward(result.id, result.coverUrl, SEARCH_COVER_CORNER_DP)
+                onClick()
+            },
         ) {
             Text(
                 text = result.title,
@@ -579,10 +587,14 @@ fun LazyStaggeredGridScope.rankResultGrid(
 /** 榜单封面卡：封面 + 左上角名次角标 + 单行标题与作者，字号层级与 pixez 封面卡一致。 */
 @Composable
 private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
+    val heroHost = LocalAlbumHeroHost.current
     Card(
         modifier = Modifier.fillMaxWidth().pressScale(),
         insideMargin = PaddingValues(0.dp),
-        onClick = onClick,
+        onClick = {
+            heroHost?.startForward(result.id, result.coverUrl, MIUIX_CARD_CORNER_DP)
+            onClick()
+        },
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             if (result.coverUrl != null) {
@@ -590,7 +602,10 @@ private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
                     model = result.coverUrl,
                     contentDescription = result.title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(RANK_COVER_ASPECT),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(RANK_COVER_ASPECT)
+                        .albumHeroCover(result.id, result.coverUrl, MIUIX_CARD_CORNER_DP),
                 )
             } else {
                 Box(

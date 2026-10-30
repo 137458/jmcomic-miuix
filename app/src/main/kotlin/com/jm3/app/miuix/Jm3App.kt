@@ -2,7 +2,10 @@ package com.jm3.app.miuix
 
 import android.app.Activity
 import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -11,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -31,12 +35,15 @@ import com.jm3.app.miuix.data.history.MIGRATION_1_2
 import com.jm3.app.miuix.data.history.RoomDownloadRepository
 import com.jm3.app.miuix.data.history.RoomHistoryRepository
 import com.jm3.app.miuix.ui.AlbumDetailScreen
+import com.jm3.app.miuix.ui.AlbumHeroHost
+import com.jm3.app.miuix.ui.AlbumHeroOverlay
 import com.jm3.app.miuix.ui.CreatorWorkDetailScreen
 import com.jm3.app.miuix.ui.CreatorWorksScreen
 import com.jm3.app.miuix.ui.FavoritesScreen
 import com.jm3.app.miuix.ui.ForumScreen
 import com.jm3.app.miuix.ui.HistoryScreen
 import com.jm3.app.miuix.ui.LibraryScreen
+import com.jm3.app.miuix.ui.LocalAlbumHeroHost
 import com.jm3.app.miuix.ui.LoginScreen
 import com.jm3.app.miuix.ui.MainScreen
 import com.jm3.app.miuix.ui.NovelDetailScreen
@@ -75,6 +82,7 @@ import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
+import top.yukonga.miuix.kmp.nav.transition.navGraphicsTransition
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
@@ -270,6 +278,19 @@ private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode 
         }
     }
 
+/**
+ * 详情页进场转场：只做 alpha，不做位移。
+ *
+ * 共享元素按根坐标插值，页面若整宽平移，头图的根坐标矩形每一帧都在变，飞行落点就会漂；
+ * 所以这一页和它覆盖的那一页都不平移，位移感交给飞行的封面本身。
+ */
+private val albumDetailTransition = navGraphicsTransition(
+    opaqueDepth = 1f,
+    dismissDirection = NavSwipeDirection.LeftToRight,
+) { scope ->
+    if (scope.relativeDepth <= 0f) alpha = (1f + scope.relativeDepth).coerceIn(0f, 1f)
+}
+
 @Composable
 fun Jm3App() {
     // 全局图片加载器：所有 AsyncImage 共享，交叉淡入消除列表滚动时的硬切
@@ -290,6 +311,23 @@ fun Jm3App() {
     }
     // 全局 Snackbar：各屏 Scaffold 的 snackbarHost 槽挂载同一个 host state
     val snackbarHostState = remember { SnackbarHostState() }
+    // 列表 → 详情的共享元素宿主：封面/头图矩形登记表与当前飞行都挂在它身上
+    val heroHost = remember { AlbumHeroHost() }
+    // 退栈前先把头图送回列表卡片再出栈；任一端拿不到矩形时退化成普通退栈
+    val popBack: () -> Unit = {
+        (backStack.lastOrNull() as? Route.AlbumDetail)?.let { heroHost.startBackward(it.albumId) }
+        backStack.removeLastOrNull()
+    }
+    // 兜底：侧滑返回等不经过 popBack 的退出路径，靠栈顶变化补一次反向飞行
+    var lastTopAlbumId by remember { mutableStateOf<String?>(null) }
+    val topAlbumId = (backStack.lastOrNull() as? Route.AlbumDetail)?.albumId
+    LaunchedEffect(topAlbumId) {
+        val previous = lastTopAlbumId
+        if (previous != null && previous != topAlbumId && heroHost.flight == null && heroHost.pending == null) {
+            heroHost.startBackward(previous)
+        }
+        lastTopAlbumId = topAlbumId
+    }
 
     // 启动顺序：先恢复主题与线路，最后 restore 会话——保证 Cookie 注入到切换后的网关。
     LaunchedEffect(Unit) {
@@ -313,206 +351,214 @@ fun Jm3App() {
         }
         // 转场特效：圆角裁剪贴合设备屏幕圆角，背景色补上浮层下露出的底色（HyperOS 浮动转场观感）
         val screenCornerRadius = rememberNavSystemCornerRadius()
-        NavDisplay(
-            backStack = backStack,
-            onBack = { backStack.removeLastOrNull() },
-            effects = NavDisplayEffects(
-                cornerClipRadius = screenCornerRadius,
-                backdropColor = MiuixTheme.colorScheme.surface,
-            ),
-        ) {
-            entry<Route.Main> {
-                MainScreen(
-                    gateway = Jm3Graph.gateway,
-                    account = Jm3Graph.account,
-                    snackbarHostState = snackbarHostState,
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                    onOpenLogin = { backStack.add(Route.Login) },
-                    onOpenFavorites = { backStack.add(Route.Favorites) },
-                    onOpenHistory = { backStack.add(Route.History) },
-                    onOpenShelf = { backStack.add(Route.Shelf) },
-                    onOpenSettings = { backStack.add(Route.Settings) },
-                    onOpenWeek = { backStack.add(Route.Week) },
-                    onOpenNotifications = { backStack.add(Route.Notifications) },
-                    onOpenTracking = { backStack.add(Route.Tracking) },
-                    onOpenProfile = { backStack.add(Route.Profile) },
-                    onOpenTasks = { backStack.add(Route.Tasks) },
-                    onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
-                    onOpenForum = { backStack.add(Route.Forum) },
-                    onOpenNovel = { backStack.add(Route.Novel) },
-                    onOpenLibrary = { backStack.add(Route.Library) },
-                )
-            }
-            entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                LoginScreen(account = Jm3Graph.account, onBack = { backStack.removeLastOrNull() })
-            }
-            entry<Route.Favorites>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                FavoritesScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                )
-            }
-            entry<Route.History>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                HistoryScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                    onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                )
-            }
-            entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                ShelfScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                )
-            }
-            entry<Route.Settings>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                SettingsScreen(
-                    themeMode = themeMode,
-                    onThemeModeChange = { mode ->
-                        themeModeName = mode.name
-                        scope.launch { Jm3Graph.settings.setThemeMode(mode) }
-                    },
-                    dynamicColor = dynamicColor,
-                    onDynamicColorChange = { enabled ->
-                        dynamicColor = enabled
-                        scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
-                    },
-                    onBack = { backStack.removeLastOrNull() },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Week>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                WeekScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                )
-            }
-            entry<Route.Notifications>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                NotificationsScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Tracking>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                TrackingScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Tasks>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                TasksScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Profile>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                ProfileScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.WatchHistory>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                WatchHistoryScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Forum>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                ForumScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenLogin = { backStack.add(Route.Login) },
-                    snackbarHostState = snackbarHostState,
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                )
-            }
-            entry<Route.AlbumDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
-                AlbumDetailScreen(
-                    albumId = route.albumId,
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                    onOpenLogin = { backStack.add(Route.Login) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
-                ReaderScreen(
-                    photoId = route.photoId,
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenChapter = { photoId ->
-                        // 同层替换：返回键回到详情页，而不是逐章回退
-                        if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(photoId)
-                    },
-                    onOpenLogin = { backStack.add(Route.Login) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Novel>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                NovelListScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                    onOpenLogin = { backStack.add(Route.Login) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.NovelDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
-                NovelDetailScreen(
-                    novelId = route.novelId,
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                    onOpenReader = { novelId, chapterId ->
-                        backStack.add(Route.NovelReader(novelId, chapterId))
-                    },
-                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                    onOpenLogin = { backStack.add(Route.Login) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.NovelReader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
-                NovelReaderScreen(
-                    novelId = route.novelId,
-                    initialChapterId = route.chapterId,
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenLogin = { backStack.add(Route.Login) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Library>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                LibraryScreen(
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
-                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Creator>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
-                CreatorWorksScreen(
-                    creatorId = route.creatorId,
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
-                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.CreatorWork>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
-                CreatorWorkDetailScreen(
-                    workId = route.workId,
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            entry<Route.Search>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
-                SearchScreen(
-                    query = route.query,
-                    scope = route.scope,
-                    onBack = { backStack.removeLastOrNull() },
-                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                )
+        CompositionLocalProvider(LocalAlbumHeroHost provides heroHost) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                NavDisplay(
+                    backStack = backStack,
+                    onBack = popBack,
+                    effects = NavDisplayEffects(
+                        cornerClipRadius = screenCornerRadius,
+                        backdropColor = MiuixTheme.colorScheme.surface,
+                    ),
+                ) {
+                    entry<Route.Main> {
+                        MainScreen(
+                            gateway = Jm3Graph.gateway,
+                            account = Jm3Graph.account,
+                            snackbarHostState = snackbarHostState,
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            onOpenLogin = { backStack.add(Route.Login) },
+                            onOpenFavorites = { backStack.add(Route.Favorites) },
+                            onOpenHistory = { backStack.add(Route.History) },
+                            onOpenShelf = { backStack.add(Route.Shelf) },
+                            onOpenSettings = { backStack.add(Route.Settings) },
+                            onOpenWeek = { backStack.add(Route.Week) },
+                            onOpenNotifications = { backStack.add(Route.Notifications) },
+                            onOpenTracking = { backStack.add(Route.Tracking) },
+                            onOpenProfile = { backStack.add(Route.Profile) },
+                            onOpenTasks = { backStack.add(Route.Tasks) },
+                            onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
+                            onOpenForum = { backStack.add(Route.Forum) },
+                            onOpenNovel = { backStack.add(Route.Novel) },
+                            onOpenLibrary = { backStack.add(Route.Library) },
+                        )
+                    }
+                    entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        LoginScreen(account = Jm3Graph.account, onBack = { backStack.removeLastOrNull() })
+                    }
+                    entry<Route.Favorites>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        FavoritesScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                        )
+                    }
+                    entry<Route.History>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        HistoryScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                        )
+                    }
+                    entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        ShelfScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                        )
+                    }
+                    entry<Route.Settings>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        SettingsScreen(
+                            themeMode = themeMode,
+                            onThemeModeChange = { mode ->
+                                themeModeName = mode.name
+                                scope.launch { Jm3Graph.settings.setThemeMode(mode) }
+                            },
+                            dynamicColor = dynamicColor,
+                            onDynamicColorChange = { enabled ->
+                                dynamicColor = enabled
+                                scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
+                            },
+                            onBack = { backStack.removeLastOrNull() },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Week>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        WeekScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                        )
+                    }
+                    entry<Route.Notifications>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        NotificationsScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Tracking>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        TrackingScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Tasks>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        TasksScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Profile>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        ProfileScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.WatchHistory>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        WatchHistoryScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Forum>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        ForumScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenLogin = { backStack.add(Route.Login) },
+                            snackbarHostState = snackbarHostState,
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                        )
+                    }
+                    entry<Route.AlbumDetail>(
+                        transition = albumDetailTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) { route ->
+                        AlbumDetailScreen(
+                            albumId = route.albumId,
+                            onBack = popBack,
+                            onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                            onOpenLogin = { backStack.add(Route.Login) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                        ReaderScreen(
+                            photoId = route.photoId,
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenChapter = { photoId ->
+                                // 同层替换：返回键回到详情页，而不是逐章回退
+                                if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(photoId)
+                            },
+                            onOpenLogin = { backStack.add(Route.Login) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Novel>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        NovelListScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
+                            onOpenLogin = { backStack.add(Route.Login) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.NovelDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                        NovelDetailScreen(
+                            novelId = route.novelId,
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
+                            onOpenReader = { novelId, chapterId ->
+                                backStack.add(Route.NovelReader(novelId, chapterId))
+                            },
+                            onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                            onOpenLogin = { backStack.add(Route.Login) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.NovelReader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                        NovelReaderScreen(
+                            novelId = route.novelId,
+                            initialChapterId = route.chapterId,
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenLogin = { backStack.add(Route.Login) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Library>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        LibraryScreen(
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
+                            onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Creator>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                        CreatorWorksScreen(
+                            creatorId = route.creatorId,
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
+                            onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.CreatorWork>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                        CreatorWorkDetailScreen(
+                            workId = route.workId,
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                            snackbarHostState = snackbarHostState,
+                        )
+                    }
+                    entry<Route.Search>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                        SearchScreen(
+                            query = route.query,
+                            scope = route.scope,
+                            onBack = { backStack.removeLastOrNull() },
+                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                        )
+                    }
+                }
+                AlbumHeroOverlay(host = heroHost, modifier = Modifier.fillMaxSize())
             }
         }
     }

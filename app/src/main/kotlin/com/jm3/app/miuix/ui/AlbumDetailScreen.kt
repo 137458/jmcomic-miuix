@@ -744,7 +744,8 @@ private fun DetailHeader(
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
             detail.coverUrl?.let { url ->
-                Card(modifier = Modifier.width(112.dp)) {
+                // 头图是「列表卡片 → 详情页」形变飞行的落点：卡片内封面被裁成 16dp 圆角，这里对齐同一个值
+                Card(modifier = Modifier.width(112.dp).albumHeroHeader(detail.id, url, MIUIX_CARD_CORNER_DP)) {
                     AsyncImage(
                         model = url,
                         contentDescription = detail.title,
