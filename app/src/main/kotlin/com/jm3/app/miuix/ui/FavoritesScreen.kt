@@ -436,6 +436,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                             }
                         }
                         items(p.items, key = { it.id }) { result ->
+                            val heroHost = LocalAlbumHeroHost.current
                             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                                 BasicComponent(
                                     title = result.title,
@@ -443,7 +444,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                         .filter { it.isNotBlank() }
                                         .joinToString(" · ")
                                         .ifBlank { null },
-                                    startAction = { FavoriteRowCover(result.coverUrl) },
+                                    startAction = { FavoriteRowCover(result.id, result.coverUrl) },
                                     endActions = {
                                         IconButton(
                                             onClick = {
@@ -454,7 +455,10 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                             Icon(MiuixIcons.MoveFile, contentDescription = "移动到收藏夹")
                                         }
                                     },
-                                    onClick = { onOpenAlbum(result.id) },
+                                    onClick = {
+                                        heroHost?.startForward(result.id, result.coverUrl, FAVORITE_COVER_CORNER_DP)
+                                        onOpenAlbum(result.id)
+                                    },
                                 )
                             }
                         }
@@ -771,9 +775,12 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     }
 }
 
+/** 收藏行封面圆角；形变飞行两端要复刻同一个值。 */
+private const val FAVORITE_COVER_CORNER_DP = 6f
+
 /** 收藏行封面：与其他列表统一尺寸，缺失时留空占位保持行高稳定。 */
 @Composable
-private fun FavoriteRowCover(url: String?) {
+private fun FavoriteRowCover(albumId: String, url: String?) {
     if (url == null) {
         Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
         return
@@ -784,6 +791,7 @@ private fun FavoriteRowCover(url: String?) {
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
-            .squircleClip(6.dp),
+            .squircleClip(FAVORITE_COVER_CORNER_DP.dp)
+            .albumHeroCover(albumId, url, FAVORITE_COVER_CORNER_DP),
     )
 }
