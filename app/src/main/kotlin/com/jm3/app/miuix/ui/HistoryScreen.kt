@@ -57,8 +57,7 @@ private sealed interface HistoryListState {
     data class Failed(val message: String) : HistoryListState
 }
 
-/** 历史行封面圆角；形变飞行两端要复刻同一个值。 */
-private const val HISTORY_COVER_CORNER_DP = 8f
+
 
 /** 按作品聚合的阅读历史：最近一章用于一键续读，count 为该作品已读章节数。 */
 private data class AlbumHistory(
@@ -277,12 +276,12 @@ private fun AlbumHistoryCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(width = 58.dp, height = 78.dp)
-                        .squircleClip(HISTORY_COVER_CORNER_DP.dp)
-                        .albumHeroCover(album.albumId, cover, HISTORY_COVER_CORNER_DP),
+                        .squircleClip(HERO_HISTORY_ROW_CORNER_DP.dp)
+                        .albumHeroCover(album.albumId, cover, HERO_HISTORY_ROW_CORNER_DP),
                 )
             } else {
                 Box(
-                    modifier = Modifier.size(width = 58.dp, height = 78.dp).squircleClip(HISTORY_COVER_CORNER_DP.dp),
+                    modifier = Modifier.size(width = 58.dp, height = 78.dp).squircleClip(HERO_HISTORY_ROW_CORNER_DP.dp),
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
@@ -310,7 +309,7 @@ private fun AlbumHistoryCard(
                     TextButton(
                         text = "详情",
                         onClick = {
-                            heroHost?.startForward(album.albumId, album.latest.coverUrl, HISTORY_COVER_CORNER_DP)
+                            heroHost?.startForward(album.albumId, album.latest.coverUrl, HERO_HISTORY_ROW_CORNER_DP)
                             onOpenDetail()
                         },
                         minWidth = 0.dp,

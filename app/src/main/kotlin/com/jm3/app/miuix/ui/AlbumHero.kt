@@ -170,7 +170,11 @@ val LocalAlbumHeroHost = staticCompositionLocalOf<AlbumHeroHost?> { null }
  * CardDefaults.cornerRadius 在 0.9.4 里是 internal（字节码 getCornerRadius-D9Ej5fM 带值类改写后缀），
  * 外部取不到，只能照抄这个数字；库若改默认圆角，这里跟着改。
  */
-const val MIUIX_CARD_CORNER_DP = 16f
+const val HERO_CARD_CORNER_DP = 16f
+const val MIUIX_CARD_CORNER_DP = HERO_CARD_CORNER_DP
+const val HERO_SEARCH_ROW_CORNER_DP = 6f
+const val HERO_HISTORY_ROW_CORNER_DP = 8f
+const val HERO_FAVORITE_ROW_CORNER_DP = 6f
 
 /** 覆盖层：画在 NavDisplay 之上，按进度插值矩形与圆角。 */
 @Composable
