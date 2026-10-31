@@ -111,7 +111,12 @@ class AlbumHeroHostTest {
         assertEquals(HERO_CARD_CORNER_DP, flight.cornerToDp)
         assertEquals(coverUrl, flight.url)
 
-        // 飞行期间两端均隐藏避让
+        // 覆盖层首帧还没画出来：两端必须保持可见，否则原位会露出背景空洞
+        assertFalse(host.isCoverHidden(albumId))
+        assertFalse(host.isHeaderHidden(albumId))
+
+        // 覆盖层画出首帧后才让位
+        host.markOverlayReady(flight.id)
         assertTrue(host.isCoverHidden(albumId))
         assertTrue(host.isHeaderHidden(albumId))
     }
@@ -125,6 +130,8 @@ class AlbumHeroHostTest {
         host.resolvePending()
 
         val flightId = host.flight!!.id
+        host.markOverlayReady(flightId)
+        assertTrue(host.isCoverHidden(albumId))
         host.finishFlight(flightId)
 
         assertNull(host.flight)
@@ -167,7 +174,9 @@ class AlbumHeroHostTest {
         assertEquals(HERO_SEARCH_ROW_CORNER_DP, flight.cornerToDp)
         assertEquals(coverUrl, flight.url)
 
-        // 反向飞行期间两端再次隐藏
+        // 反向飞行同样要等覆盖层画出首帧才让位
+        assertFalse(host.isCoverHidden(albumId))
+        host.markOverlayReady(flight.id)
         assertTrue(host.isCoverHidden(albumId))
         assertTrue(host.isHeaderHidden(albumId))
     }
@@ -253,5 +262,100 @@ class AlbumHeroHostTest {
         host.registerCover(anotherAlbumId, anotherUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP, anotherTitle)
         assertEquals(anotherTitle, host.albumTitle(anotherAlbumId))
         assertEquals(anotherUrl, host.coverUrl(anotherAlbumId))
+    }
+
+    @Test
+    fun 覆盖层就绪前两端封面保持可见() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_SEARCH_ROW_CORNER_DP)
+        host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
+        assertTrue(host.resolvePending())
+
+        // 起飞瞬间覆盖层还是空白的；此时隐藏两端封面会露出一帧空洞，正是"闪一下"的来源
+        assertNotNull(host.flight)
+        assertFalse(host.isCoverHidden(albumId))
+        assertFalse(host.isHeaderHidden(albumId))
+    }
+
+    @Test
+    fun 覆盖层画出首帧后两端封面隐藏() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_SEARCH_ROW_CORNER_DP)
+        host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
+        host.resolvePending()
+
+        val flightId = host.flight!!.id
+        host.markOverlayReady(flightId)
+
+        assertTrue(host.isCoverHidden(albumId))
+        assertTrue(host.isHeaderHidden(albumId))
+        // 只对当前飞行生效，别的相册不受影响
+        assertFalse(host.isCoverHidden("album_other"))
+    }
+
+    @Test
+    fun 就绪标记只认当前飞行id() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_SEARCH_ROW_CORNER_DP)
+        host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
+        host.resolvePending()
+
+        val flightId = host.flight!!.id
+        // 过期的飞行回调不得把封面藏起来
+        host.markOverlayReady(flightId + 1)
+        assertFalse(host.isCoverHidden(albumId))
+        assertFalse(host.isHeaderHidden(albumId))
+
+        host.markOverlayReady(flightId)
+        assertTrue(host.isCoverHidden(albumId))
+    }
+
+    @Test
+    fun 飞行结束后就绪标记清空且下一段飞行重新等待() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_SEARCH_ROW_CORNER_DP)
+        host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
+        host.resolvePending()
+        host.markOverlayReady(host.flight!!.id)
+
+        host.finishFlight(host.flight!!.id)
+        assertNull(host.flight)
+        assertFalse(host.isCoverHidden(albumId))
+
+        // 反向飞行是新的 id，必须重新等覆盖层画出首帧，不能沿用上一段的就绪标记
+        assertTrue(host.startBackward(albumId))
+        assertFalse(host.isCoverHidden(albumId))
+        assertFalse(host.isHeaderHidden(albumId))
+
+        host.markOverlayReady(host.flight!!.id)
+        assertTrue(host.isCoverHidden(albumId))
+    }
+
+    @Test
+    fun 待飞阶段详情头图保持可见() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_SEARCH_ROW_CORNER_DP)
+
+        // 待飞阶段覆盖层还没开始画，头图必须先显示，否则详情页头图位置会空一段
+        assertNotNull(host.pending)
+        assertNull(host.flight)
+        assertFalse(host.isHeaderHidden(albumId))
+        assertFalse(host.isCoverHidden(albumId))
+    }
+
+    @Test
+    fun 没有飞行时标记就绪不产生副作用() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP)
+
+        host.markOverlayReady(1)
+        assertNull(host.flight)
+        assertFalse(host.isCoverHidden(albumId))
+        assertFalse(host.isHeaderHidden(albumId))
     }
 }

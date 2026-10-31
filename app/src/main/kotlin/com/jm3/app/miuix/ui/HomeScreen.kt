@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,14 +39,15 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.glass.GlassFabItem
+import com.jm3.app.miuix.ui.glass.GlassFloatingActionBar
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
@@ -57,7 +61,6 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
-import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
@@ -355,6 +358,17 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 100 }
     }
 
+    // 悬浮操作栏要让开底栏胶囊：胶囊高 64dp，底边距为「有导航条 8dp+inset，否则 20dp」，
+    // Scaffold 又给 FAB 自带 12dp 边距，这里统一换算成 FAB 的 bottom 内边距并保留 16dp 视觉间距。
+    val navigationBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val floatingBarTopInset = (if (navigationBarInset != 0.dp) 8.dp + navigationBarInset else 20.dp) + 64.dp
+    val floatingActionsBottom = if (LocalFloatingBarContentPadding.current == 0.dp) {
+        // 宽屏改用侧栏、没有悬浮底栏，直接贴右下角
+        16.dp
+    } else {
+        floatingBarTopInset + 16.dp - navigationBarInset - 12.dp
+    }
+
     fun openRandom() {
         val candidates = randomPicks.ifEmpty { activePage()?.items.orEmpty() }
         candidates.randomOrNull()?.let { onOpenAlbum(it.id) }
@@ -443,33 +457,22 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         },
         floatingActionButton = {
             if (showActions) {
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    FloatingActionButton(
-                        onClick = ::openRandom,
-                        minWidth = 44.dp,
-                        minHeight = 44.dp,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.Promotions,
+                GlassFloatingActionBar(
+                    items = listOf(
+                        GlassFabItem(
+                            icon = MiuixIcons.Promotions,
                             contentDescription = "随机看一部",
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    FloatingActionButton(
-                        onClick = { scope.launch { listState.animateScrollToItem(0) } },
-                        minWidth = 44.dp,
-                        minHeight = 44.dp,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ExpandLess,
+                            onClick = ::openRandom,
+                        ),
+                        GlassFabItem(
+                            icon = MiuixIcons.ExpandLess,
                             contentDescription = "回到顶部",
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
+                            onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                        ),
+                    ),
+                    // 右下角摆放，整体上移让开悬浮底栏；右边距与底栏胶囊的 24dp 对齐
+                    modifier = Modifier.padding(end = 12.dp, bottom = floatingActionsBottom),
+                )
             }
         },
     ) { innerPadding ->
@@ -733,10 +736,9 @@ private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
         },
     ) {
         if (update.coverUrl != null) {
-            AsyncImage(
-                model = update.coverUrl,
+            AlbumCoverImage(
+                url = update.coverUrl,
                 contentDescription = update.title,
-                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .width(112.dp)
                     .height(150.dp)
@@ -834,10 +836,9 @@ private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
         },
     ) {
         if (pick.coverUrl != null) {
-            AsyncImage(
-                model = pick.coverUrl,
+            AlbumCoverImage(
+                url = pick.coverUrl,
                 contentDescription = pick.title,
-                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .width(96.dp)
                     .height(128.dp)

@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -54,6 +55,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 让列表末项能滚出胶囊上方，同时内容其余部分可穿透底栏滚动、持续被玻璃采样。
  */
 val LocalFloatingBarContentPadding = compositionLocalOf { 0.dp }
+
+/**
+ * GlassScaffold 采样的内容图层。浮层（FAB 槽等）通过它拿到与顶栏同一份 backdrop，
+ * 才能对内容做模糊与折射而不是采样到空白；脱离 GlassScaffold 使用时为 null，浮层退化为实色。
+ */
+val LocalGlassBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
 
 /**
  * GlassScaffold 提供的顶栏折叠行为。[GlassTopAppBar] 自动取用；页面无需关心嵌套滚动的挂载。
@@ -122,65 +129,68 @@ fun GlassScaffold(
     // 子页面（未被消费）不会贴到手势条/三键导航上，主 tab 也不会重复让位。
     val systemBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    Scaffold(
-        modifier = modifier,
-        snackbarHost = snackbarHost,
-        floatingActionButton = floatingActionButton,
-    ) { innerPadding ->
-        // bottom 不含折叠位移，是常量；折叠位移由 CollapsingContentPadding 留到测量期再读。
-        val contentBottomPadding = maxOf(innerPadding.calculateBottomPadding(), systemBarBottom) +
-            floatingBarContentPadding +
-            BottomContentBreathingSpace
-        // 固定实例身份：每次重组都新建 PaddingValues 会让调用侧拿到的参数每次都不相等，
-        // 内容子树的测量缓存因此作废，本与折叠无关的重组（主题切换、页面状态刷新）也被放大成整页重新测量。
-        val contentPadding = remember(
-            topBarExpandedHeight,
-            contentBottomPadding,
-            scrollBehavior.state,
-            density,
-        ) {
-            CollapsingContentPadding(
-                expandedTop = topBarExpandedHeight,
-                state = scrollBehavior.state,
-                density = density,
-                bottom = contentBottomPadding,
-            )
-        }
-        // 折叠行为对内容同样可见：页面里的 GlassTopBarScrollSync 需要它补同步
-        CompositionLocalProvider(
-            LocalGlassScrollBehavior provides scrollBehavior,
-            LocalGlassTopBarExpandedHeight provides topBarExpandedHeight,
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .layerBackdropSource(backdrop)
-                        .nestedScroll(scrollBehavior.nestedScrollConnection),
-                ) {
-                    content(contentPadding)
-                }
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .onSizeChanged { topBarMaxHeightPx = maxOf(topBarMaxHeightPx, it.height) }
-                        .then(
-                            if (shaderReady) {
-                                Modifier.topBarProgressiveBlur(backdrop)
-                            } else {
-                                Modifier.background(containerColor)
-                            },
-                        ),
-                ) {
-                    // 折叠进度越高，同色遮罩越实：渐变模糊在底缘衰减到 0，只靠模糊时小标题
-                    // 下方的正文仍然清晰可读，观感杂乱；补一层渐变底色把标题区压实。
+    CompositionLocalProvider(LocalGlassBackdrop provides backdrop) {
+        // FAB 槽与内容层不在同一棵子树里，通过 CompositionLocal 传递采样源。
+        Scaffold(
+            modifier = modifier,
+            snackbarHost = snackbarHost,
+            floatingActionButton = floatingActionButton,
+        ) { innerPadding ->
+            // bottom 不含折叠位移，是常量；折叠位移由 CollapsingContentPadding 留到测量期再读。
+            val contentBottomPadding = maxOf(innerPadding.calculateBottomPadding(), systemBarBottom) +
+                floatingBarContentPadding +
+                BottomContentBreathingSpace
+            // 固定实例身份：每次重组都新建 PaddingValues 会让调用侧拿到的参数每次都不相等，
+            // 内容子树的测量缓存因此作废，本与折叠无关的重组（主题切换、页面状态刷新）也被放大成整页重新测量。
+            val contentPadding = remember(
+                topBarExpandedHeight,
+                contentBottomPadding,
+                scrollBehavior.state,
+                density,
+            ) {
+                CollapsingContentPadding(
+                    expandedTop = topBarExpandedHeight,
+                    state = scrollBehavior.state,
+                    density = density,
+                    bottom = contentBottomPadding,
+                )
+            }
+            // 折叠行为对内容同样可见：页面里的 GlassTopBarScrollSync 需要它补同步
+            CompositionLocalProvider(
+                LocalGlassScrollBehavior provides scrollBehavior,
+                LocalGlassTopBarExpandedHeight provides topBarExpandedHeight,
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
                     Box(
                         modifier = Modifier
-                            .matchParentSize()
-                            .topBarScrim(state = scrollBehavior.state, color = containerColor),
-                    )
-                    topBar()
+                            .fillMaxSize()
+                            .layerBackdropSource(backdrop)
+                            .nestedScroll(scrollBehavior.nestedScrollConnection),
+                    ) {
+                        content(contentPadding)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .onSizeChanged { topBarMaxHeightPx = maxOf(topBarMaxHeightPx, it.height) }
+                            .then(
+                                if (shaderReady) {
+                                    Modifier.topBarProgressiveBlur(backdrop)
+                                } else {
+                                    Modifier.background(containerColor)
+                                },
+                            ),
+                    ) {
+                        // 折叠进度越高，同色遮罩越实：渐变模糊在底缘衰减到 0，只靠模糊时小标题
+                        // 下方的正文仍然清晰可读，观感杂乱；补一层渐变底色把标题区压实。
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .topBarScrim(state = scrollBehavior.state, color = containerColor),
+                        )
+                        topBar()
+                    }
                 }
             }
         }

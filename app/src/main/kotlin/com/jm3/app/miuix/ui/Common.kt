@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -47,7 +46,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.squircle.squircleClip
-import coil3.compose.AsyncImage
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -247,10 +245,9 @@ private fun SearchResultCover(albumId: String, url: String?, title: String? = nu
         Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
         return
     }
-    AsyncImage(
-        model = url,
+    AlbumCoverImage(
+        url = url,
         contentDescription = null,
-        contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
             .squircleClip(HERO_SEARCH_ROW_CORNER_DP.dp)
@@ -597,10 +594,9 @@ private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             if (result.coverUrl != null) {
-                AsyncImage(
-                    model = result.coverUrl,
+                AlbumCoverImage(
+                    url = result.coverUrl,
                     contentDescription = result.title,
-                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(RANK_COVER_ASPECT)

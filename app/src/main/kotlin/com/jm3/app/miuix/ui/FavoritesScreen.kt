@@ -28,9 +28,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.mergedWith
@@ -784,10 +782,9 @@ private fun FavoriteRowCover(albumId: String, url: String?) {
         Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
         return
     }
-    AsyncImage(
-        model = url,
+    AlbumCoverImage(
+        url = url,
         contentDescription = null,
-        contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
             .squircleClip(HERO_FAVORITE_ROW_CORNER_DP.dp)

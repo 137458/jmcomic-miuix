@@ -788,11 +788,13 @@ private fun DetailHeader(
                         .size(width = 144.dp, height = 192.dp)
                         .albumHeroHeader(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
                 ) {
-                    AsyncImage(
-                        model = coverUrl,
+                    // 与列表卡片、飞行覆盖层共用同一个 Coil 内存缓存条目（显式 key + 固定 144x192dp 解码尺寸），
+                    // 命中即首帧出图；crossfade 会在命中后仍淡入一次，正是“封面闪一下”的来源之一。
+                    AlbumCoverImage(
+                        url = coverUrl,
                         contentDescription = title,
-                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
+                        crossfade = false,
                     )
                 }
                 Spacer(modifier = Modifier.width(16.dp))
@@ -1010,7 +1012,10 @@ private fun AlbumInfoCard(
     }
 }
 
-/** 章节组：一组 10 话，默认仅展开续读所在组。 */
+/** 章节组是否值得给出展开/收起入口：单话分组没有折叠意义，直接展示该话。 */
+internal fun shouldShowChapterGroupToggle(size: Int): Boolean = size > 1
+
+/** 章节组：一组 10 话，默认仅展开续读所在组；单话分组不渲染摘要行。 */
 @Composable
 private fun ChapterGroupCard(
     group: List<Chapter>,
@@ -1026,13 +1031,16 @@ private fun ChapterGroupCard(
     val titles = group.mapIndexed { index, chapter ->
         ChapterLabels.chapterTitle(chapter.title, startPosition + index)
     }
+    val showToggle = shouldShowChapterGroupToggle(group.size)
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        BasicComponent(
-            title = ChapterLabels.groupTitle(group.map { it.title }, startPosition),
-            summary = "${group.size} 话 · 点击${if (expanded) "收起" else "展开"}",
-            onClick = onToggle,
-        )
-        if (expanded) {
+        if (showToggle) {
+            BasicComponent(
+                title = ChapterLabels.groupTitle(group.map { it.title }, startPosition),
+                summary = "${group.size} 话 · 点击${if (expanded) "收起" else "展开"}",
+                onClick = onToggle,
+            )
+        }
+        if (expanded || !showToggle) {
             group.forEachIndexed { index, chapter ->
                 val title = titles[index]
                 BasicComponent(
