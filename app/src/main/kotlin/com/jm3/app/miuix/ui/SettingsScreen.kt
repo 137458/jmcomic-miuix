@@ -31,6 +31,8 @@ import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
+import com.jm3.core.update.ReleaseAsset
+import com.jm3.core.update.ReleaseInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -65,6 +67,34 @@ private fun PaginationMode.label(): String = when (this) {
 /** 版本号连点触发隐藏诊断的阈值与窗口。 */
 private const val DIAGNOSTIC_TAPS = 5
 private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
+
+/**
+ * 测试更新弹窗用的固定假数据：只验证弹窗排版、Markdown 渲染与按钮文案，全程不触网。
+ *
+ * 故意带 .apk 资产与多级 Markdown，覆盖"有安装包"这条主分支；点按钮只弹提示，不会真的下载。
+ */
+private val TEST_UPDATE_RELEASE = ReleaseInfo(
+    tagName = "v9.9.9-test",
+    name = "测试更新弹窗",
+    notes = """
+        ## 本次更新
+        - 新增：作品卡显示标签与车号
+        - 新增：社区论坛与本地书架显示封面
+        - 修复：连载追踪误报未登录
+
+        ### 说明
+        这是一条**测试**笔记，用于检查弹窗内的 Markdown 渲染、`行内代码` 与长文滚动。
+    """.trimIndent(),
+    htmlUrl = "https://github.com/jm3-app/jm3/releases",
+    publishedAt = "2026-01-01T00:00:00Z",
+    assets = listOf(
+        ReleaseAsset(
+            name = "jm3-9.9.9-test.apk",
+            size = 12_345_678L,
+            downloadUrl = "https://github.com/jm3-app/jm3/releases/download/v9.9.9-test/jm3-9.9.9-test.apk",
+        ),
+    ),
+)
 
 /** 设置中心：主题/线路/数据管理/关于。内容一屏内可读，关于作为分区而非独立页。 */
 @Composable
@@ -101,6 +131,8 @@ fun SettingsScreen(
     // 版本号连点进入隐藏诊断（原版 secret tap 进 /test）
     var diagnostics by remember { mutableStateOf(false) }
     var versionTapCount by remember { mutableIntStateOf(0) }
+    // 测试更新弹窗：只在本地预览弹窗外观，不检查远端
+    var showTestUpdateDialog by remember { mutableStateOf(false) }
 
     val versionName = remember {
         @Suppress("DEPRECATION")
@@ -335,6 +367,11 @@ fun SettingsScreen(
                     summary = "查看远端最新版本，支持应用内下载与安装",
                     onClick = onOpenUpdate,
                 )
+                ArrowPreference(
+                    title = "测试更新弹窗",
+                    summary = "用固定假数据预览弹窗排版，不访问网络",
+                    onClick = { showTestUpdateDialog = true },
+                )
                 BasicComponent(
                     title = "开源组件",
                     summary = "jmcomic-api (MIT) · Miuix (Apache-2.0) · Coil (Apache-2.0) · Jetpack Compose (Apache-2.0)",
@@ -457,6 +494,22 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             )
         }
+
+        // 设置里的"测试更新弹窗"：直接复用真实弹窗，只把数据换成固定假版本
+        UpdateAvailableDialog(
+            show = showTestUpdateDialog,
+            currentVersion = versionName,
+            release = TEST_UPDATE_RELEASE,
+            onDismiss = { showTestUpdateDialog = false },
+            onDownload = {
+                showTestUpdateDialog = false
+                scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会开始应用内下载") }
+            },
+            onOpenRelease = {
+                showTestUpdateDialog = false
+                scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会打开 Releases 页面") }
+            },
+        )
     }
 }
 
