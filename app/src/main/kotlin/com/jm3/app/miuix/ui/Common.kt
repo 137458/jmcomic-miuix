@@ -35,6 +35,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -206,6 +207,50 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, modifier: Modifier = Modif
         )
         Spacer(modifier = Modifier.height(12.dp))
         TextButton(text = "重试", onClick = onRetry)
+    }
+}
+
+/**
+ * Miuix 弹窗的按钮排布：取消在左、主操作在右，两颗按钮等分一行。
+ *
+ * 弹窗内容已经由 `DialogDefaults.insideMargin` 给出 24dp 内边距，调用方不要再补水平 padding，
+ * 否则左右会变成 48dp，与系统弹窗以及 Miuix 分页/诊断面板的观感不一致。
+ * [destructive] 仅改文字色，背景仍与取消键同档，避免在浅色底上出现整块红色。
+ */
+@Composable
+fun DialogActionRow(
+    primaryText: String,
+    onPrimary: () -> Unit,
+    modifier: Modifier = Modifier,
+    secondaryText: String = "取消",
+    onSecondary: () -> Unit,
+    primaryEnabled: Boolean = true,
+    destructive: Boolean = false,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(top = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(
+            text = secondaryText,
+            onClick = onSecondary,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(
+            text = primaryText,
+            onClick = onPrimary,
+            enabled = primaryEnabled,
+            colors = if (destructive) {
+                ButtonDefaults.textButtonColors(
+                    color = Color.Transparent,
+                    textColor = MiuixTheme.colorScheme.error,
+                )
+            } else {
+                ButtonDefaults.textButtonColors()
+            },
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

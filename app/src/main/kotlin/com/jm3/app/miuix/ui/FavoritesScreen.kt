@@ -539,7 +539,8 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 folderError = null
             },
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+            // 输入框与按钮都落在弹窗自带的内边距里，不再重复加水平 padding
+            Column(modifier = Modifier.fillMaxWidth()) {
                 TextField(
                     value = folderNameInput,
                     onValueChange = { folderNameInput = it.take(20) },
@@ -554,32 +555,26 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                         color = MiuixTheme.colorScheme.error,
                     )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                TextButton(
-                    text = "保存",
-                    onClick = {
-                        val name = folderNameInput.trim()
-                        if (name.isEmpty()) {
-                            folderError = "名称不能为空"
-                        } else if (showCreate) {
-                            manageFolder(FavoriteFolderAction.ADD, targetId = "", name = name)
-                        } else {
-                            editTarget?.let { manageFolder(FavoriteFolderAction.EDIT, it.first.toString(), name) }
-                        }
-                    },
-                    enabled = !folderBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextButton(
-                    text = "取消",
-                    onClick = {
-                        showCreate = false
-                        editTarget = null
-                        folderError = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
+            DialogActionRow(
+                primaryText = if (showCreate) "新建" else "保存",
+                primaryEnabled = !folderBusy,
+                onSecondary = {
+                    showCreate = false
+                    editTarget = null
+                    folderError = null
+                },
+                onPrimary = {
+                    val name = folderNameInput.trim()
+                    if (name.isEmpty()) {
+                        folderError = "名称不能为空"
+                    } else if (showCreate) {
+                        manageFolder(FavoriteFolderAction.ADD, targetId = "", name = name)
+                    } else {
+                        editTarget?.let { manageFolder(FavoriteFolderAction.EDIT, it.first.toString(), name) }
+                    }
+                },
+            )
         }
 
         OverlayDialog(
@@ -588,37 +583,25 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
             summary = deleteTarget?.let { "将删除收藏夹「${it.second}」，夹内作品不会取消收藏。" },
             onDismissRequest = { deleteTarget = null; folderError = null },
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                folderError?.let { message ->
-                    Text(
-                        text = message,
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.error,
-                    )
-                }
-                TextButton(
-                    text = "取消",
-                    onClick = { deleteTarget = null; folderError = null },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextButton(
-                    text = "确认删除",
-                    colors = ButtonDefaults.textButtonColors(
-                        color = Color.Transparent,
-                        textColor = MiuixTheme.colorScheme.error,
-                    ),
-                    onClick = {
-                        deleteTarget?.let {
-                            manageFolder(FavoriteFolderAction.DELETE, it.first.toString())
-                        }
-                    },
-                    enabled = !folderBusy,
+            folderError?.let { message ->
+                Text(
+                    text = message,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.error,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+            DialogActionRow(
+                primaryText = "确认删除",
+                destructive = true,
+                primaryEnabled = !folderBusy,
+                onSecondary = { deleteTarget = null; folderError = null },
+                onPrimary = {
+                    deleteTarget?.let {
+                        manageFolder(FavoriteFolderAction.DELETE, it.first.toString())
+                    }
+                },
+            )
         }
 
         // 移动到收藏夹：只列自建收藏夹，排除「全部」(id=0)
