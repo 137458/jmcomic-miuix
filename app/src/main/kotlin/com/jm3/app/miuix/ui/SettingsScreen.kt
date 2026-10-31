@@ -42,7 +42,6 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -82,6 +81,7 @@ fun SettingsScreen(
     dynamicColor: Boolean,
     onDynamicColorChange: (Boolean) -> Unit,
     onBack: () -> Unit,
+    onOpenUpdate: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
     val context = LocalContext.current
@@ -210,7 +210,7 @@ fun SettingsScreen(
                 navigationIcon = { BackButton(onBack = onBack) },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -363,6 +363,11 @@ fun SettingsScreen(
                             diagnostics = true
                         }
                     },
+                )
+                ArrowPreference(
+                    title = "检查更新",
+                    summary = "查看远端最新版本与更新说明",
+                    onClick = onOpenUpdate,
                 )
                 BasicComponent(
                     title = "开源组件",
