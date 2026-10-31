@@ -48,6 +48,9 @@ internal object WorkCardTokens {
     /** 横滑轨道与窄栏里的固定卡宽。 */
     val CompactWidth: Dp = 112.dp
 
+    /** 行卡标题固定占的行数；单行标题也占满，保证同一列表里卡片等高。 */
+    const val RowTitleLines = 2
+
     /** 卡内文字区左右内边距。 */
     val TextPaddingH: Dp = 12.dp
 
@@ -65,12 +68,13 @@ internal object WorkCardTokens {
     val ThumbHeight: Dp = 64.dp
 
     /**
-     * 行卡贴边封面的高度：按 3:4 换算出约 57dp 宽。
+     * 行卡贴边封面的高度：按 3:4 换算出约 72dp 宽。
      *
      * 固定值而不是撑满行高——撑满会让两行标题的行比一行标题的行封面更大，
-     * 同一个列表里封面大小参差。行高取本值与文字高度中的较大者。
+     * 同一个列表里封面大小参差。取值与"两行标题 + 次级信息 + 附加行"的文字高度接近，
+     * 这样行高基本由封面决定，卡片高度也随之一致。
      */
-    val RowCoverHeight: Dp = 76.dp
+    val RowCoverHeight: Dp = 96.dp
 
     /** 作品网格的列间距与行间距。 */
     val GridSpacing: Dp = 8.dp
@@ -301,6 +305,8 @@ internal fun WorkGridCard(
                 style = MiuixTheme.textStyles.body2,
                 fontWeight = FontWeight.Medium,
                 color = MiuixTheme.colorScheme.onSurface,
+                // 与标题行数对齐占位：同一行里单行/两行标题的卡片高度一致
+                minLines = titleMaxLines,
                 maxLines = titleMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -372,7 +378,9 @@ internal fun WorkRowCard(
                     style = MiuixTheme.textStyles.body1,
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 2,
+                    // 固定占两行：单行标题的行不再比两行标题的行矮，列表里每张卡高度一致
+                    minLines = WorkCardTokens.RowTitleLines,
+                    maxLines = WorkCardTokens.RowTitleLines,
                     overflow = TextOverflow.Ellipsis,
                 )
                 WorkCardSubtitleText(authors = subtitle, category = category)
