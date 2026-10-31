@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用内安装 APK 时通过 FileProvider 暴露给系统安装器的路径。
+  只放行 cache/update 这一个下载目录，不用 path="."：
+  暴露范围越小，其他缓存文件就越不可能被外部应用按 content:// 读到。
+  该目录与 UpdateDownloader 中的 DOWNLOAD_DIR_NAME 必须一致。
+-->
+<paths>
+    <cache-path name="update" path="update/" />
+</paths>

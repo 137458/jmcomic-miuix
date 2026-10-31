@@ -60,6 +60,7 @@ import com.jm3.app.miuix.ui.TrackingScreen
 import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
 import com.jm3.app.miuix.ui.NotificationsScreen
+import com.jm3.app.miuix.update.UpdateDownloader
 import com.jm3.core.GatewayFactory
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadQueue
@@ -144,6 +145,9 @@ object Jm3Graph {
     }
 
     val appScope: CoroutineScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+
+    /** 应用内更新下载器：状态跟随进程，离开更新页后下载继续（协程跑在 [appScope] 上）。 */
+    val updateDownloader: UpdateDownloader by lazy { UpdateDownloader(appScope) }
 
     val downloadManager: DownloadManager by lazy {
         val pageSource = GatewayPageFetcher { gateway }
