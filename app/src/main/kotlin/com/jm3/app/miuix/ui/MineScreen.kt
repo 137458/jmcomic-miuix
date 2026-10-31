@@ -109,9 +109,21 @@ fun MineScreen(
             checkInBusy = false
             result
                 .onSuccess {
-                    checkedIn = true
-                    snackbarHostState.showSnackbar("签到成功")
-                    loadCheckInStatus()
+                    // 接口只要返回的 msg 不含「已签到过」就算成功，服务端没落账时同样会走到这里。
+                    // 因此以刷新后的日历为准确认这一天真的记上了，避免把没生效的签到显示成「今日已签到」。
+                    val refreshed = withContext(Dispatchers.IO) {
+                        runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
+                    }
+                    refreshed?.let { checkInStatus = it }
+                    val snackbarText = when (refreshed?.isSignedOn(LocalDate.now().dayOfMonth)) {
+                        null -> "签到已提交，暂时无法确认状态"
+                        true -> {
+                            checkedIn = true
+                            "签到成功"
+                        }
+                        false -> "签到未生效，请稍后重试"
+                    }
+                    snackbarHostState.showSnackbar(snackbarText)
                 }
                 .onFailure { checkInError = it.message ?: "签到失败，请重试" }
         }
@@ -161,7 +173,8 @@ fun MineScreen(
                         status != null -> {
                             // 「今日已签到」由 record 里当天的标记推导，切页重建后依旧成立；checkedIn 兜住接口延迟
                             val signedToday = checkedIn || status.isSignedOn(LocalDate.now().dayOfMonth)
-                            val eventLabel = status.eventName.ifBlank { "每日签到" }
+                            // 活动名可能自带「」，外层再包一层就会出现嵌套引号，这里原样拼接、不额外加引号
+                            val eventLabel = status.eventName.trim()
                             val rowOnClick: (() -> Unit)? = if (checkInBusy || signedToday) {
                                 null
                             } else {
@@ -173,10 +186,11 @@ fun MineScreen(
                                     signedToday -> "今日已签到"
                                     else -> "立即签到"
                                 },
-                                summary = if (signedToday) {
-                                    "「${eventLabel}」今天的奖励已入账"
-                                } else {
-                                    "「${eventLabel}」签到可得金币与经验"
+                                summary = when {
+                                    eventLabel.isEmpty() && signedToday -> "今天的奖励已入账"
+                                    eventLabel.isEmpty() -> "签到可得金币与经验"
+                                    signedToday -> "${eventLabel}今天的奖励已入账"
+                                    else -> "${eventLabel}签到可得金币与经验"
                                 },
                                 endActions = {
                                     when {
