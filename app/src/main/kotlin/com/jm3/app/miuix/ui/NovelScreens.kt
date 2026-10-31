@@ -289,59 +289,15 @@ private fun NovelListRow(
     onLike: () -> Unit,
     onFavorite: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .pressScale(),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NovelCover(url = item.coverUrl, width = 62.dp, height = 84.dp)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.name,
-                    style = MiuixTheme.textStyles.body1,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = item.author.ifBlank { "佚名" },
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                item.lastChapterTitle?.let { chapter ->
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "更新至 $chapter",
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Row(
-                    modifier = Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    item.likes?.let { likes ->
-                        Text(
-                            text = "♥ $likes",
-                            style = MiuixTheme.textStyles.footnote2,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                    Text(
-                        text = formatUnixSeconds(item.updateAt),
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-            }
+    WorkRowCard(
+        coverUrl = item.coverUrl,
+        title = item.name,
+        onClick = onClick,
+        coverContentDescription = item.name,
+        subtitle = item.author.ifBlank { "佚名" },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        textEndPadding = 4.dp,
+        trailing = {
             if (busy) {
                 CircularProgressIndicator(size = 20.dp)
             } else {
@@ -370,6 +326,34 @@ private fun NovelListRow(
                     }
                 }
             }
+        },
+    ) {
+        item.lastChapterTitle?.let { chapter ->
+            Text(
+                text = "更新至 $chapter",
+                style = MiuixTheme.textStyles.footnote2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        Row(
+            modifier = Modifier.padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item.likes?.let { likes ->
+                Text(
+                    text = "♥ $likes",
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            Text(
+                text = formatUnixSeconds(item.updateAt),
+                style = MiuixTheme.textStyles.footnote2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
         }
     }
 }

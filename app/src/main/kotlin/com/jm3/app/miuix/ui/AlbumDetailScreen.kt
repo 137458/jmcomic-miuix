@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -786,7 +785,7 @@ private fun DetailHeader(
                 Card(
                     modifier = Modifier
                         .size(width = 144.dp, height = 192.dp)
-                        .albumHeroHeader(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+                        .albumHeroHeader(albumId, coverUrl, HERO_CARD_CORNER_DP)
                 ) {
                     // 与列表卡片、飞行覆盖层共用同一个 Coil 内存缓存条目（显式 key + 固定 144x192dp 解码尺寸），
                     // 命中即首帧出图；crossfade 会在命中后仍淡入一次，正是“封面闪一下”的来源之一。
@@ -1062,28 +1061,17 @@ private fun ChapterGroupCard(
     }
 }
 
-/** 更多相关作品卡片：封面 + 两行标题。 */
+/** 更多相关作品卡片：封面 + 两行标题，外观走 [WorkGridCard] 的统一契约。 */
 @Composable
 private fun RelatedAlbumCard(related: SearchResult, onClick: () -> Unit) {
-    Card(modifier = Modifier.width(112.dp), onClick = onClick) {
-        if (related.coverUrl != null) {
-            AsyncImage(
-                model = related.coverUrl,
-                contentDescription = related.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(3f / 4f),
-            )
-        }
-        Text(
-            text = related.title,
-            style = MiuixTheme.textStyles.footnote2,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-        )
-    }
+    WorkGridCard(
+        title = related.title,
+        coverUrl = related.coverUrl,
+        onClick = onClick,
+        albumId = related.id,
+        coverContentDescription = related.title,
+        modifier = Modifier.width(WorkCardTokens.CompactWidth),
+    )
 }
 
 /** 评论输入：未登录时引导登录；登录后限 200 字并可发表。 */

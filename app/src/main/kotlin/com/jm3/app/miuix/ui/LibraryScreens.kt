@@ -80,7 +80,6 @@ import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
-import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -287,7 +286,7 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier.fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(WorkCardTokens.GridSpacing),
                             ) {
                                 row.forEach { work ->
                                     WorkCard(
@@ -484,7 +483,7 @@ fun CreatorWorksScreen(
                             Row(
                                 modifier = Modifier.fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(WorkCardTokens.GridSpacing),
                             ) {
                                 row.forEach { work ->
                                     WorkCard(
@@ -715,7 +714,12 @@ private fun CreatorRow(creator: CreatorMeta, onClick: () -> Unit) {
     }
 }
 
-/** 作品卡：封面 + 平台角标 + 标题 + 作者（可跳作者主页）/发布日期。 */
+/**
+ * 作品卡：封面 + 平台角标 + 标题 + 作者（可跳作者主页）/发布日期。
+ *
+ * 外观（圆角、封面比例、内边距、字号层级、角标）全部由 [WorkGridCard] 决定，
+ * 这里只负责把作品字段映射进去。
+ */
 @Composable
 private fun WorkCard(
     title: String,
@@ -727,50 +731,46 @@ private fun WorkCard(
     onClick: () -> Unit,
     onOpenAuthor: (() -> Unit)?,
 ) {
-    Column(modifier = modifier.pressScale().clickable(onClick = onClick)) {
-        Box(
-            modifier = Modifier.fillMaxWidth().aspectRatio(0.72f).squircleClip(10.dp),
-        ) {
-            LibraryCover(
-                url = coverUrl,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            platform?.takeIf { it.isNotBlank() }?.let { label ->
-                PlatformBadge(
-                    text = label,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+    val badgeLabel = platform?.takeIf { it.isNotBlank() }
+    WorkGridCard(
+        title = title.ifBlank { "无题" },
+        coverUrl = coverUrl,
+        onClick = onClick,
+        modifier = modifier,
+        badge = {
+            if (badgeLabel != null) {
+                WorkCoverBadge(
+                    text = badgeLabel,
+                    highlighted = true,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(WorkCardTokens.BadgeInset),
                 )
             }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = title.ifBlank { "无题" },
-            style = MiuixTheme.textStyles.body2,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (!authorName.isNullOrBlank() && onOpenAuthor != null) {
-            Text(
-                text = authorName,
-                style = MiuixTheme.textStyles.footnote2,
-                color = MiuixTheme.colorScheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp).clickable(onClick = onOpenAuthor),
-            )
-        }
-        workDate?.takeIf { it.isNotBlank() }?.let { date ->
-            Text(
-                text = date,
-                style = MiuixTheme.textStyles.footnote2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-    }
+        },
+        footer = {
+            if (!authorName.isNullOrBlank() && onOpenAuthor != null) {
+                Text(
+                    text = authorName,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(top = WorkCardTokens.TextGap)
+                        .clickable(onClick = onOpenAuthor),
+                )
+            }
+            workDate?.takeIf { it.isNotBlank() }?.let { date ->
+                Text(
+                    text = date,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = WorkCardTokens.TextGap),
+                )
+            }
+        },
+    )
 }
 
 /** 作者主页头部：背景（底部渐进模糊）+ 头像 + 名称。 */
@@ -837,33 +837,25 @@ private fun CreatorHero(author: CreatorAuthorWorks) {
     }
 }
 
-/** 相关作品卡：窄版封面 + 标题 + 平台角标。 */
+/** 相关作品卡：窄版封面 + 标题 + 平台角标，外观走 [WorkGridCard] 的统一契约。 */
 @Composable
 private fun RelatedWorkCard(work: CreatorRelatedWork, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier.width(120.dp).pressScale().clickable(onClick = onClick),
-    ) {
-        Box(modifier = Modifier.fillMaxWidth().aspectRatio(0.72f).squircleClip(8.dp)) {
-            LibraryCover(
-                url = work.coverUrl,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            work.platform?.takeIf { it.isNotBlank() }?.let { label ->
-                PlatformBadge(
-                    text = label,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+    val badgeLabel = work.platform?.takeIf { it.isNotBlank() }
+    WorkGridCard(
+        title = work.title.ifBlank { "无题" },
+        coverUrl = work.coverUrl,
+        onClick = onClick,
+        modifier = Modifier.width(WorkCardTokens.CompactWidth),
+        badge = {
+            if (badgeLabel != null) {
+                WorkCoverBadge(
+                    text = badgeLabel,
+                    highlighted = true,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(WorkCardTokens.BadgeInset),
                 )
             }
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = work.title.ifBlank { "无题" },
-            style = MiuixTheme.textStyles.footnote1,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+        },
+    )
 }
 
 /** 语言/来源筛选：接口下发的选项 + 首项「全部」。 */
@@ -941,21 +933,6 @@ private fun LibraryFooter(
             )
         }
     }
-}
-
-/** 平台角标：半透明主色胶囊 + 白字，与 HyperOS 标签观感一致。 */
-@Composable
-private fun PlatformBadge(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MiuixTheme.textStyles.footnote2,
-        color = Color.White,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier
-            .squircleBackground(MiuixTheme.colorScheme.primary.copy(alpha = 0.9f), 6.dp)
-            .padding(horizontal = 5.dp, vertical = 2.dp),
-    )
 }
 
 /** 统一封面占位：缺失时保留同尺寸色块，避免网格跳动。 */

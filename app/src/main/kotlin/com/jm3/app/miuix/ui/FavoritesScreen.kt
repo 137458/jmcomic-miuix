@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -26,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import top.yukonga.miuix.kmp.squircle.squircleClip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
@@ -454,7 +452,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                                         }
                                     },
                                     onClick = {
-                                        heroHost?.startForward(result.id, result.coverUrl, HERO_FAVORITE_ROW_CORNER_DP)
+                                        heroHost?.startForward(result.id, result.coverUrl, HERO_THUMB_CORNER_DP)
                                         onOpenAlbum(result.id)
                                     },
                                 )
@@ -778,16 +776,5 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
 /** 收藏行封面：与其他列表统一尺寸，缺失时留空占位保持行高稳定。 */
 @Composable
 private fun FavoriteRowCover(albumId: String, url: String?) {
-    if (url == null) {
-        Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
-        return
-    }
-    AlbumCoverImage(
-        url = url,
-        contentDescription = null,
-        modifier = Modifier
-            .size(width = 48.dp, height = 64.dp)
-            .squircleClip(HERO_FAVORITE_ROW_CORNER_DP.dp)
-            .albumHeroCover(albumId, url, HERO_FAVORITE_ROW_CORNER_DP),
-    )
+    WorkThumbnail(url = url, albumId = albumId)
 }

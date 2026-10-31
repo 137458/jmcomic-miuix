@@ -10,11 +10,9 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,7 +26,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,7 +35,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -241,41 +237,6 @@ fun CenteredEmptyState(title: String, hint: String? = null, modifier: Modifier =
     }
 }
 
-/** 行卡封面比例 3:4：宽度由撑满后的行高换算，卡片变高封面跟着变宽。 */
-private const val SEARCH_ROW_COVER_ASPECT = 0.75f
-
-/** 行卡封面左侧圆角：封面贴满卡片左缘，只有朝内的一侧需要自己裁，外侧与卡片同曲率。 */
-private val SearchRowCoverShape = RoundedCornerShape(
-    topStart = MIUIX_CARD_CORNER_DP.dp,
-    bottomStart = MIUIX_CARD_CORNER_DP.dp,
-)
-
-/**
- * 搜索结果行封面：撑满卡片高度、贴齐卡片左缘。
- *
- * 行高由标题行数决定，封面按同一高度等比换算宽度，所以每行封面都顶满卡片而不是内缩成小缩略图；
- * 缺失封面时用同尺寸底色占位，保证行高稳定。
- */
-@Composable
-private fun SearchResultCover(
-    albumId: String,
-    url: String?,
-    title: String? = null,
-    modifier: Modifier = Modifier,
-) {
-    if (url == null) {
-        Box(modifier = modifier.background(MiuixTheme.colorScheme.surfaceContainer))
-        return
-    }
-    AlbumCoverImage(
-        url = url,
-        contentDescription = null,
-        modifier = modifier
-            .clip(SearchRowCoverShape)
-            .albumHeroCover(albumId, url, title, MIUIX_CARD_CORNER_DP),
-    )
-}
-
 /** 榜单名次：前三名用主色强调，其余用次级文字色；固定宽度保证纵向对齐成列。 */
 @Composable
 private fun RankIndexBadge(rank: Int) {
@@ -320,10 +281,8 @@ fun LoadMoreFooter(
 /**
  * 逐行结果卡：封面 + 标题 + 作者标签摘要，榜单模式在封面前补名次。
  *
- * 封面顶满卡片：卡片内边距为 0，封面贴齐左缘并撑满整行高度，行高只由右侧文字决定；
- * 因此需要 height(IntrinsicSize.Min) 先量出文字高度，封面才能按比例换算宽度。
- *
- * 标题与摘要都限行：超长日文标题会撑到四行，把整行拉得高矮不一，两侧留白全被吃掉。
+ * 外观走 [WorkRowCard] 的统一契约；摘要只保留一行，超长日文标题限两行，
+ * 否则整行会被撑到四行、高矮不一。
  */
 @Composable
 private fun SearchResultCard(
@@ -335,52 +294,23 @@ private fun SearchResultCard(
         .filter { it.isNotBlank() }
         .joinToString(" · ")
         .ifBlank { null }
-    val heroHost = LocalAlbumHeroHost.current
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).pressScale(),
-        insideMargin = PaddingValues(0.dp),
-        onClick = {
-            heroHost?.startForward(result.id, result.coverUrl, MIUIX_CARD_CORNER_DP, result.title)
-            onClick()
-        },
-    ) {
-        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            if (rank != null) {
+    WorkRowCard(
+        coverUrl = result.coverUrl,
+        title = result.title,
+        onClick = onClick,
+        albumId = result.id,
+        subtitle = summary,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        leading = if (rank == null) {
+            null
+        } else {
+            {
                 Box(modifier = Modifier.fillMaxHeight().width(30.dp), contentAlignment = Alignment.Center) {
                     RankIndexBadge(rank = rank)
                 }
             }
-            SearchResultCover(
-                albumId = result.id,
-                url = result.coverUrl,
-                title = result.title,
-                modifier = Modifier.fillMaxHeight().aspectRatio(SEARCH_ROW_COVER_ASPECT),
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
-            ) {
-                Text(
-                    text = result.title,
-                    style = MiuixTheme.textStyles.headline1,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onBackground,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (summary != null) {
-                    Text(
-                        text = summary,
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-    }
+        },
+    )
 }
 
 /**
@@ -570,9 +500,6 @@ private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
     )
 }
 
-/** 榜单封面卡的封面比例：3:4 竖版略扁，封面原始比例跨度大时以裁切换齐整。 */
-private const val RANK_COVER_ASPECT = 0.72f
-
 /**
  * 榜单瀑布流结果：两列封面卡，名次叠在封面左上角。
  *
@@ -614,81 +541,24 @@ fun LazyStaggeredGridScope.rankResultGrid(
     }
 }
 
-/** 榜单封面卡：封面 + 左上角名次角标 + 单行标题与作者，字号层级与 pixez 封面卡一致。 */
+/** 榜单封面卡：封面 + 左上角名次角标 + 单行标题与作者，外观走 [WorkGridCard] 的统一契约。 */
 @Composable
 private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
-    val heroHost = LocalAlbumHeroHost.current
-    Card(
-        modifier = Modifier.fillMaxWidth().pressScale(),
-        insideMargin = PaddingValues(0.dp),
-        onClick = {
-            heroHost?.startForward(result.id, result.coverUrl, MIUIX_CARD_CORNER_DP)
-            onClick()
+    WorkGridCard(
+        title = result.title,
+        coverUrl = result.coverUrl,
+        onClick = onClick,
+        albumId = result.id,
+        coverContentDescription = result.title,
+        subtitle = result.authors.joinToString(" / ").ifBlank { "未知作者" },
+        titleMaxLines = 1,
+        modifier = Modifier.fillMaxWidth(),
+        badge = {
+            WorkCoverBadge(
+                text = rank.toString(),
+                highlighted = rank <= 3,
+                modifier = Modifier.align(Alignment.TopStart).padding(WorkCardTokens.BadgeInset),
+            )
         },
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            if (result.coverUrl != null) {
-                AlbumCoverImage(
-                    url = result.coverUrl,
-                    contentDescription = result.title,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(RANK_COVER_ASPECT)
-                        .albumHeroCover(result.id, result.coverUrl, MIUIX_CARD_CORNER_DP),
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(RANK_COVER_ASPECT)
-                        .background(MiuixTheme.colorScheme.surfaceContainer),
-                )
-            }
-            RankCoverBadge(
-                rank = rank,
-                modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
-            )
-        }
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = result.title,
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = result.authors.joinToString(" / ").ifBlank { "未知作者" },
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-    }
-}
-
-/** 封面名次角标：前三名主色实底，其余半透明底，保证在任意封面上可读。 */
-@Composable
-private fun RankCoverBadge(rank: Int, modifier: Modifier = Modifier) {
-    val highlighted = rank <= 3
-    Text(
-        text = rank.toString(),
-        style = MiuixTheme.textStyles.footnote2,
-        fontWeight = FontWeight.Bold,
-        color = if (highlighted) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
-        modifier = modifier
-            .squircleClip(8.dp)
-            .background(
-                if (highlighted) {
-                    MiuixTheme.colorScheme.primary
-                } else {
-                    MiuixTheme.colorScheme.surface.copy(alpha = 0.86f)
-                },
-            )
-            .padding(horizontal = 7.dp, vertical = 2.dp),
     )
 }
