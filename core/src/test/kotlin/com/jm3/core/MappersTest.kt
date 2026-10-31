@@ -62,10 +62,11 @@ class MappersTest {
         postDate: String? = null,
         likes: Int = 0,
         name: String? = null,
+        aid: String? = null,
         replys: List<JmComment> = emptyList(),
     ): JmComment = JmComment(
         id, "u", username, nickname, content, null, postDate, null, null, null,
-        null, null, null, null, name, likes, null, null, null, false, replys, 0, 0,
+        aid, null, null, null, name, likes, null, null, null, false, replys, 0, 0,
     )
 
     @Test
@@ -270,6 +271,21 @@ class MappersTest {
         val got = comment(id = "c2", content = null).toCommentItem()
         assertEquals("", got.content)
         assertNull(got.postDate)
+    }
+
+    @Test
+    fun 评论_映射_关联作品封面按图片域名构造() {
+        val got = comment(id = "c3", aid = "123456", name = "JM123456")
+            .toCommentItem(imageHost = "18comic.vip")
+        assertEquals("123456", got.albumId)
+        assertEquals("https://18comic.vip/media/albums/123456_3x4.jpg", got.albumCoverUrl)
+    }
+
+    @Test
+    fun 评论_映射_无关联作品或域名未知时封面为null() {
+        assertNull(comment(id = "c4", aid = "0").toCommentItem(imageHost = "18comic.vip").albumCoverUrl)
+        assertNull(comment(id = "c5", aid = "").toCommentItem(imageHost = "18comic.vip").albumCoverUrl)
+        assertNull(comment(id = "c6", aid = "123456").toCommentItem().albumCoverUrl)
     }
 
     @Test

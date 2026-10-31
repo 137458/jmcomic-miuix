@@ -279,6 +279,12 @@ fun JmComment.toCommentItem(imageHost: String = ""): CommentItem = CommentItem(
     badges = badgeImagePaths(expinfoData()?.badges().orEmpty())
         .mapNotNull { imageUrl(it, imageHost) },
     albumName = name()?.takeIf { it.isNotBlank() },
+    // 关联作品封面与详情页同规格：3:4 缩略图由图片域名纯拼接，域名未知时留空
+    albumCoverUrl = CoverUrls.build(
+        albumId = aid()?.takeIf { it.isNotBlank() && it != "0" }.orEmpty(),
+        imageDomain = imageHost,
+        size = "_3x4",
+    ),
     body = commentSegments(content(), contentHtml()),
 )
 

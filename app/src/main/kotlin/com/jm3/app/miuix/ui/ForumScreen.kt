@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -42,10 +43,13 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -359,9 +363,10 @@ fun ForumScreen(
 /**
  * 论坛单条：楼层内容沿用评论区排版（头像/等级/徽章/分段正文），底部补关联作品入口。
  *
- * 原版作品入口文案就是条目里的作品名（形如 JM123456），点击跳作品详情。
- * 归属行与正文之间加一条细分割线，并把整行做成可点区域：作品名不再缩在右下角的小按钮里，
- * 长名字用省略号收尾而不是把行撑开，行高也比按钮矮，卡片纵向节奏更紧。
+ * 关联作品做成一行紧凑卡片：左侧 3:4 缩略封面（[WorkThumbnail]，与历史、追更行同尺寸），
+ * 右侧两行文案——上方说明用途、下方是作品名（形如 JM123456）——行尾箭头给出可点的视觉暗示。
+ * 缩略图缺图时 [WorkThumbnail] 只占同尺寸空位，行宽行高都不会跟着抖动。
+ * 整行可点，跳作品详情，与原文字行的点击语义一致。
  */
 @Composable
 private fun ForumTopicCard(
@@ -387,21 +392,41 @@ private fun ForumTopicCard(
                         .clickable { onOpenAlbum(albumId) }
                         // 触感交给点击本身，避免整行点击时重复震动
                         .pressScale(hapticFeedback = false)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        // 起点与楼层正文对齐（分割线同为 12dp），缩略图左缘因此和头像列齐平
+                        .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "相关作品",
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    WorkThumbnail(
+                        url = item.albumCoverUrl,
+                        albumId = albumId,
+                        contentDescription = albumName,
                     )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = albumName,
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    // 图与文案的间距沿用评论区头像到正文的 10dp，两行内容左缘才对得齐
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 10.dp),
+                    ) {
+                        Text(
+                            text = "相关作品",
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                        Text(
+                            text = albumName,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Icon(
+                        imageVector = MiuixIcons.ChevronForward,
+                        // 整行已是可点区域，箭头只作视觉暗示，不单独播报，避免读屏重复描述同一动作
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
             }
