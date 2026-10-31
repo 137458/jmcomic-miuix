@@ -77,6 +77,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
@@ -171,7 +172,8 @@ object Jm3Graph {
         val previous = gatewayOverride
         val next = GatewayFactory.create(apiDomains)
         runCatching { sessionStore.load() }.getOrNull()?.let { session ->
-            runCatching { next.restoreSession(session) }
+            // 注入会话要等库完成线路探活（阻塞），不能在主线程上等。
+            withContext(Dispatchers.IO) { runCatching { next.restoreSession(session) } }
         }
         gatewayOverride = next
         previous?.let { old -> runCatching { old.close() } }

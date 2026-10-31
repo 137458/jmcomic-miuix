@@ -349,7 +349,9 @@ class Jm3GatewayImpl internal constructor(
     override fun logout() = client.logout()
 
     override fun restoreSession(session: Jm3Session) {
-        client.setCookies(session.cookies.map { it.toOkhttpCookie() })
+        // 线路由库在每次启动后重新裁决，登录域未必再被选中：会话 Cookie 需覆盖当前全部候选域名。
+        val domains = domainControls.candidateDomains()
+        client.setCookies(session.cookies.broadcastTo(domains).map { it.toOkhttpCookie() })
     }
 
     override fun favorites(page: Int): FavoritePage = favorites(0, page)
@@ -480,8 +482,8 @@ class Jm3GatewayImpl internal constructor(
         return toCreatorWork(info, client.getCreatorWorkDetail(workId), novelImageHost())
     }
 
-    /** 小说封面与 API 同域：直接复用域名裁决结果；未就绪时返回空串，封面降级为 null。 */
-    private fun novelImageHost(): String = usedDomain().orEmpty()
+    /** 封面域名取库的线路裁决（库把封面挂到 bestDomain）：登录域在自动线路下恒为空，不能作域名来源。 */
+    private fun novelImageHost(): String = domainControls.coverHost().orEmpty()
 
     /** 域名解析只做一次：借库的域名裁决取首个封面地址，解析出图片域名后全部走纯构造器，消除逐项调用。 */
     private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(): SearchPage {
@@ -529,6 +531,12 @@ class Jm3GatewayImpl internal constructor(
 internal interface DomainControls {
     fun usedDomain(): String?
 
+    /** 当前线路候选域名；库初始化未完成时会阻塞到探活结束，调用方须在 IO 线程。 */
+    fun candidateDomains(): Set<String>
+
+    /** 封面域名：与库的封面地址构造共用同一裁决；未就绪时为 null。 */
+    fun coverHost(): String?
+
     fun domainLatency(): Map<String, Int>
 
     fun reprobeDomains()
@@ -536,10 +544,26 @@ internal interface DomainControls {
     fun close()
 }
 
+/** 取封面域名裁决用的占位本子号：只参与字符串拼接，不产生请求。 */
+private const val COVER_PROBE_ALBUM_ID = "1"
+
 /** [DomainControls] 的生产实现：直接委托库客户端。 */
 private class LibraryDomainControls(private val client: AbstractJmClient) : DomainControls {
 
     override fun usedDomain(): String? = client.usedDomain
+
+    /** 候选域名取库的线路表；初始化未完成时会阻塞到探活结束，调用方须在 IO 线程。 */
+    override fun candidateDomains(): Set<String> = runCatching {
+        client.domainStates.keys.filter { it.isNotBlank() }.toSet()
+    }.getOrDefault(emptySet())
+
+    override fun coverHost(): String? = runCatching {
+        // 封面地址是纯字符串拼接，不发请求；本子号只作占位，只为取库的域名裁决结果。
+        client.getAlbumCoverUrl(COVER_PROBE_ALBUM_ID, "_3x4")
+    }.getOrNull()
+        ?.removePrefix("https://")
+        ?.substringBefore("/")
+        ?.takeIf { it.isNotBlank() }
 
     override fun domainLatency(): Map<String, Int> = client.domainLatency.orEmpty()
 
