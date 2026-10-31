@@ -1214,6 +1214,11 @@ internal fun CommentRow(
                     text = "回复",
                     onClick = { onReply(item) },
                     minWidth = 0.dp,
+                    // 默认 TextButton 是灰底灰字，混在正文里像禁用态；行内动作用透明底 + 主色字
+                    colors = ButtonDefaults.textButtonColors(
+                        color = Color.Transparent,
+                        textColor = MiuixTheme.colorScheme.primary,
+                    ),
                     minHeight = 36.dp,
                 )
             }
@@ -1230,6 +1235,10 @@ internal fun CommentRow(
                 if (item.replies.size > COMMENT_VISIBLE_REPLIES) {
                     TextButton(
                         text = if (repliesExpanded) "收起回复" else "展开 ${item.replies.size} 条回复",
+                        colors = ButtonDefaults.textButtonColors(
+                            color = Color.Transparent,
+                            textColor = MiuixTheme.colorScheme.primary,
+                        ),
                         onClick = { repliesExpanded = !repliesExpanded },
                         minWidth = 0.dp,
                         minHeight = 36.dp,
