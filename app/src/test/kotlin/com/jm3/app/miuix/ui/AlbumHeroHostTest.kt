@@ -15,6 +15,17 @@ class AlbumHeroHostTest {
     private val coverUrl = "https://example.com/cover.jpg"
 
     @Test
+    fun albumCoverMemoryKey正常提取并忽略空白() {
+        val key = albumCoverMemoryKey("https://example.com/cover.jpg")
+        assertNotNull(key)
+        assertEquals("https://example.com/cover.jpg", key.key)
+
+        assertNull(albumCoverMemoryKey(null))
+        assertNull(albumCoverMemoryKey(""))
+        assertNull(albumCoverMemoryKey("   "))
+    }
+
+    @Test
     fun 封面登记与注销正确维护状态() {
         val host = AlbumHeroHost()
         host.registerCover(albumId, coverUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP)

@@ -17,9 +17,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import android.content.Context
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +30,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.flow.first
@@ -194,6 +198,35 @@ class AlbumHeroHost {
 /** 由 Jm3App 提供；未提供时所有登记与飞行都退化成空操作。 */
 val LocalAlbumHeroHost = staticCompositionLocalOf<AlbumHeroHost?> { null }
 
+/** 详情页最外层根容器坐标系，用于消除 NavDisplay 进场动画（如 slideInFromRight）的瞬时矩阵位移 */
+val LocalAlbumDetailRootCoordinates = staticCompositionLocalOf<LayoutCoordinates?> { null }
+
+/**
+ * 封面图片的统一内存缓存 Key：列表卡片、覆盖层形变飞行、详情页头图三端共享。
+ * 使用纯 URL 绑定 Key，让起飞时刻首帧即刻命中列表已加载好的 Bitmap，避免 300ms 飞行期间重新解码出现空白/闪烁。
+ */
+fun albumCoverMemoryKey(url: String?): MemoryCache.Key? {
+    val clean = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return MemoryCache.Key(clean)
+}
+
+/**
+ * 构造统一配置的封面 ImageRequest。
+ */
+fun buildAlbumCoverRequest(context: Context, url: String?): ImageRequest? {
+    val clean = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val key = albumCoverMemoryKey(clean)
+    return ImageRequest.Builder(context)
+        .data(clean)
+        .apply {
+            if (key != null) {
+                memoryCacheKey(key)
+                placeholderMemoryCacheKey(key)
+            }
+        }
+        .build()
+}
+
 /**
  * 卡片内封面被裁出来的圆角：Miuix Card 的内边距为 0，封面贴满卡片，圆角就是 Card 的默认圆角 16dp。
  * CardDefaults.cornerRadius 在 0.9.4 里是 internal（字节码 getCornerRadius-D9Ej5fM 带值类改写后缀），
@@ -232,16 +265,25 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val rect = lerpHeroRect(flight.from, flight.to, progress.value)
     val corner = lerpHeroCorner(flight.cornerFromDp, flight.cornerToDp, progress.value)
-    Box(modifier = modifier.fillMaxSize()) {
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(flight.url)
+    val memoryKey = albumCoverMemoryKey(flight.url)
+    val request = remember(flight.url, context) {
+        flight.url?.let {
+            ImageRequest.Builder(context)
+                .data(it)
                 // 覆盖层自己做形变，再叠一次 Coil 淡入会出现半透明重影
                 .crossfade(false)
-                .placeholderMemoryCacheKey(flight.url?.let { coil3.memory.MemoryCache.Key(it) })
-                .memoryCacheKey(flight.url?.let { coil3.memory.MemoryCache.Key(it) })
-                .size(coil3.size.Size.ORIGINAL)
-                .build(),
+                .apply {
+                    if (memoryKey != null) {
+                        memoryCacheKey(memoryKey)
+                        placeholderMemoryCacheKey(memoryKey)
+                    }
+                }
+                .build()
+        }
+    }
+    Box(modifier = modifier.fillMaxSize()) {
+        AsyncImage(
+            model = request,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -297,6 +339,7 @@ fun Modifier.albumHeroCover(albumId: String, url: String?, cornerDp: Float): Mod
 @Composable
 fun Modifier.albumHeroHeader(albumId: String, url: String?, cornerDp: Float): Modifier {
     val host = LocalAlbumHeroHost.current ?: return this
+    val detailRoot = LocalAlbumDetailRootCoordinates.current
     val registered = remember(host, albumId) { mutableStateOf<HeroRect?>(null) }
     DisposableEffect(host, albumId) {
         onDispose { host.unregisterHeader(albumId, registered.value) }
@@ -304,7 +347,13 @@ fun Modifier.albumHeroHeader(albumId: String, url: String?, cornerDp: Float): Mo
     return this
         .onGloballyPositioned { coordinates ->
             if (!coordinates.isAttached) return@onGloballyPositioned
-            val position = coordinates.positionInRoot()
+            val position = if (detailRoot != null && detailRoot.isAttached) {
+                // 处于 NavDisplay 页面转场（如 slideInFromRight）中时，positionInRoot() 会叠加进场位移导致起飞终点偏离；
+                // 藉由详情根容器坐标消除同层级祖先变换，首帧即可测出页面静止时的真实屏幕目标矩形。
+                detailRoot.localPositionOf(coordinates, Offset.Zero)
+            } else {
+                coordinates.positionInRoot()
+            }
             val rect = HeroRect(
                 left = position.x,
                 top = position.y,
