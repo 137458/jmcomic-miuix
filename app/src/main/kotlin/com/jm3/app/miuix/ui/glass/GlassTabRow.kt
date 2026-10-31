@@ -12,7 +12,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TabRowDefaults
-import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
@@ -25,11 +24,14 @@ private val GlassTabRowInset = 3.dp
 private val GlassTabRowCornerRadius = 15.dp
 
 /**
- * 悬浮层（顶栏）里的分类页签：Miuix [TabRow] 外面套一层液态玻璃胶囊，采样内容层 backdrop。
+ * 顶栏下方的分类页签：Miuix [TabRow] 外面套一层液态玻璃胶囊，实时采样其下方内容。
  *
  * 为什么需要独立的一层玻璃：[TabRow] 自身只画透明底与选中胶囊，而顶栏的渐变模糊在页签处
  * 已经衰减到接近零（渐变零点落在顶栏下沿），列表内容滚动到页签下方时对比度不足。
- * 这里给页签容器单独采样一次 backdrop，即使正文从下面穿过也能保持可读。
+ * 这里给页签容器单独采样一次 backdrop，正文从下面穿过时玻璃与会同步变化。
+ *
+ * 页签必须位于内容层之外（顶栏或其 `bottomContent` 槽）才能这样采样：若与列表同处一棵
+ * 子树，drawBackdrop 会把这棵子树（含页签自身）一起录进胶囊，出现重影。
  *
  * 与底栏/操作胶囊共用同一套液态玻璃语言：
  * - 光学：`vibrancy()` 提饱和 → `blur(8dp)` 磨砂 → `lens()` 边缘折射（12dp 折射带 / 10dp 偏移）
@@ -53,50 +55,7 @@ fun GlassTabRow(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    GlassTabRowSurface(
-        tabs = tabs,
-        selectedTabIndex = selectedTabIndex,
-        onTabSelected = onTabSelected,
-        modifier = modifier,
-        backdrop = LocalGlassBackdrop.current,
-        sampleContent = true,
-    )
-}
-
-/**
- * 列表内（随正文滚动）的分类页签：与 [GlassTabRow] 同一套胶囊形态，采样的是页面底色
- * （[LocalGlassPageBackdrop]）而不是内容层。
- *
- * 列表内页签与正文同处一棵子树，采样内容层 backdrop 会把页签自身录进胶囊（重影），
- * 因此只能采样背后的页面底色。底色是纯色，模糊与折射没有视觉收益，效果链留空，
- * 只保留与悬浮层一致的边缘高光与半透明底衬；低端机与无采样源时退回实色。
- */
-@Composable
-fun GlassListTabRow(
-    tabs: List<String>,
-    selectedTabIndex: Int,
-    onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    GlassTabRowSurface(
-        tabs = tabs,
-        selectedTabIndex = selectedTabIndex,
-        onTabSelected = onTabSelected,
-        modifier = modifier,
-        backdrop = LocalGlassPageBackdrop.current,
-        sampleContent = false,
-    )
-}
-
-@Composable
-private fun GlassTabRowSurface(
-    tabs: List<String>,
-    selectedTabIndex: Int,
-    onTabSelected: (Int) -> Unit,
-    modifier: Modifier,
-    backdrop: Backdrop?,
-    sampleContent: Boolean,
-) {
+    val backdrop = LocalGlassBackdrop.current
     val shaderReady = backdrop != null && isRuntimeShaderSupported()
     val colorScheme = MiuixTheme.colorScheme
     val shape = remember { RoundedCornerShape(GlassTabRowCornerRadius) }
@@ -109,13 +68,11 @@ private fun GlassTabRowSurface(
             backdrop = backdrop,
             shape = { shape },
             effects = {
-                if (sampleContent) {
-                    // 透镜采样需要比折射带更宽的录制余量，避免采到未录制的边缘。
-                    padding = maxOf(padding, 32.dp.toPx())
-                    vibrancy()
-                    blur(8.dp.toPx(), 8.dp.toPx())
-                    lens(refractionHeight = 12.dp.toPx(), refractionAmount = 10.dp.toPx())
-                }
+                // 透镜采样需要比折射带更宽的录制余量，避免采到未录制的边缘。
+                padding = maxOf(padding, 32.dp.toPx())
+                vibrancy()
+                blur(8.dp.toPx(), 8.dp.toPx())
+                lens(refractionHeight = 12.dp.toPx(), refractionAmount = 10.dp.toPx())
             },
             highlight = { glassEdgeHighlight },
             onDrawSurface = { drawRect(colorScheme.surfaceContainer.copy(alpha = 0.55f)) },
