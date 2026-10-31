@@ -1069,6 +1069,8 @@ private fun RelatedAlbumCard(related: SearchResult, onClick: () -> Unit) {
         onClick = onClick,
         albumId = related.id,
         coverContentDescription = related.title,
+        subtitle = related.authors.joinToString(" / ").ifBlank { null },
+        category = related.category,
         modifier = Modifier.width(WorkCardTokens.CompactWidth),
         badge = { WorkAlbumCodeBadge(related.id) },
         footer = { WorkTagLine(related.tags) },

@@ -124,6 +124,9 @@ fun JmAlbumMeta.toSearchResult(coverUrl: String? = null): SearchResult = SearchR
     authors = authors().orEmpty(),
     tags = tags().orEmpty(),
     coverUrl = coverUrl,
+    // 主分类缺失时退回子分类：列表接口给的分类粒度不一致，卡片只展示一层分类。
+    category = category()?.title()?.trim()?.takeIf { it.isNotBlank() }
+        ?: subCategory()?.title()?.trim()?.takeIf { it.isNotBlank() },
 )
 
 fun JmPhotoMeta.toChapter(): Chapter = Chapter(

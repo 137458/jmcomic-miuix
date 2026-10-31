@@ -8,6 +8,8 @@ data class SearchResult(
     val authors: List<String>,
     val tags: List<String>,
     val coverUrl: String?,
+    /** 主分类标题（如「同人」「单本」）；接口只给子分类或都不给时为 null，卡片据此决定是否展示分类。 */
+    val category: String? = null,
 )
 
 data class SearchPage(
