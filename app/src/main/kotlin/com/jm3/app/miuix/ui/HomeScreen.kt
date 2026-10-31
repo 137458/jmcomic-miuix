@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassFabItem
 import com.jm3.app.miuix.ui.glass.GlassFloatingActionBar
+import com.jm3.app.miuix.ui.glass.GlassListTabRow
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -61,7 +62,6 @@ import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -773,7 +773,7 @@ private fun SearchResultHeader(
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         )
-        TabRow(
+        GlassListTabRow(
             tabs = BrowseOrder.entries.map { it.label },
             selectedTabIndex = BrowseOrder.entries.indexOf(order),
             onTabSelected = {

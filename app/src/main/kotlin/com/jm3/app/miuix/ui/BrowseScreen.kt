@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.glass.GlassListTabRow
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -63,7 +64,6 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -328,7 +328,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    TabRow(
+                                    GlassListTabRow(
                                         tabs = BrowseCategory.entries.map { it.label },
                                         selectedTabIndex = BrowseCategory.entries.indexOf(category),
                                         onTabSelected = {
@@ -368,7 +368,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                 }
                             }
                             FilterGroupLabel(text = "排序")
-                            TabRow(
+                            GlassListTabRow(
                                 tabs = BrowseOrder.entries.map { it.shortLabel },
                                 selectedTabIndex = BrowseOrder.entries.indexOf(order),
                                 onTabSelected = {

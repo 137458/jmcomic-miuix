@@ -40,6 +40,7 @@ import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.TopAppBarState
 import top.yukonga.miuix.kmp.basic.TopAppBarDefaults
+import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
@@ -60,6 +61,13 @@ val LocalFloatingBarContentPadding = compositionLocalOf { 0.dp }
  * 才能对内容做模糊与折射而不是采样到空白；脱离 GlassScaffold 使用时为 null，浮层退化为实色。
  */
 val LocalGlassBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
+
+/**
+ * 页面底色采样源：列表内浮层（页签等）与正文同处内容层，直接采样 [LocalGlassBackdrop]
+ * 会把这棵子树（含浮层自身）一起糊进胶囊，只能采样"背后的页面底色"。
+ * 由 GlassScaffold 提供；脱离时为空，浮层退回实色。
+ */
+val LocalGlassPageBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
  * GlassScaffold 提供的顶栏折叠行为。[GlassTopAppBar] 自动取用；页面无需关心嵌套滚动的挂载。
@@ -123,6 +131,7 @@ fun GlassScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val backdrop = rememberBlurBackdrop()
+    val pageBackdrop = rememberPageBackdrop()
     val shaderReady = backdrop != null && isRuntimeShaderSupported()
     val containerColor = MiuixTheme.colorScheme.surface
     val scrollBehavior = MiuixScrollBehavior()
@@ -138,7 +147,10 @@ fun GlassScaffold(
     // 子页面（未被消费）不会贴到手势条/三键导航上，主 tab 也不会重复让位。
     val systemBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    CompositionLocalProvider(LocalGlassBackdrop provides backdrop) {
+    CompositionLocalProvider(
+        LocalGlassBackdrop provides backdrop,
+        LocalGlassPageBackdrop provides pageBackdrop,
+    ) {
         // FAB 槽与内容层不在同一棵子树里，通过 CompositionLocal 传递采样源。
         Scaffold(
             modifier = modifier,
