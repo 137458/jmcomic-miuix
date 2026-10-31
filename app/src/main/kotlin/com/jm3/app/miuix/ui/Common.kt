@@ -331,16 +331,13 @@ private fun SearchResultCard(
     onClick: () -> Unit,
     rank: Int? = null,
 ) {
-    val summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
-        .filter { it.isNotBlank() }
-        .joinToString(" · ")
-        .ifBlank { null }
+    val authors = result.authors.joinToString(" / ").ifBlank { null }
     WorkRowCard(
         coverUrl = result.coverUrl,
         title = result.title,
         onClick = onClick,
         albumId = result.id,
-        subtitle = summary,
+        subtitle = authors,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         leading = if (rank == null) {
             null
@@ -351,7 +348,9 @@ private fun SearchResultCard(
                 }
             }
         },
-    )
+    ) {
+        WorkCardMetaRow(tags = result.tags, albumCode = result.id)
+    }
 }
 
 /**
@@ -542,6 +541,8 @@ private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
                 highlighted = rank <= 3,
                 modifier = Modifier.align(Alignment.TopStart).padding(WorkCardTokens.BadgeInset),
             )
+            WorkAlbumCodeBadge(result.id)
         },
+        footer = { WorkTagLine(result.tags) },
     )
 }

@@ -741,6 +741,8 @@ private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
         coverContentDescription = update.title,
         subtitle = update.authors.joinToString(" / ").ifBlank { "未知作者" },
         modifier = Modifier.width(WorkCardTokens.CompactWidth),
+        badge = { WorkAlbumCodeBadge(update.id) },
+        footer = { WorkTagLine(update.tags) },
     )
 }
 
@@ -801,5 +803,7 @@ private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
         albumId = pick.id,
         coverContentDescription = pick.title,
         modifier = Modifier.width(WorkCardTokens.CompactWidth),
+        badge = { WorkAlbumCodeBadge(pick.id) },
+        footer = { WorkTagLine(pick.tags) },
     )
 }
