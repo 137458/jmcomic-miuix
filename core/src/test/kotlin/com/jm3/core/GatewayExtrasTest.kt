@@ -47,11 +47,17 @@ class GatewayExtrasTest {
     private class FakeDomainControls(
         private val used: String? = null,
         private val latency: Map<String, Int> = emptyMap(),
+        private val domains: Set<String> = emptySet(),
+        private val cover: String? = null,
     ) : DomainControls {
         var reprobeCount = 0
         var closeCount = 0
 
         override fun usedDomain(): String? = used
+
+        override fun candidateDomains(): Set<String> = domains
+
+        override fun coverHost(): String? = cover
 
         override fun domainLatency(): Map<String, Int> = latency
 
@@ -180,6 +186,12 @@ class GatewayExtrasTest {
     fun 域名_透传延迟表() {
         val latency = mapOf("a.example" to 120, "b.example" to 340)
         assertEquals(latency, gateway(FakeDomainControls(latency = latency)).domainLatency())
+    }
+
+    @Test
+    fun 封面域名_取库的线路裁决而不是登录域() {
+        assertEquals("cdn.example", gateway(FakeDomainControls(cover = "cdn.example")).imageHost())
+        assertEquals("", gateway(FakeDomainControls()).imageHost())
     }
 
     @Test
