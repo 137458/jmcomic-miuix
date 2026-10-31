@@ -51,6 +51,7 @@ class AlbumHeroHost {
     private val lastHeaderRects = mutableMapOf<String, HeroRect>()
     private val lastHeaderCorners = mutableMapOf<String, Float>()
     private val urls = mutableStateMapOf<String, String>()
+    private val titles = mutableStateMapOf<String, String>()
     private var sequence = 0
 
     var state by mutableStateOf(HeroState())
@@ -62,8 +63,20 @@ class AlbumHeroHost {
     /** 正在播放的飞行；同一时刻最多一个。 */
     val flight: HeroPlan? get() = state.flight
 
-    fun registerCover(albumId: String, url: String?, rect: HeroRect, cornerDp: Float) {
+    fun rememberAlbum(albumId: String, title: String? = null, coverUrl: String? = null) {
+        if (title != null) titles[albumId] = title
+        if (coverUrl != null) urls[albumId] = coverUrl
+    }
+
+    fun registerCover(
+        albumId: String,
+        url: String?,
+        rect: HeroRect,
+        cornerDp: Float,
+        title: String? = null,
+    ) {
         if (!isFiniteHeroRect(rect)) return
+        if (title != null) titles[albumId] = title
         if (coverRects[albumId] == rect && coverCorners[albumId] == cornerDp && (url == null || urls[albumId] == url)) return
         coverRects[albumId] = rect
         coverCorners[albumId] = cornerDp
@@ -74,7 +87,10 @@ class AlbumHeroHost {
         if (rect != null && coverRects[albumId] == rect) {
             coverRects.remove(albumId)
             coverCorners.remove(albumId)
-            if (albumId !in headerRects) urls.remove(albumId)
+            if (albumId !in headerRects) {
+                urls.remove(albumId)
+                titles.remove(albumId)
+            }
         }
     }
 
@@ -92,13 +108,20 @@ class AlbumHeroHost {
         if (rect != null && headerRects[albumId] == rect) {
             headerRects.remove(albumId)
             headerCorners.remove(albumId)
-            if (albumId !in coverRects) urls.remove(albumId)
+            if (albumId !in coverRects) {
+                urls.remove(albumId)
+                titles.remove(albumId)
+            }
         }
     }
 
     fun coverRect(albumId: String): HeroRect? = coverRects[albumId]
 
     fun headerRect(albumId: String): HeroRect? = headerRects[albumId]
+
+    fun coverUrl(albumId: String): String? = urls[albumId]
+
+    fun albumTitle(albumId: String): String? = titles[albumId]
 
     /**
      * 列表封面在飞行期间要让位，否则覆盖层里的图和列表里的图会重影。
@@ -110,10 +133,16 @@ class AlbumHeroHost {
     fun isHeaderHidden(albumId: String): Boolean = flight?.albumId == albumId
 
     /** 列表卡片点击时调用；拿不到卡片矩形就不飞，退化成普通页转场。 */
-    fun startForward(albumId: String, url: String?, cornerDp: Float): Boolean {
+    fun startForward(
+        albumId: String,
+        url: String?,
+        cornerDp: Float,
+        title: String? = null,
+    ): Boolean {
         val from = coverRects[albumId]
         if (from == null || !isFiniteHeroRect(from)) return false
         if (url != null) urls[albumId] = url
+        if (title != null) titles[albumId] = title
         val resolvedUrl = url ?: urls[albumId]
         val oldPending = state.pending
         state = state.startForward(
@@ -226,10 +255,18 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
     }
 }
 
-/** 列表侧封面：登记根坐标矩形，飞行期间隐藏自己。 */
+/** 列表侧封面：登记根坐标矩形，飞行期间隐藏自己，同时预存标题与封面。 */
 @Composable
-fun Modifier.albumHeroCover(albumId: String, url: String?, cornerDp: Float): Modifier {
+fun Modifier.albumHeroCover(
+    albumId: String,
+    url: String?,
+    title: String? = null,
+    cornerDp: Float,
+): Modifier {
     val host = LocalAlbumHeroHost.current ?: return this
+    if (title != null || url != null) {
+        host.rememberAlbum(albumId, title, url)
+    }
     val registered = remember(host, albumId) { mutableStateOf<HeroRect?>(null) }
     DisposableEffect(host, albumId) {
         onDispose { host.unregisterCover(albumId, registered.value) }
@@ -251,6 +288,10 @@ fun Modifier.albumHeroCover(albumId: String, url: String?, cornerDp: Float): Mod
         }
         .graphicsLayer { alpha = if (host.isCoverHidden(albumId)) 0f else 1f }
 }
+
+@Composable
+fun Modifier.albumHeroCover(albumId: String, url: String?, cornerDp: Float): Modifier =
+    albumHeroCover(albumId = albumId, url = url, title = null, cornerDp = cornerDp)
 
 /** 详情侧头图：登记根坐标矩形，飞行期间隐藏自己。 */
 @Composable

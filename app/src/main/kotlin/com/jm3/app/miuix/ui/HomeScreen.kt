@@ -728,7 +728,7 @@ private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
     Card(
         modifier = Modifier.width(112.dp),
         onClick = {
-            heroHost?.startForward(update.id, update.coverUrl, MIUIX_CARD_CORNER_DP)
+            heroHost?.startForward(update.id, update.coverUrl, MIUIX_CARD_CORNER_DP, update.title)
             onClick()
         },
     ) {
@@ -740,7 +740,7 @@ private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
                 modifier = Modifier
                     .width(112.dp)
                     .height(150.dp)
-                    .albumHeroCover(update.id, update.coverUrl, MIUIX_CARD_CORNER_DP),
+                    .albumHeroCover(update.id, update.coverUrl, update.title, MIUIX_CARD_CORNER_DP),
             )
         } else {
             Spacer(modifier = Modifier.width(112.dp).height(150.dp))
@@ -829,7 +829,7 @@ private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
     Card(
         modifier = Modifier.width(96.dp),
         onClick = {
-            heroHost?.startForward(pick.id, pick.coverUrl, MIUIX_CARD_CORNER_DP)
+            heroHost?.startForward(pick.id, pick.coverUrl, MIUIX_CARD_CORNER_DP, pick.title)
             onClick()
         },
     ) {
@@ -841,7 +841,7 @@ private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
                 modifier = Modifier
                     .width(96.dp)
                     .height(128.dp)
-                    .albumHeroCover(pick.id, pick.coverUrl, MIUIX_CARD_CORNER_DP),
+                    .albumHeroCover(pick.id, pick.coverUrl, pick.title, MIUIX_CARD_CORNER_DP),
             )
         } else {
             Spacer(modifier = Modifier.width(96.dp).height(128.dp))

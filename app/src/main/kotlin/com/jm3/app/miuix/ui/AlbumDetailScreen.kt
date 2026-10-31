@@ -118,6 +118,8 @@ private sealed interface CommentsUiState {
 @Composable
 fun AlbumDetailScreen(
     albumId: String,
+    initialTitle: String? = null,
+    initialCoverUrl: String? = null,
     onBack: () -> Unit,
     onOpenReader: (String) -> Unit,
     onOpenAlbum: (String) -> Unit,
@@ -411,118 +413,127 @@ fun AlbumDetailScreen(
         }
     }
 
-    when (val s = state) {
-        is AlbumUiState.Loading -> GlassScaffold(
-            topBar = {
-                GlassTopAppBar(
-                    title = "详情",
-                    navigationIcon = { BackButton(onBack = onBack) },
-                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
-                    color = Color.Transparent,
-                )
-            },
-        ) { innerPadding ->
-            LoadingScreen(modifier = Modifier.padding(innerPadding))
-        }
-        is AlbumUiState.Failed -> GlassScaffold(
-            topBar = {
-                GlassTopAppBar(
-                    title = "详情",
-                    navigationIcon = { BackButton(onBack = onBack) },
-                    // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
-                    color = Color.Transparent,
-                )
-            },
-        ) { innerPadding ->
-            ErrorScreen(
-                message = "详情加载失败：${s.message}",
-                onRetry = { scope.launch { loadDetail() } },
-                modifier = Modifier.padding(innerPadding),
+    val heroHost = LocalAlbumHeroHost.current
+    val effectiveCoverUrl = initialCoverUrl ?: heroHost?.coverUrl(albumId)
+    val effectiveTitle = initialTitle ?: heroHost?.albumTitle(albumId)
+
+    val loadedDetail = (state as? AlbumUiState.Loaded)?.detail
+    val currentTitle = loadedDetail?.title ?: effectiveTitle ?: "详情"
+    val resumeId = latestPhotoId?.takeIf { id -> loadedDetail?.chapters?.any { it.id == id } == true }
+
+    GlassScaffold(
+        topBar = {
+            // 章节页标题常为超长作品名，展开态大标题会撑出 3 行、折叠后留下大片空缺，
+            // 这里固定单行小标题（超长省略）；完整标题由页首 DetailHeader 承担。
+            GlassSmallTopAppBar(
+                title = currentTitle,
+                navigationIcon = { BackButton(onBack = onBack) },
+                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
+                color = Color.Transparent,
+                actions = {
+                    if (loadedDetail != null) {
+                        // 纯图标动作挂 Tooltip：长按即可确认语义，避免误触分享/批量下载
+                        TooltipBox(text = "分享") {
+                            IconButton(onClick = { share(loadedDetail) }) {
+                                Icon(MiuixIcons.Share, contentDescription = "分享")
+                            }
+                        }
+                        if (loadedDetail.chapters.size > 1) {
+                            TooltipBox(text = "下载全部") {
+                                IconButton(
+                                    onClick = {
+                                        loadedDetail.chapters.forEachIndexed { index, chapter ->
+                                            Jm3Graph.downloadManager.enqueueChapter(
+                                                photoId = chapter.id,
+                                                albumId = loadedDetail.id,
+                                                title = ChapterLabels.chapterTitle(chapter.title, index),
+                                            )
+                                        }
+                                    },
+                                ) {
+                                    Icon(imageVector = MiuixIcons.Download, contentDescription = "下载全部")
+                                }
+                            }
+                        }
+                    }
+                },
             )
-        }
-        is AlbumUiState.Loaded -> {
-            val detail = s.detail
-            val resumeId = latestPhotoId?.takeIf { id -> detail.chapters.any { it.id == id } }
-            GlassScaffold(
-                topBar = {
-                    // 章节页标题常为超长作品名，展开态大标题会撑出 3 行、折叠后留下大片空缺，
-                    // 这里固定单行小标题（超长省略）；完整标题由页首 DetailHeader 承担。
-                    GlassSmallTopAppBar(
-                        title = detail.title,
-                        navigationIcon = { BackButton(onBack = onBack) },
-                        // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
-                        color = Color.Transparent,
-                        actions = {
-                            // 纯图标动作挂 Tooltip：长按即可确认语义，避免误触分享/批量下载
-                            TooltipBox(text = "分享") {
-                                IconButton(onClick = { share(detail) }) {
-                                    Icon(MiuixIcons.Share, contentDescription = "分享")
-                                }
-                            }
-                            if (detail.chapters.size > 1) {
-                                TooltipBox(text = "下载全部") {
-                                    IconButton(
-                                        onClick = {
-                                            detail.chapters.forEachIndexed { index, chapter ->
-                                                Jm3Graph.downloadManager.enqueueChapter(
-                                                    photoId = chapter.id,
-                                                    albumId = detail.id,
-                                                    title = ChapterLabels.chapterTitle(chapter.title, index),
-                                                )
-                                            }
-                                        },
-                                    ) {
-                                        Icon(imageVector = MiuixIcons.Download, contentDescription = "下载全部")
-                                    }
-                                }
-                            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { innerPadding ->
+        GlassPullToRefresh(
+            isRefreshing = pullRefreshing,
+            onRefresh = ::refresh,
+            pullToRefreshState = refreshState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = innerPadding,
+        ) {
+            // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding,
+            ) {
+                // 首项必须始终渲染，确保列表卡片点击后首帧完成头图测量，转场动画即时起飞
+                item(key = "header") {
+                    DetailHeader(
+                        albumId = albumId,
+                        detail = loadedDetail,
+                        fallbackTitle = effectiveTitle,
+                        fallbackCoverUrl = effectiveCoverUrl,
+                        resumeId = resumeId,
+                        loggedIn = user != null,
+                        favorited = favorited,
+                        favoriteBusy = favoriteBusy,
+                        liked = liked,
+                        likeBusy = likeBusy,
+                        tracking = tracking,
+                        trackingBusy = trackingBusy,
+                        onRead = { photoId -> onOpenReader(photoId) },
+                        onFavorite = ::onFavoriteClick,
+                        onLike = ::like,
+                        onTrack = ::toggleTracking,
+                        onOpenSearch = onOpenSearch,
+                        onDownloadAll = if (loadedDetail == null || loadedDetail.chapters.isEmpty()) {
+                            null
+                        } else {
+                            // 与顶栏「下载全部」同一套标题兜底：空标题不能进书架
+                            { loadedDetail.chapters.forEachIndexed { index, chapter ->
+                                Jm3Graph.downloadManager.enqueueChapter(
+                                    photoId = chapter.id,
+                                    albumId = loadedDetail.id,
+                                    title = ChapterLabels.chapterTitle(chapter.title, index),
+                                )
+                            } }
                         },
                     )
-                },
-                snackbarHost = { SnackbarHost(snackbarHostState) },
-            ) { innerPadding ->
-                GlassPullToRefresh(
-                    isRefreshing = pullRefreshing,
-                    onRefresh = ::refresh,
-                    pullToRefreshState = refreshState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = innerPadding,
-                ) {
-                    // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = innerPadding,
-                    ) {
-                        item(key = "header") {
-                            DetailHeader(
-                                detail = detail,
-                                resumeId = resumeId,
-                                loggedIn = user != null,
-                                favorited = favorited,
-                                favoriteBusy = favoriteBusy,
-                                liked = liked,
-                                likeBusy = likeBusy,
-                                tracking = tracking,
-                                trackingBusy = trackingBusy,
-                                onRead = { photoId -> onOpenReader(photoId) },
-                                onFavorite = ::onFavoriteClick,
-                                onLike = ::like,
-                                onTrack = ::toggleTracking,
-                                onOpenSearch = onOpenSearch,
-                                onDownloadAll = if (detail.chapters.isEmpty()) {
-                                    null
-                                } else {
-                                    // 与顶栏「下载全部」同一套标题兜底：空标题不能进书架
-                                    { detail.chapters.forEachIndexed { index, chapter ->
-                                        Jm3Graph.downloadManager.enqueueChapter(
-                                            photoId = chapter.id,
-                                            albumId = detail.id,
-                                            title = ChapterLabels.chapterTitle(chapter.title, index),
-                                        )
-                                    } }
-                                },
+                }
+
+                when (val s = state) {
+                    is AlbumUiState.Loading -> {
+                        item(key = "detail-loading") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                InfiniteProgressIndicator()
+                            }
+                        }
+                    }
+                    is AlbumUiState.Failed -> {
+                        item(key = "detail-failed") {
+                            ErrorScreen(
+                                message = "详情加载失败：${s.message}",
+                                onRetry = { scope.launch { loadDetail() } },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
                             )
                         }
+                    }
+                    is AlbumUiState.Loaded -> {
+                        val detail = s.detail
                         // 章节是作品页核心内容，紧随头部；简介、标签、作者等次要信息后置
                         item(key = "chapters-title") {
                             SmallTitle(
@@ -678,56 +689,59 @@ fun AlbumDetailScreen(
                         }
                     }
                 }
-                // 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏
-                OverlayBottomSheet(
-                    show = showFolderSheet,
-                    title = if (favorited) "移动收藏夹" else "选择收藏夹",
-                    onDismissRequest = { showFolderSheet = false },
-                ) {
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        val allLabel = folders["0"] ?: "全部收藏"
-                        BasicComponent(
-                            title = allLabel,
-                            summary = "默认收藏夹",
-                            onClick = { pickFolder("0") },
-                        )
-                        folders.entries
-                            .filter { it.key != "0" }
-                            .forEach { (id, name) ->
-                                BasicComponent(
-                                    title = name,
-                                    onClick = { pickFolder(id) },
-                                )
-                            }
-                    }
-                    if (favorited) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-                            TextButton(
-                                text = "取消收藏",
-                                onClick = ::cancelFavorite,
-                                enabled = !favoriteBusy,
-                                modifier = Modifier.fillMaxWidth(),
+            }
+            // 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏
+            OverlayBottomSheet(
+                show = showFolderSheet,
+                title = if (favorited) "移动收藏夹" else "选择收藏夹",
+                onDismissRequest = { showFolderSheet = false },
+            ) {
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    val allLabel = folders["0"] ?: "全部收藏"
+                    BasicComponent(
+                        title = allLabel,
+                        summary = "默认收藏夹",
+                        onClick = { pickFolder("0") },
+                    )
+                    folders.entries
+                        .filter { it.key != "0" }
+                        .forEach { (id, name) ->
+                            BasicComponent(
+                                title = name,
+                                onClick = { pickFolder(id) },
                             )
                         }
+                }
+                if (favorited) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+                        TextButton(
+                            text = "取消收藏",
+                            onClick = ::cancelFavorite,
+                            enabled = !favoriteBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
-                // 回复面板：标题带被回复作者，发送后刷新评论列表以显示新回复
-                CommentReplySheet(
-                    show = replyTarget != null,
-                    targetAuthor = replyTarget?.author,
-                    busy = replyBusy,
-                    onDismiss = { replyTarget = null },
-                    onSend = ::sendReply,
-                )
             }
+            // 回复面板：标题带被回复作者，发送后刷新评论列表以显示新回复
+            CommentReplySheet(
+                show = replyTarget != null,
+                targetAuthor = replyTarget?.author,
+                busy = replyBusy,
+                onDismiss = { replyTarget = null },
+                onSend = ::sendReply,
+            )
         }
     }
 }
 
-/** 头部：封面缩略图 + 标题/作者/热度 + 阅读按钮与高频动作台；章节紧随其后，避免大封面把正文挤出首屏。 */
+/** 头部：封面（大尺寸 128x192 dp，比例 2:3，参考 eh 布局） + 标题/作者/热度 + 阅读按钮与高频动作台。 */
 @Composable
 private fun DetailHeader(
-    detail: AlbumDetail,
+    albumId: String,
+    detail: AlbumDetail?,
+    fallbackTitle: String?,
+    fallbackCoverUrl: String?,
     resumeId: String?,
     loggedIn: Boolean,
     favorited: Boolean,
@@ -743,29 +757,42 @@ private fun DetailHeader(
     onDownloadAll: (() -> Unit)?,
     onOpenSearch: (String, SearchScope) -> Unit,
 ) {
+    val title = detail?.title ?: fallbackTitle.orEmpty()
+    val coverUrl = detail?.coverUrl ?: fallbackCoverUrl
+
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
-            detail.coverUrl?.let { url ->
+            if (!coverUrl.isNullOrBlank()) {
                 // 头图是「列表卡片 → 详情页」形变飞行的落点：卡片内封面被裁成 16dp 圆角，这里对齐同一个值
-                Card(modifier = Modifier.width(112.dp).albumHeroHeader(detail.id, url, MIUIX_CARD_CORNER_DP)) {
+                Card(
+                    modifier = Modifier
+                        .size(width = 128.dp, height = 192.dp)
+                        .albumHeroHeader(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+                ) {
                     AsyncImage(
-                        model = url,
-                        contentDescription = detail.title,
+                        model = coverUrl,
+                        contentDescription = title,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(16.dp))
             }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = detail.title,
-                    style = MiuixTheme.textStyles.title4,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (detail.authors.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(192.dp),
+            ) {
+                if (title.isNotEmpty()) {
+                    Text(
+                        text = title,
+                        style = MiuixTheme.textStyles.title4,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (detail != null && detail.authors.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "作者：${detail.authors.joinToString("、")}",
@@ -774,70 +801,74 @@ private fun DetailHeader(
                         modifier = Modifier.clickable { onOpenSearch(detail.authors.first(), SearchScope.AUTHOR) },
                     )
                 }
-                val metrics = buildList {
-                    detail.likes?.let { add("喜欢 $it") }
-                    detail.views?.let { add("浏览 $it") }
-                    if (detail.commentCount > 0) add("评论 ${detail.commentCount}")
-                    if (detail.pageCount > 0) add("页数 ${detail.pageCount}")
-                }
-                if (metrics.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = metrics.joinToString(" · "),
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
+                if (detail != null) {
+                    val metrics = buildList {
+                        detail.likes?.let { add("喜欢 $it") }
+                        detail.views?.let { add("浏览 $it") }
+                        if (detail.commentCount > 0) add("评论 ${detail.commentCount}")
+                        if (detail.pageCount > 0) add("页数 ${detail.pageCount}")
+                    }
+                    if (metrics.isNotEmpty()) {
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text = metrics.joinToString(" · "),
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
                 }
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
-        val startId = resumeId ?: detail.chapters.firstOrNull()?.id
-        Button(
-            onClick = { startId?.let(onRead) },
-            enabled = startId != null,
-            colors = ButtonDefaults.buttonColorsPrimary(),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(text = if (resumeId != null) "继续阅读" else "开始阅读")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        // 高频动作台：四等分胶囊卡，图标 + 短标签，状态用填充图标回显
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                ActionCell(
-                    icon = if (favorited) MiuixIcons.FolderFill else MiuixIcons.Folder,
-                    label = if (favorited) "已收藏" else "收藏",
-                    enabled = !favoriteBusy,
-                    onClick = onFavorite,
-                    modifier = Modifier.weight(1f),
-                )
-                ActionCell(
-                    icon = if (liked) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
-                    label = if (liked) "已喜欢" else "喜欢",
-                    enabled = !likeBusy,
-                    onClick = onLike,
-                    modifier = Modifier.weight(1f),
-                )
-                if (loggedIn) {
+        if (detail != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            val startId = resumeId ?: detail.chapters.firstOrNull()?.id
+            Button(
+                onClick = { startId?.let(onRead) },
+                enabled = startId != null,
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = if (resumeId != null) "继续阅读" else "开始阅读")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            // 高频动作台：四等分胶囊卡，图标 + 短标签，状态用填充图标回显
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.fillMaxWidth()) {
                     ActionCell(
-                        icon = MiuixIcons.Weeks,
-                        label = when {
-                            trackingBusy -> "处理中"
-                            tracking == true -> "追更中"
-                            else -> "追更"
-                        },
-                        enabled = tracking != null && !trackingBusy,
-                        onClick = onTrack,
+                        icon = if (favorited) MiuixIcons.FolderFill else MiuixIcons.Folder,
+                        label = if (favorited) "已收藏" else "收藏",
+                        enabled = !favoriteBusy,
+                        onClick = onFavorite,
                         modifier = Modifier.weight(1f),
                     )
-                }
-                if (onDownloadAll != null) {
                     ActionCell(
-                        icon = MiuixIcons.Download,
-                        label = "下载",
-                        onClick = onDownloadAll,
+                        icon = if (liked) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
+                        label = if (liked) "已喜欢" else "喜欢",
+                        enabled = !likeBusy,
+                        onClick = onLike,
                         modifier = Modifier.weight(1f),
                     )
+                    if (loggedIn) {
+                        ActionCell(
+                            icon = MiuixIcons.Weeks,
+                            label = when {
+                                trackingBusy -> "处理中"
+                                tracking == true -> "追更中"
+                                else -> "追更"
+                            },
+                            enabled = tracking != null && !trackingBusy,
+                            onClick = onTrack,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (onDownloadAll != null) {
+                        ActionCell(
+                            icon = MiuixIcons.Download,
+                            label = "下载",
+                            onClick = onDownloadAll,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
