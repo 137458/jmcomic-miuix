@@ -27,10 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import top.yukonga.miuix.kmp.squircle.squircleClip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.history.HistoryEntry
@@ -270,10 +268,9 @@ private fun AlbumHistoryCard(
         ) {
             val cover = album.latest.coverUrl
             if (cover != null) {
-                AsyncImage(
-                    model = cover,
+                AlbumCoverImage(
+                    url = cover,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(width = 58.dp, height = 78.dp)
                         .squircleClip(HERO_HISTORY_ROW_CORNER_DP.dp)

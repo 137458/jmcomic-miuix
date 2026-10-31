@@ -62,7 +62,7 @@ keyPassword=...
 ## 模块结构
 
 - `:core`：协议封装与纯 JVM 业务逻辑（网关、下载引擎、搜索合并、封面 URL 构造），JUnit 单元测试覆盖（147 用例）
-- `:app`：Compose UI 与 Android 实现（Room、DataStore、文件存储），JUnit 单元测试覆盖核心交互几何、共享元素宿主生命周期与数据映射（107 用例）
+- `:app`：Compose UI 与 Android 实现（Room、DataStore、文件存储），JUnit 单元测试覆盖核心交互几何、共享元素宿主生命周期与数据映射（129 用例）
 
 ## 致谢
 
