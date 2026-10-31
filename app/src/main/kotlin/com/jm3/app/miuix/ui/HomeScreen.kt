@@ -355,14 +355,14 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 100 }
     }
 
-    // 悬浮操作栏要让开底栏胶囊：胶囊高 64dp，底边距为「导航条 inset + 8dp」，Scaffold 的 FAB
-    // 又自带 12dp 边距。两处的导航条 inset 在算式里正好抵消（本页读到的 inset 已被主框架消费为 0），
-    // 因此固定让出 76dp 就能稳定留出 16dp 视觉间距。
+    // 悬浮操作栏要让开底栏胶囊。底栏胶囊高 64dp、底边距为「8dp + 导航条 inset」，而页面内读到的
+    // inset 已被主框架消费为 0，算式无法直接换算；按手势导航真机实测标定：让出 76dp 时胶囊底距
+    // 底栏上沿只有 7dp，补到 85dp 即得 16dp 视觉间距。
     val floatingActionsBottom = if (LocalFloatingBarContentPadding.current == 0.dp) {
         // 宽屏改用侧栏、没有悬浮底栏，直接贴右下角
         16.dp
     } else {
-        76.dp
+        85.dp
     }
 
     fun openRandom() {
