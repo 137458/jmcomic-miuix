@@ -2,11 +2,14 @@ package com.jm3.app.miuix.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +43,7 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 检查更新页的四态：检查中 / 已是最新 / 发现新版本 / 失败可重试。 */
@@ -95,9 +100,12 @@ fun UpdateScreen(onBack: () -> Unit) {
     // attempt 只做“重新检查”的触发器：递增即重新进入 LaunchedEffect
     var attempt by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Checking) }
+    // 发现新版本时先弹一次提示框，页面本身保留完整更新说明作为详情
+    var showDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(attempt) {
         state = UpdateUiState.Checking
+        showDialog = false
         state = when (val result = checker.check(currentVersion)) {
             is UpdateCheckResult.Success -> when (result.relation) {
                 VersionRelation.NEWER -> UpdateUiState.Available(result.release, currentVersion)
@@ -107,6 +115,7 @@ fun UpdateScreen(onBack: () -> Unit) {
 
             is UpdateCheckResult.Failed -> UpdateUiState.Failed(result.message)
         }
+        showDialog = state is UpdateUiState.Available
     }
 
     /** 打开 Release 页面；没有可用浏览器时回落到 Snackbar，不静默失败。 */
@@ -167,6 +176,14 @@ fun UpdateScreen(onBack: () -> Unit) {
                 )
             }
         }
+        (state as? UpdateUiState.Available)?.let { current ->
+            UpdateAvailableDialog(
+                state = current,
+                show = showDialog,
+                onDismiss = { showDialog = false },
+                onOpenRelease = { openReleasePage(current.release.htmlUrl) },
+            )
+        }
     }
 }
 
@@ -208,13 +225,33 @@ private fun AvailableContent(
     val release = state.release
     SmallTitle(text = "发现新版本")
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        // 版本跃迁：当前 → 最新，一眼看清升级跨度（版本卡片形态参考 pixez）
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VersionColumn(
+                label = "当前版本",
+                version = state.currentVersion,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "→",
+                style = MiuixTheme.textStyles.title3,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            VersionColumn(
+                label = "最新版本",
+                version = release.version,
+                color = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+                alignEnd = true,
+            )
+        }
         BasicComponent(
-            title = "最新版本 ${release.version}",
+            title = "发布信息",
             summary = release.name.ifBlank { "GitHub Release ${release.tagName}" },
-        )
-        BasicComponent(
-            title = "当前版本",
-            summary = state.currentVersion,
         )
         if (release.publishedDate.isNotBlank()) {
             BasicComponent(
@@ -256,4 +293,83 @@ private fun AvailableContent(
         modifier = Modifier.padding(horizontal = 16.dp),
     )
     Spacer(modifier = Modifier.height(24.dp))
+}
+
+/** 版本卡片的一侧：小标签在上、版本号在下，箭头两侧右对齐以保持对称。 */
+@Composable
+private fun VersionColumn(
+    label: String,
+    version: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    alignEnd: Boolean = false,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+    ) {
+        Text(
+            text = label,
+            style = MiuixTheme.textStyles.footnote1,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+        Text(
+            text = version,
+            style = MiuixTheme.textStyles.title4,
+            color = color,
+        )
+    }
+}
+
+/**
+ * 发现新版本的提示弹窗（参考 localsend 的 UpdateDialog 与 pixez 的版本跃迁卡片）。
+ *
+ * 与页面的分工：弹窗只给"版本跃迁 + 更新说明 + 前往下载/稍后"这一层动作；
+ * 发布时间、Release 名称等细节留在页面，避免弹窗内容过长、把主操作挤出屏幕。
+ * 更新说明在弹窗内限高滚动，超长 Markdown 不会撑满屏幕。
+ */
+@Composable
+private fun UpdateAvailableDialog(
+    state: UpdateUiState.Available,
+    show: Boolean,
+    onDismiss: () -> Unit,
+    onOpenRelease: () -> Unit,
+) {
+    val release = state.release
+    OverlayDialog(
+        show = show,
+        title = "发现新版本",
+        summary = "当前 ${state.currentVersion} → 最新 ${release.version}",
+        onDismissRequest = onDismiss,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (release.publishedDate.isNotBlank()) {
+                Text(
+                    text = "发布于 ${release.publishedDate}",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            Text(
+                text = release.notes.ifBlank { "该版本未提供更新说明。" },
+                style = MiuixTheme.textStyles.body2,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 200.dp)
+                    .verticalScroll(rememberScrollState()),
+            )
+        }
+        DialogActionRow(
+            primaryText = "前往下载",
+            secondaryText = "稍后",
+            onSecondary = onDismiss,
+            onPrimary = {
+                onDismiss()
+                onOpenRelease()
+            },
+        )
+    }
 }
