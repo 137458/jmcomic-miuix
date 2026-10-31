@@ -24,6 +24,7 @@ import com.jm3.core.update.MarkdownBlocks
 import com.jm3.core.update.ReleaseInfo
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -202,6 +203,8 @@ private fun parseInlineNotes(text: String, codeColor: Color, codeBackground: Col
  *   是否弹窗由页面每次重检的结果决定。
  * - 没有 .apk 资产时主按钮改为打开 Releases 页面，保证主操作永远有明确结果，不出现点了没反应。
  *
+ * - [onIgnore] 非空时多一颗"忽略此版本"：写入忽略版本后该版本不再弹窗，但页面仍可看到它。
+ *
  * @param show 由页面控制显隐；下载进行中时页面不会置为 true
  */
 @Composable
@@ -212,6 +215,7 @@ internal fun UpdateAvailableDialog(
     onDismiss: () -> Unit,
     onDownload: () -> Unit,
     onOpenRelease: () -> Unit,
+    onIgnore: ((version: String) -> Unit)? = null,
 ) {
     val hasApk = release.apk != null
     OverlayDialog(
@@ -228,6 +232,14 @@ internal fun UpdateAvailableDialog(
                 .verticalScroll(rememberScrollState()),
         ) {
             MarkdownNotes(markdown = release.notes, modifier = Modifier.fillMaxWidth())
+        }
+        // 忽略放在两键之上单独一行：三键等分会把"忽略此版本"挤成折行
+        if (onIgnore != null) {
+            TextButton(
+                text = "忽略此版本",
+                onClick = { onIgnore.invoke(release.version) },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
         }
         DialogActionRow(
             primaryText = if (hasApk) "立即下载" else "前往 Releases 页面",

@@ -56,6 +56,7 @@ import com.jm3.app.miuix.ui.SettingsScreen
 import com.jm3.app.miuix.ui.ShelfScreen
 import com.jm3.app.miuix.ui.TasksScreen
 import com.jm3.app.miuix.ui.UpdateScreen
+import com.jm3.app.miuix.ui.UpdateStartupPrompt
 import com.jm3.app.miuix.ui.TrackingScreen
 import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
@@ -578,6 +579,10 @@ fun Jm3App() {
                     }
                 }
                 AlbumHeroOverlay(host = heroHost, modifier = Modifier.fillMaxSize())
+                // 更新页自身也会检查并弹窗，停留在更新页时不再叠加启动期提示
+                if (backStack.lastOrNull() != Route.Update) {
+                    UpdateStartupPrompt(onOpenUpdatePage = { backStack.add(Route.Update) })
+                }
             }
         }
     }
