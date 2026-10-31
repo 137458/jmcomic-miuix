@@ -67,6 +67,14 @@ class AlbumHeroHost {
      */
     private var overlayReadyFlightId by mutableStateOf<Int?>(null)
 
+    /**
+     * 详情头图是否已画出首帧。
+     *
+     * 飞行落幕后覆盖层立刻消失，此时头图若还没拿到位图，露出的就是一帧空白封面（"闪一下"）。
+     * 覆盖层要等到这里为 true 再收场；每次起飞前清掉，避免沿用上一次的旧结果。
+     */
+    private val headerReady = mutableStateMapOf<String, Boolean>()
+
     var state by mutableStateOf(HeroState())
         private set
 
@@ -143,6 +151,15 @@ class AlbumHeroHost {
         if (flight?.id == flightId) overlayReadyFlightId = flightId
     }
 
+    /** 详情头图画出首帧（或确认失败）后由头图自己回调；只认当前飞行的目标作品。 */
+    fun markHeaderReady(albumId: String) {
+        val target = flight?.albumId ?: pending?.albumId ?: return
+        if (target == albumId) headerReady[albumId] = true
+    }
+
+    /** 头图首帧是否已就绪；没有飞行记录时当作就绪，覆盖层不会因此多等。 */
+    fun isHeaderReady(albumId: String): Boolean = headerReady[albumId] == true
+
     /**
      * 列表封面在飞行期间要让位，否则覆盖层里的图和列表里的图会重影。
      * 只认 flight 不认 pending：等头图测量期间用户还停在列表上，提前隐藏会留一个空洞。
@@ -173,6 +190,7 @@ class AlbumHeroHost {
         val resolvedUrl = url ?: urls[albumId]
         val oldPending = state.pending
         overlayReadyFlightId = null
+        headerReady.remove(albumId)
         state = state.startForward(
             id = ++sequence,
             albumId = albumId,
@@ -236,9 +254,25 @@ val LocalAlbumDetailRootCoordinates = staticCompositionLocalOf<LayoutCoordinates
  * "同一个显式 Key" 与 "同一个解码尺寸"（见 [heroCoverSizePx]），缺一个就要重新解码出空白首帧。
  */
 fun albumCoverMemoryKey(url: String?): MemoryCache.Key? {
-    val clean = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    return MemoryCache.Key(clean)
+    val key = albumCoverCacheKeyText(url) ?: return null
+    return MemoryCache.Key(key)
 }
+
+/**
+ * 把封面地址规范成缓存键文本：作品封面按车号归并，同一车号的不同线路地址落到同一个条目。
+ *
+ * 卡片的封面地址用列表首条的图片域名拼，详情页用该作品自己的域名拼；线路漂移后两者不再相等，
+ * 缓存命中不了就要重新解码，用户看到的正是"进详情页时封面闪一下"。非作品封面地址原样使用。
+ */
+internal fun albumCoverCacheKeyText(url: String?): String? {
+    val clean = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val albumId = ALBUM_COVER_PATH.find(clean)?.groupValues?.get(1).orEmpty()
+    return if (albumId.isNotEmpty()) ALBUM_COVER_KEY_PREFIX + albumId else clean
+}
+
+private val ALBUM_COVER_PATH = Regex("""/media/albums/(\d+)[^/]*$""")
+
+private const val ALBUM_COVER_KEY_PREFIX = "jm3-album-cover:"
 
 /** 按屏幕密度换算封面解码尺寸（px）：固定 3:4，保证列表卡片、覆盖层、详情头图三端解码结果尺寸完全一致。 */
 internal fun heroCoverSizePx(density: Float): IntSize = IntSize(
@@ -339,6 +373,10 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
             targetValue = 1f,
             animationSpec = tween(durationMillis = HERO_FLIGHT_DURATION_MS, easing = FastOutSlowInEasing),
         )
+        // 落位后等头图首帧再收场：否则覆盖层消失的那一帧，头图还是空白的
+        withTimeoutOrNull(HERO_HEADER_READY_TIMEOUT_MS) {
+            snapshotFlow { host.isHeaderReady(flight.albumId) }.first { it }
+        }
         host.finishFlight(flight.id)
     }
 
