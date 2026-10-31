@@ -10,10 +10,12 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -48,7 +52,6 @@ import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -238,20 +241,38 @@ fun CenteredEmptyState(title: String, hint: String? = null, modifier: Modifier =
     }
 }
 
-/** 搜索结果行封面：统一尺寸，缺失时留空占位，保持行高稳定。 */
+/** 行卡封面比例 3:4：宽度由撑满后的行高换算，卡片变高封面跟着变宽。 */
+private const val SEARCH_ROW_COVER_ASPECT = 0.75f
+
+/** 行卡封面左侧圆角：封面贴满卡片左缘，只有朝内的一侧需要自己裁，外侧与卡片同曲率。 */
+private val SearchRowCoverShape = RoundedCornerShape(
+    topStart = MIUIX_CARD_CORNER_DP.dp,
+    bottomStart = MIUIX_CARD_CORNER_DP.dp,
+)
+
+/**
+ * 搜索结果行封面：撑满卡片高度、贴齐卡片左缘。
+ *
+ * 行高由标题行数决定，封面按同一高度等比换算宽度，所以每行封面都顶满卡片而不是内缩成小缩略图；
+ * 缺失封面时用同尺寸底色占位，保证行高稳定。
+ */
 @Composable
-private fun SearchResultCover(albumId: String, url: String?, title: String? = null) {
+private fun SearchResultCover(
+    albumId: String,
+    url: String?,
+    title: String? = null,
+    modifier: Modifier = Modifier,
+) {
     if (url == null) {
-        Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
+        Box(modifier = modifier.background(MiuixTheme.colorScheme.surfaceContainer))
         return
     }
     AlbumCoverImage(
         url = url,
         contentDescription = null,
-        modifier = Modifier
-            .size(width = 48.dp, height = 64.dp)
-            .squircleClip(HERO_SEARCH_ROW_CORNER_DP.dp)
-            .albumHeroCover(albumId, url, title, HERO_SEARCH_ROW_CORNER_DP),
+        modifier = modifier
+            .clip(SearchRowCoverShape)
+            .albumHeroCover(albumId, url, title, MIUIX_CARD_CORNER_DP),
     )
 }
 
@@ -299,6 +320,9 @@ fun LoadMoreFooter(
 /**
  * 逐行结果卡：封面 + 标题 + 作者标签摘要，榜单模式在封面前补名次。
  *
+ * 封面顶满卡片：卡片内边距为 0，封面贴齐左缘并撑满整行高度，行高只由右侧文字决定；
+ * 因此需要 height(IntrinsicSize.Min) 先量出文字高度，封面才能按比例换算宽度。
+ *
  * 标题与摘要都限行：超长日文标题会撑到四行，把整行拉得高矮不一，两侧留白全被吃掉。
  */
 @Composable
@@ -312,38 +336,48 @@ private fun SearchResultCard(
         .joinToString(" · ")
         .ifBlank { null }
     val heroHost = LocalAlbumHeroHost.current
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).pressScale()) {
-        BasicComponent(
-            startAction = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (rank != null) {
-                        RankIndexBadge(rank = rank)
-                        Spacer(modifier = Modifier.width(10.dp))
-                    }
-                    SearchResultCover(result.id, result.coverUrl, result.title)
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).pressScale(),
+        insideMargin = PaddingValues(0.dp),
+        onClick = {
+            heroHost?.startForward(result.id, result.coverUrl, MIUIX_CARD_CORNER_DP, result.title)
+            onClick()
+        },
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            if (rank != null) {
+                Box(modifier = Modifier.fillMaxHeight().width(30.dp), contentAlignment = Alignment.Center) {
+                    RankIndexBadge(rank = rank)
                 }
-            },
-            onClick = {
-                heroHost?.startForward(result.id, result.coverUrl, HERO_SEARCH_ROW_CORNER_DP, result.title)
-                onClick()
-            },
-        ) {
-            Text(
-                text = result.title,
-                style = MiuixTheme.textStyles.headline1,
-                fontWeight = FontWeight.Medium,
-                color = MiuixTheme.colorScheme.onBackground,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            }
+            SearchResultCover(
+                albumId = result.id,
+                url = result.coverUrl,
+                title = result.title,
+                modifier = Modifier.fillMaxHeight().aspectRatio(SEARCH_ROW_COVER_ASPECT),
             )
-            if (summary != null) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+            ) {
                 Text(
-                    text = summary,
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
+                    text = result.title,
+                    style = MiuixTheme.textStyles.headline1,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onBackground,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (summary != null) {
+                    Text(
+                        text = summary,
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

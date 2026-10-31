@@ -303,7 +303,6 @@ fun AlbumCoverImage(
  */
 const val HERO_CARD_CORNER_DP = 16f
 const val MIUIX_CARD_CORNER_DP = HERO_CARD_CORNER_DP
-const val HERO_SEARCH_ROW_CORNER_DP = 6f
 const val HERO_HISTORY_ROW_CORNER_DP = 8f
 const val HERO_FAVORITE_ROW_CORNER_DP = 6f
 
