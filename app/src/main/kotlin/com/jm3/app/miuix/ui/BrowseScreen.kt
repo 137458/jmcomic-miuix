@@ -37,9 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.ui.glass.GlassListTabRow
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.core.Jm3Gateway
@@ -246,20 +246,56 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                         }
                     }
                 },
-                // 榜单筛选条常驻玻璃顶栏：横滑胶囊替代分段控件，与内容同处玻璃采样区
+                // 筛选条常驻玻璃顶栏：与内容同处玻璃采样区，列表滚动时玻璃背景随之实时更新
                 bottomContent = {
-                    if (mode == BrowseMode.RANK && activeTag == null) {
+                    if (activeTag == null) {
                         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                            FilterChipRow(
-                                labels = BrowseTime.entries.map { it.label },
-                                selectedIndex = BrowseTime.entries.indexOf(time),
-                                onSelected = { timeValue = BrowseTime.entries[it].apiValue },
-                            )
-                            FilterChipRow(
-                                labels = BrowseOrder.entries.map { it.shortLabel },
-                                selectedIndex = BrowseOrder.entries.indexOf(order),
-                                onSelected = { orderValue = BrowseOrder.entries[it].apiValue },
-                            )
+                            if (mode == BrowseMode.RANK) {
+                                FilterChipRow(
+                                    labels = BrowseTime.entries.map { it.label },
+                                    selectedIndex = BrowseTime.entries.indexOf(time),
+                                    onSelected = { timeValue = BrowseTime.entries[it].apiValue },
+                                )
+                                FilterChipRow(
+                                    labels = BrowseOrder.entries.map { it.shortLabel },
+                                    selectedIndex = BrowseOrder.entries.indexOf(order),
+                                    onSelected = { orderValue = BrowseOrder.entries[it].apiValue },
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    GlassTabRow(
+                                        tabs = BrowseCategory.entries.map { it.label },
+                                        selectedTabIndex = BrowseCategory.entries.indexOf(category),
+                                        onTabSelected = {
+                                            selectionHaptic()
+                                            categoryValue = BrowseCategory.entries[it].apiValue
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    // 「更多分类」入口固定在主分类条右侧（原版 Header 的 MoreHoriz 位置）
+                                    if (hasTagBlocks) {
+                                        Spacer(modifier = Modifier.size(width = 8.dp, height = 0.dp))
+                                        TextButton(
+                                            text = "更多",
+                                            onClick = { showMoreSheet = true },
+                                            minWidth = 0.dp,
+                                            minHeight = 32.dp,
+                                        )
+                                    }
+                                }
+                                GlassTabRow(
+                                    tabs = BrowseOrder.entries.map { it.shortLabel },
+                                    selectedTabIndex = BrowseOrder.entries.indexOf(order),
+                                    onTabSelected = {
+                                        selectionHaptic()
+                                        orderValue = BrowseOrder.entries[it].apiValue
+                                    },
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                )
+                            }
                         }
                     }
                 },
@@ -321,36 +357,12 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                             ?.firstOrNull { it.slug == category.apiValue }
                             ?.children
                             .orEmpty()
-                        // 分组筛选统一用 Miuix TabRow（分段控件语义），替代手写 Chip 行。
-                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                            if (mode == BrowseMode.CATEGORY) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    GlassListTabRow(
-                                        tabs = BrowseCategory.entries.map { it.label },
-                                        selectedTabIndex = BrowseCategory.entries.indexOf(category),
-                                        onTabSelected = {
-                                            selectionHaptic()
-                                            categoryValue = BrowseCategory.entries[it].apiValue
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    // 「更多分类」入口固定在主分类条右侧（原版 Header 的 MoreHoriz 位置）
-                                    if (hasTagBlocks) {
-                                        Spacer(modifier = Modifier.size(width = 8.dp, height = 0.dp))
-                                        TextButton(
-                                            text = "更多",
-                                            onClick = { showMoreSheet = true },
-                                            minWidth = 0.dp,
-                                            minHeight = 32.dp,
-                                        )
-                                    }
-                                }
+                        val hasHotTags = mode == BrowseMode.CATEGORY && hotTags.isNotEmpty()
+                        // 主分类与排序已常驻玻璃顶栏：这里只保留随内容滚动的子分类与热门标签导航
+                        if (subCategories.isNotEmpty() || hasHotTags) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                                 // 子分类横向胶囊条：取当前主分类的 children，点击按标签检索
                                 if (subCategories.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(8.dp))
                                     LazyRow(
                                         modifier = Modifier.fillMaxWidth(),
                                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -366,32 +378,22 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                         }
                                     }
                                 }
-                            }
-                            FilterGroupLabel(text = "排序")
-                            GlassListTabRow(
-                                tabs = BrowseOrder.entries.map { it.shortLabel },
-                                selectedTabIndex = BrowseOrder.entries.indexOf(order),
-                                onTabSelected = {
-                                    selectionHaptic()
-                                    orderValue = BrowseOrder.entries[it].apiValue
-                                },
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            )
-                            // 热门标签行：取前若干项，横向滚动，点击按标签检索；榜单页不提供标签导航
-                            if (mode == BrowseMode.CATEGORY && hotTags.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                SmallTitle(text = "热门标签")
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    items(hotTags.take(12)) { tag ->
-                                        TextButton(
-                                            text = tag,
-                                            onClick = { openTag(tag) },
-                                            minWidth = 0.dp,
-                                            minHeight = 32.dp,
-                                        )
+                                // 热门标签行：取前若干项，横向滚动，点击按标签检索；榜单页不提供标签导航
+                                if (hasHotTags) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    SmallTitle(text = "热门标签")
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        items(hotTags.take(12)) { tag ->
+                                            TextButton(
+                                                text = tag,
+                                                onClick = { openTag(tag) },
+                                                minWidth = 0.dp,
+                                                minHeight = 32.dp,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -629,20 +631,9 @@ private fun TagResultSection(
     }
 }
 
-/** 筛选分组标题：分段控件只放得下一屏标签，分组语境靠这行小字承担。 */
-@Composable
-private fun FilterGroupLabel(text: String) {
-    Text(
-        text = text,
-        style = MiuixTheme.textStyles.footnote1,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
-    )
-}
-
 /**
  * 排序短标签：4 个分段在 369dp 宽度下约 78dp 一格，全称（如「最多观看」）会被省略号截断。
- * 排序语义由分组标题「排序」给定，这里只保留可区分的两字。
+ * 页签常驻顶栏、不再有分组标题，短标签需自身可区分。
  */
 private val BrowseOrder.shortLabel: String
     get() = when (this) {

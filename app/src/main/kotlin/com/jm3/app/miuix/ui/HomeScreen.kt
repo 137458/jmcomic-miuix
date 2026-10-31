@@ -38,9 +38,9 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassFabItem
 import com.jm3.app.miuix.ui.glass.GlassFloatingActionBar
-import com.jm3.app.miuix.ui.glass.GlassListTabRow
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.core.Jm3Gateway
@@ -367,6 +367,8 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         candidates.randomOrNull()?.let { onOpenAlbum(it.id) }
     }
 
+    val selectionHaptic = rememberSelectionHaptic()
+
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -446,6 +448,18 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                         }
                     },
                 ) {}
+                // 搜索结果排序常驻玻璃顶栏：与内容同处玻璃采样区，列表滚动时背景随之实时更新
+                if (searching) {
+                    GlassTabRow(
+                        tabs = BrowseOrder.entries.map { it.label },
+                        selectedTabIndex = BrowseOrder.entries.indexOf(order),
+                        onTabSelected = {
+                            selectionHaptic()
+                            runSearch(activeQuery, searchByTag, BrowseOrder.entries[it])
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
             }
         },
         floatingActionButton = {
@@ -491,8 +505,6 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                         SearchResultHeader(
                             query = activeQuery,
                             byTag = searchByTag,
-                            order = order,
-                            onOrderChange = { runSearch(activeQuery, searchByTag, it) },
                             total = (results as? HomeListState.Loaded)?.page?.totalItems ?: 0,
                         )
                     }
@@ -756,33 +768,21 @@ private fun LazyListScope.homePageItems(
     pagedSearchResultItems(page = page, onPageChange = onPageChange, onOpenAlbum = onOpenAlbum)
 }
 
-/** 搜索结果头：关键词/结果数 + 排序分段控件。 */
+/** 搜索结果摘要：关键词/结果数；排序已常驻玻璃顶栏。 */
 @Composable
 private fun SearchResultHeader(
     query: String,
     byTag: Boolean,
-    order: BrowseOrder,
-    onOrderChange: (BrowseOrder) -> Unit,
     total: Int,
 ) {
-    val selectionHaptic = rememberSelectionHaptic()
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Text(
-            text = (if (byTag) "标签：$query" else "“$query”") + if (total > 0) " · 共 $total 结果" else "",
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        GlassListTabRow(
-            tabs = BrowseOrder.entries.map { it.label },
-            selectedTabIndex = BrowseOrder.entries.indexOf(order),
-            onTabSelected = {
-                selectionHaptic()
-                onOrderChange(BrowseOrder.entries[it])
-            },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        )
-    }
+    Text(
+        text = (if (byTag) "标签：$query" else "“$query”") + if (total > 0) " · 共 $total 结果" else "",
+        style = MiuixTheme.textStyles.footnote1,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    )
 }
 
 @Composable
