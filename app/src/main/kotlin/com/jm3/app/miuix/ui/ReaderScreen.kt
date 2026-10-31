@@ -93,7 +93,6 @@ import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.NumberPicker
-import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -558,7 +557,7 @@ private fun ReaderPages(
                 )
             }
         },
-        snackbarHost = { SnackbarHost(state = snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(state = snackbarHostState) },
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize()

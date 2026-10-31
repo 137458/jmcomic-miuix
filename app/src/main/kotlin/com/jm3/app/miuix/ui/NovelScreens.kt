@@ -235,7 +235,7 @@ fun NovelListScreen(
                 }
             }
         },
-        snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -473,7 +473,7 @@ fun NovelDetailScreen(
                 color = Color.Transparent,
             )
         },
-        snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -887,7 +887,7 @@ fun NovelReaderScreen(
                 },
             )
         },
-        snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
