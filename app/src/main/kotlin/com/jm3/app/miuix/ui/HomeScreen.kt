@@ -40,7 +40,6 @@ import com.jm3.app.miuix.ui.glass.GlassFabItem
 import com.jm3.app.miuix.ui.glass.GlassFloatingActionBar
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
-import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.core.Jm3Gateway
@@ -450,14 +449,14 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                 ) {}
                 // 搜索结果排序常驻玻璃顶栏：与内容同处玻璃采样区，列表滚动时背景随之实时更新
                 if (searching) {
-                    GlassTabRow(
+                    GlassChipRow(
                         tabs = BrowseOrder.entries.map { it.label },
                         selectedTabIndex = BrowseOrder.entries.indexOf(order),
                         onTabSelected = {
                             selectionHaptic()
                             runSearch(activeQuery, searchByTag, BrowseOrder.entries[it])
                         },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     )
                 }
             }

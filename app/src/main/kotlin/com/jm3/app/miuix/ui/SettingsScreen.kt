@@ -1,8 +1,6 @@
 package com.jm3.app.miuix.ui
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -64,11 +62,6 @@ private fun PaginationMode.label(): String = when (this) {
     PaginationMode.CLICK -> "点击翻页"
 }
 
-/** 原版「JM 公告」对应官方 Trello，网址发布页用于获取最新可用域名。 */
-private const val ANNOUNCEMENT_URL = "https://trello.com/b/McDZAm8C/"
-private const val RELEASE_PAGE_URL = "https://jm-uu.cc/mJ8rWd"
-private const val CONTACT_MAIL = "mailto:www18comic@gmail.com?subject=JMComic3_APP"
-
 /** 版本号连点触发隐藏诊断的阈值与窗口。 */
 private const val DIAGNOSTIC_TAPS = 5
 private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
@@ -121,14 +114,6 @@ fun SettingsScreen(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
             }
         }.getOrDefault(0L)
-    }
-
-    /** 打开外链；无浏览器等失败场景回落到 Snackbar。 */
-    fun openUrl(url: String) {
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            .onFailure {
-                scope.launch { snackbarHostState.showSnackbar("无法打开链接：$url") }
-            }
     }
 
     fun applyPaginationMode(mode: PaginationMode) {
@@ -328,25 +313,6 @@ fun SettingsScreen(
                     title = "清空下载",
                     summary = "清除下载任务与已下载文件",
                     onClick = { confirmClear = "downloads" },
-                )
-            }
-
-            SmallTitle(text = "公告与支持")
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                ArrowPreference(
-                    title = "JM 公告",
-                    summary = "官方公告与版本动态",
-                    onClick = { openUrl(ANNOUNCEMENT_URL) },
-                )
-                ArrowPreference(
-                    title = "网址发布页",
-                    summary = "获取最新可用线路",
-                    onClick = { openUrl(RELEASE_PAGE_URL) },
-                )
-                ArrowPreference(
-                    title = "广告合作",
-                    summary = "www18comic@gmail.com",
-                    onClick = { openUrl(CONTACT_MAIL) },
                 )
             }
 

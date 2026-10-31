@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
-import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.core.Jm3Gateway
@@ -251,22 +250,30 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                     if (activeTag == null) {
                         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
                             if (mode == BrowseMode.RANK) {
-                                FilterChipRow(
-                                    labels = BrowseTime.entries.map { it.label },
-                                    selectedIndex = BrowseTime.entries.indexOf(time),
-                                    onSelected = { timeValue = BrowseTime.entries[it].apiValue },
+                                GlassChipRow(
+                                    tabs = BrowseTime.entries.map { it.label },
+                                    selectedTabIndex = BrowseTime.entries.indexOf(time),
+                                    onTabSelected = {
+                                        selectionHaptic()
+                                        timeValue = BrowseTime.entries[it].apiValue
+                                    },
+                                    contentPadding = FilterChipsPadding,
                                 )
-                                FilterChipRow(
-                                    labels = BrowseOrder.entries.map { it.shortLabel },
-                                    selectedIndex = BrowseOrder.entries.indexOf(order),
-                                    onSelected = { orderValue = BrowseOrder.entries[it].apiValue },
+                                GlassChipRow(
+                                    tabs = BrowseOrder.entries.map { it.shortLabel },
+                                    selectedTabIndex = BrowseOrder.entries.indexOf(order),
+                                    onTabSelected = {
+                                        selectionHaptic()
+                                        orderValue = BrowseOrder.entries[it].apiValue
+                                    },
+                                    contentPadding = FilterChipsPadding,
                                 )
                             } else {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    GlassTabRow(
+                                    GlassChipRow(
                                         tabs = BrowseCategory.entries.map { it.label },
                                         selectedTabIndex = BrowseCategory.entries.indexOf(category),
                                         onTabSelected = {
@@ -274,6 +281,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                             categoryValue = BrowseCategory.entries[it].apiValue
                                         },
                                         modifier = Modifier.weight(1f),
+                                        contentPadding = PaddingValues(vertical = 4.dp),
                                     )
                                     // 「更多分类」入口固定在主分类条右侧（原版 Header 的 MoreHoriz 位置）
                                     if (hasTagBlocks) {
@@ -286,14 +294,14 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                         )
                                     }
                                 }
-                                GlassTabRow(
+                                GlassChipRow(
                                     tabs = BrowseOrder.entries.map { it.shortLabel },
                                     selectedTabIndex = BrowseOrder.entries.indexOf(order),
                                     onTabSelected = {
                                         selectionHaptic()
                                         orderValue = BrowseOrder.entries[it].apiValue
                                     },
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                    contentPadding = FilterChipsPadding,
                                 )
                             }
                         }
@@ -646,6 +654,9 @@ private val BrowseOrder.shortLabel: String
 // 列宽自适应阈值：StaggeredGridCells.Adaptive 按 (可用宽度+间距)/(阈值+间距) 取整定列数，
 // 369dp 宽的手机扣除左右各 16dp 后只有 337dp，180dp 阈值会被压成 1 列；
 // 160dp 保证 360dp 及以上宽度的手机仍排 2 列，平板则自动排 3 列以上。
+/** 分类页筛选胶囊条的留白：与玻璃顶栏左右 16dp 对齐，上下各 4dp 使两行胶囊间距与旧版一致。 */
+private val FilterChipsPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+
 private val RANK_GRID_MIN_CARD_WIDTH = 160.dp
 private val RANK_GRID_VERTICAL_SPACING = 8.dp
 private val RANK_GRID_HORIZONTAL_PADDING = 16.dp

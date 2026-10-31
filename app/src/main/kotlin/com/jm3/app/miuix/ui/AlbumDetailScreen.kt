@@ -670,7 +670,7 @@ fun AlbumDetailScreen(
                             }
                             is CommentsUiState.Loaded -> {
                                 item(key = "comments-card") {
-                                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                             if (cs.page.items.isEmpty()) {
                                                 Text(
@@ -1083,7 +1083,7 @@ internal fun CommentComposer(
     onLogin: () -> Unit,
     onSend: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         if (!loggedIn) {
             BasicComponent(
                 title = "登录后发表评论",

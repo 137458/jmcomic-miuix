@@ -31,7 +31,6 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.ForumScope
 import com.jm3.core.settings.PaginationMode
@@ -237,14 +236,14 @@ fun ForumScreen(
                     color = Color.Transparent,
                 )
                 // 档位筛选固定于列表之外：与顶栏同处玻璃层
-                GlassTabRow(
+                GlassChipRow(
                     tabs = ForumScope.entries.map { it.label },
                     selectedTabIndex = scopeIndex,
                     onTabSelected = {
                         selectionHaptic()
                         scopeIndex = it
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 )
             }
         },

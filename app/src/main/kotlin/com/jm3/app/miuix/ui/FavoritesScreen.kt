@@ -29,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
-import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.mergedWith
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.SearchPage
@@ -351,14 +350,13 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     color = Color.Transparent,
                 )
                 // 分段切换固定于列表之外：与顶栏同处玻璃层
-                GlassTabRow(
+                GlassChipRow(
                     tabs = listOf("收藏夹", "标签收藏"),
                     selectedTabIndex = tabIndex,
                     onTabSelected = {
                         selectionHaptic()
                         tabIndex = it
                     },
-                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
         },
