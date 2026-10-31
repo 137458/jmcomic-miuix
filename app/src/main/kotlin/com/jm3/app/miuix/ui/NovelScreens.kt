@@ -43,6 +43,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.NovelChapter
 import com.jm3.core.model.NovelChapterMeta
@@ -67,7 +68,6 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -510,7 +510,7 @@ fun NovelDetailScreen(
                             )
                         }
                         item(key = "tabs") {
-                            TabRow(
+                            GlassTabRow(
                                 tabs = listOf("目录", "相关", "评论"),
                                 selectedTabIndex = tab,
                                 onTabSelected = {

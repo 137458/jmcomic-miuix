@@ -30,6 +30,7 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.NOTIFICATION_TYPE_FOLLOW
 import com.jm3.core.model.NotificationBody
 import com.jm3.core.model.NotificationItem
@@ -43,7 +44,6 @@ import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -154,7 +154,7 @@ fun NotificationsScreen(
                     navigationIcon = { BackButton(onBack = onBack) },
                 )
                 // 分类页签固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切换
-                TabRow(
+                GlassTabRow(
                     tabs = tabLabels,
                     selectedTabIndex = NotificationTab.entries.indexOf(tab),
                     onTabSelected = {
