@@ -21,8 +21,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Card
@@ -163,6 +174,67 @@ internal fun BoxScope.WorkAlbumCodeBadge(code: String?) {
 }
 
 /**
+ * 让内容不参与父级固有尺寸测量。
+ *
+ * Coil 的位图自带远大于卡片的固有尺寸；行卡靠 [IntrinsicSize.Min] 让封面顶满行高，
+ * 结果封面反而把整行撑成一张竖图的高度（首页「最新上架」每行约 210dp）。
+ * 把固有尺寸报成 0 之后，行高只由右侧文字决定。
+ */
+private object NoIntrinsicMeasurePolicy : MeasurePolicy {
+    override fun MeasureScope.measure(
+        measurables: List<Measurable>,
+        constraints: Constraints,
+    ): MeasureResult {
+        val placeable = measurables.first().measure(constraints)
+        return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int) = 0
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int) = 0
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(measurables: List<IntrinsicMeasurable>, width: Int) = 0
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurables: List<IntrinsicMeasurable>, width: Int) = 0
+}
+
+/** [NoIntrinsicMeasurePolicy] 的调用入口：只包一个子节点，尺寸完全由它自己决定。 */
+@Composable
+private fun NoIntrinsicSize(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content = content, modifier = modifier, measurePolicy = NoIntrinsicMeasurePolicy)
+}
+
+/**
+ * 次级信息行：作者在前、分类在后（分类用主色区分）。两者都缺时不占位。
+ *
+ * 分类是接口给的主分类标题，缺主分类时映射层已退回子分类，这里只负责排版。
+ */
+@Composable
+private fun WorkCardSubtitleText(
+    authors: String?,
+    category: String?,
+    modifier: Modifier = Modifier,
+) {
+    val authorText = authors?.trim()?.takeIf { it.isNotEmpty() }
+    val categoryText = category?.trim()?.takeIf { it.isNotEmpty() }
+    if (authorText == null && categoryText == null) return
+    Text(
+        text = buildAnnotatedString {
+            if (authorText != null) append(authorText)
+            if (authorText != null && categoryText != null) append(" · ")
+            if (categoryText != null) {
+                withStyle(SpanStyle(color = MiuixTheme.colorScheme.primary)) { append(categoryText) }
+            }
+        },
+        style = MiuixTheme.textStyles.footnote1,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.padding(top = WorkCardTokens.TextGap),
+    )
+}
+
+/**
  * 行卡附加信息行：左侧标签、右侧车号（#123456，口径与详情页一致），两者都缺时不占位。
  *
  * 标签占满剩余宽度并让车号常驻，长标签先省略而不是把车号挤出屏幕。
@@ -208,6 +280,7 @@ internal fun WorkCardMetaRow(
  * 外观契约与 [WorkRowCard] 一致：圆角来自 [HERO_CARD_CORNER_DP]、标题 body1/body2 加粗、
  * 次级信息 footnote1、角标走 [WorkCoverBadge]；不同场景只允许改宽度与标题行数。
  *
+ * @param category 主分类标题，与作者同一行展示（主色）；为空时不占位。
  * @param badge 封面角标槽位，调用方用 `Modifier.align(...)` 决定落点。
  * @param footer 标题下方的附加行（作者、日期等），由调用方按需补充。
  */
@@ -220,6 +293,7 @@ internal fun WorkGridCard(
     albumId: String? = null,
     coverContentDescription: String? = null,
     subtitle: String? = null,
+    category: String? = null,
     titleMaxLines: Int = 2,
     badge: (@Composable BoxScope.() -> Unit)? = null,
     footer: (@Composable ColumnScope.() -> Unit)? = null,
@@ -261,16 +335,7 @@ internal fun WorkGridCard(
                 maxLines = titleMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = WorkCardTokens.TextGap),
-                )
-            }
+            WorkCardSubtitleText(authors = subtitle, category = category)
             footer?.invoke(this)
         }
     }
@@ -282,6 +347,7 @@ internal fun WorkGridCard(
  * 行高只由文字决定，所以先用 height(IntrinsicSize.Min) 量出文字高度，封面再按 3:4 换算宽度；
  * 这与 [WorkGridCard] 是同一套外观契约，只是把封面换成了竖向撑满的变体。
  *
+ * @param category 主分类标题，与作者同一行展示（主色）；为空时不占位。
  * @param leading 封面前方的槽位（如榜单名次）。
  * @param trailing 行尾槽位（如删除、点赞按钮）。落在卡片点击区之内，按钮自身的点击不受影响。
  */
@@ -293,6 +359,7 @@ internal fun WorkRowCard(
     modifier: Modifier = Modifier,
     albumId: String? = null,
     subtitle: String? = null,
+    category: String? = null,
     coverContentDescription: String? = null,
     leading: (@Composable RowScope.() -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
@@ -312,13 +379,15 @@ internal fun WorkRowCard(
     ) {
         Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             leading?.invoke(this)
-            WorkCover(
-                url = coverUrl,
-                albumId = albumId,
-                title = title,
-                contentDescription = coverContentDescription,
-                modifier = Modifier.fillMaxHeight().aspectRatio(WorkCardTokens.CoverAspect),
-            )
+            NoIntrinsicSize(modifier = Modifier.fillMaxHeight()) {
+                WorkCover(
+                    url = coverUrl,
+                    albumId = albumId,
+                    title = title,
+                    contentDescription = coverContentDescription,
+                    modifier = Modifier.fillMaxHeight().aspectRatio(WorkCardTokens.CoverAspect),
+                )
+            }
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -337,16 +406,7 @@ internal fun WorkRowCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = WorkCardTokens.TextGap),
-                    )
-                }
+                WorkCardSubtitleText(authors = subtitle, category = category)
                 content()
             }
             trailing?.invoke(this)

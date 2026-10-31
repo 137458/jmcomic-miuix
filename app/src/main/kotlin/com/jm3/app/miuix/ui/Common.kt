@@ -335,6 +335,7 @@ private fun SearchResultCard(
         onClick = onClick,
         albumId = result.id,
         subtitle = authors,
+        category = result.category,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         leading = if (rank == null) {
             null
@@ -530,6 +531,7 @@ private fun RankGridCard(result: SearchResult, rank: Int, onClick: () -> Unit) {
         albumId = result.id,
         coverContentDescription = result.title,
         subtitle = result.authors.joinToString(" / ").ifBlank { "未知作者" },
+        category = result.category,
         titleMaxLines = 1,
         modifier = Modifier.fillMaxWidth(),
         badge = {

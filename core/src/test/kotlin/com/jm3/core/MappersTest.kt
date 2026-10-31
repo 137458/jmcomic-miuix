@@ -35,7 +35,9 @@ class MappersTest {
         tags: List<String>? = listOf("tag1"),
         description: String? = null,
         image: String? = "cover.jpg",
-    ): JmAlbumMeta = JmAlbumMeta(id, title, authors, tags, description, image, cat, subCat)
+        category: JmCategoryMeta? = cat,
+        subCategory: JmCategoryMeta? = subCat,
+    ): JmAlbumMeta = JmAlbumMeta(id, title, authors, tags, description, image, category, subCategory)
 
     private fun album(
         id: String = "9",
@@ -77,6 +79,28 @@ class MappersTest {
         assertEquals(listOf("作者A"), got.authors)
         assertEquals(listOf("tag1"), got.tags)
         assertNull(got.coverUrl)
+    }
+
+    @Test
+    fun 相册元数据_映射_带上主分类标题() {
+        assertEquals("分类", albumMeta().toSearchResult().category)
+    }
+
+    @Test
+    fun 相册元数据_映射_无主分类时回退子分类() {
+        val got = albumMeta(category = null).toSearchResult()
+        assertEquals("子分类", got.category)
+    }
+
+    @Test
+    fun 相册元数据_映射_分类标题为空白时回退子分类() {
+        val got = albumMeta(category = JmCategoryMeta("0", "  ")).toSearchResult()
+        assertEquals("子分类", got.category)
+    }
+
+    @Test
+    fun 相册元数据_映射_完全没有分类时为null() {
+        assertNull(albumMeta(category = null, subCategory = null).toSearchResult().category)
     }
 
     @Test
