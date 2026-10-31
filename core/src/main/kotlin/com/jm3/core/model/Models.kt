@@ -295,6 +295,8 @@ data class CommentItem(
     val badges: List<String> = emptyList(),
     /** 关联作品名（形如 JM123456）；论坛条目底部的可点作品按钮用它。 */
     val albumName: String? = null,
+    /** 关联作品的 3:4 封面绝对地址；图片域名未知或该评论不带作品时为 null。 */
+    val albumCoverUrl: String? = null,
     /** 正文分段；空表表示调用方直接展示 content。 */
     val body: List<CommentSegment> = emptyList(),
 )
