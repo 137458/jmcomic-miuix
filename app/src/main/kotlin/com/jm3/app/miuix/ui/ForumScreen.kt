@@ -213,7 +213,9 @@ fun ForumScreen(
 
     // 切换档位或分页模式时按新语义重载第一页，避免两种翻页状态混用
     LaunchedEffect(scopeIndex, pageMode) {
-        listState.scrollToItem(0)
+        // 首帧这里列表还没进组合（Loading 态不是列表），scrollToItem 会挂起等待布局而不返回，
+        // 取数协程因此永远不执行；requestScrollToItem 只登记待处理滚动，不阻塞取数。
+        listState.requestScrollToItem(0)
         fetch(targetPage = 1, replace = true, showLoading = true)
     }
 
