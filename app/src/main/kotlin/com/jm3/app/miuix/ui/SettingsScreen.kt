@@ -366,7 +366,7 @@ fun SettingsScreen(
                 )
                 ArrowPreference(
                     title = "检查更新",
-                    summary = "查看远端最新版本与更新说明",
+                    summary = "查看远端最新版本，支持应用内下载与安装",
                     onClick = onOpenUpdate,
                 )
                 BasicComponent(
