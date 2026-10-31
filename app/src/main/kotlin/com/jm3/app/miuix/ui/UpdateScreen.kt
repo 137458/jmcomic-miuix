@@ -17,13 +17,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,21 +40,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ui.effect.BgEffectBackground
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.app.miuix.update.ApkInstaller
 import com.jm3.app.miuix.update.UpdateDownloadState
-import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.ReleaseInfo
 import com.jm3.core.update.UpdateCheckResult
 import com.jm3.core.update.UpdateChecker
+import com.jm3.core.update.UpdatePrompt
 import com.jm3.core.update.VersionRelation
 import java.io.File
 import java.util.Locale
@@ -58,52 +65,40 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 检查更新页的四态：检查中 / 已是最新 / 发现新版本 / 失败可重试。 */
 private sealed interface UpdateUiState {
-
-    /** 请求在途 */
     data object Checking : UpdateUiState
 
-    /**
-     * 无需更新。[localAhead] 表示本地版本高于远端（装了开发版/预发布版的情况），
-     * 此时只做说明，不提示"降级"。
-     */
+    /** 远端不高于本地。仍带 [release]，用于显示当前版本的发布说明。 */
     data class UpToDate(
         val currentVersion: String,
-        val remoteVersion: String,
+        val release: ReleaseInfo,
         val localAhead: Boolean,
     ) : UpdateUiState
 
-    /** 远端更高：展示版本、发布时间、更新说明与下载入口 */
-    data class Available(
-        val release: ReleaseInfo,
-        val currentVersion: String,
-    ) : UpdateUiState
+    data class Available(val release: ReleaseInfo, val currentVersion: String) : UpdateUiState
 
-    /** 请求失败：展示原因与重试入口 */
     data class Failed(val message: String) : UpdateUiState
 }
 
 /**
- * 检查更新页（GitHub Releases）：Hero 区 + 版本信息 + Markdown 更新说明 + 应用内下载安装。
+ * 检查更新页：视差头部 + 更新日志卡 + 更新设置卡 + 版本与操作卡。
  *
  * 取舍：
- * - 下载与安装拆到 [Jm3Graph.updateDownloader] / [ApkInstaller]（进程级状态）。页面只观察状态、
- *   发起动作，因此离开页面再回来下载不会中断，也不会因为重组重复触发下载（start 内部幂等）。
- * - 状态仍用 remember + LaunchedEffect 持有，没有 ViewModel：检查更新是一次性的网络动作，
- *   页面销毁后重进重新检查即可，不需要跨进程状态保存。
- * - 下载结果（Done/Failed）不随"重新检查"清空。清空会删掉已下载的安装包；而同一进程内
- *   远端版本恰好变化的概率极低，宁可保留安装包也不做隐式删除。
- * - 已安装版本只能从 PackageManager 读回（构建期 versionName 是唯一来源）。
- *
- * @param onBack 返回上一级
+ * - 头部图标与标题随滚动淡出（阈值与 localsend/pixez 一致），滚动进度在 draw 阶段读取，
+ *   避免每个像素的滚动位移都触发整页重组。
+ * - 进入页面即检查一次，"自动检查更新"只控制启动期的静默检查；手动检查走同一入口。
+ * - 下载状态复用 [Jm3Graph.updateDownloader]，页面只做展示与转发，不在本地维护第二套状态机。
  */
 @Composable
 fun UpdateScreen(onBack: () -> Unit) {
@@ -113,446 +108,553 @@ fun UpdateScreen(onBack: () -> Unit) {
     val checker = remember { UpdateChecker() }
     val applicationName = remember(context) { loadApplicationName(context) }
     val currentVersion = remember(context) { loadCurrentVersion(context) }
-    // attempt 只做"重新检查"的触发器：递增即重新进入 LaunchedEffect
+
     var attempt by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Checking) }
-    // 发现新版本时先弹一次提示框，页面本身保留完整更新说明作为详情
     var showDialog by remember { mutableStateOf(false) }
+    var autoCheckUpdate by remember { mutableStateOf(true) }
+    var ignoredVersion by remember { mutableStateOf<String?>(null) }
     val downloadState by Jm3Graph.updateDownloader.state.collectAsState()
 
+    val listState = rememberLazyListState()
+    val heroHeightPx = remember { mutableFloatStateOf(1f) }
+    val heroProgress = remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) {
+                1f
+            } else {
+                (listState.firstVisibleItemScrollOffset / heroHeightPx.floatValue.coerceAtLeast(1f)).coerceIn(0f, 1f)
+            }
+        }
+    }
+
+    // 设置与检查放在同一个副作用里：拆成两个 LaunchedEffect 时检查可能读到尚未加载的忽略版本，
+    // 导致已忽略的版本又弹一次窗。
     LaunchedEffect(attempt) {
+        autoCheckUpdate = Jm3Graph.settings.autoCheckUpdate()
+        ignoredVersion = Jm3Graph.settings.ignoredUpdateVersion()
         state = UpdateUiState.Checking
         showDialog = false
         state = when (val result = checker.check(currentVersion)) {
             is UpdateCheckResult.Success -> when (result.relation) {
                 VersionRelation.NEWER -> UpdateUiState.Available(result.release, currentVersion)
-                VersionRelation.SAME -> UpdateUiState.UpToDate(currentVersion, result.release.version, localAhead = false)
-                VersionRelation.OLDER -> UpdateUiState.UpToDate(currentVersion, result.release.version, localAhead = true)
+                VersionRelation.SAME -> UpdateUiState.UpToDate(currentVersion, result.release, localAhead = false)
+                VersionRelation.OLDER -> UpdateUiState.UpToDate(currentVersion, result.release, localAhead = true)
             }
 
             is UpdateCheckResult.Failed -> UpdateUiState.Failed(result.message)
         }
-        showDialog = state is UpdateUiState.Available
-    }
-
-    /** 打开 Release 页面；没有可用浏览器时回落到 Snackbar，不静默失败。 */
-    fun openReleasePage(url: String) {
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            .onFailure {
-                scope.launch { snackbarHostState.showSnackbar("无法打开链接：$url") }
+        (state as? UpdateUiState.Available)?.let { available ->
+            val latest = available.release.version
+            if (!UpdatePrompt.isIgnored(ignoredVersion, latest)) {
+                showDialog = true
+                // 记下已弹过：同一版本在本进程内不重复打扰，冷启动时由启动期检查决定
+                Jm3Graph.settings.setPromptedUpdateVersion(latest)
             }
+        }
     }
 
-    /** 只有存在 .apk 资产时才允许应用内下载；没有安装包的分支不会走到这里（按钮另有出口）。 */
+    fun openReleasePage(url: String) {
+        if (!openUpdateReleasePage(context, url)) {
+            scope.launch { snackbarHostState.showSnackbar("无法打开链接：$url") }
+        }
+    }
+
     fun startDownload(release: ReleaseInfo) {
         val asset = release.apk ?: return
         Jm3Graph.updateDownloader.start(context, asset)
     }
 
-    /** 安装结果按 [ApkInstaller.Result] 分支提示：授权页与失败原因都要让用户看见，不静默吞掉。 */
     fun installApk(file: File) {
         when (val result = ApkInstaller.install(context, file)) {
-            ApkInstaller.Result.Launched -> Unit
-            ApkInstaller.Result.PermissionRequired -> scope.launch {
-                snackbarHostState.showSnackbar("请先允许本应用安装未知来源应用")
-            }
+            is ApkInstaller.Result.Launched -> Unit
+            is ApkInstaller.Result.PermissionRequired ->
+                scope.launch { snackbarHostState.showSnackbar("请先允许本应用安装未知来源应用") }
 
-            is ApkInstaller.Result.Failed -> scope.launch {
-                snackbarHostState.showSnackbar(result.message)
-            }
+            is ApkInstaller.Result.Failed ->
+                scope.launch { snackbarHostState.showSnackbar(result.message) }
         }
     }
 
-    val (statusText, statusColor) = when (val current = state) {
-        UpdateUiState.Checking -> "正在检查更新…" to MiuixTheme.colorScheme.onSurfaceVariantSummary
-        is UpdateUiState.Available -> "发现新版本 ${current.release.version}" to MiuixTheme.colorScheme.primary
-        is UpdateUiState.UpToDate -> "已是最新版本" to MiuixTheme.colorScheme.onSurfaceVariantSummary
-        is UpdateUiState.Failed -> "检查失败" to MiuixTheme.colorScheme.error
+    fun setAutoCheck(enabled: Boolean) {
+        autoCheckUpdate = enabled
+        scope.launch { Jm3Graph.settings.setAutoCheckUpdate(enabled) }
+    }
+
+    fun toggleIgnoredVersion(latestVersion: String) {
+        val next = UpdatePrompt.toggleIgnored(ignoredVersion, latestVersion)
+        ignoredVersion = next
+        scope.launch { Jm3Graph.settings.setIgnoredUpdateVersion(next) }
+    }
+
+    val snapshot = state
+    val latestRelease = when (snapshot) {
+        is UpdateUiState.Available -> snapshot.release
+        is UpdateUiState.UpToDate -> snapshot.release
+        else -> null
+    }
+    val latestVersion = latestRelease?.version
+    val hasNewVersion = snapshot is UpdateUiState.Available
+    val checking = snapshot is UpdateUiState.Checking
+    val statusText = when (snapshot) {
+        UpdateUiState.Checking -> "正在检查更新…"
+        is UpdateUiState.Available -> "发现新版本 ${snapshot.release.version}（当前 $currentVersion）"
+        is UpdateUiState.UpToDate ->
+            if (snapshot.localAhead) "本地版本更高（远端 ${snapshot.release.version}）" else "已是最新版本（v$currentVersion）"
+
+        is UpdateUiState.Failed -> "检查更新失败"
+    }
+    val statusColor = when (snapshot) {
+        is UpdateUiState.Available -> MiuixTheme.colorScheme.primary
+        is UpdateUiState.Failed -> MiuixTheme.colorScheme.error
+        else -> MiuixTheme.colorScheme.onSurfaceVariantSummary
     }
 
     GlassScaffold(
         topBar = {
             GlassTopAppBar(
                 title = "检查更新",
-                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                 color = Color.Transparent,
                 navigationIcon = { BackButton(onBack = onBack) },
             )
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
+        BgEffectBackground(
+            modifier = Modifier.fillMaxSize(),
+            alpha = { 1f - heroProgress.value },
         ) {
-            // 顶栏是浮层：内容从顶栏下沿起排
-            TopBarContentSpacer(paddingValues = innerPadding)
-            UpdateHero(
-                applicationName = applicationName,
-                statusText = statusText,
-                statusColor = statusColor,
-            )
-            when (val current = state) {
-                UpdateUiState.Checking -> LoadingScreen(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                    text = "正在检查更新…",
-                )
-
-                is UpdateUiState.Failed -> {
-                    ErrorScreen(
-                        message = current.message,
-                        onRetry = { attempt++ },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                    )
-                    // 限流与断网不该把用户堵在页面上：Release 页在浏览器里同样可读
-                    TextButton(
-                        text = "在浏览器打开 Releases 页",
-                        onClick = { openReleasePage(UpdateChecker.RELEASES_PAGE_URL) },
-                        modifier = Modifier.padding(horizontal = 16.dp),
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding,
+            ) {
+                item(key = "hero") {
+                    UpdateHero(
+                        progress = heroProgress,
+                        applicationName = applicationName,
+                        statusText = statusText,
+                        statusColor = statusColor,
+                        onHeightChange = { heroHeightPx.floatValue = it.toFloat() },
                     )
                 }
-
-                is UpdateUiState.UpToDate -> UpToDateContent(
-                    state = current,
-                    onRecheck = { attempt++ },
-                )
-
-                is UpdateUiState.Available -> AvailableContent(
-                    release = current.release,
-                    currentVersion = current.currentVersion,
-                    downloadState = downloadState,
-                    onStartDownload = { startDownload(current.release) },
-                    onCancelDownload = { Jm3Graph.updateDownloader.cancel() },
-                    onResetDownload = { Jm3Graph.updateDownloader.reset() },
-                    onInstall = ::installApk,
-                    onOpenRelease = { openReleasePage(current.release.htmlUrl) },
-                    onRecheck = { attempt++ },
-                )
+                item(key = "changelog") {
+                    UpdateChangelogSection(
+                        state = snapshot,
+                        downloadState = downloadState,
+                        onStartDownload = ::startDownload,
+                        onCancelDownload = { Jm3Graph.updateDownloader.cancel() },
+                        onResetDownload = { Jm3Graph.updateDownloader.reset() },
+                        onInstall = ::installApk,
+                        onOpenRelease = ::openReleasePage,
+                        onRecheck = { attempt++ },
+                    )
+                }
+                item(key = "settings") {
+                    UpdateSettingsSection(
+                        autoCheckUpdate = autoCheckUpdate,
+                        ignoredVersion = ignoredVersion,
+                        latestVersion = latestVersion,
+                        checking = checking,
+                        hasNewVersion = hasNewVersion,
+                        onAutoCheckChange = ::setAutoCheck,
+                        onIgnoreChange = { if (latestVersion != null) toggleIgnoredVersion(latestVersion) },
+                    )
+                }
+                item(key = "actions") {
+                    UpdateActionsSection(
+                        currentVersion = currentVersion,
+                        release = latestRelease,
+                        checking = checking,
+                        onRecheck = { attempt++ },
+                        onOpenRelease = { openReleasePage(UpdateChecker.RELEASES_PAGE_URL) },
+                    )
+                }
             }
         }
-        // 下载进行中不弹提示框：弹窗会与页面各显示一份进度，且弹窗会遮挡下载按钮
-        if (showDialog && downloadState !is UpdateDownloadState.Downloading) {
-            (state as? UpdateUiState.Available)?.let { current ->
-                UpdateAvailableDialog(
-                    show = true,
-                    currentVersion = current.currentVersion,
-                    release = current.release,
-                    onDismiss = { showDialog = false },
-                    onDownload = {
-                        showDialog = false
-                        startDownload(current.release)
-                    },
-                    onOpenRelease = {
-                        showDialog = false
-                        openReleasePage(current.release.htmlUrl)
-                    },
-                )
-            }
-        }
+    }
+
+    val dialogRelease = (snapshot as? UpdateUiState.Available)?.release
+    if (showDialog && dialogRelease != null && downloadState !is UpdateDownloadState.Downloading) {
+        UpdateAvailableDialog(
+            show = showDialog,
+            currentVersion = currentVersion,
+            release = dialogRelease,
+            onDismiss = { showDialog = false },
+            onDownload = {
+                showDialog = false
+                startDownload(dialogRelease)
+            },
+            onOpenRelease = {
+                showDialog = false
+                openReleasePage(dialogRelease.htmlUrl)
+            },
+            onIgnore = { version ->
+                showDialog = false
+                ignoredVersion = version
+                scope.launch { Jm3Graph.settings.setIgnoredUpdateVersion(version) }
+            },
+        )
     }
 }
 
 /**
- * Hero 区：应用图标 + 应用名 + 一行状态文案。
+ * 头部：应用图标 + 应用名 + 状态行，随滚动依次淡出。
  *
- * 取舍：不做滚动淡出。顶栏折叠动画由 GlassScaffold 驱动，Hero 若再叠加一层自己的淡出，
- * 两套动画的节奏对不齐，滚动中途会看到图标忽明忽暗；静态区在长页面上也更容易一屏读完。
+ * 三段阈值取自 localsend/pixez（状态行 0.05~0.20、应用名 0.20~0.35、图标 0.35~0.50），
+ * 让信息自下而上递减而不是整块消失。
  */
 @Composable
-private fun UpdateHero(applicationName: String, statusText: String, statusColor: Color) {
+private fun UpdateHero(
+    progress: State<Float>,
+    applicationName: String,
+    statusText: String,
+    statusColor: Color,
+    onHeightChange: (Int) -> Unit,
+) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 24.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onSizeChanged { onHeightChange(it.height) }
+            .padding(top = 16.dp, bottom = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        AppIcon()
-        Spacer(modifier = Modifier.height(12.dp))
+        AppIcon(progress = progress)
+        Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = applicationName,
+            modifier = Modifier.graphicsLayer { alpha = fadeOut(progress.value, 0.20f, 0.35f) },
             style = MiuixTheme.textStyles.title3,
             fontWeight = FontWeight.Bold,
-            color = MiuixTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = statusText,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .graphicsLayer { alpha = fadeOut(progress.value, 0.05f, 0.20f) },
             style = MiuixTheme.textStyles.body2,
             color = statusColor,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         )
     }
 }
 
-/**
- * 应用图标容器：圆角方块 + 真实桌面图标。
- *
- * 取舍：不用 painterResource(R.mipmap.ic_launcher)。本工程的 launcher 图标只有
- * mipmap-anydpi-v26 下的 adaptive-icon XML，BitmapFactory 解不出位图，Compose 的
- * painterResource 会因此抛异常；改为向 PackageManager 要系统拼装好的 Drawable，
- * 自己按容器像素尺寸画进位图，既不会崩，也保留了自适应图标（背景 + 前景）的完整外观。
- */
 @Composable
-private fun AppIcon() {
+private fun AppIcon(progress: State<Float>) {
     val context = LocalContext.current
-    val sizePx = with(LocalDensity.current) { AppIconSize.roundToPx() }
+    val sizePx = with(LocalDensity.current) { AppIconInnerSize.roundToPx() }
     val icon = remember(context, sizePx) { loadAppIcon(context, sizePx) }
     Box(
         modifier = Modifier
             .size(AppIconSize)
+            .graphicsLayer {
+                val fade = fadeOut(progress.value, 0.35f, 0.50f)
+                alpha = fade
+                val scale = 1f - (1f - fade) * 0.05f
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(RoundedCornerShape(AppIconCorner))
             .background(MiuixTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        // 取不到图标时只留一块圆角底色：图标是装饰信息，不值得为它在页面上报错
         if (icon != null) {
             Image(
                 bitmap = icon,
                 contentDescription = null,
-                modifier = Modifier.size(AppIconSize),
+                modifier = Modifier.size(AppIconInnerSize),
             )
         }
     }
 }
 
-/** 已是最新：只保留"当前 / 远端"两行事实，不做版本跃迁的箭头强调。 */
+/** 更新日志卡：按状态渲染说明、下载进度与主操作。 */
 @Composable
-private fun UpToDateContent(state: UpdateUiState.UpToDate, onRecheck: () -> Unit) {
-    SmallTitle(text = "版本状态")
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        BasicComponent(
-            title = "当前版本",
-            summary = state.currentVersion,
-        )
-        BasicComponent(
-            title = "远端最新",
-            summary = if (state.localAhead) {
-                // 本地领先时补一句说明，避免用户以为"远端最新"比手上版本还新
-                "${state.remoteVersion}（本地版本更高）"
-            } else {
-                state.remoteVersion
-            },
-        )
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-    TextButton(
-        text = "重新检查",
-        onClick = onRecheck,
-        modifier = Modifier.padding(horizontal = 16.dp),
-    )
-    Spacer(modifier = Modifier.height(24.dp))
-}
-
-/**
- * 发现新版本：版本信息卡 + 更新说明卡 + 下载安装区 + 常驻出口。
- *
- * 各区块拆开是为了让"下载状态"只影响下载区：进度刷新不会重建版本卡与更新说明，
- * 长 Markdown 也不会随进度条一起重排。
- */
-@Composable
-private fun AvailableContent(
-    release: ReleaseInfo,
-    currentVersion: String,
+private fun UpdateChangelogSection(
+    state: UpdateUiState,
     downloadState: UpdateDownloadState,
-    onStartDownload: () -> Unit,
+    onStartDownload: (ReleaseInfo) -> Unit,
     onCancelDownload: () -> Unit,
     onResetDownload: () -> Unit,
     onInstall: (File) -> Unit,
-    onOpenRelease: () -> Unit,
+    onOpenRelease: (String) -> Unit,
     onRecheck: () -> Unit,
 ) {
-    SmallTitle(text = "版本信息")
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        BasicComponent(title = "当前版本", summary = currentVersion)
-        BasicComponent(title = "最新版本", summary = release.version)
-        if (release.publishedDate.isNotBlank()) {
-            BasicComponent(title = "发布时间", summary = release.publishedDate)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SmallTitle(text = changelogTitle(state))
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                when (state) {
+                    UpdateUiState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        InfiniteProgressIndicator(modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "正在检查更新…",
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+
+                    is UpdateUiState.Failed -> {
+                        Text(
+                            text = state.message,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.error,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            TextButton(text = "重试", onClick = onRecheck)
+                            TextButton(
+                                text = "在浏览器打开 Releases 页",
+                                onClick = { onOpenRelease(UpdateChecker.RELEASES_PAGE_URL) },
+                            )
+                        }
+                    }
+
+                    is UpdateUiState.UpToDate -> {
+                        ReleaseNotes(state.release)
+                    }
+
+                    is UpdateUiState.Available -> {
+                        ReleaseNotes(state.release)
+                        DownloadArea(
+                            release = state.release,
+                            downloadState = downloadState,
+                            onStartDownload = onStartDownload,
+                            onCancelDownload = onCancelDownload,
+                            onResetDownload = onResetDownload,
+                            onInstall = onInstall,
+                            onOpenRelease = onOpenRelease,
+                        )
+                    }
+                }
+            }
         }
-        val apkSize = release.apk?.size ?: 0L
-        // size 为 0 表示 GitHub 未给出字节数（未知），不是空包，因此只在已知时展示这一行
-        if (apkSize > 0L) {
-            BasicComponent(title = "安装包大小", summary = formatUpdateSize(apkSize))
-        }
+        Spacer(modifier = Modifier.height(12.dp))
     }
-
-    Spacer(modifier = Modifier.height(12.dp))
-    SmallTitle(text = "更新说明")
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        MarkdownNotes(
-            markdown = release.notes,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        )
-    }
-
-    Spacer(modifier = Modifier.height(12.dp))
-    SmallTitle(text = "下载与安装")
-    DownloadSection(
-        asset = release.apk,
-        downloadState = downloadState,
-        onStartDownload = onStartDownload,
-        onCancelDownload = onCancelDownload,
-        onResetDownload = onResetDownload,
-        onInstall = onInstall,
-        onOpenRelease = onOpenRelease,
-    )
-
-    Spacer(modifier = Modifier.height(12.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        // Release 页面是最终兜底出口（下载失败、无安装包、只想看网页），与重新检查常驻并排
-        TextButton(
-            text = "前往 GitHub Releases",
-            onClick = onOpenRelease,
-            modifier = Modifier.weight(1f),
-        )
-        TextButton(
-            text = "重新检查",
-            onClick = onRecheck,
-            modifier = Modifier.weight(1f),
-        )
-    }
-    Spacer(modifier = Modifier.height(24.dp))
 }
 
-/**
- * 下载与安装区：按 [UpdateDownloadState] 四态给动作，外加"没有安装包"的独立出口。
- *
- * 分支必须完整：Idle 给下载、Downloading 给进度与取消、Done 给安装与重新下载、
- * Failed 给错误原因与重试；缺任何一支都会让用户卡在无法前进的界面上。
- */
 @Composable
-private fun DownloadSection(
-    asset: ReleaseAsset?,
+private fun ReleaseNotes(release: ReleaseInfo) {
+    Text(
+        text = release.name.ifBlank { "版本特性说明" },
+        style = MiuixTheme.textStyles.body1,
+        fontWeight = FontWeight.Bold,
+    )
+    MarkdownNotes(markdown = release.notes, modifier = Modifier.fillMaxWidth())
+}
+
+@Composable
+private fun DownloadArea(
+    release: ReleaseInfo,
     downloadState: UpdateDownloadState,
-    onStartDownload: () -> Unit,
+    onStartDownload: (ReleaseInfo) -> Unit,
     onCancelDownload: () -> Unit,
     onResetDownload: () -> Unit,
     onInstall: (File) -> Unit,
-    onOpenRelease: () -> Unit,
+    onOpenRelease: (String) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+    val asset = release.apk
+    if (asset == null) {
+        Text(
+            text = "该版本未附带安装包，请前往 Releases 页面手动下载。",
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+        Button(
+            onClick = { onOpenRelease(release.htmlUrl) },
+            colors = ButtonDefaults.buttonColorsPrimary(),
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            if (asset == null) {
-                // GitHub 上该 Release 没有 .apk，应用内下载无从谈起，只剩浏览器出口
-                Text(
-                    text = "该版本未附带安装包，请前往 Releases 页面手动下载。",
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                Button(
-                    onClick = onOpenRelease,
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(text = "前往 Releases 页面")
-                }
-                return@Column
+            Text(text = "前往 Releases 页面")
+        }
+        return
+    }
+
+    Text(
+        text = "安装包 ${asset.name}${assetSizeSuffix(asset.size)}",
+        style = MiuixTheme.textStyles.footnote2,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    )
+    when (downloadState) {
+        UpdateDownloadState.Idle -> Button(
+            onClick = { onStartDownload(release) },
+            colors = ButtonDefaults.buttonColorsPrimary(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(text = "立即下载更新")
+        }
+
+        is UpdateDownloadState.Downloading -> {
+            Text(
+                text = "正在下载 ${downloadProgressText(downloadState)}",
+                style = MiuixTheme.textStyles.body2,
+            )
+            LinearProgressIndicator(
+                progress = downloadState.progress.coerceIn(0f, 1f),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = if (downloadState.speedBytesPerSec > 0L) {
+                    "速度 ${formatUpdateSpeed(downloadState.speedBytesPerSec)}"
+                } else {
+                    "正在计算速度…"
+                },
+                style = MiuixTheme.textStyles.footnote2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Button(
+                onClick = onCancelDownload,
+                colors = ButtonDefaults.buttonColors(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = "取消下载")
             }
+        }
 
-            when (downloadState) {
-                UpdateDownloadState.Idle -> {
-                    Text(
-                        text = "安装包 ${asset.name}${assetSizeSuffix(asset.size)}",
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Button(
-                        onClick = onStartDownload,
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(text = "下载安装包")
-                    }
-                }
+        is UpdateDownloadState.Done -> {
+            Text(text = "安装包已下载完成，点击安装完成升级。", style = MiuixTheme.textStyles.body2)
+            Button(
+                onClick = { onInstall(downloadState.file) },
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = "立即安装")
+            }
+            TextButton(
+                text = "重新下载",
+                onClick = onResetDownload,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
-                is UpdateDownloadState.Downloading -> {
-                    val percent = if (downloadState.total > 0L) {
-                        "${(downloadState.progress * 100).toInt()}%"
-                    } else {
-                        null
-                    }
-                    val sizeText = if (downloadState.total > 0L) {
-                        "${formatUpdateSize(downloadState.downloaded)} / ${formatUpdateSize(downloadState.total)}"
-                    } else {
-                        // 服务器没给长度（分块传输）时进度恒为 0，只能展示已下载量
-                        formatUpdateSize(downloadState.downloaded)
-                    }
-                    Text(
-                        text = if (percent == null) "正在下载 $sizeText" else "正在下载 $sizeText（$percent）",
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.primary,
-                    )
-                    LinearProgressIndicator(
-                        progress = downloadState.progress,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        text = if (downloadState.speedBytesPerSec > 0L) {
-                            "速度 ${formatUpdateSpeed(downloadState.speedBytesPerSec)}"
-                        } else {
-                            "正在计算速度…"
-                        },
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Button(
-                        onClick = onCancelDownload,
-                        colors = ButtonDefaults.buttonColors(),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(text = "取消下载")
-                    }
-                }
-
-                is UpdateDownloadState.Done -> {
-                    Text(
-                        text = "安装包已下载完成，点击安装完成升级。",
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Button(
-                        onClick = { onInstall(downloadState.file) },
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(text = "立即安装")
-                    }
-                    TextButton(
-                        text = "重新下载",
-                        onClick = onResetDownload,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                is UpdateDownloadState.Failed -> {
-                    Text(
-                        text = downloadState.message,
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.error,
-                    )
-                    Button(
-                        onClick = onStartDownload,
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(text = "重试")
-                    }
-                }
+        is UpdateDownloadState.Failed -> {
+            Text(
+                text = downloadState.message,
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.error,
+            )
+            Button(
+                onClick = { onStartDownload(release) },
+                colors = ButtonDefaults.buttonColorsPrimary(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = "重试")
             }
         }
     }
 }
 
-/** 安装包大小的括号后缀：未知（0）时留空，避免出现"0 B"这类误导性数字。 */
-private fun assetSizeSuffix(size: Long): String =
-    if (size > 0L) "（${formatUpdateSize(size)}）" else ""
+@Composable
+private fun UpdateSettingsSection(
+    autoCheckUpdate: Boolean,
+    ignoredVersion: String?,
+    latestVersion: String?,
+    checking: Boolean,
+    hasNewVersion: Boolean,
+    onAutoCheckChange: (Boolean) -> Unit,
+    onIgnoreChange: () -> Unit,
+) {
+    val ignored = latestVersion != null && UpdatePrompt.isIgnored(ignoredVersion, latestVersion)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SmallTitle(text = "更新设置")
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            SwitchPreference(
+                title = "自动检查更新",
+                summary = "每次启动应用时自动检查最新版本",
+                checked = autoCheckUpdate,
+                onCheckedChange = onAutoCheckChange,
+            )
+            SwitchPreference(
+                title = "忽略此版本",
+                summary = when {
+                    checking -> "正在检查更新…"
+                    latestVersion == null -> "尚未获取远端版本"
+                    !hasNewVersion -> "当前没有需要忽略的新版本"
+                    ignored -> "已忽略 $latestVersion，不再弹出该版本提示"
+                    else -> "忽略 $latestVersion 的更新提示"
+                },
+                checked = ignored,
+                onCheckedChange = { onIgnoreChange() },
+                enabled = hasNewVersion && latestVersion != null,
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+    }
+}
 
-/** 字节数展示：下载量与速度共用一套单位，保证同一屏内的刻度一致。 */
+@Composable
+private fun UpdateActionsSection(
+    currentVersion: String,
+    release: ReleaseInfo?,
+    checking: Boolean,
+    onRecheck: () -> Unit,
+    onOpenRelease: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SmallTitle(text = "版本与操作")
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            BasicComponent(
+                title = "手动检查更新",
+                summary = if (checking) "正在检索远端版本信息…" else "点击从 GitHub Releases 检索最新版本",
+                onClick = onRecheck,
+                endActions = {
+                    if (checking) InfiniteProgressIndicator(modifier = Modifier.size(16.dp))
+                },
+            )
+            ArrowPreference(
+                title = "GitHub Releases",
+                summary = "在浏览器查看完整发布说明",
+                onClick = onOpenRelease,
+            )
+            BasicComponent(title = "当前版本", summary = currentVersion)
+            BasicComponent(
+                title = "远端最新版本",
+                summary = when {
+                    release == null -> "尚未获取"
+                    release.publishedDate.isNotBlank() -> "${release.version} · 发布于 ${release.publishedDate}"
+                    else -> release.version
+                },
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+    }
+}
+
+/** 说明卡标题：有新版本时带上目标版本，已是最新时退回当前版本说明。 */
+private fun changelogTitle(state: UpdateUiState): String = when (state) {
+    is UpdateUiState.Available -> "更新说明（${state.release.version}）"
+    is UpdateUiState.UpToDate -> "当前版本说明（${state.release.version}）"
+    else -> "更新说明"
+}
+
+/** 下载进度文案：总长未知时只报已下字节，避免出现一直 0% 的观感。 */
+private fun downloadProgressText(state: UpdateDownloadState.Downloading): String {
+    val percent = (state.progress.coerceIn(0f, 1f) * 100).toInt()
+    return if (state.total > 0L) {
+        "${formatUpdateSize(state.total)}（$percent）"
+    } else {
+        "${formatUpdateSize(state.downloaded)}（$percent）"
+    }
+}
+
+/** 滚动进度 [from]~[to] 区间的淡出系数：区间外分别为全显/全隐，中途线性过渡。 */
+private fun fadeOut(progress: Float, from: Float, to: Float): Float {
+    val span = (to - from).coerceAtLeast(0.001f)
+    return 1f - ((progress - from) / span).coerceIn(0f, 1f)
+}
+
+/** 在系统浏览器打开链接，返回是否成功拉起；失败由调用方决定提示或回退。 */
+internal fun openUpdateReleasePage(context: Context, url: String): Boolean =
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.isSuccess
+
+private fun assetSizeSuffix(size: Long): String = if (size > 0L) "（${formatUpdateSize(size)}）" else ""
+
 internal fun formatUpdateSize(bytes: Long): String {
     if (bytes <= 0L) return "0 B"
     val kb = 1024.0
@@ -564,14 +666,12 @@ internal fun formatUpdateSize(bytes: Long): String {
     }
 }
 
-/** 速度展示：单位与 [formatUpdateSize] 一致，追加每秒下标。 */
 internal fun formatUpdateSpeed(bytesPerSec: Long): String = "${formatUpdateSize(bytesPerSec)}/s"
 
-/** 应用图标容器尺寸与圆角：64dp 足够压住 Hero 区，又不会把状态文案挤到第二屏。 */
-private val AppIconSize = 64.dp
-private val AppIconCorner = 16.dp
+private val AppIconSize = 88.dp
+private val AppIconInnerSize = 56.dp
+private val AppIconCorner = 24.dp
 
-/** 把系统拼好的自适应图标画进位图；任何一步失败都返回 null，由调用方退化为纯色块。 */
 private fun loadAppIcon(context: Context, sizePx: Int): ImageBitmap? = runCatching {
     val drawable = context.packageManager.getApplicationIcon(context.packageName)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
@@ -581,18 +681,16 @@ private fun loadAppIcon(context: Context, sizePx: Int): ImageBitmap? = runCatchi
     bitmap.asImageBitmap()
 }.getOrNull()
 
-/** 应用名从 PackageManager 读回，读不到时用工程固定名兜底，不用硬编码替代真实名称。 */
 @Suppress("DEPRECATION")
-private fun loadApplicationName(context: Context): String = runCatching {
-    context.packageManager
-        .getApplicationInfo(context.packageName, 0)
-        .loadLabel(context.packageManager)
-        .toString()
-}.getOrNull()?.takeIf { it.isNotBlank() } ?: "JMComic MIUIX"
+private fun loadApplicationName(context: Context): String =
+    runCatching {
+        context.packageManager.getApplicationInfo(context.packageName, 0)
+            .loadLabel(context.packageManager)
+            .toString()
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: "JMComic MIUIX"
 
-/** 已安装版本号；读不到（极少数系统限制场景）时显示"未知"，不伪造 0.0.0。 */
 @Suppress("DEPRECATION")
-private fun loadCurrentVersion(context: Context): String =
+internal fun loadCurrentVersion(context: Context): String =
     runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
         .getOrNull()
         ?.takeIf { it.isNotBlank() }

@@ -83,6 +83,21 @@ interface SettingsRepository {
 
     suspend fun setNovelLastChapter(novelId: String, chapterId: String) {}
 
+    /** 启动时是否自动检查更新，默认开启。 */
+    suspend fun autoCheckUpdate(): Boolean = true
+
+    suspend fun setAutoCheckUpdate(enabled: Boolean) {}
+
+    /** 用户主动忽略的版本号（不含 v 前缀）；null 表示未忽略任何版本。 */
+    suspend fun ignoredUpdateVersion(): String? = null
+
+    suspend fun setIgnoredUpdateVersion(version: String?) {}
+
+    /** 启动期已弹过提示的版本号；用于同一版本在新会话内不重复打扰。 */
+    suspend fun promptedUpdateVersion(): String? = null
+
+    suspend fun setPromptedUpdateVersion(version: String?) {}
+
     companion object {
         const val SEARCH_HISTORY_LIMIT = 10
 
@@ -108,6 +123,9 @@ class InMemorySettingsRepository : SettingsRepository {
     private var novelFontSize = SettingsRepository.DEFAULT_NOVEL_FONT_SIZE
     private var novelLang = SettingsRepository.DEFAULT_NOVEL_LANG
     private val novelProgress = mutableMapOf<String, String>()
+    private var autoCheckUpdate = true
+    private var ignoredUpdateVersion: String? = null
+    private var promptedUpdateVersion: String? = null
 
     override suspend fun themeMode(): ThemeMode = mode
 
@@ -197,4 +215,25 @@ class InMemorySettingsRepository : SettingsRepository {
     override suspend fun setNovelLastChapter(novelId: String, chapterId: String) {
         novelProgress[novelId] = chapterId
     }
+
+    override suspend fun autoCheckUpdate(): Boolean = autoCheckUpdate
+
+    override suspend fun setAutoCheckUpdate(enabled: Boolean) {
+        autoCheckUpdate = enabled
+    }
+
+    override suspend fun ignoredUpdateVersion(): String? = ignoredUpdateVersion
+
+    override suspend fun setIgnoredUpdateVersion(version: String?) {
+        ignoredUpdateVersion = version.normalizedVersionOrNull()
+    }
+
+    override suspend fun promptedUpdateVersion(): String? = promptedUpdateVersion
+
+    override suspend fun setPromptedUpdateVersion(version: String?) {
+        promptedUpdateVersion = version.normalizedVersionOrNull()
+    }
 }
+
+/** 空白版本串按"未设置"处理，与 [com.jm3.core.update.UpdatePrompt] 的判定保持一致。 */
+private fun String?.normalizedVersionOrNull(): String? = this?.trim()?.takeIf { it.isNotEmpty() }

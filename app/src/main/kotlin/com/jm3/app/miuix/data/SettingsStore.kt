@@ -29,6 +29,9 @@ class SettingsStore(private val context: Context) : SettingsRepository {
     private val trackMuteKey = longPreferencesKey("track_prompt_mute_until")
     private val novelFontSizeKey = intPreferencesKey("novel_font_size")
     private val novelLangKey = stringPreferencesKey("novel_lang")
+    private val autoCheckUpdateKey = booleanPreferencesKey("auto_check_update")
+    private val ignoredUpdateVersionKey = stringPreferencesKey("ignored_update_version")
+    private val promptedUpdateVersionKey = stringPreferencesKey("prompted_update_version")
 
     override suspend fun themeMode(): ThemeMode =
         context.settingsDataStore.data.first()[themeKey]
@@ -158,6 +161,34 @@ class SettingsStore(private val context: Context) : SettingsRepository {
 
     override suspend fun setNovelLastChapter(novelId: String, chapterId: String) {
         context.settingsDataStore.edit { it[novelLastChapterKey(novelId)] = chapterId }
+    }
+
+    /** 自动检查默认开启：与 localsend/pixez 一致，首次安装即可感知新版本。 */
+    override suspend fun autoCheckUpdate(): Boolean =
+        context.settingsDataStore.data.first()[autoCheckUpdateKey] ?: true
+
+    override suspend fun setAutoCheckUpdate(enabled: Boolean) {
+        context.settingsDataStore.edit { it[autoCheckUpdateKey] = enabled }
+    }
+
+    override suspend fun ignoredUpdateVersion(): String? =
+        context.settingsDataStore.data.first()[ignoredUpdateVersionKey]?.trim()?.takeIf { it.isNotEmpty() }
+
+    override suspend fun setIgnoredUpdateVersion(version: String?) {
+        val normalized = version?.trim()?.takeIf { it.isNotEmpty() }
+        context.settingsDataStore.edit { prefs ->
+            if (normalized == null) prefs.remove(ignoredUpdateVersionKey) else prefs[ignoredUpdateVersionKey] = normalized
+        }
+    }
+
+    override suspend fun promptedUpdateVersion(): String? =
+        context.settingsDataStore.data.first()[promptedUpdateVersionKey]?.trim()?.takeIf { it.isNotEmpty() }
+
+    override suspend fun setPromptedUpdateVersion(version: String?) {
+        val normalized = version?.trim()?.takeIf { it.isNotEmpty() }
+        context.settingsDataStore.edit { prefs ->
+            if (normalized == null) prefs.remove(promptedUpdateVersionKey) else prefs[promptedUpdateVersionKey] = normalized
+        }
     }
 
     private fun novelLastChapterKey(novelId: String) = stringPreferencesKey("novel_last_$novelId")
