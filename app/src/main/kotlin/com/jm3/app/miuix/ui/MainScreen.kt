@@ -38,7 +38,6 @@ import top.yukonga.miuix.kmp.basic.NavigationItem
 import top.yukonga.miuix.kmp.basic.NavigationRail
 import top.yukonga.miuix.kmp.basic.NavigationRailItem
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.rememberNavigationRailState
@@ -128,7 +127,7 @@ fun MainScreen(
             LocalFloatingBarContentPadding provides if (wideScreen) 0.dp else FLOATING_BAR_CONTENT_PADDING,
         ) {
             Scaffold(
-                snackbarHost = { SnackbarHost(snackbarHostState) },
+                snackbarHost = { GlassSnackbarHost(state = snackbarHostState, backdrop = backdrop) },
             ) { innerPadding ->
                 // 顶栏玻璃要采样状态栏背后的内容：这里只让出手势条与侧边安全区，状态栏高度
                 // 不由外层让位，改由各页 TopAppBar 自己补（对应的 inset 也不能消费）。

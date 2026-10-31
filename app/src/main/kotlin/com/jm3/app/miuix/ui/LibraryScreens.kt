@@ -240,7 +240,7 @@ fun LibraryScreen(
                 }
             }
         },
-        snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -401,7 +401,7 @@ fun CreatorWorksScreen(
                 )
             }
         },
-        snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -567,7 +567,7 @@ fun CreatorWorkDetailScreen(
                 )
             }
         },
-        snackbarHost = { top.yukonga.miuix.kmp.basic.SnackbarHost(snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))

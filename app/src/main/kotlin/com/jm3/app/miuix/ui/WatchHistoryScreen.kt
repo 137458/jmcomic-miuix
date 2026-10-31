@@ -33,7 +33,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -132,7 +131,7 @@ fun WatchHistoryScreen(
                 navigationIcon = { BackButton(onBack = onBack) },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when (val s = state) {
             WatchUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))

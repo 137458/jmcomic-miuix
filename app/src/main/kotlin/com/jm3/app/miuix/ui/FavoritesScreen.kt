@@ -45,7 +45,6 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
@@ -363,7 +362,7 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 )
             }
         },
-        snackbarHost = { SnackbarHost(state = snackbarHostState) },
+        snackbarHost = { GlassSnackbarHost(state = snackbarHostState) },
     ) { innerPadding ->
         if (tabIndex == 0) {
             val p = page
