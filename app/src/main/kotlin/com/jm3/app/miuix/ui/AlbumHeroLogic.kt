@@ -47,6 +47,14 @@ const val HERO_PENDING_TIMEOUT_MS: Long = 1200L
 /** 飞行时长：与 miuix-nav 默认的 500ms 页转场错开，先落位再让页面淡入结束。 */
 const val HERO_FLIGHT_DURATION_MS: Int = 380
 
+/**
+ * 飞行落位后等详情头图画出首帧的上限。
+ *
+ * 覆盖层刚落位时头图可能还在解内存缓存（异步、要等一两帧），这时候收起覆盖层就会露出空白封面，
+ * 也就是用户说的"进详情页封面闪一下"。超时只是兜底，正常命中缓存远小于这个值。
+ */
+const val HERO_HEADER_READY_TIMEOUT_MS: Long = 200L
+
 /** 未测量或尺寸为零的矩形不能作为飞行端点。 */
 fun isFiniteHeroRect(rect: HeroRect): Boolean =
     rect.left.isFinite() &&

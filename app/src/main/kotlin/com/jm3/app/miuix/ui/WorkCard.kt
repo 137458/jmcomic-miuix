@@ -21,19 +21,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.IntrinsicMeasurable
-import androidx.compose.ui.layout.IntrinsicMeasureScope
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.Measurable
-import androidx.compose.ui.layout.MeasurePolicy
-import androidx.compose.ui.layout.MeasureResult
-import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Card
@@ -71,6 +63,14 @@ internal object WorkCardTokens {
     /** 行卡缩略封面尺寸（固定 3:4）。 */
     val ThumbWidth: Dp = 48.dp
     val ThumbHeight: Dp = 64.dp
+
+    /**
+     * 行卡贴边封面的高度：按 3:4 换算出约 57dp 宽。
+     *
+     * 固定值而不是撑满行高——撑满会让两行标题的行比一行标题的行封面更大，
+     * 同一个列表里封面大小参差。行高取本值与文字高度中的较大者。
+     */
+    val RowCoverHeight: Dp = 76.dp
 
     /** 作品网格的列间距与行间距。 */
     val GridSpacing: Dp = 8.dp
@@ -171,37 +171,6 @@ internal fun BoxScope.WorkAlbumCodeBadge(code: String?) {
         text = "#" + code,
         modifier = Modifier.align(Alignment.TopEnd).padding(WorkCardTokens.BadgeInset),
     )
-}
-
-/**
- * 让内容不参与父级固有尺寸测量。
- *
- * Coil 的位图自带远大于卡片的固有尺寸；行卡靠 [IntrinsicSize.Min] 让封面顶满行高，
- * 结果封面反而把整行撑成一张竖图的高度（首页「最新上架」每行约 210dp）。
- * 把固有尺寸报成 0 之后，行高只由右侧文字决定。
- */
-private object NoIntrinsicMeasurePolicy : MeasurePolicy {
-    override fun MeasureScope.measure(
-        measurables: List<Measurable>,
-        constraints: Constraints,
-    ): MeasureResult {
-        val placeable = measurables.first().measure(constraints)
-        return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-    }
-
-    override fun IntrinsicMeasureScope.minIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int) = 0
-
-    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurables: List<IntrinsicMeasurable>, height: Int) = 0
-
-    override fun IntrinsicMeasureScope.minIntrinsicHeight(measurables: List<IntrinsicMeasurable>, width: Int) = 0
-
-    override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurables: List<IntrinsicMeasurable>, width: Int) = 0
-}
-
-/** [NoIntrinsicMeasurePolicy] 的调用入口：只包一个子节点，尺寸完全由它自己决定。 */
-@Composable
-private fun NoIntrinsicSize(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Layout(content = content, modifier = modifier, measurePolicy = NoIntrinsicMeasurePolicy)
 }
 
 /**
@@ -342,10 +311,10 @@ internal fun WorkGridCard(
 }
 
 /**
- * 行卡：封面顶满整行高度、贴齐左缘，右侧是标题、次级信息与附加内容。
+ * 行卡：封面贴齐左缘、固定 3:4，右侧是标题、次级信息与附加内容。
  *
- * 行高只由文字决定，所以先用 height(IntrinsicSize.Min) 量出文字高度，封面再按 3:4 换算宽度；
- * 这与 [WorkGridCard] 是同一套外观契约，只是把封面换成了竖向撑满的变体。
+ * 封面高度取 [WorkCardTokens.RowCoverHeight]，宽度按 3:4 换算；行高 = max(封面高, 文字高)，
+ * 所以同一列表里的封面大小一致，不会随标题占几行而变。
  *
  * @param category 主分类标题，与作者同一行展示（主色）；为空时不占位。
  * @param leading 封面前方的槽位（如榜单名次）。
@@ -379,15 +348,15 @@ internal fun WorkRowCard(
     ) {
         Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             leading?.invoke(this)
-            NoIntrinsicSize(modifier = Modifier.fillMaxHeight()) {
-                WorkCover(
-                    url = coverUrl,
-                    albumId = albumId,
-                    title = title,
-                    contentDescription = coverContentDescription,
-                    modifier = Modifier.fillMaxHeight().aspectRatio(WorkCardTokens.CoverAspect),
-                )
-            }
+            WorkCover(
+                url = coverUrl,
+                albumId = albumId,
+                title = title,
+                contentDescription = coverContentDescription,
+                modifier = Modifier
+                    .height(WorkCardTokens.RowCoverHeight)
+                    .aspectRatio(WorkCardTokens.CoverAspect),
+            )
             Column(
                 modifier = Modifier
                     .weight(1f)

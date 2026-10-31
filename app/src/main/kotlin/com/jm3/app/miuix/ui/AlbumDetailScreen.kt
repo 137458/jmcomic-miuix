@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
@@ -788,11 +789,18 @@ private fun DetailHeader(
                 ) {
                     // 与列表卡片、飞行覆盖层共用同一个 Coil 内存缓存条目（显式 key + 固定 144x192dp 解码尺寸），
                     // 命中即首帧出图；crossfade 会在命中后仍淡入一次，正是“封面闪一下”的来源之一。
+                    val heroHost = LocalAlbumHeroHost.current
                     AlbumCoverImage(
                         url = coverUrl,
                         contentDescription = title,
                         modifier = Modifier.fillMaxSize(),
                         crossfade = false,
+                        // 首帧画出（或确认失败）后告诉飞行层：覆盖层要等这一步才收场
+                        onState = { state ->
+                            if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) {
+                                heroHost?.markHeaderReady(albumId)
+                            }
+                        },
                     )
                 }
                 Spacer(modifier = Modifier.width(16.dp))
