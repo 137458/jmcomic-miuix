@@ -55,6 +55,7 @@ import com.jm3.app.miuix.ui.SearchScreen
 import com.jm3.app.miuix.ui.SettingsScreen
 import com.jm3.app.miuix.ui.ShelfScreen
 import com.jm3.app.miuix.ui.TasksScreen
+import com.jm3.app.miuix.ui.UpdateScreen
 import com.jm3.app.miuix.ui.TrackingScreen
 import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
@@ -198,6 +199,10 @@ sealed interface Route : NavKey {
 
     @Serializable
     data object Settings : Route
+
+    /** 检查更新（二级页，数据源为远端 Release 信息）。 */
+    @Serializable
+    data object Update : Route
 
     /** 每周必看（原版 Week 页）。 */
     @Serializable
@@ -422,8 +427,12 @@ fun Jm3App() {
                                 scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
                             },
                             onBack = { backStack.removeLastOrNull() },
+                            onOpenUpdate = { backStack.add(Route.Update) },
                             snackbarHostState = snackbarHostState,
                         )
+                    }
+                    entry<Route.Update>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                        UpdateScreen(onBack = { backStack.removeLastOrNull() })
                     }
                     entry<Route.Week>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         WeekScreen(
