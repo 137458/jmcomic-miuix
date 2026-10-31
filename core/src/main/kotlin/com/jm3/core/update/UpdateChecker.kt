@@ -66,7 +66,11 @@ class UpdateChecker(
     }
 
     companion object {
+        /** 接口地址：只取 latest，不翻列表，也不带分页参数。 */
         const val LATEST_RELEASE_URL = "https://api.github.com/repos/137458/jmcomic-miuix/releases/latest"
+
+        /** 浏览器可打开的 Release 列表页：接口限流或断网时的兜底出口。 */
+        const val RELEASES_PAGE_URL = "https://github.com/137458/jmcomic-miuix/releases"
 
         private fun failureForStatusCode(code: Int): UpdateFailure = when (code) {
             404 -> UpdateFailure.NOT_FOUND

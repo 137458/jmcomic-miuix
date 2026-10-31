@@ -141,11 +141,19 @@ fun UpdateScreen(onBack: () -> Unit) {
                     text = "正在检查更新…",
                 )
 
-                is UpdateUiState.Failed -> ErrorScreen(
-                    message = current.message,
-                    onRetry = { attempt++ },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                )
+                is UpdateUiState.Failed -> {
+                    ErrorScreen(
+                        message = current.message,
+                        onRetry = { attempt++ },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                    )
+                    // 限流与断网不该把用户堵在页面上：Release 页在浏览器里同样可读
+                    TextButton(
+                        text = "在浏览器打开 Releases 页",
+                        onClick = { openReleasePage(UpdateChecker.RELEASES_PAGE_URL) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
 
                 is UpdateUiState.UpToDate -> UpToDateContent(
                     state = current,
