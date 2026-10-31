@@ -18,8 +18,11 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.CoverUrls
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -35,6 +38,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
     var records by remember { mutableStateOf<List<DownloadRecord>>(emptyList()) }
+    var imageHost by remember { mutableStateOf("") }
 
     // 初次加载 + 队列进度驱动刷新
     LaunchedEffect(Unit) {
@@ -42,6 +46,14 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
         records = Jm3Graph.downloadManager.records()
         Jm3Graph.downloadManager.queue.updates.collect {
             records = Jm3Graph.downloadManager.records()
+        }
+    }
+
+    // 图片域名整个屏幕只取一次：网关取域名是阻塞方法，必须放到 IO 线程；
+    // 取不到时留空串，封面由 CoverUrls.build 返回 null 退化为占位，不影响行内容与按钮
+    LaunchedEffect(Unit) {
+        imageHost = withContext(Dispatchers.IO) {
+            runCatching { Jm3Graph.gateway.imageHost() }.getOrDefault("")
         }
     }
 
@@ -68,9 +80,23 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
                 contentPadding = innerPadding,
             ) {
                 items(records, key = { it.photoId }) { record ->
+                    val albumId = shelfAlbumId(record)
+                    // 3:4 封面地址由车号与图片域名纯拼：域名未就绪或车号缺失时为 null，
+                    // WorkThumbnail 用同尺寸占位撑住行高，行不会塌陷
+                    val coverUrl = remember(albumId, imageHost) {
+                        albumId?.let { CoverUrls.build(it, imageHost, "_3x4") }
+                    }
                     BasicComponent(
                         title = record.title.ifBlank { record.photoId },
                         summary = shelfSummary(record),
+                        // 左侧 3:4 缩略封面：与追踪、历史、收藏行同一套尺寸与圆角
+                        startAction = {
+                            WorkThumbnail(
+                                url = coverUrl,
+                                albumId = albumId,
+                                contentDescription = record.title,
+                            )
+                        },
                         // 未完成任务用进度条替代纯文本比例，进度一眼可见
                         bottomAction = if (record.status != DownloadStatus.DONE && record.total > 0) {
                             {
@@ -127,14 +153,23 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
     }
 }
 
-private fun shelfSummary(record: DownloadRecord): String = when (record.status) {
-    DownloadStatus.DONE ->
-        "已完成 " + record.donePages + "/" + record.total
-    DownloadStatus.FAILED ->
-        "失败 " + record.donePages + "/" + record.total
-    else ->
-        shelfStatusLabel(record.status) + " " + record.donePages + "/" + record.total
+/** 行摘要：状态与进度，前面带禁漫车号；车号缺失时只显示状态，不输出孤立的 “#”。 */
+private fun shelfSummary(record: DownloadRecord): String {
+    val progress = when (record.status) {
+        DownloadStatus.DONE ->
+            "已完成 " + record.donePages + "/" + record.total
+        DownloadStatus.FAILED ->
+            "失败 " + record.donePages + "/" + record.total
+        else ->
+            shelfStatusLabel(record.status) + " " + record.donePages + "/" + record.total
+    }
+    val albumId = shelfAlbumId(record) ?: return progress
+    return "#" + albumId + " · " + progress
 }
+
+/** 车号口径与详情页一致（AlbumDetailScreen 把空 id 与 “-1” 都视为无车号），避免拼出无效封面地址。 */
+private fun shelfAlbumId(record: DownloadRecord): String? =
+    record.albumId.trim().takeIf { it.isNotEmpty() && it != "-1" }
 
 private fun shelfStatusLabel(status: DownloadStatus): String = when (status) {
     DownloadStatus.QUEUED -> "排队中"
