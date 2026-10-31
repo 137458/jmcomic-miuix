@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.shadow.Shadow
@@ -31,11 +32,16 @@ import top.yukonga.miuix.kmp.blur.drawBackdrop
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 胶囊内的一枚图标动作。 */
+/**
+ * 胶囊内的一枚图标动作。
+ *
+ * @param rotationDegrees 图标顺时针旋转角度；用于把库里已有的方向图标（如 Back）转到需要的朝向。
+ */
 data class GlassFabItem(
     val icon: ImageVector,
     val contentDescription: String,
     val onClick: () -> Unit,
+    val rotationDegrees: Float = 0f,
 )
 
 /** 胶囊高度：比底栏的 64dp 矮一档，右下角不抢底栏的视觉重心。 */
@@ -176,7 +182,7 @@ fun GlassFloatingActionBar(
                 Icon(
                     imageVector = item.icon,
                     contentDescription = item.contentDescription,
-                    modifier = Modifier.size(GlassFabIconSize),
+                    modifier = Modifier.size(GlassFabIconSize).rotate(item.rotationDegrees),
                     tint = colorScheme.onSurfaceVariantSummary,
                 )
             }

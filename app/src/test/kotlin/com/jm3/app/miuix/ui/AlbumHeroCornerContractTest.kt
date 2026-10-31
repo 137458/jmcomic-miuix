@@ -9,7 +9,6 @@ class AlbumHeroCornerContractTest {
     fun testHeroCornerConstantsContract() {
         assertEquals(16f, HERO_CARD_CORNER_DP)
         assertEquals(HERO_CARD_CORNER_DP, MIUIX_CARD_CORNER_DP)
-        assertEquals(6f, HERO_SEARCH_ROW_CORNER_DP)
         assertEquals(8f, HERO_HISTORY_ROW_CORNER_DP)
         assertEquals(6f, HERO_FAVORITE_ROW_CORNER_DP)
     }

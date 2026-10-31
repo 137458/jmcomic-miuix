@@ -69,7 +69,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Close
-import top.yukonga.miuix.kmp.icon.extended.ExpandLess
+import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Help
 import top.yukonga.miuix.kmp.icon.extended.Promotions
 import top.yukonga.miuix.kmp.icon.extended.Search
@@ -461,9 +461,11 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                             onClick = ::openRandom,
                         ),
                         GlassFabItem(
-                            icon = MiuixIcons.ExpandLess,
+                            // 库里没有现成的向上箭头，用标准返回箭头顺时针转 90° 得到有箭杆的「↑」
+                            icon = MiuixIcons.Back,
                             contentDescription = "回到顶部",
                             onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                            rotationDegrees = 90f,
                         ),
                     ),
                     // 右下角摆放，整体上移让开悬浮底栏；右边距与底栏胶囊的 24dp 对齐
