@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -126,6 +127,79 @@ internal fun WorkCoverBadge(
             )
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
+}
+
+/**
+ * 作品卡标签行：把标签压成一行 "#tag"，超宽省略。
+ *
+ * 标签数量与长度都不可控（日文长标签很常见），所以只取前 [maxTags] 个并强制单行，
+ * 避免卡片高度随数据抖动。
+ */
+@Composable
+internal fun WorkTagLine(
+    tags: List<String>,
+    modifier: Modifier = Modifier,
+    maxTags: Int = 3,
+) {
+    if (tags.isEmpty()) return
+    Text(
+        text = tags.take(maxTags).joinToString(" ") { "#" + it },
+        style = MiuixTheme.textStyles.footnote2,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.padding(top = WorkCardTokens.TextGap),
+    )
+}
+
+/** 封面右上角的车号角标：把对齐与内缩收进来，调用点不用重复写。 */
+@Composable
+internal fun BoxScope.WorkAlbumCodeBadge(code: String?) {
+    if (code.isNullOrBlank()) return
+    WorkCoverBadge(
+        text = "#" + code,
+        modifier = Modifier.align(Alignment.TopEnd).padding(WorkCardTokens.BadgeInset),
+    )
+}
+
+/**
+ * 行卡附加信息行：左侧标签、右侧车号（#123456，口径与详情页一致），两者都缺时不占位。
+ *
+ * 标签占满剩余宽度并让车号常驻，长标签先省略而不是把车号挤出屏幕。
+ */
+@Composable
+internal fun WorkCardMetaRow(
+    tags: List<String>,
+    albumCode: String?,
+    modifier: Modifier = Modifier,
+) {
+    if (tags.isEmpty() && albumCode.isNullOrBlank()) return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth().padding(top = WorkCardTokens.TextGap),
+    ) {
+        if (tags.isNotEmpty()) {
+            Text(
+                text = tags.take(3).joinToString(" ") { "#" + it },
+                style = MiuixTheme.textStyles.footnote2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+        if (!albumCode.isNullOrBlank()) {
+            Text(
+                text = "#" + albumCode,
+                style = MiuixTheme.textStyles.footnote2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+    }
 }
 
 /**
