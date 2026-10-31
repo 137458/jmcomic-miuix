@@ -1,7 +1,11 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,11 +20,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
+import com.jm3.core.isSessionExpired
 import com.jm3.core.model.TrackingItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,6 +39,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -44,7 +52,8 @@ private val trackingDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.get
 private sealed interface TrackingUiState {
     data object Loading : TrackingUiState
     data object Loaded : TrackingUiState
-    data class Failed(val message: String) : TrackingUiState
+    // sessionExpired 区分「重试可能好」和「会话没了」：后者只能去登录，给重试按钮是骗人的
+    data class Failed(val message: String, val sessionExpired: Boolean = false) : TrackingUiState
 }
 
 /** 连载追踪：已关注作品的更新列表，支持一键取消关注。 */
@@ -53,6 +62,7 @@ fun TrackingScreen(
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
+    onOpenLogin: () -> Unit = {},
 ) {
     var items by remember { mutableStateOf<List<TrackingItem>>(emptyList()) }
     var total by remember { mutableIntStateOf(0) }
@@ -66,6 +76,16 @@ fun TrackingScreen(
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var removingId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    /**
+     * 会话失效：清掉本地会话并把整屏切成「去登录」。
+     *
+     * 重试同一个请求只会再吃一次 401，所以这里不给重试，只留登录入口。
+     */
+    fun expireSession() {
+        state = TrackingUiState.Failed(LOGIN_EXPIRED_MESSAGE, sessionExpired = true)
+        scope.launch { Jm3Graph.account.markSessionExpired() }
+    }
 
     fun loadFirstPage(showLoading: Boolean = true) {
         if (showLoading) state = TrackingUiState.Loading
@@ -83,7 +103,11 @@ fun TrackingScreen(
                     endReached = it.items.isEmpty() || it.items.size >= it.total
                     state = TrackingUiState.Loaded
                 }
-                .onFailure { state = TrackingUiState.Failed(it.message ?: "追踪列表加载失败") }
+                .onFailure {
+                    if (isSessionExpired(it.message)) expireSession() else {
+                        state = TrackingUiState.Failed(it.message ?: "追踪列表加载失败")
+                    }
+                }
         }
     }
 
@@ -107,7 +131,9 @@ fun TrackingScreen(
                     nextPage = page + 1
                     if (next.items.isEmpty() || items.size >= total) endReached = true
                 }
-                .onFailure { loadMoreFailed = true }
+                .onFailure {
+                    if (isSessionExpired(it.message)) expireSession() else loadMoreFailed = true
+                }
         }
     }
 
@@ -125,7 +151,11 @@ fun TrackingScreen(
                     total = (total - 1).coerceAtLeast(items.size)
                     snackbarHostState.showSnackbar("已取消追踪")
                 }
-                .onFailure { snackbarHostState.showSnackbar("操作失败：" + (it.message ?: "请稍后重试")) }
+                .onFailure {
+                    if (isSessionExpired(it.message)) expireSession() else {
+                        snackbarHostState.showSnackbar("操作失败：" + (it.message ?: "请稍后重试"))
+                    }
+                }
         }
     }
 
@@ -143,11 +173,18 @@ fun TrackingScreen(
     ) { innerPadding ->
         when (val s = state) {
             TrackingUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            is TrackingUiState.Failed -> ErrorScreen(
-                message = s.message,
-                onRetry = { loadFirstPage() },
-                modifier = Modifier.padding(innerPadding),
-            )
+            is TrackingUiState.Failed -> if (s.sessionExpired) {
+                LoginExpiredScreen(
+                    onOpenLogin = onOpenLogin,
+                    modifier = Modifier.padding(innerPadding),
+                )
+            } else {
+                ErrorScreen(
+                    message = s.message,
+                    onRetry = { loadFirstPage() },
+                    modifier = Modifier.padding(innerPadding),
+                )
+            }
             TrackingUiState.Loaded -> if (items.isEmpty()) {
                 CenteredEmptyState(
                     title = "暂无追踪",
@@ -214,3 +251,28 @@ private fun TrackingCover(albumId: String, url: String?) {
 /** Unix 秒字符串转本地时间；非数字原样返回，避免吞掉服务端文案。 */
 private fun String.toReadableTime(): String =
     toLongOrNull()?.let { trackingDateFormat.format(Date(it * 1000)) } ?: this
+
+/**
+ * 会话失效全屏态：文案位置与排版同 [ErrorScreen]，但动作是「去登录」而不是「重试」——
+ * 会话在服务端已经作废，重试同一个请求只会再吃一次 401。
+ *
+ * 跨屏幕复用（连载追踪、收藏页），所以做成同包的 internal 顶层函数而不是各页私有实现。
+ * 暂不并回 Common.kt：[ErrorScreen] 的按钮语义固定为「重试」，没有承载自定义动作的位置；
+ * 等 Common.kt 提供带动作的全屏态时，两者应合并。
+ */
+@Composable
+internal fun LoginExpiredScreen(onOpenLogin: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = LOGIN_EXPIRED_MESSAGE,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        TextButton(text = "去登录", onClick = onOpenLogin)
+    }
+}

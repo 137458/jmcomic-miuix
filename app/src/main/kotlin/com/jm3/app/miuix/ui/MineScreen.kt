@@ -29,7 +29,9 @@ import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.download.DownloadStatus
+import com.jm3.core.isSessionExpired
 import com.jm3.core.model.DailyCheckInStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -82,10 +84,19 @@ fun MineScreen(
     var checkInStatus by remember { mutableStateOf<DailyCheckInStatus?>(null) }
     var checkInLoading by remember { mutableStateOf(false) }
     var checkInError by remember { mutableStateOf<String?>(null) }
+    // 会话失效时用户会被置空，卡片本来整块消失；用独立标记把它留在原位解释原因并给出登录入口
+    var checkInSessionExpired by remember { mutableStateOf(false) }
     var checkInBusy by remember { mutableStateOf(false) }
     // 记录"哪一天签到成功"而不是一个布尔值：应用跨过午夜后不会继续显示昨天的「今日已签到」。
     var checkedInOn by remember { mutableStateOf<LocalDate?>(null) }
     var confirmLogout by remember { mutableStateOf(false) }
+
+    /** 会话失效：清掉本地会话，不请求网关登出（会话已作废，只会再吃一次 401）。 */
+    fun expireCheckInSession() {
+        checkInSessionExpired = true
+        checkInError = null
+        scope.launch { Jm3Graph.account.markSessionExpired() }
+    }
 
     // 加载签到状态；失败保留 error 由卡片上的重试行兜底。
     fun loadCheckInStatus() {
@@ -99,7 +110,9 @@ fun MineScreen(
             checkInLoading = false
             result
                 .onSuccess { checkInStatus = it }
-                .onFailure { checkInError = it.message ?: "签到状态加载失败" }
+                .onFailure {
+                    if (isSessionExpired(it.message)) expireCheckInSession() else checkInError = it.message ?: "签到状态加载失败"
+                }
         }
     }
 
@@ -133,7 +146,9 @@ fun MineScreen(
                     }
                     snackbarHostState.showSnackbar(snackbarText)
                 }
-                .onFailure { checkInError = it.message ?: "签到失败，请重试" }
+                .onFailure {
+                    if (isSessionExpired(it.message)) expireCheckInSession() else checkInError = it.message ?: "签到失败，请重试"
+                }
         }
     }
 
@@ -142,7 +157,10 @@ fun MineScreen(
         checkInStatus = null
         checkInError = null
         checkedInOn = null
-        if (user != null) loadCheckInStatus()
+        // 清会话也会把 user 置空，此时不能顺手抹掉失效提示，否则用户看不到「为什么突然要重新登录」
+        if (user == null) return@LaunchedEffect
+        checkInSessionExpired = false
+        loadCheckInStatus()
     }
 
     GlassScaffold(
@@ -173,11 +191,25 @@ fun MineScreen(
                     )
                 }
             }
-            if (user != null) {
+            if (user != null || checkInSessionExpired) {
                 SmallTitle(text = "每日签到")
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     val status = checkInStatus
                     when {
+                        // 会话失效：文案与其它页面一致，动作只能是去登录
+                        checkInSessionExpired -> Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = LOGIN_EXPIRED_MESSAGE,
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = MiuixTheme.colorScheme.error,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                            TextButton(
+                                text = "去登录",
+                                onClick = onOpenLogin,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
                         status != null -> {
                             val today = LocalDate.now()
                             // 「今日已签到」由记录里当天的标记推导，切页重建后依旧成立；

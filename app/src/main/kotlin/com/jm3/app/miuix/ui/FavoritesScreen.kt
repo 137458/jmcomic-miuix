@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
+import com.jm3.core.isSessionExpired
 import com.jm3.core.mergedWith
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.SearchPage
@@ -61,7 +63,11 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 收藏页：收藏夹（作品）与标签收藏两个分段。 */
 @Composable
-fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
+fun FavoritesScreen(
+    onBack: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+    onOpenLogin: () -> Unit = {},
+) {
     val user by Jm3Graph.account.user.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     // 0 = 收藏夹；1 = 标签收藏
@@ -70,6 +76,8 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
 
     var page by remember { mutableStateOf<SearchPage?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    // 会话失效与普通失败分开：前者只能去登录，重试必然再吃一次 401
+    var errorSessionExpired by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     // 加载更多失败单独置位，供列表底部给出重试入口
     var loadMoreFailed by remember { mutableStateOf(false) }
@@ -101,10 +109,18 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
 
     val scope = rememberCoroutineScope()
 
+    /** 会话失效：清掉本地会话，列表整屏切成「去登录」。 */
+    fun expireSession() {
+        errorSessionExpired = true
+        error = LOGIN_EXPIRED_MESSAGE
+        scope.launch { Jm3Graph.account.markSessionExpired() }
+    }
+
     fun loadFirstPage() {
         val targetFolderId = folderId
         scope.launch {
             error = null
+            errorSessionExpired = false
             page = null
             val result = withContext(Dispatchers.IO) {
                 runCatching { Jm3Graph.gateway.favorites(targetFolderId, 1) }
@@ -116,7 +132,10 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     if (it.folders.isNotEmpty()) folders = it.folders
                     page = SearchPage(it.currentPage, it.totalPages, it.items)
                 }
-                .onFailure { if (targetFolderId == folderId) error = it.message ?: "收藏加载失败" }
+                .onFailure {
+                    if (targetFolderId != folderId) return@onFailure
+                    if (isSessionExpired(it.message)) expireSession() else error = it.message ?: "收藏加载失败"
+                }
         }
     }
 
@@ -136,7 +155,10 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     if (it.folders.isNotEmpty()) folders = it.folders
                     page = SearchPage(it.currentPage, it.totalPages, it.items)
                 }
-                .onFailure { if (targetFolderId == folderId) error = it.message ?: "收藏刷新失败" }
+                .onFailure {
+                    if (targetFolderId != folderId) return@onFailure
+                    if (isSessionExpired(it.message)) expireSession() else error = it.message ?: "收藏刷新失败"
+                }
         }
     }
 
@@ -220,7 +242,15 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
             }
             result
                 .onSuccess { if (user?.uid == uid) tags = it }
-                .onFailure { if (user?.uid == uid) tagsError = it.message ?: "标签收藏加载失败" }
+                .onFailure {
+                    if (user?.uid != uid) return@onFailure
+                    // 会话失效后用户会置空，标签页自动回落到上面的未登录引导，不必再留错误文案
+                    if (isSessionExpired(it.message)) {
+                        scope.launch { Jm3Graph.account.markSessionExpired() }
+                    } else {
+                        tagsError = it.message ?: "标签收藏加载失败"
+                    }
+                }
         }
     }
 
@@ -294,16 +324,18 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
         val targetFolderId = folderId
         loadingMore = true
         scope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.favorites(targetFolderId, current.currentPage + 1) }.getOrNull()
+            val result = withContext(Dispatchers.IO) {
+                runCatching { Jm3Graph.gateway.favorites(targetFolderId, current.currentPage + 1) }
             }
+            val next = result.getOrNull()
             loadingMore = false
             // 加载期间切换了收藏夹：这批结果属于旧收藏夹，丢弃以免串夹。
             if (next != null && targetFolderId == folderId) {
                 loadMoreFailed = false
                 page = current.mergedWith(SearchPage(next.currentPage, next.totalPages, next.items))
             } else if (targetFolderId == folderId) {
-                loadMoreFailed = true
+                // 翻页撞上会话失效同属登录问题，不能只当成列表底部的普通失败
+                if (isSessionExpired(result.exceptionOrNull()?.message)) expireSession() else loadMoreFailed = true
             }
         }
     }
@@ -366,11 +398,18 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
             val p = page
             val err = error
             when {
-                err != null -> ErrorScreen(
-                    message = err,
-                    onRetry = ::loadFirstPage,
-                    modifier = Modifier.padding(innerPadding),
-                )
+                err != null -> if (errorSessionExpired) {
+                    LoginExpiredScreen(
+                        onOpenLogin = onOpenLogin,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                } else {
+                    ErrorScreen(
+                        message = err,
+                        onRetry = ::loadFirstPage,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                }
                 p == null -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
                 else -> GlassPullToRefresh(

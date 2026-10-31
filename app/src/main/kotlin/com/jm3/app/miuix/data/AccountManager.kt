@@ -50,4 +50,15 @@ class AccountManager(
         store.clear()
         _user.value = null
     }
+
+    /**
+     * 服务端已判定会话失效时由 UI 调用：清掉持久化会话并把当前用户置空。
+     *
+     * 与 [logout] 的唯一区别是不再请求网关登出——会话在服务端已经作废，再发一次只会再吃一个 401。
+     * 置空用户是必须的：否则界面仍按已登录渲染，后续每个请求都会重复撞上同一个 401。
+     */
+    suspend fun markSessionExpired() {
+        store.clear()
+        _user.value = null
+    }
 }
