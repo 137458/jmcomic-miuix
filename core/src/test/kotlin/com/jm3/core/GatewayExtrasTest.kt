@@ -1,5 +1,6 @@
 package com.jm3.core
 
+import com.jm3.core.model.CheckInDay
 import com.jm3.core.model.DailyCheckInStatus
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
 import io.github.jukomu.jmcomic.api.model.JmCategoryMeta
@@ -130,7 +131,17 @@ class GatewayExtrasTest {
                 listOf(record("3", signed = true)),
             ),
         ).toDailyCheckInStatus()
-        assertEquals(DailyCheckInStatus(21, "", "", 3, 3), got)
+        assertEquals(
+            DailyCheckInStatus(
+                21, "", "", 3, 3,
+                days = listOf(
+                    CheckInDay(1, signed = true, bonus = false),
+                    CheckInDay(2, signed = true, bonus = false),
+                    CheckInDay(3, signed = true, bonus = false),
+                ),
+            ),
+            got,
+        )
     }
 
     @Test
