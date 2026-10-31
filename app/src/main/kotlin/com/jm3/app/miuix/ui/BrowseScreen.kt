@@ -35,7 +35,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
@@ -280,17 +286,15 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                             selectionHaptic()
                                             categoryValue = BrowseCategory.entries[it].apiValue
                                         },
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.weight(1f).chipRowEndFade(),
                                         contentPadding = PaddingValues(vertical = 4.dp),
                                     )
                                     // 「更多分类」入口固定在主分类条右侧（原版 Header 的 MoreHoriz 位置）
                                     if (hasTagBlocks) {
                                         Spacer(modifier = Modifier.size(width = 8.dp, height = 0.dp))
-                                        TextButton(
+                                        GlassActionChip(
                                             text = "更多",
                                             onClick = { showMoreSheet = true },
-                                            minWidth = 0.dp,
-                                            minHeight = 32.dp,
                                         )
                                     }
                                 }
@@ -654,12 +658,35 @@ private val BrowseOrder.shortLabel: String
 // 列宽自适应阈值：StaggeredGridCells.Adaptive 按 (可用宽度+间距)/(阈值+间距) 取整定列数，
 // 369dp 宽的手机扣除左右各 16dp 后只有 337dp，180dp 阈值会被压成 1 列；
 // 160dp 保证 360dp 及以上宽度的手机仍排 2 列，平板则自动排 3 列以上。
-/** 分类页筛选胶囊条的留白：与玻璃顶栏左右 16dp 对齐，上下各 4dp 使两行胶囊间距与旧版一致。 */
-private val FilterChipsPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
-
 private val RANK_GRID_MIN_CARD_WIDTH = 160.dp
 private val RANK_GRID_VERTICAL_SPACING = 8.dp
 private val RANK_GRID_HORIZONTAL_PADDING = 16.dp
+
+/** 分类页筛选胶囊条的留白：与玻璃顶栏左右 16dp 对齐，上下各 4dp 使两行胶囊间距与旧版一致。 */
+private val FilterChipsPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+
+/** 右侧「更多」按钮旁胶囊条的渐隐宽度。 */
+private val ChipRowEndFadeWidth = 24.dp
+
+/**
+ * 胶囊条右缘渐隐：主分类条横向滚动时会在右边界切出半枚胶囊，直接硬切像坏图；
+ * 用 24dp 的 alpha 渐隐替代硬边，滚动中的半枚胶囊因此读作「右边还有内容」。
+ */
+private fun Modifier.chipRowEndFade(): Modifier = graphicsLayer {
+    compositingStrategy = CompositingStrategy.Offscreen
+}.drawWithContent {
+    drawContent()
+    if (size.width <= 0f) return@drawWithContent
+    val fade = ChipRowEndFadeWidth.toPx().coerceAtMost(size.width)
+    drawRect(
+        brush = Brush.horizontalGradient(
+            0f to Color.Black,
+            (size.width - fade) / size.width to Color.Black,
+            1f to Color.Transparent,
+        ),
+        blendMode = BlendMode.DstIn,
+    )
+}
 
 /**
  * 榜单结果区：两列封面瀑布流，加载中/失败态占整行。

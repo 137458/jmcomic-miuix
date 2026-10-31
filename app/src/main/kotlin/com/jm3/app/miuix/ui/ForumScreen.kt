@@ -45,7 +45,6 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -225,11 +224,10 @@ fun ForumScreen(
                     title = "社区论坛",
                     navigationIcon = { BackButton(onBack = onBack) },
                     actions = {
-                        TextButton(
+                        GlassActionChip(
                             text = "发帖",
                             onClick = ::openCompose,
-                            minWidth = 0.dp,
-                            minHeight = 36.dp,
+                            emphasized = true,
                         )
                     },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
