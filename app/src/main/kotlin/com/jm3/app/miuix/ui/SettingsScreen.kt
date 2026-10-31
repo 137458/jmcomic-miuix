@@ -453,38 +453,25 @@ fun SettingsScreen(
             },
             onDismissRequest = { confirmClear = null },
         ) {
-            // HyperOS 弹窗惯例：按钮纵向堆叠、各占满宽，避免横排等分与系统弹窗观感不一致
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TextButton(
-                    text = "取消",
-                    onClick = { confirmClear = null },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextButton(
-                    text = "确认清空",
-                    colors = ButtonDefaults.textButtonColors(
-                        color = Color.Transparent,
-                        textColor = MiuixTheme.colorScheme.error,
-                    ),
-                    onClick = {
-                        val target = confirmClear
-                        confirmClear = null
-                        scope.launch {
-                            when (target) {
-                                "history" -> Jm3Graph.history.clear()
-                                "downloads" -> Jm3Graph.downloadManager.clearAll()
-                            }
-                            snackbarHostState.showSnackbar(
-                                if (target == "history") "已清空阅读历史" else "已清空下载",
-                            )
+            // 按钮横排、取消在左、主操作在右；内边距已由弹窗内置的 insideMargin 提供
+            DialogActionRow(
+                primaryText = "确认清空",
+                destructive = true,
+                onSecondary = { confirmClear = null },
+                onPrimary = {
+                    val target = confirmClear
+                    confirmClear = null
+                    scope.launch {
+                        when (target) {
+                            "history" -> Jm3Graph.history.clear()
+                            "downloads" -> Jm3Graph.downloadManager.clearAll()
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+                        snackbarHostState.showSnackbar(
+                            if (target == "history") "已清空阅读历史" else "已清空下载",
+                        )
+                    }
+                },
+            )
         }
 
         OverlayDialog(
@@ -497,12 +484,11 @@ fun SettingsScreen(
                     "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +
                     "未满 18 周岁（或当地法定年龄）请勿使用；因使用本应用产生的一切后果由使用者自行承担。",
                 style = MiuixTheme.textStyles.body2,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             )
             TextButton(
                 text = "知道了",
                 onClick = { showDisclaimer = false },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             )
         }
     }
