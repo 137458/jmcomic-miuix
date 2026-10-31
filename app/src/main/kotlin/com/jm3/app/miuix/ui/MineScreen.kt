@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -18,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -38,11 +41,14 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -77,7 +83,8 @@ fun MineScreen(
     var checkInLoading by remember { mutableStateOf(false) }
     var checkInError by remember { mutableStateOf<String?>(null) }
     var checkInBusy by remember { mutableStateOf(false) }
-    var checkedIn by remember { mutableStateOf(false) }
+    // 记录"哪一天签到成功"而不是一个布尔值：应用跨过午夜后不会继续显示昨天的「今日已签到」。
+    var checkedInOn by remember { mutableStateOf<LocalDate?>(null) }
     var confirmLogout by remember { mutableStateOf(false) }
 
     // 加载签到状态；失败保留 error 由卡片上的重试行兜底。
@@ -99,7 +106,8 @@ fun MineScreen(
     // 签到成功后刷新进度并提示；本次会话内禁止重复点击。
     fun performCheckIn(status: DailyCheckInStatus) {
         val uid = user?.uid ?: return
-        if (checkInBusy || checkedIn) return
+        val today = LocalDate.now()
+        if (checkInBusy || checkedInOn == today) return
         checkInBusy = true
         checkInError = null
         scope.launch {
@@ -115,10 +123,10 @@ fun MineScreen(
                         runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
                     }
                     refreshed?.let { checkInStatus = it }
-                    val snackbarText = when (refreshed?.isSignedOn(LocalDate.now().dayOfMonth)) {
+                    val snackbarText = when (refreshed?.isSignedOn(today.dayOfMonth)) {
                         null -> "签到已提交，暂时无法确认状态"
                         true -> {
-                            checkedIn = true
+                            checkedInOn = today
                             "签到成功"
                         }
                         false -> "签到未生效，请稍后重试"
@@ -133,7 +141,7 @@ fun MineScreen(
     LaunchedEffect(user?.uid) {
         checkInStatus = null
         checkInError = null
-        checkedIn = false
+        checkedInOn = null
         if (user != null) loadCheckInStatus()
     }
 
@@ -171,10 +179,16 @@ fun MineScreen(
                     val status = checkInStatus
                     when {
                         status != null -> {
-                            // 「今日已签到」由 record 里当天的标记推导，切页重建后依旧成立；checkedIn 兜住接口延迟
-                            val signedToday = checkedIn || status.isSignedOn(LocalDate.now().dayOfMonth)
+                            val today = LocalDate.now()
+                            // 「今日已签到」由记录里当天的标记推导，切页重建后依旧成立；
+                            // checkedInOn 只兜住接口回读延迟，且按日期比较，跨过午夜会自动失效。
+                            val signedToday = checkedInOn == today || status.isSignedOn(today.dayOfMonth)
                             // 活动名可能自带「」，外层再包一层就会出现嵌套引号，这里原样拼接、不额外加引号
                             val eventLabel = status.eventName.trim()
+                            // 今天之前仍未签到的日期就是漏签；只做提示，不参与进度计算
+                            val missedDays = status.days.count {
+                                it.dayOfMonth < today.dayOfMonth && !it.signed
+                            }
                             val rowOnClick: (() -> Unit)? = if (checkInBusy || signedToday) {
                                 null
                             } else {
@@ -196,39 +210,61 @@ fun MineScreen(
                                     when {
                                         checkInBusy -> CircularProgressIndicator(size = 20.dp)
                                         // 已签到只去掉点击、不置灰：禁用态会让人以为这一行坏了
-                                        signedToday -> Text(
-                                            text = "✓ 已完成",
-                                            style = MiuixTheme.textStyles.footnote1,
-                                            color = MiuixTheme.colorScheme.primary,
-                                        )
+                                        signedToday -> Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                imageVector = MiuixIcons.Basic.Check,
+                                                contentDescription = null,
+                                                tint = MiuixTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "已签到",
+                                                style = MiuixTheme.textStyles.footnote1,
+                                                color = MiuixTheme.colorScheme.primary,
+                                            )
+                                        }
                                     }
                                 },
                                 onClick = rowOnClick,
                             )
-                            // 进度只有一处来源：record 自算的已签天数，不叠加接口返回的活动百分比（两者会互相矛盾）
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                            // 进度只有一处来源：record 自算的已签天数，不叠加接口返回的活动百分比（两者会互相矛盾）；
+                            // 没有日历数据（totalDays 为 0）时不展示 0/0 的进度条，避免读成"签到坏了"
+                            if (status.totalDays > 0) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    Text(
-                                        text = "本月签到",
-                                        style = MiuixTheme.textStyles.footnote1,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            text = "本月签到",
+                                            style = MiuixTheme.textStyles.footnote1,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                        )
+                                        Text(
+                                            text = "${status.signedDays}/${status.totalDays} 天 · " +
+                                                "${(status.progress * 100).roundToInt()}%",
+                                            style = MiuixTheme.textStyles.footnote1,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                        )
+                                    }
+                                    LinearProgressIndicator(
+                                        progress = status.progress,
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
-                                    Text(
-                                        text = "${status.signedDays}/${status.totalDays} 天 · ${(status.progress * 100).roundToInt()}%",
-                                        style = MiuixTheme.textStyles.footnote1,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    )
+                                    if (missedDays > 0) {
+                                        Text(
+                                            text = "本月已有 $missedDays 天未签到",
+                                            style = MiuixTheme.textStyles.footnote2,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                        )
+                                    }
                                 }
-                                LinearProgressIndicator(
-                                    progress = status.progress,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
                             }
                             checkInError?.let { message ->
                                 Text(
@@ -239,7 +275,11 @@ fun MineScreen(
                                 )
                             }
                         }
-                        checkInLoading -> BasicComponent(title = "签到", summary = "加载中…")
+                        checkInLoading -> BasicComponent(
+                            title = "签到",
+                            summary = "正在加载签到状态…",
+                            endActions = { CircularProgressIndicator(size = 20.dp) },
+                        )
                         else -> BasicComponent(
                             title = "签到",
                             summary = checkInError ?: "暂无签到信息，点击重试",
@@ -307,38 +347,25 @@ fun MineScreen(
             Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding()))
         }
 
-        // 登出属于会话级操作：与清空数据一致，采用纵向全宽按钮二次确认
+        // 登出属于会话级操作：与清空数据一致，采用二次确认弹窗
         OverlayDialog(
             show = confirmLogout,
             title = "退出登录",
             summary = "确定要登出账号吗？",
             onDismissRequest = { confirmLogout = false },
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TextButton(
-                    text = "取消",
-                    onClick = { confirmLogout = false },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                TextButton(
-                    text = "确认退出",
-                    colors = ButtonDefaults.textButtonColors(
-                        color = Color.Transparent,
-                        textColor = MiuixTheme.colorScheme.error,
-                    ),
-                    onClick = {
-                        confirmLogout = false
-                        scope.launch {
-                            account.logout()
-                            snackbarHostState.showSnackbar("已退出登录")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            DialogActionRow(
+                primaryText = "确认退出",
+                destructive = true,
+                onSecondary = { confirmLogout = false },
+                onPrimary = {
+                    confirmLogout = false
+                    scope.launch {
+                        account.logout()
+                        snackbarHostState.showSnackbar("已退出登录")
+                    }
+                },
+            )
         }
     }
 }
