@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
@@ -82,26 +83,22 @@ private const val SERIAL_CAROUSEL_LIMIT = 12
 /** 热门标签折叠时展示的标签数。 */
 private const val HOT_TAG_COLLAPSED = 8
 
-private sealed interface HomeListState {
-    data object Loading : HomeListState
-    data class Loaded(val page: SearchPage) : HomeListState
-    data class Failed(val message: String) : HomeListState
-}
+// HomeListState 和 HomeSessionCache 移至 HomeSessionState.kt 统一管理
 
 /** 首页：固定搜索栏 + 发现流（连载更新/热门标签/随便看看/最新上架）或搜索结果。 */
 @Composable
 fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    var searchExpanded by remember { mutableStateOf(false) }
-    // 已执行的关键词/标签；空串且未执行时展示发现流
-    var activeQuery by remember { mutableStateOf("") }
-    var searchByTag by remember { mutableStateOf(false) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    // 已执行的关键词/标签；空串且未执行时展示发现流，rememberSaveable 保证从详情页返回时保留
+    var activeQuery by rememberSaveable { mutableStateOf("") }
+    var searchByTag by rememberSaveable { mutableStateOf(false) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
-    var feed by remember { mutableStateOf<HomeListState>(HomeListState.Loading) }
-    var results by remember { mutableStateOf<HomeListState?>(null) }
-    var hotTags by remember { mutableStateOf<List<String>>(emptyList()) }
-    var serialUpdates by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
-    var randomPicks by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+    var feed by remember { mutableStateOf(HomeSessionCache.feed) }
+    var results by remember { mutableStateOf(HomeSessionCache.results) }
+    var hotTags by remember { mutableStateOf(HomeSessionCache.hotTags) }
+    var serialUpdates by remember { mutableStateOf(HomeSessionCache.serialUpdates) }
+    var randomPicks by remember { mutableStateOf(HomeSessionCache.randomPicks) }
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var showAllTags by remember { mutableStateOf(false) }
     var showSearchHelp by remember { mutableStateOf(false) }
@@ -120,6 +117,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     // 分页模式是 Jm3Graph 的全局可观察状态，设置页切换后本页立即变更控件形态。
     val clickPaging = Jm3Graph.paginationMode == PaginationMode.CLICK
+    val searching = isShowingSearchResults(activeQuery, results)
 
     fun requestSearch(page: Int, byTag: Boolean, text: String, sort: BrowseOrder): SearchPage =
         gateway.search(text, page, sort, if (byTag) SearchScope.TAG else SearchScope.SITE)
@@ -143,7 +141,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
             feed = next.fold(
                 onSuccess = { HomeListState.Loaded(it) },
                 onFailure = { HomeListState.Failed(it.message ?: "加载失败") },
-            )
+            ).also { HomeSessionCache.feed = it }
         }
     }
 
@@ -155,7 +153,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         orderValue = sort.apiValue
         listToken++
         val token = listToken
-        results = HomeListState.Loading
+        results = HomeListState.Loading.also { HomeSessionCache.updateResults(it) }
         // 提交即记录：标签检索与排序切换也会把当前关键词前移。
         mutateHistory { Jm3Graph.settings.addSearchHistory(trimmed) }
         scope.launch {
@@ -166,17 +164,24 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
             results = next.fold(
                 onSuccess = { HomeListState.Loaded(it) },
                 onFailure = { HomeListState.Failed(it.message ?: "网络错误") },
-            )
+            ).also { HomeSessionCache.updateResults(it) }
         }
     }
 
     fun clearSearch() {
+        query = ""
         activeQuery = ""
         results = null
+        HomeSessionCache.clearSearch()
         searchByTag = false
         listToken++
         // 首屏发现流请求可能被搜索代次丢弃；退出搜索时补一次，避免发现流一直停在加载态
         if (feed !is HomeListState.Loaded) loadFeed(1, listToken)
+    }
+
+    // 处于搜索态时拦截系统返回键，退回主页发现流而非直接退出应用
+    BackHandler(enabled = searching) {
+        clearSearch()
     }
 
     fun submitSearch() {
@@ -193,8 +198,8 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         listToken++
         val token = listToken
         scope.launch {
-            if (results != null) {
-                results = HomeListState.Loading
+            if (searching) {
+                results = HomeListState.Loading.also { HomeSessionCache.updateResults(it) }
                 val text = activeQuery
                 val byTag = searchByTag
                 val next = withContext(Dispatchers.IO) {
@@ -204,7 +209,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                     results = next.fold(
                         onSuccess = { HomeListState.Loaded(it) },
                         onFailure = { HomeListState.Failed(it.message ?: "网络错误") },
-                    )
+                    ).also { HomeSessionCache.updateResults(it) }
                 }
             } else {
                 val next = withContext(Dispatchers.IO) {
@@ -214,7 +219,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                     feed = next.fold(
                         onSuccess = { HomeListState.Loaded(it) },
                         onFailure = { HomeListState.Failed(it.message ?: "加载失败") },
-                    )
+                    ).also { HomeSessionCache.feed = it }
                 }
             }
             // 刷新协程结束即复位指示器；即使期间切换了搜索，也不能让顶部一直转圈
@@ -223,13 +228,12 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
     }
 
     fun activePage(): SearchPage? =
-        ((if (results != null) results else feed) as? HomeListState.Loaded)?.page
+        ((if (searching) results else feed) as? HomeListState.Loaded)?.page
 
     fun loadMore() {
         if (loadingMore) return
         val current = activePage() ?: return
         if (current.currentPage >= current.totalPages) return
-        val searching = results != null
         val token = listToken
         val nextOrder = order
         val text = activeQuery
@@ -252,9 +256,9 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
             loadMoreFailed = false
             val merged = current.mergedWith(next)
             if (searching) {
-                if (results != null) results = HomeListState.Loaded(merged)
+                if (results != null) results = HomeListState.Loaded(merged).also { HomeSessionCache.updateResults(it) }
             } else {
-                feed = HomeListState.Loaded(merged)
+                feed = HomeListState.Loaded(merged).also { HomeSessionCache.feed = it }
             }
         }
     }
@@ -263,13 +267,16 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
     fun jumpToPage(target: Int) {
         val current = activePage() ?: return
         if (target < 1 || target > current.totalPages) return
-        val searching = results != null
         val text = activeQuery
         val byTag = searchByTag
         val nextOrder = order
         listToken++
         val token = listToken
-        if (searching) results = HomeListState.Loading else feed = HomeListState.Loading
+        if (searching) {
+            results = HomeListState.Loading.also { HomeSessionCache.updateResults(it) }
+        } else {
+            feed = HomeListState.Loading.also { HomeSessionCache.feed = it }
+        }
         scope.launch {
             val next = withContext(Dispatchers.IO) {
                 runCatching {
@@ -280,39 +287,60 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
             if (token != listToken) return@launch
             next.fold(
                 onSuccess = { page ->
-                    if (searching) results = HomeListState.Loaded(page) else feed = HomeListState.Loaded(page)
+                    if (searching) {
+                        results = HomeListState.Loaded(page).also { HomeSessionCache.updateResults(it) }
+                    } else {
+                        feed = HomeListState.Loaded(page).also { HomeSessionCache.feed = it }
+                    }
                     listState.scrollToItem(0)
                 },
                 onFailure = { error ->
                     val failed = HomeListState.Failed(error.message ?: "网络错误")
-                    if (searching) results = failed else feed = failed
+                    if (searching) {
+                        results = failed.also { HomeSessionCache.updateResults(it) }
+                    } else {
+                        feed = failed.also { HomeSessionCache.feed = it }
+                    }
                 },
             )
         }
     }
 
-    // 首屏：最新上架 + 连载更新 + 热门标签 + 随机推荐 + 搜索历史并行加载；附属区块失败静默隐藏。
+    // 首屏：最新上架 + 连载更新 + 热门标签 + 随机推荐 + 搜索历史并行加载；若处于搜索态且无缓存结果则自动拉取搜索。
     LaunchedEffect(gateway) {
-        listToken++
-        loadFeed(1, listToken)
-        scope.launch {
-            val tags = withContext(Dispatchers.IO) { runCatching { gateway.hotTags() }.getOrDefault(emptyList()) }
-            val picks = withContext(Dispatchers.IO) { runCatching { gateway.randomRecommend() }.getOrDefault(emptyList()) }
-            val updates = withContext(Dispatchers.IO) {
-                runCatching { gateway.serialization(1).items.take(SERIAL_CAROUSEL_LIMIT) }.getOrDefault(emptyList())
+        if (!searching && feed !is HomeListState.Loaded) {
+            listToken++
+            loadFeed(1, listToken)
+        }
+        if (searching && results == null) {
+            runSearch(activeQuery, byTag = searchByTag, sort = order)
+        }
+        if (hotTags.isEmpty() && randomPicks.isEmpty() && serialUpdates.isEmpty()) {
+            scope.launch {
+                val tags = withContext(Dispatchers.IO) { runCatching { gateway.hotTags() }.getOrDefault(emptyList()) }
+                val picks = withContext(Dispatchers.IO) { runCatching { gateway.randomRecommend() }.getOrDefault(emptyList()) }
+                val updates = withContext(Dispatchers.IO) {
+                    runCatching { gateway.serialization(1).items.take(SERIAL_CAROUSEL_LIMIT) }.getOrDefault(emptyList())
+                }
+                val storedHistory = withContext(Dispatchers.IO) {
+                    runCatching { Jm3Graph.settings.searchHistory() }.getOrDefault(emptyList())
+                }
+                hotTags = tags.also { HomeSessionCache.hotTags = it }
+                randomPicks = picks.also { HomeSessionCache.randomPicks = it }
+                serialUpdates = updates.also { HomeSessionCache.serialUpdates = it }
+                searchHistory = storedHistory
             }
-            val storedHistory = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.settings.searchHistory() }.getOrDefault(emptyList())
+        } else {
+            scope.launch {
+                searchHistory = withContext(Dispatchers.IO) {
+                    runCatching { Jm3Graph.settings.searchHistory() }.getOrDefault(searchHistory)
+                }
             }
-            hotTags = tags
-            randomPicks = picks
-            serialUpdates = updates
-            searchHistory = storedHistory
         }
     }
 
     // 接近列表尾部时自动加载下一页；点击分页模式下禁用自动加载。页面切换后重新订阅。
-    LaunchedEffect(activePage(), results != null, clickPaging) {
+    LaunchedEffect(activePage(), searching, clickPaging) {
         if (clickPaging || activePage() == null) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo
@@ -353,7 +381,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                             onQueryChange = {
                                 query = it
                                 // 清空输入即退出搜索态，回到发现流
-                                if (it.isBlank() && results != null) clearSearch()
+                                if (it.isBlank() && searching) clearSearch()
                             },
                             onSearch = { submitSearch() },
                             expanded = searchExpanded,
@@ -369,7 +397,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                                         IconButton(
                                             onClick = {
                                                 query = ""
-                                                if (results != null) clearSearch()
+                                                if (searching) clearSearch()
                                             },
                                             minWidth = 32.dp,
                                             minHeight = 32.dp,
@@ -460,7 +488,6 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 contentPadding = innerPadding,
             ) {
-                val searching = results != null
                 if (searching) {
                     item(key = "search-header") {
                         SearchResultHeader(
@@ -472,7 +499,7 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                         )
                     }
                     when (val s = results) {
-                        is HomeListState.Loading -> if (!refreshing) {
+                        null, is HomeListState.Loading -> if (!refreshing) {
                             item(key = "search-loading") { InlineLoading() }
                         }
                         is HomeListState.Failed -> item(key = "search-error") {
@@ -491,7 +518,6 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                             onPageChange = ::jumpToPage,
                             onOpenAlbum = onOpenAlbum,
                         )
-                        null -> Unit
                     }
                 } else {
                     // 附属区块（搜索记录/连载更新/热门标签/随便看看）的数据是异步到达的，
