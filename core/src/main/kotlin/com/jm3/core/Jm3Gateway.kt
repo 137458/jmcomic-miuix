@@ -101,7 +101,7 @@ interface Jm3Gateway {
     fun imageBytes(image: PageImage): ByteArray
 
     /** 封面地址；域名未就绪等场景返回 null。 */
-    fun coverUrl(albumId: String, size: String = ""): String?
+    fun coverUrl(albumId: String, size: String = "_3x4"): String?
 
     /** 登录并返回会话（含 AVS Cookie 快照）。阻塞调用。 */
     fun login(username: String, password: String): Jm3Session
@@ -295,7 +295,8 @@ class Jm3GatewayImpl internal constructor(
     override fun album(albumId: String): AlbumDetail {
         val album = client.getAlbum(albumId)
         val domain = imageDomain(albumId)
-        val cover = CoverUrls.build(albumId, domain, "")
+        // 详情页与列表保持完全一致的 _3x4 规格，保证封面显示内容一致且 100% 命中图片缓存
+        val cover = CoverUrls.build(albumId, domain, "_3x4")
         return album.toAlbumDetail(
             coverUrl = cover,
             relatedCoverUrl = { meta -> CoverUrls.build(meta.id(), domain, "_3x4") },

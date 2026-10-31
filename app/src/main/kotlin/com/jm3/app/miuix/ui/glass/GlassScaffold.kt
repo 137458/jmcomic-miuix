@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -109,9 +110,12 @@ fun GlassScaffold(
     val shaderReady = backdrop != null && isRuntimeShaderSupported()
     val containerColor = MiuixTheme.colorScheme.surface
     val scrollBehavior = MiuixScrollBehavior()
-    // 展开态的最大高度：折叠过程中顶栏实测高度会收缩，这里只记录最大值，再由折叠位移把当前高度算回来
-    var topBarMaxHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
+    val systemBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val initialTopBarHeightPx = with(density) { (systemBarTop + TopAppBarDefaults.CollapsedHeight).roundToPx() }
+    // 展开态的最大高度：折叠过程中顶栏实测高度会收缩，这里只记录最大值，再由折叠位移把当前高度算回来；
+    // 初始高度使用 状态栏 + 默认顶栏高度 兜底，避免首帧高度为 0 导致内容跳动与转场坐标测偏。
+    var topBarMaxHeightPx by remember { mutableIntStateOf(initialTopBarHeightPx) }
     val topBarExpandedHeight = with(density) { topBarMaxHeightPx.toDp() }
     val floatingBarContentPadding = LocalFloatingBarContentPadding.current
     // 主框架已经消费过系统栏 inset，这里取"剩余 inset"与安全值中的较大者：

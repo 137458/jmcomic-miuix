@@ -132,6 +132,19 @@ class MappersTest {
     }
 
     @Test
+    fun 相册详情_映射_过滤空白作者与标签与作品() {
+        val raw = JmAlbum(
+            "100", "  ", "D", "220980", "1700000000", 24, "1", "2", 3, "cover.jpg",
+            cat, subCat, listOf("", "  ", "真实作者"), listOf("  ", "有效作品"), emptyList(), listOf(" ", "	", "有效标签"), emptyList(), emptyList(), "",
+            false, false, false, emptyList(), "", "",
+        )
+        val got = raw.toAlbumDetail()
+        assertEquals(listOf("真实作者"), got.authors)
+        assertEquals(listOf("有效作品"), got.works)
+        assertEquals(listOf("有效标签"), got.tags)
+    }
+
+    @Test
     fun 搜索查询_按主标签与排序构造() {
         val site = searchQuery("关键词", 2, SearchMainTag.SITE_SEARCH, BrowseOrder.MOST_LIKED)
         assertEquals(0, site.mainTag.value)
