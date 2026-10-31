@@ -27,7 +27,6 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
@@ -156,24 +155,24 @@ fun SearchScreen(
                     color = Color.Transparent,
                 )
                 // 排序/时间筛选固定于列表之外：与顶栏同处玻璃层
-                GlassTabRow(
+                GlassChipRow(
                     tabs = BrowseOrder.entries.map { it.label },
                     selectedTabIndex = BrowseOrder.entries.indexOf(order),
                     onTabSelected = {
                         selectionHaptic()
                         orderValue = BrowseOrder.entries[it].apiValue
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 )
                 // 时间范围由服务端过滤（原版年/月筛选的等价能力，库只提供 今日/本周/本月/全部）
-                GlassTabRow(
+                GlassChipRow(
                     tabs = BrowseTime.entries.map { it.label },
                     selectedTabIndex = BrowseTime.entries.indexOf(time),
                     onTabSelected = {
                         selectionHaptic()
                         timeValue = BrowseTime.entries[it].apiValue
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         },

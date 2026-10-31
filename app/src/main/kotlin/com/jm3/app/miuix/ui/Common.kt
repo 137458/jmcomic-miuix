@@ -2,7 +2,6 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -10,7 +9,6 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -21,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
@@ -46,7 +43,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import top.yukonga.miuix.kmp.squircle.squircleClip
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import top.yukonga.miuix.kmp.basic.Button
@@ -486,64 +482,6 @@ fun rememberSelectionHaptic(): () -> Unit {
     return remember(haptics) { { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) } }
 }
 
-/** 筛选胶囊圆角：与 Miuix 卡片同档曲率，避免玻璃层内出现两种曲率。 */
-private val FilterChipCornerRadius = 16.dp
-
-/**
- * 横滑胶囊筛选条：选中项主色实底白字，未选中项 surfaceContainer，按压回弹并带轻触感。
- *
- * 与 Miuix TabRow 的差异：分段控件把选项均分到一屏，条目多时逐个缩到只剩省略号；胶囊条
- * 按内容宽度排布并允许横滑，选项全集都能保持可读。
- */
-@Composable
-fun FilterChipRow(
-    labels: List<String>,
-    selectedIndex: Int,
-    onSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-) {
-    val haptic = rememberSelectionHaptic()
-    LazyRow(
-        modifier = modifier.fillMaxWidth(),
-        contentPadding = contentPadding,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        items(labels.size) { index ->
-            FilterChip(
-                text = labels[index],
-                selected = index == selectedIndex,
-                onClick = {
-                    if (index != selectedIndex) {
-                        haptic()
-                        onSelected(index)
-                    }
-                },
-            )
-        }
-    }
-}
-
-/** 单个筛选胶囊：选中与未选中共用同一按压回弹，切换后手感不中断。 */
-@Composable
-private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        text = text,
-        style = MiuixTheme.textStyles.body2,
-        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-        color = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
-        maxLines = 1,
-        modifier = Modifier
-            .pressScale(hapticFeedback = false)
-            .squircleClip(FilterChipCornerRadius)
-            .background(
-                if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.surfaceContainer,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-    )
-}
 
 /**
  * 榜单瀑布流结果：两列封面卡，名次叠在封面左上角。

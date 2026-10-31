@@ -47,7 +47,6 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
@@ -203,14 +202,14 @@ fun LibraryScreen(
                         )
                     },
                 ) {}
-                GlassTabRow(
+                GlassChipRow(
                     tabs = LIBRARY_TABS,
                     selectedTabIndex = tab,
                     onTabSelected = {
                         selectionHaptic()
                         tab = it
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 )
                 // 语言/来源筛选固定在列表之外：与顶栏同处玻璃层，列表从其下方穿过
                 if (tab == 1 && !filters.isEmpty) {

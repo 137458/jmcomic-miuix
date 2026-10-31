@@ -43,7 +43,6 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
-import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.NovelChapter
 import com.jm3.core.model.NovelChapterMeta
@@ -510,14 +509,14 @@ fun NovelDetailScreen(
                             )
                         }
                         item(key = "tabs") {
-                            GlassTabRow(
+                            GlassChipRow(
                                 tabs = listOf("目录", "相关", "评论"),
                                 selectedTabIndex = tab,
                                 onTabSelected = {
                                     selectionHaptic()
                                     tab = it
                                 },
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                             )
                         }
                         when (tab) {

@@ -43,7 +43,6 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.imageUrl
 import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
@@ -140,23 +139,23 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
                     navigationIcon = { BackButton(onBack = onBack) },
                 )
                 // 两组筛选页签固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切换
-                GlassTabRow(
+                GlassChipRow(
                     tabs = types.map { it.label },
                     selectedTabIndex = typeIndex,
                     onTabSelected = {
                         selectionHaptic()
                         typeIndex = it
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 )
-                GlassTabRow(
+                GlassChipRow(
                     tabs = filters.map { it.label },
                     selectedTabIndex = filterIndex,
                     onTabSelected = {
                         selectionHaptic()
                         filterIndex = it
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 )
             }
         },
