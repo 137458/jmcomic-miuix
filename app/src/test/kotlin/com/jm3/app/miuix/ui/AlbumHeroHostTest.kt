@@ -211,4 +211,36 @@ class AlbumHeroHostTest {
         assertEquals(headerRect, flight.from)
         assertEquals(coverRect, flight.to)
     }
+
+    @Test
+    fun 正向飞行启动时记录相册标题与封面并在注销前可查() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP)
+        val title = "测试相册标题"
+        host.startForward(albumId, coverUrl, HERO_SEARCH_ROW_CORNER_DP, title)
+
+        assertEquals(coverUrl, host.coverUrl(albumId))
+        assertEquals(title, host.albumTitle(albumId))
+
+        host.unregisterCover(albumId, coverRect)
+        assertNull(host.coverUrl(albumId))
+        assertNull(host.albumTitle(albumId))
+    }
+
+    @Test
+    fun rememberAlbum与带title的registerCover均能正确持久化缓存并在header注销后依然有效() {
+        val host = AlbumHeroHost()
+        val title = "预存相册标题"
+        host.rememberAlbum(albumId, title = title, coverUrl = coverUrl)
+        assertEquals(title, host.albumTitle(albumId))
+        assertEquals(coverUrl, host.coverUrl(albumId))
+
+        // 通过带 title 的 registerCover 登记
+        val anotherAlbumId = "album_456"
+        val anotherTitle = "另一个标题"
+        val anotherUrl = "https://example.com/another.jpg"
+        host.registerCover(anotherAlbumId, anotherUrl, coverRect, HERO_SEARCH_ROW_CORNER_DP, anotherTitle)
+        assertEquals(anotherTitle, host.albumTitle(anotherAlbumId))
+        assertEquals(anotherUrl, host.coverUrl(anotherAlbumId))
+    }
 }

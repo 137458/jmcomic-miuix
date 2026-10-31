@@ -228,7 +228,11 @@ sealed interface Route : NavKey {
     data object Forum : Route
 
     @Serializable
-    data class AlbumDetail(val albumId: String) : Route
+    data class AlbumDetail(
+        val albumId: String,
+        val initialTitle: String? = null,
+        val initialCoverUrl: String? = null,
+    ) : Route
 
     @Serializable
     data class Reader(val photoId: String) : Route
@@ -474,6 +478,8 @@ fun Jm3App() {
                     ) { route ->
                         AlbumDetailScreen(
                             albumId = route.albumId,
+                            initialTitle = route.initialTitle,
+                            initialCoverUrl = route.initialCoverUrl,
                             onBack = popBack,
                             onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },

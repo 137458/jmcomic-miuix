@@ -242,7 +242,7 @@ fun CenteredEmptyState(title: String, hint: String? = null, modifier: Modifier =
 
 /** 搜索结果行封面：统一尺寸，缺失时留空占位，保持行高稳定。 */
 @Composable
-private fun SearchResultCover(albumId: String, url: String?) {
+private fun SearchResultCover(albumId: String, url: String?, title: String? = null) {
     if (url == null) {
         Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
         return
@@ -254,7 +254,7 @@ private fun SearchResultCover(albumId: String, url: String?) {
         modifier = Modifier
             .size(width = 48.dp, height = 64.dp)
             .squircleClip(HERO_SEARCH_ROW_CORNER_DP.dp)
-            .albumHeroCover(albumId, url, HERO_SEARCH_ROW_CORNER_DP),
+            .albumHeroCover(albumId, url, title, HERO_SEARCH_ROW_CORNER_DP),
     )
 }
 
@@ -323,11 +323,11 @@ private fun SearchResultCard(
                         RankIndexBadge(rank = rank)
                         Spacer(modifier = Modifier.width(10.dp))
                     }
-                    SearchResultCover(result.id, result.coverUrl)
+                    SearchResultCover(result.id, result.coverUrl, result.title)
                 }
             },
             onClick = {
-                heroHost?.startForward(result.id, result.coverUrl, HERO_SEARCH_ROW_CORNER_DP)
+                heroHost?.startForward(result.id, result.coverUrl, HERO_SEARCH_ROW_CORNER_DP, result.title)
                 onClick()
             },
         ) {
