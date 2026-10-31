@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -358,15 +355,14 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 100 }
     }
 
-    // 悬浮操作栏要让开底栏胶囊：胶囊高 64dp，底边距为「有导航条 8dp+inset，否则 20dp」，
-    // Scaffold 又给 FAB 自带 12dp 边距，这里统一换算成 FAB 的 bottom 内边距并保留 16dp 视觉间距。
-    val navigationBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val floatingBarTopInset = (if (navigationBarInset != 0.dp) 8.dp + navigationBarInset else 20.dp) + 64.dp
+    // 悬浮操作栏要让开底栏胶囊：胶囊高 64dp，底边距为「导航条 inset + 8dp」，Scaffold 的 FAB
+    // 又自带 12dp 边距。两处的导航条 inset 在算式里正好抵消（本页读到的 inset 已被主框架消费为 0），
+    // 因此固定让出 76dp 就能稳定留出 16dp 视觉间距。
     val floatingActionsBottom = if (LocalFloatingBarContentPadding.current == 0.dp) {
         // 宽屏改用侧栏、没有悬浮底栏，直接贴右下角
         16.dp
     } else {
-        floatingBarTopInset + 16.dp - navigationBarInset - 12.dp
+        76.dp
     }
 
     fun openRandom() {
