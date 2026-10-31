@@ -54,20 +54,22 @@ class AlbumHeroLogicTest {
     }
 
     @Test
-    fun 零宽矩形不可用() {
+    fun 零宽或零高矩形不可用() {
         assertFalse(isFiniteHeroRect(HeroRect(10f, 10f, 0f, 64f)))
         assertFalse(isFiniteHeroRect(HeroRect(10f, 10f, 48f, 0f)))
     }
 
     @Test
-    fun 负宽矩形不可用() {
+    fun 负宽或负高矩形不可用() {
         assertFalse(isFiniteHeroRect(HeroRect(10f, 10f, -48f, 64f)))
+        assertFalse(isFiniteHeroRect(HeroRect(10f, 10f, 48f, -64f)))
     }
 
     @Test
     fun 非有限值矩形不可用() {
         assertFalse(isFiniteHeroRect(HeroRect(Float.NaN, 10f, 48f, 64f)))
         assertFalse(isFiniteHeroRect(HeroRect(10f, Float.POSITIVE_INFINITY, 48f, 64f)))
+        assertFalse(isFiniteHeroRect(HeroRect(10f, 10f, Float.NEGATIVE_INFINITY, 64f)))
     }
 
     @Test
@@ -87,6 +89,18 @@ class AlbumHeroLogicTest {
     fun 中心位移一像素不飞() {
         val moved = detailHeader.copy(left = listCover.centerX - detailHeader.width / 2f + 1f, top = listCover.centerY - detailHeader.height / 2f)
         assertFalse(shouldRunHero(listCover, moved))
+    }
+
+    @Test
+    fun 中心位移刚好两像素不飞() {
+        val moved = detailHeader.copy(left = listCover.centerX - detailHeader.width / 2f + 2f, top = listCover.centerY - detailHeader.height / 2f)
+        assertFalse(shouldRunHero(listCover, moved))
+    }
+
+    @Test
+    fun 中心位移微超两像素要飞() {
+        val moved = detailHeader.copy(left = listCover.centerX - detailHeader.width / 2f + 2.01f, top = listCover.centerY - detailHeader.height / 2f)
+        assertTrue(shouldRunHero(listCover, moved))
     }
 
     @Test
