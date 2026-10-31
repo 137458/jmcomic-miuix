@@ -406,6 +406,7 @@ fun Jm3App() {
                         FavoritesScreen(
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.History>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -459,6 +460,7 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.Tasks>(swipeDismiss = NavSwipeDirection.LeftToRight) {
