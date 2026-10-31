@@ -10,10 +10,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,7 +34,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassFabItem
@@ -722,45 +719,18 @@ private fun HotTagFlow(tags: List<String>, expanded: Boolean, onClick: (String) 
     }
 }
 
-/** 连载更新卡：封面 + 标题 + 作者，横向滑动浏览。 */
+/** 连载更新卡：封面 + 标题 + 作者，横向滑动浏览；外观走 [WorkGridCard] 的统一契约。 */
 @Composable
 private fun SerialUpdateCard(update: SearchResult, onClick: () -> Unit) {
-    val heroHost = LocalAlbumHeroHost.current
-    Card(
-        modifier = Modifier.width(112.dp),
-        onClick = {
-            heroHost?.startForward(update.id, update.coverUrl, MIUIX_CARD_CORNER_DP, update.title)
-            onClick()
-        },
-    ) {
-        if (update.coverUrl != null) {
-            AlbumCoverImage(
-                url = update.coverUrl,
-                contentDescription = update.title,
-                modifier = Modifier
-                    .width(112.dp)
-                    .height(150.dp)
-                    .albumHeroCover(update.id, update.coverUrl, update.title, MIUIX_CARD_CORNER_DP),
-            )
-        } else {
-            Spacer(modifier = Modifier.width(112.dp).height(150.dp))
-        }
-        Text(
-            text = update.title,
-            style = MiuixTheme.textStyles.footnote2,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
-        )
-        Text(
-            text = update.authors.joinToString(" / ").ifBlank { "未知作者" },
-            style = MiuixTheme.textStyles.footnote2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
-        )
-    }
+    WorkGridCard(
+        title = update.title,
+        coverUrl = update.coverUrl,
+        onClick = onClick,
+        albumId = update.id,
+        coverContentDescription = update.title,
+        subtitle = update.authors.joinToString(" / ").ifBlank { "未知作者" },
+        modifier = Modifier.width(WorkCardTokens.CompactWidth),
+    )
 }
 
 /** 结果列表分派：无限滚动沿用公共实现；点击分页复用公共单页列表与翻页条。 */
@@ -822,35 +792,15 @@ private fun InlineLoading() {
     }
 }
 
-/** 随机推荐卡：封面 + 两行标题，横向滑动浏览。 */
+/** 随机推荐卡：封面 + 两行标题，横向滑动浏览；外观走 [WorkGridCard] 的统一契约。 */
 @Composable
 private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
-    val heroHost = LocalAlbumHeroHost.current
-    Card(
-        modifier = Modifier.width(96.dp),
-        onClick = {
-            heroHost?.startForward(pick.id, pick.coverUrl, MIUIX_CARD_CORNER_DP, pick.title)
-            onClick()
-        },
-    ) {
-        if (pick.coverUrl != null) {
-            AlbumCoverImage(
-                url = pick.coverUrl,
-                contentDescription = pick.title,
-                modifier = Modifier
-                    .width(96.dp)
-                    .height(128.dp)
-                    .albumHeroCover(pick.id, pick.coverUrl, pick.title, MIUIX_CARD_CORNER_DP),
-            )
-        } else {
-            Spacer(modifier = Modifier.width(96.dp).height(128.dp))
-        }
-        Text(
-            text = pick.title,
-            style = MiuixTheme.textStyles.footnote2,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(6.dp),
-        )
-    }
+    WorkGridCard(
+        title = pick.title,
+        coverUrl = pick.coverUrl,
+        onClick = onClick,
+        albumId = pick.id,
+        coverContentDescription = pick.title,
+        modifier = Modifier.width(WorkCardTokens.CompactWidth),
+    )
 }

@@ -2,12 +2,9 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -23,10 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import top.yukonga.miuix.kmp.squircle.squircleClip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.SearchResult
@@ -177,7 +171,7 @@ fun WatchHistoryScreen(
                                         item.authors.joinToString(" "),
                                         item.tags.joinToString(" "),
                                     ).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { null },
-                                    startAction = { WatchCover(item.coverUrl) },
+                                    startAction = { WatchCover(item.id, item.coverUrl) },
                                     onClick = { onOpenAlbum(item.id) },
                                     endActions = {
                                         IconButton(
@@ -236,19 +230,8 @@ fun WatchHistoryScreen(
     }
 }
 
-/** 观看记录封面：与搜索结果行同尺寸，缺失时留白保持行高。 */
+/** 观看记录封面：与其他作品行统一缩略图尺寸与圆角，缺失时留白保持行高。 */
 @Composable
-private fun WatchCover(url: String?) {
-    if (url == null) {
-        Spacer(modifier = Modifier.size(width = 48.dp, height = 64.dp))
-        return
-    }
-    AsyncImage(
-        model = url,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier
-            .size(width = 48.dp, height = 64.dp)
-            .squircleClip(6.dp),
-    )
+private fun WatchCover(albumId: String, url: String?) {
+    WorkThumbnail(url = url, albumId = albumId)
 }

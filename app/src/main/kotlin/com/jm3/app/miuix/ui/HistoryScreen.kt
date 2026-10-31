@@ -1,8 +1,5 @@
 package com.jm3.app.miuix.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,8 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -26,8 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import top.yukonga.miuix.kmp.squircle.squircleClip
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
@@ -36,8 +29,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
@@ -258,65 +249,36 @@ private fun AlbumHistoryCard(
     onDelete: () -> Unit,
 ) {
     val heroHost = LocalAlbumHeroHost.current
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onResume)
-                .padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val cover = album.latest.coverUrl
-            if (cover != null) {
-                AlbumCoverImage(
-                    url = cover,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(width = 58.dp, height = 78.dp)
-                        .squircleClip(HERO_HISTORY_ROW_CORNER_DP.dp)
-                        .albumHeroCover(album.albumId, cover, HERO_HISTORY_ROW_CORNER_DP),
-                )
-            } else {
-                Box(
-                    modifier = Modifier.size(width = 58.dp, height = 78.dp).squircleClip(HERO_HISTORY_ROW_CORNER_DP.dp),
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = album.latest.title,
-                    style = MiuixTheme.textStyles.body1,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "共读 ${album.chapters} 话 · ${historyDateFormat.format(Date(album.latest.updatedAt))}",
-                    style = MiuixTheme.textStyles.footnote2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
-                        text = "继续阅读",
-                        onClick = onResume,
-                        minWidth = 0.dp,
-                        minHeight = 32.dp,
-                    )
-                    TextButton(
-                        text = "详情",
-                        onClick = {
-                            heroHost?.startForward(album.albumId, album.latest.coverUrl, HERO_HISTORY_ROW_CORNER_DP)
-                            onOpenDetail()
-                        },
-                        minWidth = 0.dp,
-                        minHeight = 32.dp,
-                    )
-                }
-            }
+    WorkRowCard(
+        coverUrl = album.latest.coverUrl,
+        title = album.latest.title,
+        onClick = onResume,
+        albumId = album.albumId,
+        subtitle = "共读 ${album.chapters} 话 · ${historyDateFormat.format(Date(album.latest.updatedAt))}",
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        textEndPadding = 4.dp,
+        trailing = {
             IconButton(onClick = onDelete) {
                 Icon(imageVector = MiuixIcons.Delete, contentDescription = "删除该作品记录")
             }
+        },
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(
+                text = "继续阅读",
+                onClick = onResume,
+                minWidth = 0.dp,
+                minHeight = 32.dp,
+            )
+            TextButton(
+                text = "详情",
+                onClick = {
+                    heroHost?.startForward(album.albumId, album.latest.coverUrl, HERO_CARD_CORNER_DP)
+                    onOpenDetail()
+                },
+                minWidth = 0.dp,
+                minHeight = 32.dp,
+            )
         }
     }
 }

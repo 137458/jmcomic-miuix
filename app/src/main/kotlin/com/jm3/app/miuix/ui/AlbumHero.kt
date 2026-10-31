@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.snapshotFlow
 import kotlin.math.roundToInt
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.squircle.squircleClip
 
 /**
@@ -297,14 +298,19 @@ fun AlbumCoverImage(
 }
 
 /**
- * 卡片内封面被裁出来的圆角：Miuix Card 的内边距为 0，封面贴满卡片，圆角就是 Card 的默认圆角 16dp。
- * CardDefaults.cornerRadius 在 0.9.4 里是 internal（字节码 getCornerRadius-D9Ej5fM 带值类改写后缀），
- * 外部取不到，只能照抄这个数字；库若改默认圆角，这里跟着改。
+ * 作品卡圆角契约：全部作品卡（网格卡、行卡、缩略图、角标）的圆角只从这里取，
+ * 调用点禁止写 dp 字面量，否则不同作品的卡会重新长出各自的曲率。
+ *
+ * 卡片外圆角：Miuix Card 的内边距为 0，封面贴满卡片，裁出来的就是 Card 自身圆角，
+ * 所以这里直接取 CardDefaults.CornerRadius，库升级改默认值时卡片与飞行端不会错位。
  */
-const val HERO_CARD_CORNER_DP = 16f
-const val MIUIX_CARD_CORNER_DP = HERO_CARD_CORNER_DP
-const val HERO_HISTORY_ROW_CORNER_DP = 8f
-const val HERO_FAVORITE_ROW_CORNER_DP = 6f
+val HERO_CARD_CORNER_DP: Float = CardDefaults.CornerRadius.value
+
+/** 卡内缩略封面（历史、收藏、追更的 48x64 小图）：比卡片外圆角小，避免小图被裁成胶囊。 */
+const val HERO_THUMB_CORNER_DP = 8f
+
+/** 封面上的角标胶囊：小圆角只用于角标，与卡片曲率无关。 */
+const val HERO_BADGE_CORNER_DP = 6f
 
 /**
  * 封面解码尺寸：与详情页头图的 144x192dp 对齐。

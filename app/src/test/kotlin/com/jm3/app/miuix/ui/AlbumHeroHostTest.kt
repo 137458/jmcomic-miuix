@@ -28,11 +28,11 @@ class AlbumHeroHostTest {
     @Test
     fun 封面登记与注销正确维护状态() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
         assertEquals(coverRect, host.coverRect(albumId))
 
         // 相同参数重复登记应防抖安全跳过
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
         assertEquals(coverRect, host.coverRect(albumId))
 
         // 注销封面
@@ -58,16 +58,16 @@ class AlbumHeroHostTest {
     @Test
     fun 正向飞行准备阶段登记并记录待飞() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
 
-        val started = host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        val started = host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         assertTrue(started)
         val pending = host.pending
         assertNotNull(pending)
         assertEquals(albumId, pending.albumId)
         assertEquals(coverUrl, pending.url)
         assertEquals(coverRect, pending.from)
-        assertEquals(MIUIX_CARD_CORNER_DP, pending.cornerFromDp)
+        assertEquals(HERO_CARD_CORNER_DP, pending.cornerFromDp)
 
         // 起飞前飞行计划为空，封面与头图均不隐藏
         assertNull(host.flight)
@@ -79,21 +79,21 @@ class AlbumHeroHostTest {
     fun 封面矩形无效或未登记时不触发正向待飞() {
         val host = AlbumHeroHost()
         // 未登记封面直接启动正向飞行
-        assertFalse(host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP))
+        assertFalse(host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP))
         assertNull(host.pending)
 
         // 登记非法宽高矩形
         val zeroRect = coverRect.copy(width = 0f)
-        host.registerCover(albumId, coverUrl, zeroRect, MIUIX_CARD_CORNER_DP)
-        assertFalse(host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP))
+        host.registerCover(albumId, coverUrl, zeroRect, HERO_CARD_CORNER_DP)
+        assertFalse(host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP))
         assertNull(host.pending)
     }
 
     @Test
     fun 详情头图测量完成后正向起飞并锁定两端隐藏与圆角契约() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
 
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         val resolved = host.resolvePending()
@@ -107,7 +107,7 @@ class AlbumHeroHostTest {
         assertNotNull(flight)
         assertEquals(coverRect, flight.from)
         assertEquals(headerRect, flight.to)
-        assertEquals(MIUIX_CARD_CORNER_DP, flight.cornerFromDp)
+        assertEquals(HERO_CARD_CORNER_DP, flight.cornerFromDp)
         assertEquals(HERO_CARD_CORNER_DP, flight.cornerToDp)
         assertEquals(coverUrl, flight.url)
 
@@ -124,8 +124,8 @@ class AlbumHeroHostTest {
     @Test
     fun 正向飞行结束落位后两端恢复可见() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         host.resolvePending()
 
@@ -142,8 +142,8 @@ class AlbumHeroHostTest {
     @Test
     fun 待飞超时取消后待飞记录清空且两端保持可见() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         assertNotNull(host.pending)
 
         host.cancelPending()
@@ -156,8 +156,8 @@ class AlbumHeroHostTest {
     @Test
     fun 退栈时触发反向飞行且起止矩形圆角对调() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         host.resolvePending()
         host.finishFlight(host.flight!!.id)
@@ -171,7 +171,7 @@ class AlbumHeroHostTest {
         assertEquals(headerRect, flight.from)
         assertEquals(coverRect, flight.to)
         assertEquals(HERO_CARD_CORNER_DP, flight.cornerFromDp)
-        assertEquals(MIUIX_CARD_CORNER_DP, flight.cornerToDp)
+        assertEquals(HERO_CARD_CORNER_DP, flight.cornerToDp)
         assertEquals(coverUrl, flight.url)
 
         // 反向飞行同样要等覆盖层画出首帧才让位
@@ -184,8 +184,8 @@ class AlbumHeroHostTest {
     @Test
     fun 反向飞行结束落位后完整复原状态() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         host.resolvePending()
         host.finishFlight(host.flight!!.id)
@@ -201,7 +201,7 @@ class AlbumHeroHostTest {
     @Test
     fun 非列表卡片进入的相册退栈时不触发反向飞行() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
 
         // 未调用 startForward，不在 heroOrigins 集合内
@@ -213,8 +213,8 @@ class AlbumHeroHostTest {
     @Test
     fun 头图注销后退栈能降级使用历史测量快照触发反向飞行() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         host.resolvePending()
         host.finishFlight(host.flight!!.id)
@@ -235,9 +235,9 @@ class AlbumHeroHostTest {
     @Test
     fun 正向飞行启动时记录相册标题与封面并在注销前可查() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
         val title = "测试相册标题"
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP, title)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP, title)
 
         assertEquals(coverUrl, host.coverUrl(albumId))
         assertEquals(title, host.albumTitle(albumId))
@@ -259,7 +259,7 @@ class AlbumHeroHostTest {
         val anotherAlbumId = "album_456"
         val anotherTitle = "另一个标题"
         val anotherUrl = "https://example.com/another.jpg"
-        host.registerCover(anotherAlbumId, anotherUrl, coverRect, MIUIX_CARD_CORNER_DP, anotherTitle)
+        host.registerCover(anotherAlbumId, anotherUrl, coverRect, HERO_CARD_CORNER_DP, anotherTitle)
         assertEquals(anotherTitle, host.albumTitle(anotherAlbumId))
         assertEquals(anotherUrl, host.coverUrl(anotherAlbumId))
     }
@@ -267,8 +267,8 @@ class AlbumHeroHostTest {
     @Test
     fun 覆盖层就绪前两端封面保持可见() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         assertTrue(host.resolvePending())
 
@@ -281,8 +281,8 @@ class AlbumHeroHostTest {
     @Test
     fun 覆盖层画出首帧后两端封面隐藏() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         host.resolvePending()
 
@@ -298,8 +298,8 @@ class AlbumHeroHostTest {
     @Test
     fun 就绪标记只认当前飞行id() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         host.resolvePending()
 
@@ -316,8 +316,8 @@ class AlbumHeroHostTest {
     @Test
     fun 飞行结束后就绪标记清空且下一段飞行重新等待() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
         host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
         host.resolvePending()
         host.markOverlayReady(host.flight!!.id)
@@ -338,8 +338,8 @@ class AlbumHeroHostTest {
     @Test
     fun 待飞阶段详情头图保持可见() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
-        host.startForward(albumId, coverUrl, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
 
         // 待飞阶段覆盖层还没开始画，头图必须先显示，否则详情页头图位置会空一段
         assertNotNull(host.pending)
@@ -351,7 +351,7 @@ class AlbumHeroHostTest {
     @Test
     fun 没有飞行时标记就绪不产生副作用() {
         val host = AlbumHeroHost()
-        host.registerCover(albumId, coverUrl, coverRect, MIUIX_CARD_CORNER_DP)
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
 
         host.markOverlayReady(1)
         assertNull(host.flight)
