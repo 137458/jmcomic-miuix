@@ -32,7 +32,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -238,10 +237,8 @@ fun DialogActionRow(
             onClick = onPrimary,
             enabled = primaryEnabled,
             colors = if (destructive) {
-                ButtonDefaults.textButtonColors(
-                    color = Color.Transparent,
-                    textColor = MiuixTheme.colorScheme.error,
-                )
+                // 只换文字色、底色仍与取消键同档：整块红在浅色底上过于刺眼，也确实会让两颗按钮不成对
+                ButtonDefaults.textButtonColors(textColor = MiuixTheme.colorScheme.error)
             } else {
                 ButtonDefaults.textButtonColors()
             },

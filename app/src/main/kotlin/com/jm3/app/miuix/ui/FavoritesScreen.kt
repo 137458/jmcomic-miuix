@@ -738,10 +738,8 @@ fun FavoritesScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                 )
                 TextButton(
                     text = "确认删除",
-                    colors = ButtonDefaults.textButtonColors(
-                        color = Color.Transparent,
-                        textColor = MiuixTheme.colorScheme.error,
-                    ),
+                    // 与取消键同底色、仅文字用错误色：透明底会让危险键看起来像不可点
+                    colors = ButtonDefaults.textButtonColors(textColor = MiuixTheme.colorScheme.error),
                     onClick = { tagDeleteTarget?.let { deleteTag(it) } },
                     enabled = !tagBusy,
                     modifier = Modifier.fillMaxWidth(),
