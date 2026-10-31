@@ -19,7 +19,7 @@
 ## 一、State：状态归属
 
 1. 全局单例只允许出现在 `Jm3Graph`（app/src/main/kotlin/com/jm3/app/miuix/Jm3App.kt:83）。网关、会话、设置、账号、数据库、进程级 scope 都在这里组装；屏幕代码通过参数或 Jm3Graph 读取，禁止自建平行单例。
-2. 唯一长期协程作用域是 `appScope`（app/src/main/kotlin/com/jm3/app/miuix/Jm3App.kt:137，`SupervisorJob() + Dispatchers.IO`）。它的现有使用点只有 Jm3App.kt:115、:137、:150、app/src/main/kotlin/com/jm3/app/miuix/data/download/DownloadManager.kt:64、:67、:69、:141 与同目录 DownloadService.kt:135、:193。新增用途必须说明为什么不能挂在屏幕的 `rememberCoroutineScope` 上。禁止 `GlobalScope`。
+2. 唯一长期协程作用域是 `appScope`（app/src/main/kotlin/com/jm3/app/miuix/Jm3App.kt:147，`SupervisorJob() + Dispatchers.IO`）。它的现有使用点只有 Jm3App.kt:115、:147、:150、:152、app/src/main/kotlin/com/jm3/app/miuix/data/download/DownloadManager.kt:64、:67、:69、:141、app/src/main/kotlin/com/jm3/app/miuix/update/UpdateDownloader.kt:75（由 `Jm3Graph` 注入）与同目录 DownloadService.kt:135、:193。新增用途必须说明为什么不能挂在屏幕的 `rememberCoroutineScope` 上。禁止 `GlobalScope`。
 3. 本仓库没有 ViewModel（app/src/main 全量 grep `ViewModel` 零命中）。约定是：屏幕数据状态用 `remember` + `LaunchedEffect` 持有，网络与磁盘读写在 `withContext(Dispatchers.IO)` 内完成（例 AlbumDetailScreen.kt:156 起）。不要为了“规范”引入 ViewModel 层；要引入就是一次架构变更，走 Issue。
 4. 下载任务状态的真源只有一个：`DownloadQueue.updates`（core/src/main/kotlin/com/jm3/core/download/DownloadQueue.kt:29-30，`_updates` + `asStateFlow()`）。UI 只做投影，不得另建进度表、不得在 UI 里累加已完成页数。
 5. 设置项与会话只经 DataStore 读写：`jm3_settings`（app/src/main/kotlin/com/jm3/app/miuix/data/SettingsStore.kt:16）与 `jm3_session`（app/src/main/kotlin/com/jm3/app/miuix/data/SessionStore.kt:11）。会话内容一律走 `SessionCodec.encode/decode` 单键 JSON（SessionStore.kt:19、:22），禁止把 cookie 拆成多个键。一次性标记类持久化（如通知权限已询问）同样归 `jm3_settings`（SettingsStore.kt:119-123 的 `notificationPermissionAsked`），禁止为省事另开 `SharedPreferences`。

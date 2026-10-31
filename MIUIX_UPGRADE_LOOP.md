@@ -179,3 +179,4 @@
 - 2026-10-27 / 全量构建修复：`miuix-blur` 声明 minSdk 33 与项目 minSdk 26 冲突 → 清单 `tools:overrideLibrary` + API 33 运行时降级（低版本不录屏、不模糊，工具栏用不透明底色）。`:core:test` + `:app:assembleDebug` 全量通过（exit 0），14 个模块全部 `[x]`。
 - 2026-10-27 / M12：接入 `miuix-blur` + `miuix-squircle`；阅读器底栏实现 `drawBackdrop` 毛玻璃胶囊（backdrop 录屏 + 22dp 模糊）、6 处封面改 `squircleClip`、新增公共 `Modifier.pressScale`（弹簧 + 触觉）并用于搜索结果卡与阅读器动作位。`:app:compileDebugKotlin` 通过。
 - 2026-10-28 / M15：宽屏 `NavigationRail`（可折叠）、书库两页 `BreadcrumbBar`、书库/小说胶囊 `SearchBar`、全站 13 处 `PullToRefresh` 阻尼统一（0.18）、作者头图 `progressiveTextureBlur` 渐进模糊、Coil 3 全局 `crossfade`、预测性返回开关、热门标签 `animateContentSize` 弹簧展开。`:app:compileDebugKotlin` 通过。
+- 2026-10-31 / 更新页：重写 `UpdateScreen`（Hero 图标与状态、版本信息卡、Markdown 更新说明、下载安装区四态），提示弹窗改用 Miuix `OverlayDialog`；新增 core `ApkAssetSelector`/`MarkdownBlocks` 与 app `UpdateDownloader`（`Jm3Graph` 组装、`appScope` 驱动、代际守卫防旧协程回写）/`ApkInstaller`/FileProvider，清单补 `REQUEST_INSTALL_PACKAGES`。`:core:test` + `:app:compileDebugKotlin` 通过。
