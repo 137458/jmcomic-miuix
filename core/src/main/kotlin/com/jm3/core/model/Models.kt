@@ -107,14 +107,33 @@ data class FavoritePage(
     val folderId: Int = 0,
 )
 
-/** 签到状态：signedDays/totalDays 由 record 记录扁平统计，不解析 date 做“今日”判断。 */
+/** 签到日历中的一天。[dayOfMonth] 为当月日号，[signed] 为已签，[bonus] 为奖励日。 */
+data class CheckInDay(
+    val dayOfMonth: Int,
+    val signed: Boolean,
+    val bonus: Boolean,
+)
+
+/**
+ * 签到状态：signedDays/totalDays 沿用 record 扁平计数（未签到/无标记不算签到）；
+ * [days] 额外保存可解析出日号的日历项，用于判断"今天是否已签到"。
+ */
 data class DailyCheckInStatus(
     val dailyId: Int,
     val eventName: String,
     val currentProgress: String,
     val signedDays: Int,
     val totalDays: Int,
-)
+    /** 当月签到日历；date 无法解析出日号的项不会收录。 */
+    val days: List<CheckInDay> = emptyList(),
+) {
+    /** 当月 [dayOfMonth] 号是否已签到；record 未给当天数据时为 false。 */
+    fun isSignedOn(dayOfMonth: Int): Boolean = days.any { it.dayOfMonth == dayOfMonth && it.signed }
+
+    /** 已签天数占比（0..1），无天数记为 0。 */
+    val progress: Float
+        get() = if (totalDays <= 0) 0f else (signedDays.toFloat() / totalDays).coerceIn(0f, 1f)
+}
 
 /** 单个 API 域名的探测延迟（毫秒），供设置页排序展示。 */
 data class DomainLatency(

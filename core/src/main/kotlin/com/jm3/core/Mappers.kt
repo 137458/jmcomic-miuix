@@ -8,6 +8,7 @@ import com.jm3.core.model.CategoryBlock
 import com.jm3.core.model.CategoryNode
 import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.Chapter
+import com.jm3.core.model.CheckInDay
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CommentSegment
@@ -300,13 +301,33 @@ fun JmFavoritePage.toFavoritePage(coverUrlFor: (JmAlbumMeta) -> String? = { null
 )
 
 /** 签到状态：signedDays/totalDays 由 record 记录扁平统计；未签到/无标记不算签到。 */
-fun JmDailyCheckInStatus.toDailyCheckInStatus(): DailyCheckInStatus = DailyCheckInStatus(
-    dailyId = dailyId,
-    eventName = eventName.orEmpty(),
-    currentProgress = currentProgress.orEmpty(),
-    signedDays = record.orEmpty().flatten().count { it.signed == true },
-    totalDays = record.orEmpty().flatten().size,
-)
+fun JmDailyCheckInStatus.toDailyCheckInStatus(): DailyCheckInStatus {
+    val items = record.orEmpty().flatten()
+    return DailyCheckInStatus(
+        dailyId = dailyId,
+        eventName = eventName.orEmpty(),
+        currentProgress = currentProgress.orEmpty(),
+        signedDays = items.count { it.signed == true },
+        totalDays = items.size,
+        days = items.mapNotNull { item ->
+            // date 既可能是 "01"，也可能是 "2026-10-01"（两种都实测出现），无法解析就跳过
+            val day = item.date.parseCheckInDayOfMonth() ?: return@mapNotNull null
+            CheckInDay(dayOfMonth = day, signed = item.signed == true, bonus = item.bonus)
+        },
+    )
+}
+
+/** 解析签到记录的 date 为当月日号：支持 "01"、"1"、"2026-10-01"、"2026/10/1"；越界或无法解析返回 null。 */
+internal fun String?.parseCheckInDayOfMonth(): Int? {
+    val text = this?.trim().orEmpty()
+    if (text.isEmpty()) return null
+    text.toIntOrNull()?.let { return it.takeIf { day -> day in 1..31 } }
+    val parts = text.split('-', '/', '.', ' ')
+    if (parts.size == 3) {
+        return parts[2].toIntOrNull()?.takeIf { day -> day in 1..31 }
+    }
+    return null
+}
 
 /** 每周必看期数列表；null 分类按空表处理。 */
 fun JmWeeklyPicksList.toWeeklyPicks(): WeeklyPicks = WeeklyPicks(

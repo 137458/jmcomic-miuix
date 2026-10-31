@@ -31,6 +31,8 @@ import com.jm3.core.model.DailyCheckInStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -157,23 +159,39 @@ fun MineScreen(
                     val status = checkInStatus
                     when {
                         status != null -> {
-                            // 签到作为整行可点操作，进度与活动信息放进 summary，避免卡片内再嵌全宽按钮。
+                            // 「今日已签到」由 record 里当天的标记推导，切页重建后依旧成立；checkedIn 兜住接口延迟
+                            val signedToday = checkedIn || status.isSignedOn(LocalDate.now().dayOfMonth)
+                            val eventLabel = status.eventName.ifBlank { "每日签到" }
+                            val rowOnClick: (() -> Unit)? = if (checkInBusy || signedToday) {
+                                null
+                            } else {
+                                ({ performCheckIn(status) })
+                            }
                             BasicComponent(
                                 title = when {
                                     checkInBusy -> "签到中…"
-                                    checkedIn -> "今日已签到"
+                                    signedToday -> "今日已签到"
                                     else -> "立即签到"
                                 },
-                                summary = "${status.eventName} · 已签到 ${status.signedDays}/${status.totalDays} 天 · 奖励进度 ${status.currentProgress}",
-                                enabled = !checkInBusy && !checkedIn,
+                                summary = if (signedToday) {
+                                    "「${eventLabel}」今天的奖励已入账"
+                                } else {
+                                    "「${eventLabel}」签到可得金币与经验"
+                                },
                                 endActions = {
-                                    if (checkInBusy) {
-                                        CircularProgressIndicator(size = 20.dp)
+                                    when {
+                                        checkInBusy -> CircularProgressIndicator(size = 20.dp)
+                                        // 已签到只去掉点击、不置灰：禁用态会让人以为这一行坏了
+                                        signedToday -> Text(
+                                            text = "✓ 已完成",
+                                            style = MiuixTheme.textStyles.footnote1,
+                                            color = MiuixTheme.colorScheme.primary,
+                                        )
                                     }
                                 },
-                                onClick = { performCheckIn(status) },
+                                onClick = rowOnClick,
                             )
-                            // 签到进度可视化：文字保留精确天数，胶囊进度条给出整体完成度
+                            // 进度只有一处来源：record 自算的已签天数，不叠加接口返回的活动百分比（两者会互相矛盾）
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -183,22 +201,18 @@ fun MineScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(
-                                        text = status.currentProgress.ifBlank { "本月签到" },
+                                        text = "本月签到",
                                         style = MiuixTheme.textStyles.footnote1,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                     )
                                     Text(
-                                        text = "${status.signedDays}/${status.totalDays} 天",
+                                        text = "${status.signedDays}/${status.totalDays} 天 · ${(status.progress * 100).roundToInt()}%",
                                         style = MiuixTheme.textStyles.footnote1,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                     )
                                 }
                                 LinearProgressIndicator(
-                                    progress = if (status.totalDays <= 0) {
-                                        0f
-                                    } else {
-                                        (status.signedDays.toFloat() / status.totalDays).coerceIn(0f, 1f)
-                                    },
+                                    progress = status.progress,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
