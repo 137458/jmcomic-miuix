@@ -27,6 +27,7 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.mergedWith
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
@@ -38,7 +39,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-import top.yukonga.miuix.kmp.basic.TabRow
 
 private sealed interface SearchUiState {
     data object Loading : SearchUiState
@@ -156,7 +156,7 @@ fun SearchScreen(
                     color = Color.Transparent,
                 )
                 // 排序/时间筛选固定于列表之外：与顶栏同处玻璃层
-                TabRow(
+                GlassTabRow(
                     tabs = BrowseOrder.entries.map { it.label },
                     selectedTabIndex = BrowseOrder.entries.indexOf(order),
                     onTabSelected = {
@@ -166,7 +166,7 @@ fun SearchScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 // 时间范围由服务端过滤（原版年/月筛选的等价能力，库只提供 今日/本周/本月/全部）
-                TabRow(
+                GlassTabRow(
                     tabs = BrowseTime.entries.map { it.label },
                     selectedTabIndex = BrowseTime.entries.indexOf(time),
                     onTabSelected = {

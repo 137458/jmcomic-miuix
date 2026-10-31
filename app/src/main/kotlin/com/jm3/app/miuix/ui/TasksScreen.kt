@@ -43,6 +43,7 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.GlassTabRow
 import com.jm3.core.imageUrl
 import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
@@ -53,7 +54,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -140,7 +140,7 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
                     navigationIcon = { BackButton(onBack = onBack) },
                 )
                 // 两组筛选页签固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切换
-                TabRow(
+                GlassTabRow(
                     tabs = types.map { it.label },
                     selectedTabIndex = typeIndex,
                     onTabSelected = {
@@ -149,7 +149,7 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                 )
-                TabRow(
+                GlassTabRow(
                     tabs = filters.map { it.label },
                     selectedTabIndex = filterIndex,
                     onTabSelected = {

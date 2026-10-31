@@ -77,9 +77,13 @@ val LocalGlassScrollBehavior = compositionLocalOf<ScrollBehavior?> { null }
  */
 val LocalGlassTopBarExpandedHeight = compositionLocalOf { 0.dp }
 
-/** 顶栏渐变模糊半径与过渡曲线：与 MIUIX 官方 BlurredBar 规范一致（HyperOS 沉浸式顶栏）。 */
-private const val TOP_BAR_BLUR_RADIUS = 10f
-private const val TOP_BAR_BLUR_CURVE = 2.2f
+/**
+ * 顶栏渐变模糊的满额半径与过渡曲线。半径沿用官方 BlurredBar 的量级（10dp），
+ * 但页签区只拿到衰减后的一部分强度，10dp 在全屏观感里几乎看不出模糊，因此满额取 24dp；
+ * 曲线从 2.2 收到 1.6，让衰减中段保留更多强度，页签之间与正文之间都有连续的模糊过渡。
+ */
+private const val TOP_BAR_BLUR_RADIUS = 24f
+private const val TOP_BAR_BLUR_CURVE = 1.6f
 
 /**
  * 渐变起止位置（按模糊层高度归一化）。顶栏普遍带一排分类/筛选页签，柱高接近标题条的两倍：
