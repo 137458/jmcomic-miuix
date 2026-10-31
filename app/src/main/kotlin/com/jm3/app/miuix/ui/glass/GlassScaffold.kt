@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -23,10 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.Layout
@@ -78,33 +76,21 @@ val LocalGlassScrollBehavior = compositionLocalOf<ScrollBehavior?> { null }
 val LocalGlassTopBarExpandedHeight = compositionLocalOf { 0.dp }
 
 /**
- * 顶栏渐变模糊的满额半径与过渡曲线。半径沿用官方 BlurredBar 的量级（10dp），
- * 但页签区只拿到衰减后的一部分强度，10dp 在全屏观感里几乎看不出模糊，因此满额取 24dp；
- * 曲线从 2.2 收到 1.6，让衰减中段保留更多强度，页签之间与正文之间都有连续的模糊过渡。
+ * 顶栏渐变模糊的满额半径、过渡曲线与渐变区间：采用 Miuix 官方 BlurredBar 配方
+ * （10dp / curve 2.2 / ProgressiveBlur.Top 的默认区间 0f..1f）。
+ * 渐变零点必须正好落在模糊层绘制区域的下沿：若把 endFraction 推到 1 以外，模糊在节点边界
+ * 仍有强度而节点突然结束，顶栏底缘就会出现一条可见的硬切分界线（旧实现的问题）。
  */
-private const val TOP_BAR_BLUR_RADIUS = 24f
-private const val TOP_BAR_BLUR_CURVE = 1.6f
+private const val TOP_BAR_BLUR_RADIUS = 10f
+private const val TOP_BAR_BLUR_CURVE = 2.2f
+private const val TOP_BAR_BLUR_START_FRACTION = 0f
+private const val TOP_BAR_BLUR_END_FRACTION = 1f
 
 /**
- * 渐变起止位置（按模糊层高度归一化）。顶栏普遍带一排分类/筛选页签，柱高接近标题条的两倍：
- * 若仍从顶部起衰，页签所在的下半截正好落在衰减尾部，强度掉到三成以下，页签之间几乎没有模糊。
- * 起点下移到 20% 处、零点推到绘制区域之外 15%（miuix-blur 只对端点做退化保护、不做 [0,1] 截断），
- * 页签区域因此获得从满额到约两成的连续衰减，顶栏底缘也保留最低可见模糊而不会归零。
+ * 模糊层的滚动淡入距离：内容未滚动时顶栏保持完全透明，滚动超过这段距离后才淡入满额模糊，
+ * 与官方 BlurredBar 的滚动联动一致，回顶时不会再有一层静止的模糊压在内容上。
  */
-private const val TOP_BAR_BLUR_START_FRACTION = 0.2f
-private const val TOP_BAR_BLUR_END_FRACTION = 1.15f
-
-/**
- * 模糊层在顶栏下沿额外向下绘制的一段渐隐带。顶栏是浮层，渐隐带压在内容之上，把"模糊 → 清晰"
- * 的过渡收在内容侧：顶栏底缘既不会出现硬切边，也不会出现清晰缝隙。
- * 它只参与绘制，不计入顶栏实测高度、内容净空与折叠位移。
- */
-private val TopBarBlurFadeTail = 28.dp
-
-/** 折叠遮罩：完全折叠时的顶部不透明度、渐变终点不透明度与渐变截止位置。 */
-private const val TOP_BAR_SCRIM_ALPHA = 0.9f
-private const val TOP_BAR_SCRIM_FADE_ALPHA = 0.55f
-private const val TOP_BAR_SCRIM_FADE_STOP = 0.7f
+private val TopBarBlurFadeInDistance = 48.dp
 
 /**
  * 内容底部的隐式呼吸空间。系统导航条 inset 只保证"不被系统遮挡"，末项贴着屏幕底缘仍然拥挤，
@@ -122,7 +108,8 @@ private val BottomContentBreathingSpace = 20.dp
  *    滚动容器的 `contentPadding`（而非 `Modifier.padding`），否则内容退到顶栏下方就无法被采样；
  * 3. bottom 内边距额外叠加 [BottomContentBreathingSpace]，末项不会贴到导航条上；
  * 4. 内容容器挂上折叠行为的嵌套滚动节点，页内任意滚动容器都能驱动顶栏折叠；
- * 5. 渐变模糊多绘制一段渐隐带压在内容之上，顶栏内的分类/筛选页签同样处在模糊覆盖范围内。
+ * 5. 顶栏背后的渐变模糊是一个独立图层，随内容滚动淡入，渐变零点落在顶栏下沿，
+ *    顶栏内的分类/筛选页签同样处在模糊覆盖范围内。
  *
  * 非滚动内容（表单、居中空态/错误态）继续用 `Modifier.padding(innerPadding)` 即可，
  * 顶栏此时按实色兜底渲染。
@@ -197,25 +184,28 @@ fun GlassScaffold(
                             .fillMaxWidth()
                             .then(
                                 if (shaderReady) {
-                                    // 渐变模糊的绘制区域比顶栏本身再向下延伸一段渐隐带：
-                                    // 标题条与紧贴其下的页签条整体落在覆盖范围内，衰减收在内容侧。
                                     Modifier
-                                        .topBarProgressiveBlur(backdrop)
-                                        .padding(bottom = TopBarBlurFadeTail)
                                 } else {
-                                    // 不支持 RuntimeShader 时退化为实色，不保留渐隐带。
+                                    // 不支持 RuntimeShader 时退化为实色，避免顶栏内容叠在正文上。
                                     Modifier.background(containerColor)
                                 },
                             ),
                     ) {
-                        // 实测高度只取顶栏内容本身：渐隐带不参与内容净空、折叠位移与展开高度。
+                        if (shaderReady) {
+                            // 模糊层单独成节点：滚动淡入的 alpha 只作用于模糊与底色，
+                            // 不会把叠在其上的标题、页签一起淡出。
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .topBarProgressiveBlur(backdrop)
+                                    .topBarBlurFadeIn(scrollBehavior.state),
+                            )
+                        }
+                        // 实测高度只取顶栏内容本身：模糊层不计入内容净空、折叠位移与展开高度。
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .onSizeChanged { topBarMaxHeightPx = maxOf(topBarMaxHeightPx, it.height) }
-                                // 折叠进度越高，同色遮罩越实：渐变模糊沿 Y 轴递减，只靠模糊时小标题
-                                // 下方的正文仍然清晰可读，观感杂乱；补一层渐变底色把标题区压实。
-                                .topBarScrim(state = scrollBehavior.state, color = containerColor),
+                                .onSizeChanged { topBarMaxHeightPx = maxOf(topBarMaxHeightPx, it.height) },
                         ) {
                             topBar()
                         }
@@ -310,9 +300,9 @@ fun GlassSmallTopAppBar(
 }
 
 /**
- * 顶栏渐变模糊：标题条满额模糊，沿 Y 轴向下连续衰减，顶栏底缘仍保留一段可见模糊，
- * 剩下的衰减由 [TopBarBlurFadeTail] 渐隐带在内容侧收尾（无硬切边、无描边高光）。
- * 底色以低透明度 surface 混入保证标题可读。配方取自 MIUIX 官方 BlurredBar，仅把渐变区间下移。
+ * 顶栏渐变模糊：标题区满额模糊，沿 Y 轴向下连续衰减，并在模糊层下沿精确归零，
+ * 与正文之间是无缝过渡（既无硬切边，也无描边高光）。底色以低透明度 surface 混入保证标题可读。
+ * 配方与官方 BlurredBar 一致：ProgressiveBlur.Top + curve 2.2 + 10dp 半径。
  */
 @Composable
 private fun Modifier.topBarProgressiveBlur(backdrop: LayerBackdrop): Modifier {
@@ -409,20 +399,11 @@ fun TopBarContentSpacer(paddingValues: PaddingValues) {
 }
 
 /**
- * 顶栏折叠遮罩：按折叠进度叠加同色渐变，把标题区从背景内容里分离出来。
- * 颜色读取放在绘制阶段，滚动过程中只触发重绘，不触发重组。
+ * 顶栏模糊的滚动淡入：alpha 在 layer 块里读取折叠状态，滚动过程中只触发重绘、不触发重组。
+ * contentOffset 为负值并随下滑累计，取相反数归一化后钳制到 0..1：回顶时完全透明，
+ * 滚过 [TopBarBlurFadeInDistance] 后达到满额。
  */
-private fun Modifier.topBarScrim(state: TopAppBarState, color: Color): Modifier = drawBehind {
-    val fraction = state.collapsedFraction.coerceIn(0f, 1f)
-    if (fraction <= 0f) return@drawBehind
-    drawRect(
-        brush = Brush.verticalGradient(
-            0f to color.copy(alpha = TOP_BAR_SCRIM_ALPHA * fraction),
-            TOP_BAR_SCRIM_FADE_STOP to color.copy(alpha = TOP_BAR_SCRIM_FADE_ALPHA * fraction),
-            1f to Color.Transparent,
-            startY = 0f,
-            endY = size.height,
-        ),
-        size = size,
-    )
+private fun Modifier.topBarBlurFadeIn(state: TopAppBarState): Modifier = graphicsLayer {
+    val distancePx = TopBarBlurFadeInDistance.toPx()
+    alpha = (-state.contentOffset / distancePx).coerceIn(0f, 1f)
 }
