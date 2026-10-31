@@ -39,6 +39,7 @@ JM Comic（18comic）Android 客户端，用 Jetpack Compose + Miuix 重写原�
 
 # 单元测试
 ./gradlew :core:test
+./gradlew :app:testDebugUnitTest
 ```
 
 ### 发布签名
@@ -56,8 +57,8 @@ keyPassword=...
 
 ## 模块结构
 
-- `:core`：协议封装与纯 JVM 业务逻辑（网关、下载引擎、搜索合并、封面 URL 构造），JUnit 测试覆盖
-- `:app`：Compose UI 与 Android 实现（Room、DataStore、文件存储）
+- `:core`：协议封装与纯 JVM 业务逻辑（网关、下载引擎、搜索合并、封面 URL 构造），JUnit 单元测试覆盖（146 用例）
+- `:app`：Compose UI 与 Android 实现（Room、DataStore、文件存储），JUnit 单元测试覆盖核心交互几何、共享元素宿主生命周期与数据映射（99 用例）
 
 ## 致谢
 
