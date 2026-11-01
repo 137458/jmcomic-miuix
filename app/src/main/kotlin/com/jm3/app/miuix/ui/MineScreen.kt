@@ -34,6 +34,7 @@ import com.jm3.core.download.DownloadStatus
 import com.jm3.core.isSessionExpired
 import com.jm3.core.model.DailyCheckInStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -132,8 +133,16 @@ fun MineScreen(
                 .onSuccess {
                     // 接口只要返回的 msg 不含「已签到过」就算成功，服务端没落账时同样会走到这里。
                     // 因此以刷新后的日历为准确认这一天真的记上了，避免把没生效的签到显示成「今日已签到」。
-                    val refreshed = withContext(Dispatchers.IO) {
+                    var refreshed = withContext(Dispatchers.IO) {
                         runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
+                    }
+                    if (refreshed != null && !refreshed.isSignedOn(today.dayOfMonth)) {
+                        // 服务端跨月或高峰写入可能有微小延迟，短延迟后重试一次确认，避免误报「未生效」
+                        delay(400)
+                        val retry = withContext(Dispatchers.IO) {
+                            runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
+                        }
+                        if (retry != null) refreshed = retry
                     }
                     refreshed?.let { checkInStatus = it }
                     val snackbarText = when (refreshed?.isSignedOn(today.dayOfMonth)) {
@@ -215,8 +224,6 @@ fun MineScreen(
                             // 「今日已签到」由记录里当天的标记推导，切页重建后依旧成立；
                             // checkedInOn 只兜住接口回读延迟，且按日期比较，跨过午夜会自动失效。
                             val signedToday = checkedInOn == today || status.isSignedOn(today.dayOfMonth)
-                            // 活动名可能自带「」，外层再包一层就会出现嵌套引号，这里原样拼接、不额外加引号
-                            val eventLabel = status.eventName.trim()
                             // 今天之前仍未签到的日期就是漏签；只做提示，不参与进度计算
                             val missedDays = status.days.count {
                                 it.dayOfMonth < today.dayOfMonth && !it.signed
@@ -232,12 +239,7 @@ fun MineScreen(
                                     signedToday -> "今日已签到"
                                     else -> "立即签到"
                                 },
-                                summary = when {
-                                    eventLabel.isEmpty() && signedToday -> "今天的奖励已入账"
-                                    eventLabel.isEmpty() -> "签到可得金币与经验"
-                                    signedToday -> "${eventLabel}今天的奖励已入账"
-                                    else -> "${eventLabel}签到可得金币与经验"
-                                },
+                                summary = formatCheckInSummary(status.eventName, signedToday),
                                 endActions = {
                                     when {
                                         checkInBusy -> CircularProgressIndicator(size = 20.dp)
@@ -400,4 +402,13 @@ fun MineScreen(
             )
         }
     }
+}
+
+/**
+ * 签到卡片副标题文案：活动名非空时以间隔号与后置文案自然分隔，避免直接拼接时中文粘连；活动名为空时仅保留状态说明。
+ */
+internal fun formatCheckInSummary(eventName: String?, signedToday: Boolean): String {
+    val label = eventName?.trim().orEmpty()
+    val actionText = if (signedToday) "今天的奖励已入账" else "签到可得金币与经验"
+    return if (label.isEmpty()) actionText else "$label · $actionText"
 }
