@@ -249,23 +249,31 @@ class Jm3GatewayImpl internal constructor(
     private val domainControlsProvider: () -> DomainControls,
 ) : Jm3Gateway {
 
-    /** 生产装配：域名能力取自库客户端（JmApiClient 实际派生自 AbstractJmClient，v1.1.12 已核实）。 */
-    constructor(
-        clientProvider: () -> JmApiClient = {
-            @Suppress("DEPRECATION")
-            JmComic.newApiClient(JmConfiguration.Builder().build())
-        },
-    ) : this(clientProvider, {
-        val client = clientProvider()
-        LibraryDomainControls(
-            client as? AbstractJmClient
-                ?: error("jmcomic v1.1.12 的 JmApiClient 必须派生自 AbstractJmClient，域名能力不可用"),
-        )
-    })
-
     private val client: JmApiClient by lazy(clientProvider)
 
     private val domainControls: DomainControls by lazy(domainControlsProvider)
+
+    companion object {
+        /**
+         * 生产装配：同一个库客户端既当请求入口又当域名能力来源。
+         *
+         * clientProvider 每次调用都会新建库客户端，而库客户端的首次使用要跑完整初始化
+         * （分发服务器请求 + 全域名探活）。两边各调一次会让一个网关里躺着两个客户端、
+         * 冷启动凭空翻倍，所以这里只求值一次并共用。
+         */
+        fun production(clientProvider: () -> JmApiClient): Jm3GatewayImpl {
+            val lazyClient = lazy(clientProvider)
+            return Jm3GatewayImpl(
+                clientProvider = { lazyClient.value },
+                domainControlsProvider = {
+                    // v1.1.12 的 JmApiClient 派生自 AbstractJmClient（字节码已核实），域名能力挂在其 domainManager 上。
+                    val library = lazyClient.value as? AbstractJmClient
+                        ?: error("jmcomic v1.1.12 的 JmApiClient 必须派生自 AbstractJmClient，域名能力不可用")
+                    LibraryDomainControls(library)
+                },
+            )
+        }
+    }
 
     override fun search(
         text: String,

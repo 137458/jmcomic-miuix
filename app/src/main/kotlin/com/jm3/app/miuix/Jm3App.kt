@@ -67,6 +67,7 @@ import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
+import com.jm3.core.settings.Domains
 import com.jm3.core.settings.SettingsRepository
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
@@ -77,6 +78,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -166,11 +169,27 @@ object Jm3Graph {
         )
     }
 
+    /** 已生效的自定义线路（空表 = 库默认解析）。重建网关等于让库重跑一遍初始化，线路没变就必须跳过。 */
+    @Volatile
+    private var appliedDomains: List<String> = emptyList()
+
+    /** 线路切换串行化：启动恢复与设置页保存可能并发调用，重建网关不能交叉执行。 */
+    private val domainSwitchLock = Mutex()
+
     /** 应用自定义 API 线路：重建网关并把已持久化会话迁移过去；空表回库默认解析。 */
-    suspend fun applyDomains(apiDomains: List<String>) {
+    suspend fun applyDomains(apiDomains: List<String>) = domainSwitchLock.withLock {
+        val requested = Domains.normalize(apiDomains)
+        // 启动时默认就是空表且未切过线路：直接沿用 defaultGateway，不再多建一个网关。
+        if (requested == appliedDomains) return@withLock
         // 旧网关的 HTTP 客户端持有连接池，切线路后不再可达：迁移完会话即主动释放。
         val previous = gatewayOverride
-        val next = GatewayFactory.create(apiDomains)
+        appliedDomains = requested
+        if (requested.isEmpty()) {
+            gatewayOverride = null
+            previous?.let { old -> runCatching { old.close() } }
+            return@withLock
+        }
+        val next = GatewayFactory.create(requested)
         runCatching { sessionStore.load() }.getOrNull()?.let { session ->
             // 注入会话要等库完成线路探活（阻塞），不能在主线程上等。
             withContext(Dispatchers.IO) { runCatching { next.restoreSession(session) } }
