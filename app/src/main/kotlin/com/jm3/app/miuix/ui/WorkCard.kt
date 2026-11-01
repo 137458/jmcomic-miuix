@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -360,7 +361,8 @@ internal fun WorkRowCard(
                 title = title,
                 contentDescription = coverContentDescription,
                 modifier = Modifier
-                    .height(WorkCardTokens.RowCoverHeight)
+                    .fillMaxHeight()
+                    .defaultMinSize(minHeight = WorkCardTokens.RowCoverHeight)
                     .aspectRatio(WorkCardTokens.CoverAspect),
             )
             Column(
