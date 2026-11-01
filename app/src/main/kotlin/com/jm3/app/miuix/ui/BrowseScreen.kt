@@ -35,12 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
@@ -664,29 +659,6 @@ private val RANK_GRID_HORIZONTAL_PADDING = 16.dp
 
 /** 分类页筛选胶囊条的留白：与玻璃顶栏左右 16dp 对齐，上下各 4dp 使两行胶囊间距与旧版一致。 */
 private val FilterChipsPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
-
-/** 右侧「更多」按钮旁胶囊条的渐隐宽度。 */
-private val ChipRowEndFadeWidth = 24.dp
-
-/**
- * 胶囊条右缘渐隐：主分类条横向滚动时会在右边界切出半枚胶囊，直接硬切像坏图；
- * 用 24dp 的 alpha 渐隐替代硬边，滚动中的半枚胶囊因此读作「右边还有内容」。
- */
-private fun Modifier.chipRowEndFade(): Modifier = graphicsLayer {
-    compositingStrategy = CompositingStrategy.Offscreen
-}.drawWithContent {
-    drawContent()
-    if (size.width <= 0f) return@drawWithContent
-    val fade = ChipRowEndFadeWidth.toPx().coerceAtMost(size.width)
-    drawRect(
-        brush = Brush.horizontalGradient(
-            0f to Color.Black,
-            (size.width - fade) / size.width to Color.Black,
-            1f to Color.Transparent,
-        ),
-        blendMode = BlendMode.DstIn,
-    )
-}
 
 /**
  * 榜单结果区：两列封面瀑布流，加载中/失败态占整行。

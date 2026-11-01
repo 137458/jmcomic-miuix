@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -226,7 +227,8 @@ fun NovelListScreen(
                         selectionHaptic()
                         orderName = next.name
                     },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    // 排序有 5 档，窄屏会切出半枚胶囊：右缘渐隐替代硬边
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).chipRowEndFade(),
                 )
             }
         },
@@ -302,47 +304,69 @@ private fun NovelListRow(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        // 元信息与动作同一行：动作按内容宽度占位，元信息吃剩下的宽度并在溢出时省略，
+        // 这样窄屏只压日期不压按钮，也不会把动作挤成一字一行。
         Row(
-            modifier = Modifier.padding(top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            item.likes?.let { likes ->
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                item.likes?.let { likes ->
+                    Text(
+                        text = "♥ $likes",
+                        style = MiuixTheme.textStyles.footnote2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1,
+                    )
+                }
                 Text(
-                    text = "♥ $likes",
+                    text = formatUnixSeconds(item.updateAt),
                     style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = formatUnixSeconds(item.updateAt),
-                style = MiuixTheme.textStyles.footnote2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        }
-        // 点赞不可取消，误触代价高：从右缘两个大图标改为贴着文字区的文字动作
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End,
-        ) {
             if (busy) {
                 CircularProgressIndicator(size = 18.dp)
             } else {
-                TextButton(
+                // 点赞不可取消：做成紧凑文字动作而不是大胶囊，避免误触
+                NovelRowAction(
                     text = if (item.liked) "已赞" else "点赞",
+                    active = !item.liked,
                     onClick = onLike,
-                    minWidth = 0.dp,
-                    minHeight = 32.dp,
                 )
-                TextButton(
+                NovelRowAction(
                     text = if (item.favorite) "已收藏" else "收藏",
+                    active = true,
                     onClick = onFavorite,
-                    minWidth = 0.dp,
-                    minHeight = 32.dp,
                 )
             }
         }
     }
+}
+
+/** 小说列表行的文字动作：紧凑但保留 32dp 触摸高度，主色表示可执行。 */
+@Composable
+private fun NovelRowAction(
+    text: String,
+    active: Boolean,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = text,
+        style = MiuixTheme.textStyles.footnote1,
+        fontWeight = FontWeight.Medium,
+        color = if (active) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        maxLines = 1,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    )
 }
 
 /** 小说详情：头部信息 + 目录/相关/评论三档 + 阅读入口。 */
