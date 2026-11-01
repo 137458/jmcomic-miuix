@@ -273,6 +273,18 @@ class Jm3GatewayImpl internal constructor(
                 },
             )
         }
+
+        private val cookieManagerField: java.lang.reflect.Field? by lazy {
+            runCatching {
+                AbstractJmClient::class.java.getDeclaredField("cookieManager").apply { isAccessible = true }
+            }.getOrNull()
+        }
+
+        internal fun cookieStoreOf(client: Any): java.net.CookieStore? =
+            runCatching {
+                val cm = cookieManagerField?.get(client) as? java.net.CookieManager
+                cm?.cookieStore
+            }.getOrNull()
     }
 
     override fun search(
@@ -351,15 +363,67 @@ class Jm3GatewayImpl internal constructor(
 
     override fun login(username: String, password: String): Jm3Session {
         val info = client.login(username, password)
-        return Jm3Session(user = info.toUser(), cookies = client.cookies.map { it.toSnapshot() })
+        var cookies = client.cookies.map { it.toSnapshot() }
+        if (cookies.isEmpty()) {
+            val cm = cookieStoreOf(client)
+            if (cm != null) {
+                cookies = cm.cookies.map {
+                    CookieSnapshot(
+                        name = it.name,
+                        value = it.value,
+                        domain = sanitizeDomain(it.domain.orEmpty()),
+                        path = it.path.orEmpty().ifBlank { "/" },
+                    )
+                }
+            }
+        }
+        return Jm3Session(
+            user = info.toUser(),
+            cookies = cookies.map { it.copy(domain = sanitizeDomain(it.domain)) },
+        )
     }
 
     override fun logout() = client.logout()
 
     override fun restoreSession(session: Jm3Session) {
-        // 线路由库在每次启动后重新裁决，登录域未必再被选中：会话 Cookie 需覆盖当前全部候选域名。
-        val domains = domainControls.candidateDomains()
-        client.setCookies(session.cookies.broadcastTo(domains).map { it.toOkhttpCookie() })
+        // 线路由库在每次启动后重新裁决，登录域未必再被选中：会话 Cookie 需覆盖当前全部候选域名与常用镜像。
+        val targetDomains = linkedSetOf<String>()
+        runCatching { targetDomains.addAll(domainControls.candidateDomains()) }
+        for (c in session.cookies) {
+            targetDomains.add(c.domain)
+        }
+        // 兜底官方镜像，确保冷启动在探活未完全就绪时发出的首批请求也能带上会话
+        targetDomains.add("18comic.vip")
+        targetDomains.add("18comic.org")
+
+        val okhttpCookies = session.cookies.broadcastTo(targetDomains).mapNotNull { it.toOkhttpCookie() }
+        if (okhttpCookies.isNotEmpty()) {
+            client.setCookies(okhttpCookies)
+        }
+
+        // 同步 AbstractJmClient 内部登录状态，避免依赖用户名或校验登录状态的接口因未登录态拦截
+        val clientInstance = client as? AbstractJmClient
+        if (clientInstance != null) {
+            runCatching {
+                val cacheMethod = AbstractJmClient::class.java.getDeclaredMethod("cacheUsername", String::class.java).apply {
+                    isAccessible = true
+                }
+                cacheMethod.invoke(clientInstance, session.user.username)
+            }
+            runCatching {
+                val autoLoginField = AbstractJmClient::class.java.getDeclaredField("autoLoginRefreshAllowed").apply {
+                    isAccessible = true
+                }
+                autoLoginField.set(clientInstance, true)
+            }
+            runCatching {
+                val hostField = AbstractJmClient::class.java.getDeclaredField("loginHost").apply {
+                    isAccessible = true
+                }
+                val bestHost = targetDomains.map { sanitizeDomain(it) }.firstOrNull { it.isNotBlank() } ?: "18comic.vip"
+                hostField.set(clientInstance, bestHost)
+            }
+        }
     }
 
     override fun favorites(page: Int): FavoritePage = favorites(0, page)
@@ -522,14 +586,6 @@ class Jm3GatewayImpl internal constructor(
 
     private fun okhttp3.Cookie.toSnapshot(): CookieSnapshot =
         CookieSnapshot(name = name, value = value, domain = domain, path = path)
-
-    private fun CookieSnapshot.toOkhttpCookie(): okhttp3.Cookie =
-        okhttp3.Cookie.Builder()
-            .name(name)
-            .value(value)
-            .domain(domain)
-            .path(path.ifBlank { "/" })
-            .build()
 }
 
 /**

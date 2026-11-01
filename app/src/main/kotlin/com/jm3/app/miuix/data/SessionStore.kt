@@ -10,19 +10,26 @@ import kotlinx.coroutines.flow.first
 
 private val Context.sessionDataStore by preferencesDataStore(name = "jm3_session")
 
+/** 会话持久化契约。 */
+interface SessionStorage {
+    suspend fun load(): Jm3Session?
+    suspend fun save(session: Jm3Session)
+    suspend fun clear()
+}
+
 /** 会话持久化：DataStore Preferences 单键 JSON。 */
-class SessionStore(private val context: Context) {
+class SessionStore(private val context: Context) : SessionStorage {
 
     private val key = stringPreferencesKey("session")
 
-    suspend fun load(): Jm3Session? =
+    override suspend fun load(): Jm3Session? =
         context.sessionDataStore.data.first()[key]?.let { SessionCodec.decode(it) }
 
-    suspend fun save(session: Jm3Session) {
+    override suspend fun save(session: Jm3Session) {
         context.sessionDataStore.edit { it[key] = SessionCodec.encode(session) }
     }
 
-    suspend fun clear() {
+    override suspend fun clear() {
         context.sessionDataStore.edit { it.remove(key) }
     }
 }
