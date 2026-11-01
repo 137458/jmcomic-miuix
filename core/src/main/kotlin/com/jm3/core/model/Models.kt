@@ -422,7 +422,7 @@ data class TagFavorite(
 
 /** 小说列表排序：对应原版 8 档排序中接口可表达的部分（o 参数）。 */
 enum class NovelOrder(val apiValue: String, val label: String) {
-    DEFAULT("", "全部"),
+    DEFAULT("", "默认"),
     LATEST("mr", "最新"),
     MOST_VIEWED("mv", "最多点阅"),
     MOST_CHAPTERS("mp", "最多章节"),

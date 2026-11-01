@@ -41,6 +41,7 @@ import coil3.compose.AsyncImage
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.core.model.CommentItem
@@ -60,10 +61,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
-import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.FloatingToolbar
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -80,7 +78,6 @@ import top.yukonga.miuix.kmp.icon.extended.Folder
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Messages
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -188,6 +185,8 @@ fun NovelListScreen(
         }
     }
 
+    val selectionHaptic = rememberSelectionHaptic()
+
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -217,21 +216,18 @@ fun NovelListScreen(
                         )
                     },
                 ) {}
-                // 排序控件固定在列表之外：与顶栏同处玻璃层，列表从其下方穿过
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    OverlaySpinnerPreference(
-                        items = NovelOrder.entries.map { DropdownItem(text = it.label, selected = it == order) },
-                        selectedIndex = NovelOrder.entries.indexOf(order),
-                        title = "排序",
-                        summary = order.label,
-                        showValue = false,
-                        onSelectedIndexChange = { index ->
-                            val next = NovelOrder.entries.getOrNull(index) ?: return@OverlaySpinnerPreference
-                            if (next == order) return@OverlaySpinnerPreference
-                            orderName = next.name
-                        },
-                    )
-                }
+                // 排序收进胶囊条：与全站筛选同构，不再用设置卡片占掉半屏
+                GlassChipRow(
+                    tabs = NovelOrder.entries.map { it.label },
+                    selectedTabIndex = NovelOrder.entries.indexOf(order).coerceAtLeast(0),
+                    onTabSelected = { index ->
+                        val next = NovelOrder.entries.getOrNull(index) ?: return@GlassChipRow
+                        if (next == order) return@GlassChipRow
+                        selectionHaptic()
+                        orderName = next.name
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                )
             }
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
@@ -279,7 +275,7 @@ fun NovelListScreen(
     }
 }
 
-/** 小说列表行：封面 + 标题/作者/更新 + 点赞与收藏两个可点标记。 */
+/** 小说列表行：封面 + 标题/作者/更新 + 行内点赞与收藏动作。 */
 @Composable
 private fun NovelListRow(
     item: NovelMeta,
@@ -295,37 +291,6 @@ private fun NovelListRow(
         coverContentDescription = item.name,
         subtitle = item.author.ifBlank { "佚名" },
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        textEndPadding = 4.dp,
-        trailing = {
-            if (busy) {
-                CircularProgressIndicator(size = 20.dp)
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(onClick = onLike) {
-                        Icon(
-                            imageVector = if (item.liked) MiuixIcons.FavoritesFill else MiuixIcons.Favorites,
-                            contentDescription = "点赞",
-                            tint = if (item.liked) {
-                                MiuixTheme.colorScheme.primary
-                            } else {
-                                MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            },
-                        )
-                    }
-                    IconButton(onClick = onFavorite) {
-                        Icon(
-                            imageVector = if (item.favorite) MiuixIcons.FolderFill else MiuixIcons.Folder,
-                            contentDescription = "收藏",
-                            tint = if (item.favorite) {
-                                MiuixTheme.colorScheme.primary
-                            } else {
-                                MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            },
-                        )
-                    }
-                }
-            }
-        },
     ) {
         item.lastChapterTitle?.let { chapter ->
             Text(
@@ -354,6 +319,29 @@ private fun NovelListRow(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }
+        // 点赞不可取消，误触代价高：从右缘两个大图标改为贴着文字区的文字动作
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
+        ) {
+            if (busy) {
+                CircularProgressIndicator(size = 18.dp)
+            } else {
+                TextButton(
+                    text = if (item.liked) "已赞" else "点赞",
+                    onClick = onLike,
+                    minWidth = 0.dp,
+                    minHeight = 32.dp,
+                )
+                TextButton(
+                    text = if (item.favorite) "已收藏" else "收藏",
+                    onClick = onFavorite,
+                    minWidth = 0.dp,
+                    minHeight = 32.dp,
+                )
+            }
+        }
     }
 }
 
@@ -376,6 +364,8 @@ fun NovelDetailScreen(
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
     var ascending by rememberSaveable { mutableStateOf(true) }
+    // 目录按十章一组折叠，-1 表示全部收起；默认展开首组（最新或最旧十章的入口）
+    var expandedGroup by rememberSaveable { mutableIntStateOf(0) }
     var descriptionExpanded by rememberSaveable { mutableStateOf(false) }
     var actionBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -464,13 +454,23 @@ fun NovelDetailScreen(
 
     GlassScaffold(
         topBar = {
-            GlassTopAppBar(
-                title = detail?.name ?: "小说详情",
-                subtitle = detail?.author.orEmpty(),
-                navigationIcon = { BackButton(onBack = onBack) },
-                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
-                color = Color.Transparent,
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 书名常常长到撑三行，这里固定单行省略，完整书名交给页首详情头
+                GlassSmallTopAppBar(
+                    title = detail?.name ?: "小说详情",
+                    navigationIcon = { BackButton(onBack = onBack) },
+                )
+                // 胶囊必须留在顶栏：放进可滚动正文会把自身录进采样源产生重影
+                GlassChipRow(
+                    tabs = listOf("目录", "相关", "评论"),
+                    selectedTabIndex = tab,
+                    onTabSelected = {
+                        selectionHaptic()
+                        tab = it
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                )
+            }
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
@@ -508,17 +508,7 @@ fun NovelDetailScreen(
                                 onComments = { tab = 2 },
                             )
                         }
-                        item(key = "tabs") {
-                            GlassChipRow(
-                                tabs = listOf("目录", "相关", "评论"),
-                                selectedTabIndex = tab,
-                                onTabSelected = {
-                                    selectionHaptic()
-                                    tab = it
-                                },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                            )
-                        }
+
                         when (tab) {
                             0 -> {
                                 item(key = "sort") {
@@ -540,12 +530,16 @@ fun NovelDetailScreen(
                                         )
                                     }
                                 }
-                                val chapters = if (ascending) current.chapters else current.chapters.reversed()
-                                items(chapters, key = { it.ncid }) { chapter ->
-                                    NovelChapterRow(
-                                        chapter = chapter,
-                                        read = chapter.ncid == savedChapter,
-                                        onClick = { openChapter(chapter) },
+                                val groups = novelChapterGroups(current.chapters, ascending)
+                                items(count = groups.size, key = { it }) { index ->
+                                    NovelChapterGroupCard(
+                                        group = groups[index],
+                                        expanded = expandedGroup == index,
+                                        savedChapter = savedChapter,
+                                        onToggle = {
+                                            expandedGroup = if (expandedGroup == index) -1 else index
+                                        },
+                                        onOpen = { chapter -> openChapter(chapter) },
                                     )
                                 }
                             }
@@ -708,51 +702,36 @@ private fun NovelDetailHeader(
 }
 
 
-/** 单个章节行：标题 + 已读/new/购买标记。 */
+/** 章节分组卡片：十章一卡，默认只展开首组，单章分组不渲染摘要行。 */
 @Composable
-private fun NovelChapterRow(
-    chapter: NovelChapterMeta,
-    read: Boolean,
-    onClick: () -> Unit,
+private fun NovelChapterGroupCard(
+    group: List<NovelChapterMeta>,
+    expanded: Boolean,
+    savedChapter: String?,
+    onToggle: () -> Unit,
+    onOpen: (NovelChapterMeta) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = chapter.sort?.let { "#$it" } ?: "·",
-                style = MiuixTheme.textStyles.footnote2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.width(38.dp),
+    val showToggle = shouldShowChapterGroupToggle(group.size)
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        if (showToggle) {
+            BasicComponent(
+                title = novelGroupTitle(group),
+                summary = "${group.size} 章 · 点击${if (expanded) "收起" else "展开"}",
+                onClick = onToggle,
             )
-            Text(
-                text = chapter.title.ifBlank { "未命名章节" },
-                style = MiuixTheme.textStyles.body2,
-                color = if (read) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            if (chapter.isNew) {
-                Text(
-                    text = "new",
-                    style = MiuixTheme.textStyles.footnote2,
-                    color = MiuixTheme.colorScheme.primary,
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-            }
-            if (chapter.needBuy) {
-                Text(
-                    text = "需购买",
-                    style = MiuixTheme.textStyles.footnote2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            } else if (read) {
-                Text(
-                    text = "已读",
-                    style = MiuixTheme.textStyles.footnote2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        }
+        if (expanded || !showToggle) {
+            group.forEach { chapter ->
+                BasicComponent(
+                    title = chapter.title.ifBlank { "未命名章节" },
+                    summary = when {
+                        chapter.ncid == savedChapter -> "上次读到"
+                        chapter.needBuy -> "需购买"
+                        chapter.isNew -> "新章节"
+                        chapter.purchased -> "已购买"
+                        else -> null
+                    },
+                    onClick = { onOpen(chapter) },
                 )
             }
         }
@@ -870,12 +849,11 @@ fun NovelReaderScreen(
 
     GlassScaffold(
         topBar = {
-            GlassTopAppBar(
+            // 沉浸阅读页用不折叠的固定单行顶栏，把纵向空间让给正文
+            GlassSmallTopAppBar(
                 title = chapter?.title ?: "阅读",
                 subtitle = detail?.name.orEmpty(),
                 navigationIcon = { BackButton(onBack = onBack) },
-                // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
-                color = Color.Transparent,
                 actions = {
                     TextButton(
                         text = if (lang == "tw") "繁" else "简",
