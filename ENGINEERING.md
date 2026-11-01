@@ -28,13 +28,16 @@
    - core/src/main/kotlin/com/jm3/core/download/DownloadRepository.kt:15（InMemory 在 :51）、core/src/main/kotlin/com/jm3/core/download/DownloadStore.kt:9
    - core/src/main/kotlin/com/jm3/core/history/HistoryRepository.kt:13（InMemory 在 :37）
    新增存储能力先加接口和 InMemory 实现，再有 Android 实现，最后接 UI。
+   - 例外：线路池缓存走 `DomainPoolCache`（core/src/main/kotlin/com/jm3/core/settings/DomainPoolCache.kt，Android 实现在 app/src/main/kotlin/com/jm3/app/miuix/data/DomainPoolCache.kt）。接口刻意是阻塞的：网关装配在首屏请求之前同步执行，等不到 DataStore 的挂起读取，所以这份缓存不能进 `jm3_settings`。内容只是「上次可用线路」的快照，丢了最多多拉一次线路表。
 7. Room 只用两个实体：`history` 与 `downloads`（app/src/main/kotlin/com/jm3/app/miuix/data/history/HistoryStore.kt:19、:54），数据库 `jm3.db` 版本 2 且 `exportSchema = false`（HistoryStore.kt:104；库名 jm3.db 见 Jm3App.kt:123）。改表必须写 Migration 并升版本；不许 `fallbackToDestructiveMigration`。
 
 ## 二、Network：网络与协议边界
 
 1. 网络唯一入口是 `Jm3Gateway`（core/src/main/kotlin/com/jm3/core/Jm3Gateway.kt:45）。它的所有方法都是阻塞调用（接口注释逐条标注，见 :46、:55、:58、:61、:64），调用方必须已经在 IO 线程上：`withContext(Dispatchers.IO)` 或 `appScope`。
 2. 协议库（io.github.jukomu.jmcomic）只允许出现在 :core。:app 的依赖里没有 `jmcomic-api`，它只通过 `api(libs.jmcomic.api)`（core/build.gradle.kts:18）传递可见。新增功能要新的网络能力时，先在 :core 的网关接口上加方法，不要在 :app 里直接 new 协议客户端。
-3. 网关实例的切换走 `Jm3Graph.gatewayOverride` 与 `GatewayFactory`（Jm3App.kt:88-95、core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:7）。线路（域名）只能通过 `Domains`（core/src/main/kotlin/com/jm3/core/settings/Domains.kt:4）与设置项改动，禁止在屏幕里硬编码 URL。
+3. 网关实例的切换走 `Jm3Graph.gatewayOverride` 与 `GatewayFactory`（Jm3App.kt:110、:192、core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:9）。线路（域名）只能通过 `Domains`（core/src/main/kotlin/com/jm3/core/settings/Domains.kt:4）与设置项改动，禁止在屏幕里硬编码 URL。
+   - 启动期的域名只有两处来源：设置页的自定义线路，以及上次刷新落盘的线路池（`DomainPoolCache`）。官方线路表由分发服务器下发，运行时在 core/src/main/kotlin/com/jm3/core/DomainTable.kt 拉取并解密，禁止把域名写进源码：服务端换表后写死的表必然过期，那时的表现是首屏直接报错而不是变慢。
+   - 两处来源都空（首次安装、没填自定义线路）时回退到库自己的初始化链 —— 它是唯一还能拿到线路表的路径，成本约 3.5s；跑完立刻落盘，之后冷启动不再走这条路。
 4. 图片不走网关文本接口：阅读器用 `ReaderFetcherFactory` 自取（app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderImages.kt:36-90），字节来源只有一处 —— 先 `imageLoader.diskCache.openSnapshot(cacheKey)`，命中即复用（:46-52）；未命中再取字节（本地已下载文件优先，否则网关，:54-59），随后 `openEditor(cacheKey)` → 写 `editor.data` → `commitAndOpenSnapshot()`（:61-83），返回 `ImageSource(snapshot.data, diskCache.fileSystem, cacheKey, snapshot)`；写盘失败必须 `editor.abort()` 再抛（:84-88）。
    - 关键约束：禁止把字节塞进 `okio.Buffer` 直接返回。telephoto 的分块超采样只认 `SuccessResult.diskCacheKey`，而 coil3 只在 fetch 结果源是 `FileImageSource` 时才带这个键（EngineInterceptor 里 `diskCacheKey = (fetchResult.source as? FileImageSource)?.diskCacheKey`），塞 Buffer 会让超采样永久失效、放大后发糊（同文件 :42-44、:61-67 注释）。无磁盘缓存或快照打不开时退回内存流只是兜底，不是常规路径。
    - 新增图片入口必须复用同一套 Keyer/Fetcher，否则内存与磁盘缓存会分裂。

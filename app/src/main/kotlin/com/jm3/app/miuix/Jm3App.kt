@@ -23,6 +23,7 @@ import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.request.crossfade
 import com.jm3.app.miuix.data.AccountManager
+import com.jm3.app.miuix.data.FileDomainPoolCache
 import com.jm3.app.miuix.data.SessionStore
 import com.jm3.app.miuix.data.SettingsStore
 import com.jm3.app.miuix.data.download.DownloadManager
@@ -107,7 +108,24 @@ object Jm3Graph {
     val gateway: Jm3Gateway
         get() = gatewayOverride ?: defaultGateway
 
-    private val defaultGateway: Jm3Gateway by lazy { GatewayFactory.create(emptyList()) }
+    /** 上次刷新落盘的线路池：网关装配在首屏请求之前同步执行，所以启动时先读一次。 */
+    @Volatile
+    private var cachedDomainPool: List<String> = emptyList()
+
+    private val domainPoolCache: FileDomainPoolCache by lazy {
+        FileDomainPoolCache(File(appContext().filesDir, "api_domain_pool.txt"))
+    }
+
+    private val defaultGateway: Jm3Gateway by lazy {
+        GatewayFactory.create(emptyList(), cachedDomainPool, ::rememberDomainPool)
+    }
+
+    /** 刷新出的线路池落盘，下次冷启动直接预置；写盘失败只影响下次启动的预热。 */
+    private fun rememberDomainPool(pool: List<String>) {
+        if (pool.isEmpty()) return
+        cachedDomainPool = pool
+        appScope.launch { runCatching { domainPoolCache.write(pool) } }
+    }
 
     val sessionStore: SessionStore by lazy { SessionStore(appContext()) }
 
@@ -189,7 +207,7 @@ object Jm3Graph {
             previous?.let { old -> runCatching { old.close() } }
             return@withLock
         }
-        val next = GatewayFactory.create(requested)
+        val next = GatewayFactory.create(requested, cachedDomainPool, ::rememberDomainPool)
         runCatching { sessionStore.load() }.getOrNull()?.let { session ->
             // 注入会话要等库完成线路探活（阻塞），不能在主线程上等。
             withContext(Dispatchers.IO) { runCatching { next.restoreSession(session) } }
@@ -203,6 +221,8 @@ object Jm3Graph {
 
     fun init(context: Context) {
         contextRef = context.applicationContext
+        // 网关装配是同步的且早于启动协程，线路池必须在这里就读出来（纯文本，一次几十字节）。
+        cachedDomainPool = domainPoolCache.read()
     }
 }
 
