@@ -24,6 +24,8 @@ import coil3.compose.setSingletonImageLoaderFactory
 import coil3.request.crossfade
 import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.data.FileDomainPoolCache
+import com.jm3.app.miuix.data.CredentialStorage
+import com.jm3.app.miuix.data.KeystoreCredentialStore
 import com.jm3.app.miuix.data.SessionStore
 import com.jm3.app.miuix.data.SettingsStore
 import com.jm3.app.miuix.data.download.DownloadManager
@@ -131,7 +133,9 @@ object Jm3Graph {
 
     val settings: SettingsRepository by lazy { SettingsStore(appContext()) }
 
-    val account: AccountManager by lazy { AccountManager({ gateway }, sessionStore) }
+    val credentialStore: CredentialStorage by lazy { KeystoreCredentialStore(appContext()) }
+
+    val account: AccountManager by lazy { AccountManager({ gateway }, sessionStore, credentialStore) }
 
     /** 信箱未读数：登录后刷新，供底栏「我的」角标与我的页入口共用。 */
     val unreadNotifications = MutableStateFlow(0)

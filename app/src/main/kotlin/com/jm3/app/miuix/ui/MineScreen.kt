@@ -108,7 +108,8 @@ fun MineScreen(
             checkInLoading = true
             checkInError = null
             val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }
+                // 会话被服务端判失效时先静默重登再重放，别把一次过期直接显示成「登录已失效」
+                runCatching { Jm3Graph.account.withSessionRenewal { Jm3Graph.gateway.dailyCheckInStatus(uid) } }
             }
             checkInLoading = false
             result
@@ -128,7 +129,7 @@ fun MineScreen(
         checkInError = null
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.dailyCheckIn(uid, status.dailyId) }
+                runCatching { Jm3Graph.account.withSessionRenewal { Jm3Graph.gateway.dailyCheckIn(uid, status.dailyId) } }
             }
             checkInBusy = false
             result

@@ -7,7 +7,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.jm3.core.isSessionExpired
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -19,6 +22,7 @@ import kotlinx.coroutines.withContext
 class AccountManager(
     private val gatewayProvider: () -> Jm3Gateway,
     private val store: SessionStorage,
+    private val credentials: CredentialStorage,
 ) {
 
     private val _user = MutableStateFlow<Jm3User?>(null)
@@ -33,17 +37,30 @@ class AccountManager(
     @Volatile
     private var injectedGateway: Jm3Gateway? = null
 
+    /** 静默重登成功次数：并发请求同时撞上失效时，后来者据此判断是否已经有人换过会话。 */
+    @Volatile
+    private var renewedGeneration = 0
+
+    private val renewLock = Mutex()
+
     /**
      * 恢复本地会话并注入当前网关；本地存在会话时立即恢复登录状态，不因瞬时网络或探活异常删除凭据。
      *
      * 冷启动调一次；线路切换换了网关实例后再调一次，Cookie 才会跟着迁到新客户端。已注入当前网关时是空操作。
+     *
+     * 本地没有会话（上次掉登录或用户从别的入口退出）但有保存的凭据时，这里直接静默重登：
+     * 用户重启应用后仍是登录态，不必再输一次密码。
      */
     suspend fun restore() {
         val gateway = gatewayProvider()
         if (_restored.value && injectedGateway === gateway) return
         // 无论成功失败都必须放行等待者，否则读取异常会让所有鉴权页面永久停在加载中
         try {
-            val session = runCatching { store.load() }.getOrNull() ?: return
+            val session = runCatching { store.load() }.getOrNull()
+            if (session == null) {
+                if (!_restored.value) renewSession()
+                return
+            }
             if (!_restored.value) _user.value = session.user
             if (injectedGateway !== gateway) inject(session)
         } finally {
@@ -61,16 +78,15 @@ class AccountManager(
         _restored.first { it }
     }
 
-    /** 登录成功返回 null 并持久化会话；失败返回错误消息。 */
+    /** 登录成功返回 null、持久化会话与凭据；失败返回错误消息。 */
     suspend fun login(username: String, password: String): String? =
         withContext(Dispatchers.IO) {
             val gateway = gatewayProvider()
             runCatching { gateway.login(username, password) }
                 .onSuccess { session ->
-                    store.save(session)
-                    _user.value = session.user
-                    injectedGateway = gateway
-                    _restored.value = true
+                    adopt(session, gateway)
+                    // 留着密码才能在上面的内存加密失效后静默重登；加密交给 Keystore，落盘只有密文
+                    runCatching { credentials.save(SavedCredentials(username, password)) }
                 }
                 .exceptionOrNull()?.message
         }
@@ -78,6 +94,8 @@ class AccountManager(
     suspend fun logout() {
         withContext(Dispatchers.IO) { runCatching { gatewayProvider().logout() } }
         store.clear()
+        // 用户主动登出就是不想再自动登录，凭据必须一起清掉
+        runCatching { credentials.clear() }
         _user.value = null
         injectedGateway = null
     }
@@ -90,6 +108,9 @@ class AccountManager(
      *
      * 但传话人未必可信：当前网关里根本没有注入过会话时（启动注入未完成、或线路切换换了新网关），
      * 这个「未登录」只能说明 Cookie 还没送到，此时补一次注入即可恢复，绝不能删掉本地凭据。
+     *
+     * 会话确实作废时也不急着把用户踢下线：凭据还在就先静默重登，重登不上（密码改了、账号受限、
+     * 网络不通）才真的清会话。
      */
     suspend fun markSessionExpired() {
         val gateway = gatewayProvider()
@@ -97,9 +118,54 @@ class AccountManager(
             store.load()?.let { inject(it) }
             return
         }
+        if (renewSession()) return
         store.clear()
         _user.value = null
         injectedGateway = null
+    }
+
+    /**
+     * 鉴权请求的统一入口：服务端判定会话失效时先静默重登一次，成功后把请求重放一遍。
+     *
+     * 这样冷启动后 Cookie 已作废时，页面拿到的还是一次正常数据，而不是一条「登录已失效」。
+     * 只有重登也不成功，原始失效错误才抛给页面按没登录处理。
+     */
+    suspend fun <T> withSessionRenewal(block: suspend () -> T): T {
+        val generation = renewedGeneration
+        return try {
+            block()
+        } catch (e: Exception) {
+            if (!isSessionExpired(e.message)) throw e
+            // 并发请求或启动恢复已经换过会话：直接重放，不再重复登录
+            if (renewedGeneration == generation && !renewSession()) throw e
+            block()
+        }
+    }
+
+    /**
+     * 用本地保存的凭据静默重登；成功即刷新会话与用户态。
+     *
+     * 多个请求同时撞上失效时只登一次：锁内再确认一次凭据与网关。
+     */
+    private suspend fun renewSession(): Boolean = renewLock.withLock {
+        val saved = runCatching { credentials.load() }.getOrNull() ?: return@withLock false
+        val gateway = gatewayProvider()
+        val result = withContext(Dispatchers.IO) {
+            runCatching { gateway.login(saved.username, saved.password) }
+        }
+        result.onSuccess { session ->
+            adopt(session, gateway)
+            runCatching { store.save(session) }
+        }
+        result.isSuccess
+    }
+
+    /** 登录态落地：会话换新、用户态刷新、当前网关视为已注入。 */
+    private fun adopt(session: Jm3Session, gateway: Jm3Gateway) {
+        _user.value = session.user
+        injectedGateway = gateway
+        _restored.value = true
+        renewedGeneration++
     }
 
     private suspend fun inject(session: Jm3Session) {
