@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -81,6 +83,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TooltipBox
+import top.yukonga.miuix.kmp.basic.VerticalScrollBar
+import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Contacts
@@ -158,6 +162,7 @@ fun AlbumDetailScreen(
     var commentsLoadingMore by remember(albumId) { mutableStateOf(false) }
     // 评论加载更多失败单独置位，供底部给出重试入口
     var commentsLoadFailed by remember(albumId) { mutableStateOf(false) }
+    val listState = rememberLazyListState()
     var pullRefreshing by remember(albumId) { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
@@ -482,11 +487,13 @@ fun AlbumDetailScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = innerPadding,
         ) {
-            // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = innerPadding,
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = innerPadding,
+                ) {
                 // 首项必须始终渲染，确保列表卡片点击后首帧完成头图测量，转场动画即时起飞
                 item(key = "header") {
                     DetailHeader(
@@ -706,7 +713,13 @@ fun AlbumDetailScreen(
                     }
                 }
             }
-            // 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏
+            VerticalScrollBar(
+                adapter = rememberScrollBarAdapter(listState),
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                trackPadding = innerPadding,
+            )
+        }
+        // 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏
             OverlayBottomSheet(
                 show = showFolderSheet,
                 title = if (favorited) "移动收藏夹" else "选择收藏夹",

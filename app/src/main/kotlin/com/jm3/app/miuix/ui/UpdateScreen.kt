@@ -358,7 +358,7 @@ private fun AppIcon(progress: State<Float>) {
                 scaleY = scale
             }
             .clip(RoundedCornerShape(AppIconCorner))
-            .background(MiuixTheme.colorScheme.surfaceVariant),
+            .background(MiuixTheme.colorScheme.surfaceContainer),
         contentAlignment = Alignment.Center,
     ) {
         if (icon != null) {

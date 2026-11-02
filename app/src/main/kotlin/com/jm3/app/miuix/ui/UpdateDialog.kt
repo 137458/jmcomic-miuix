@@ -25,7 +25,7 @@ import com.jm3.core.update.ReleaseInfo
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 说明块的间距与列表符号列宽，集中成常量避免样式散落在各个 when 分支里。 */
@@ -126,7 +126,7 @@ private fun NotesListItem(prefix: String, text: String) {
 @Composable
 private fun rememberNotesInline(text: String): AnnotatedString {
     val codeColor = MiuixTheme.colorScheme.primary
-    val codeBackground = MiuixTheme.colorScheme.surfaceVariant
+    val codeBackground = MiuixTheme.colorScheme.surfaceContainerHigh
     return remember(text, codeColor, codeBackground) {
         parseInlineNotes(text = text, codeColor = codeColor, codeBackground = codeBackground)
     }
@@ -218,7 +218,7 @@ internal fun UpdateAvailableDialog(
     onIgnore: ((version: String) -> Unit)? = null,
 ) {
     val hasApk = release.apk != null
-    OverlayDialog(
+    WindowDialog(
         show = show,
         title = "发现新版本 ${release.version}",
         summary = dialogSummary(currentVersion = currentVersion, release = release),

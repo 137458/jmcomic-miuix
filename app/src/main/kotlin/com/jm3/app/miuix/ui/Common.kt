@@ -1,7 +1,17 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -477,6 +487,44 @@ fun Modifier.pressScale(scaleDown: Float = 0.96f, hapticFeedback: Boolean = true
 fun rememberSelectionHaptic(): () -> Unit {
     val haptics = LocalHapticFeedback.current
     return remember(haptics) { { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) } }
+}
+
+/**
+ * 微光骨架屏动效：封面图片未完成加载时展现平滑对角线微光掠过，消除纯灰块突兀感。
+ */
+@Composable
+fun Modifier.shimmer(
+    visible: Boolean = true,
+    shimmerColor: Color = MiuixTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+    durationMillis: Int = 1200,
+): Modifier {
+    if (!visible) return this
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = durationMillis, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "shimmerProgress",
+    )
+    return this.drawBehind {
+        val width = size.width
+        val height = size.height
+        val totalDistance = width + height
+        val currentOffset = totalDistance * progress
+        val brush = Brush.linearGradient(
+            colors = listOf(
+                Color.Transparent,
+                shimmerColor,
+                Color.Transparent,
+            ),
+            start = Offset(currentOffset - height, 0f),
+            end = Offset(currentOffset, height),
+        )
+        drawRect(brush = brush)
+    }
 }
 
 

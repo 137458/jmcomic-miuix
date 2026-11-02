@@ -41,14 +41,17 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -127,7 +130,6 @@ fun SettingsScreen(
 
     // 分页模式：与全局状态同步，切换后各列表页按新语义从第一页重载
     var paginationMode by remember { mutableStateOf(Jm3Graph.paginationMode) }
-    var showPaginationPicker by remember { mutableStateOf(false) }
     // 版本号连点进入隐藏诊断（原版 secret tap 进 /test）
     var diagnostics by remember { mutableStateOf(false) }
     var versionTapCount by remember { mutableIntStateOf(0) }
@@ -149,7 +151,6 @@ fun SettingsScreen(
     }
 
     fun applyPaginationMode(mode: PaginationMode) {
-        showPaginationPicker = false
         if (mode == paginationMode) return
         paginationMode = mode
         Jm3Graph.paginationMode = mode
@@ -238,13 +239,24 @@ fun SettingsScreen(
             TopBarContentSpacer(paddingValues = innerPadding)
             SmallTitle(text = "主题")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                ThemeMode.entries.forEach { mode ->
-                    RadioButtonPreference(
-                        title = mode.label(),
-                        selected = themeMode == mode,
-                        onClick = { onThemeModeChange(mode) },
-                    )
-                }
+                BasicComponent(
+                    title = "外观模式",
+                    summary = when (themeMode) {
+                        ThemeMode.SYSTEM -> "跟随系统自动切换深浅色"
+                        ThemeMode.LIGHT -> "始终保持浅色高亮视觉"
+                        ThemeMode.DARK -> "始终保持深色暗调视觉"
+                    },
+                )
+                TabRow(
+                    tabs = ThemeMode.entries.map { it.label() },
+                    selectedTabIndex = ThemeMode.entries.indexOf(themeMode),
+                    onTabSelected = { index ->
+                        ThemeMode.entries.getOrNull(index)?.let(onThemeModeChange)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
                 SwitchPreference(
                     title = "动态取色",
                     summary = "跟随壁纸生成配色（Android 12 及以上）",
@@ -255,10 +267,20 @@ fun SettingsScreen(
 
             SmallTitle(text = "通用")
             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                ArrowPreference(
+                OverlaySpinnerPreference(
                     title = "分页模式",
-                    summary = paginationMode.label(),
-                    onClick = { showPaginationPicker = true },
+                    summary = when (paginationMode) {
+                        PaginationMode.INFINITE -> "滚动到底自动加载下一页"
+                        PaginationMode.CLICK -> "列表底部显示上一页/下一页"
+                    },
+                    items = PaginationMode.entries.mapIndexed { index, mode ->
+                        DropdownItem(text = mode.label(), selected = mode == paginationMode)
+                    },
+                    selectedIndex = PaginationMode.entries.indexOf(paginationMode),
+                    showValue = false,
+                    onSelectedIndexChange = { index ->
+                        PaginationMode.entries.getOrNull(index)?.let(::applyPaginationMode)
+                    },
                 )
             }
 
@@ -384,28 +406,6 @@ fun SettingsScreen(
             }
             // 底部净空由 GlassScaffold 统一给出（导航条 inset + 呼吸空间）
             Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding()))
-        }
-
-        // 分页模式选择：两档语义在 summary 中说明，避免只改名字造成困惑
-        OverlayBottomSheet(
-            show = showPaginationPicker,
-            title = "分页模式",
-            onDismissRequest = { showPaginationPicker = false },
-        ) {
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                PaginationMode.entries.forEach { mode ->
-                    RadioButtonPreference(
-                        title = mode.label(),
-                        summary = when (mode) {
-                            PaginationMode.INFINITE -> "滚动到底自动加载下一页"
-                            PaginationMode.CLICK -> "列表底部显示上一页/下一页"
-                        },
-                        selected = paginationMode == mode,
-                        onClick = { applyPaginationMode(mode) },
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
         }
 
         // 隐藏诊断：版本号连点 5 次打开，只读汇总运行环境与线路状态

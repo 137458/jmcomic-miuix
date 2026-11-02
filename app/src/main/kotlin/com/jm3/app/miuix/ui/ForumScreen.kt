@@ -1,5 +1,8 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -42,8 +45,8 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
@@ -385,15 +388,15 @@ private fun ForumTopicCard(
         Column(modifier = Modifier.fillMaxWidth()) {
             CommentRow(item = item, onReply = onReply, onOpenAlbum = onOpenAlbum)
             if (albumName != null && albumId != null) {
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
+                        .squircleBackground(MiuixTheme.colorScheme.surfaceContainerHigh, 10.dp)
                         .clickable { onOpenAlbum(albumId) }
                         // 触感交给点击本身，避免整行点击时重复震动
                         .pressScale(hapticFeedback = false)
-                        // 起点与楼层正文对齐（分割线同为 12dp），缩略图左缘因此和头像列齐平
-                        .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     WorkThumbnail(
@@ -440,7 +443,8 @@ private fun ForumRulesCard(expanded: Boolean, onToggle: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy)),
     ) {
         BasicComponent(
             title = "社区规则",

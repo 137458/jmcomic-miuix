@@ -19,7 +19,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import coil3.compose.AsyncImagePainter
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.IntrinsicMeasurable
@@ -109,7 +114,12 @@ internal fun WorkCover(
     cornerDp: Float = HERO_CARD_CORNER_DP,
     contentScale: ContentScale = ContentScale.Crop,
 ) {
-    Box(modifier = modifier.background(MiuixTheme.colorScheme.surfaceContainerHigh)) {
+    var isLoaded by remember(url) { mutableStateOf(false) }
+    Box(
+        modifier = modifier
+            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+            .shimmer(visible = !isLoaded && !url.isNullOrBlank()),
+    ) {
         if (url == null) return@Box
         val heroModifier = if (albumId != null) {
             Modifier.albumHeroCover(albumId = albumId, url = url, title = title, cornerDp = cornerDp)
@@ -121,6 +131,11 @@ internal fun WorkCover(
             contentDescription = contentDescription,
             contentScale = contentScale,
             modifier = Modifier.fillMaxSize().then(heroModifier),
+            onState = { state ->
+                if (state is AsyncImagePainter.State.Success) {
+                    isLoaded = true
+                }
+            },
         )
     }
 }
@@ -424,19 +439,30 @@ internal fun WorkThumbnail(
         Spacer(modifier = modifier.then(thumbSize))
         return
     }
+    var isLoaded by remember(url) { mutableStateOf(false) }
     val heroModifier = if (albumId != null) {
         Modifier.albumHeroCover(albumId = albumId, url = url, cornerDp = HERO_THUMB_CORNER_DP)
     } else {
         Modifier
     }
-    AlbumCoverImage(
-        url = url,
-        contentDescription = contentDescription,
+    Box(
         modifier = modifier
             .then(thumbSize)
             .squircleClip(HERO_THUMB_CORNER_DP.dp)
-            .then(heroModifier),
-    )
+            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+            .shimmer(visible = !isLoaded && !url.isBlank()),
+    ) {
+        AlbumCoverImage(
+            url = url,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize().then(heroModifier),
+            onState = { state ->
+                if (state is AsyncImagePainter.State.Success) {
+                    isLoaded = true
+                }
+            },
+        )
+    }
 }
 
 /**

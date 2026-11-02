@@ -50,6 +50,7 @@ import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TooltipBox
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
@@ -362,25 +363,28 @@ fun FavoritesScreen(
                     title = "我的收藏",
                     navigationIcon = { BackButton(onBack = onBack) },
                     actions = {
-                        IconButton(
-                            onClick = {
-                                if (tabIndex == 0) {
-                                    folderNameInput = ""
-                                    folderError = null
-                                    showCreate = true
-                                } else if (user == null) {
-                                    scope.launch { snackbarHostState.showSnackbar("请先登录后再添加标签") }
-                                } else {
-                                    tagInput = ""
-                                    tagError = null
-                                    showAddTag = true
-                                }
-                            },
-                        ) {
-                            Icon(
-                                MiuixIcons.Add,
-                                contentDescription = if (tabIndex == 0) "新建收藏夹" else "添加标签",
-                            )
+                        val addDesc = if (tabIndex == 0) "新建收藏夹" else "添加标签"
+                        TooltipBox(text = addDesc) {
+                            IconButton(
+                                onClick = {
+                                    if (tabIndex == 0) {
+                                        folderNameInput = ""
+                                        folderError = null
+                                        showCreate = true
+                                    } else if (user == null) {
+                                        scope.launch { snackbarHostState.showSnackbar("请先登录后再添加标签") }
+                                    } else {
+                                        tagInput = ""
+                                        tagError = null
+                                        showAddTag = true
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    MiuixIcons.Add,
+                                    contentDescription = addDesc,
+                                )
+                            }
                         }
                     },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
@@ -451,17 +455,21 @@ fun FavoritesScreen(
                                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                                         horizontalArrangement = Arrangement.End,
                                     ) {
-                                        IconButton(
-                                            onClick = {
-                                                folderNameInput = currentFolderName
-                                                folderError = null
-                                                editTarget = folderId to currentFolderName
-                                            },
-                                        ) {
-                                            Icon(MiuixIcons.Edit, contentDescription = "重命名收藏夹")
+                                        TooltipBox(text = "重命名收藏夹") {
+                                            IconButton(
+                                                onClick = {
+                                                    folderNameInput = currentFolderName
+                                                    folderError = null
+                                                    editTarget = folderId to currentFolderName
+                                                },
+                                            ) {
+                                                Icon(MiuixIcons.Edit, contentDescription = "重命名收藏夹")
+                                            }
                                         }
-                                        IconButton(onClick = { deleteTarget = folderId to currentFolderName }) {
-                                            Icon(MiuixIcons.Delete, contentDescription = "删除收藏夹")
+                                        TooltipBox(text = "删除收藏夹") {
+                                            IconButton(onClick = { deleteTarget = folderId to currentFolderName }) {
+                                                Icon(MiuixIcons.Delete, contentDescription = "删除收藏夹")
+                                            }
                                         }
                                     }
                                 }

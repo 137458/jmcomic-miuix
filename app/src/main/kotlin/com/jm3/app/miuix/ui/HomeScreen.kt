@@ -63,6 +63,7 @@ import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TooltipBox
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -376,8 +377,10 @@ fun HomeScreen(gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit, onOpenWeek: (
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                     color = Color.Transparent,
                     actions = {
-                        IconButton(onClick = onOpenWeek) {
-                            Icon(imageVector = MiuixIcons.Weeks, contentDescription = "每周必看")
+                        TooltipBox(text = "每周必看") {
+                            IconButton(onClick = onOpenWeek) {
+                                Icon(imageVector = MiuixIcons.Weeks, contentDescription = "每周必看")
+                            }
                         }
                     },
                 )

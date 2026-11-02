@@ -1,5 +1,13 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -193,39 +201,50 @@ fun MainScreen(
                                     .fillMaxSize()
                                     .layerBackdropSource(backdrop),
                             ) {
-                                when (tab) {
-                                    0 -> HomeScreen(
-                                        gateway = gateway,
-                                        onOpenAlbum = onOpenAlbum,
-                                        onOpenWeek = onOpenWeek,
-                                    )
-                                    1 -> BrowseScreen(
-                                        mode = BrowseMode.CATEGORY,
-                                        gateway = gateway,
-                                        onOpenAlbum = onOpenAlbum,
-                                    )
-                                    2 -> BrowseScreen(
-                                        mode = BrowseMode.RANK,
-                                        gateway = gateway,
-                                        onOpenAlbum = onOpenAlbum,
-                                    )
-                                    else -> MineScreen(
-                                        account = account,
-                                        snackbarHostState = snackbarHostState,
-                                        onOpenLogin = onOpenLogin,
-                                        onOpenFavorites = onOpenFavorites,
-                                        onOpenHistory = onOpenHistory,
-                                        onOpenShelf = onOpenShelf,
-                                        onOpenSettings = onOpenSettings,
-                                        onOpenNotifications = onOpenNotifications,
-                                        onOpenTracking = onOpenTracking,
-                                        onOpenProfile = onOpenProfile,
-                                        onOpenTasks = onOpenTasks,
-                                        onOpenWatchHistory = onOpenWatchHistory,
-                                        onOpenForum = onOpenForum,
-                                        onOpenNovel = onOpenNovel,
-                                        onOpenLibrary = onOpenLibrary,
-                                    )
+                                AnimatedContent(
+                                    targetState = tab,
+                                    transitionSpec = {
+                                        fadeIn(animationSpec = tween(180, easing = LinearEasing)) +
+                                            scaleIn(initialScale = 0.98f, animationSpec = tween(220, easing = FastOutSlowInEasing)) togetherWith
+                                            fadeOut(animationSpec = tween(140, easing = LinearEasing))
+                                    },
+                                    label = "MainTabTransition",
+                                    modifier = Modifier.fillMaxSize(),
+                                ) { currentTab ->
+                                    when (currentTab) {
+                                        0 -> HomeScreen(
+                                            gateway = gateway,
+                                            onOpenAlbum = onOpenAlbum,
+                                            onOpenWeek = onOpenWeek,
+                                        )
+                                        1 -> BrowseScreen(
+                                            mode = BrowseMode.CATEGORY,
+                                            gateway = gateway,
+                                            onOpenAlbum = onOpenAlbum,
+                                        )
+                                        2 -> BrowseScreen(
+                                            mode = BrowseMode.RANK,
+                                            gateway = gateway,
+                                            onOpenAlbum = onOpenAlbum,
+                                        )
+                                        else -> MineScreen(
+                                            account = account,
+                                            snackbarHostState = snackbarHostState,
+                                            onOpenLogin = onOpenLogin,
+                                            onOpenFavorites = onOpenFavorites,
+                                            onOpenHistory = onOpenHistory,
+                                            onOpenShelf = onOpenShelf,
+                                            onOpenSettings = onOpenSettings,
+                                            onOpenNotifications = onOpenNotifications,
+                                            onOpenTracking = onOpenTracking,
+                                            onOpenProfile = onOpenProfile,
+                                            onOpenTasks = onOpenTasks,
+                                            onOpenWatchHistory = onOpenWatchHistory,
+                                            onOpenForum = onOpenForum,
+                                            onOpenNovel = onOpenNovel,
+                                            onOpenLibrary = onOpenLibrary,
+                                        )
+                                    }
                                 }
                             }
                         }

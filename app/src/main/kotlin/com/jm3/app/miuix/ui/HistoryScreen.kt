@@ -1,7 +1,9 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,6 +36,8 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.VerticalScrollBar
+import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -78,6 +83,7 @@ fun HistoryScreen(
 ) {
     val repository = Jm3Graph.history
     val pageSize = 20
+    val listState = rememberLazyListState()
     var entries by remember { mutableStateOf<List<HistoryEntry>>(emptyList()) }
     var state by remember { mutableStateOf<HistoryListState>(HistoryListState.Loading) }
     var nextPage by remember { mutableStateOf(2) }
@@ -184,29 +190,37 @@ fun HistoryScreen(
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
-                        contentPadding = innerPadding,
-                    ) {
-                        items(albums, key = { it.albumId }) { album ->
-                            AlbumHistoryCard(
-                                album = album,
-                                onResume = { onOpenReader(album.latest.photoId) },
-                                onOpenDetail = { onOpenAlbum(album.albumId) },
-                                onDelete = { removeAlbum(album.albumId) },
-                            )
-                        }
-                        if (albums.isNotEmpty()) {
-                            item(key = "load-more") {
-                                LoadMoreFooter(
-                                    loadingMore = loadingMore,
-                                    hasMore = !endReached,
-                                    loadMoreFailed = loadMoreFailed,
-                                    onLoadMore = ::loadMore,
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
+                            contentPadding = innerPadding,
+                        ) {
+                            items(albums, key = { it.albumId }) { album ->
+                                AlbumHistoryCard(
+                                    album = album,
+                                    onResume = { onOpenReader(album.latest.photoId) },
+                                    onOpenDetail = { onOpenAlbum(album.albumId) },
+                                    onDelete = { removeAlbum(album.albumId) },
                                 )
                             }
+                            if (albums.isNotEmpty()) {
+                                item(key = "load-more") {
+                                    LoadMoreFooter(
+                                        loadingMore = loadingMore,
+                                        hasMore = !endReached,
+                                        loadMoreFailed = loadMoreFailed,
+                                        onLoadMore = ::loadMore,
+                                    )
+                                }
+                            }
                         }
+                        VerticalScrollBar(
+                            adapter = rememberScrollBarAdapter(listState),
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            trackPadding = innerPadding,
+                        )
                     }
                 }
             }

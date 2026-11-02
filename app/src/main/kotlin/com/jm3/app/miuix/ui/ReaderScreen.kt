@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -630,8 +631,9 @@ private fun ReaderPages(
                             image = image,
                             imageLoader = imageLoader,
                             pageSize = pageSize,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
-                            // 长图就地缩放会被 3:4 页框裁掉，双击改为打开整屏缩放层
+                            dynamicAspectRatio = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            // 长图模式按图片真实比例自适应展开无缝拼接，双击打开整屏缩放层
                             onDoubleTap = { zoomOverlayIndex = photo.images.indexOf(image) },
                             onTap = { chromeVisible = !chromeVisible },
                         )
@@ -973,6 +975,8 @@ private fun ReaderPage(
     modifier: Modifier = Modifier,
     zoomEnabled: Boolean = false,
     isCurrentPage: Boolean = true,
+    dynamicAspectRatio: Boolean = false,
+    defaultAspectRatio: Float = 3f / 4f,
     onTap: (() -> Unit)? = null,
     onZoomChanged: ((Boolean) -> Unit)? = null,
     onDoubleTap: (() -> Unit)? = null,
@@ -1073,6 +1077,7 @@ private fun ReaderPage(
         }
         return
     }
+    var detectedRatio by remember(image) { mutableFloatStateOf(defaultAspectRatio) }
     // 需要区分双击时用 detectTapGestures 自己起手势识别，单击回调顺延到双击超时之后
     val tapModifier = when {
         onDoubleTap != null -> Modifier.pointerInput(onTap, onDoubleTap) {
@@ -1084,14 +1089,27 @@ private fun ReaderPage(
         onTap != null -> Modifier.clickable(onClick = onTap)
         else -> Modifier
     }
-    Box(modifier = modifier.then(tapModifier)) {
+    val contentModifier = if (dynamicAspectRatio) {
+        modifier.aspectRatio(detectedRatio)
+    } else {
+        modifier
+    }
+    Box(modifier = contentModifier.then(tapModifier)) {
         if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
         AsyncImage(
             model = request,
             contentDescription = null,
             imageLoader = imageLoader,
-            contentScale = ContentScale.Fit,
-            onSuccess = { failed = false },
+            contentScale = if (dynamicAspectRatio) ContentScale.FillWidth else ContentScale.Fit,
+            onSuccess = { state ->
+                failed = false
+                if (dynamicAspectRatio) {
+                    val size = state.painter.intrinsicSize
+                    if (size.width > 0f && size.height > 0f && !size.width.isNaN() && !size.height.isNaN()) {
+                        detectedRatio = size.width / size.height
+                    }
+                }
+            },
             onError = { failed = true },
             modifier = Modifier.fillMaxSize(),
         )
