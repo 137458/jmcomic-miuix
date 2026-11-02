@@ -103,6 +103,8 @@ fun MineScreen(
     fun loadCheckInStatus() {
         val uid = user?.uid ?: return
         scope.launch {
+            // 启动恢复会先置登录态再注入 Cookie，注入完成前的请求会被服务端当成未登录
+            Jm3Graph.account.awaitRestored()
             checkInLoading = true
             checkInError = null
             val result = withContext(Dispatchers.IO) {

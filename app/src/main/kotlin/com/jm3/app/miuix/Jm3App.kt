@@ -386,10 +386,13 @@ fun Jm3App() {
 
     // 启动顺序：先恢复主题与线路，最后 restore 会话——保证 Cookie 注入到切换后的网关。
     LaunchedEffect(Unit) {
-        themeModeName = Jm3Graph.settings.themeMode().name
-        dynamicColor = Jm3Graph.settings.dynamicColor()
-        Jm3Graph.paginationMode = Jm3Graph.settings.paginationMode()
-        Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
+        // 设置读盘失败也要往下走：会话恢复是登录态的起点，不能被主题或线路拖住
+        runCatching {
+            themeModeName = Jm3Graph.settings.themeMode().name
+            dynamicColor = Jm3Graph.settings.dynamicColor()
+            Jm3Graph.paginationMode = Jm3Graph.settings.paginationMode()
+            Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
+        }
         Jm3Graph.account.restore()
     }
 

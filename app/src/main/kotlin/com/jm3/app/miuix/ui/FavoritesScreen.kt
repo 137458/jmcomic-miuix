@@ -119,6 +119,8 @@ fun FavoritesScreen(
     fun loadFirstPage() {
         val targetFolderId = folderId
         scope.launch {
+            // 启动恢复会先置登录态再注入 Cookie，注入完成前的请求会被服务端当成未登录
+            Jm3Graph.account.awaitRestored()
             error = null
             errorSessionExpired = false
             page = null
@@ -235,6 +237,7 @@ fun FavoritesScreen(
         // 绑定发起请求时的用户，避免登出/换号后把旧结果写回界面
         val uid = user?.uid ?: return
         scope.launch {
+            Jm3Graph.account.awaitRestored()
             tagsError = null
             tags = null
             val result = withContext(Dispatchers.IO) {
