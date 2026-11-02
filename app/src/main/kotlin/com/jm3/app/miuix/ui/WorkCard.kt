@@ -22,6 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -68,14 +75,17 @@ internal object WorkCardTokens {
     val ThumbWidth: Dp = 48.dp
     val ThumbHeight: Dp = 64.dp
 
+    /** 行卡文字区上下内边距：比默认内边距稍收紧，保证 4 行文字在 96dp 封面内完整排下。 */
+    val RowTextPaddingV: Dp = 8.dp
+
     /**
-     * 行卡贴边封面的高度：按 3:4 换算出约 72dp 宽。
+     * 行卡贴边封面的高度与宽度：按 3:4 比例换算为 72dp 宽 x 96dp 高。
      *
-     * 固定值而不是撑满行高——撑满会让两行标题的行比一行标题的行封面更大，
-     * 同一个列表里封面大小参差。取值与"两行标题 + 次级信息 + 附加行"的文字高度接近，
-     * 这样行高基本由封面决定，卡片高度也随之一致。
+     * 封面向父级汇报的固有尺寸固定为此值，阻断异步加载的图片原始分辨率向父级泄露，
+     * 保证同一列表里封面大小与卡片高度绝对一致。
      */
     val RowCoverHeight: Dp = 96.dp
+    val RowCoverWidth: Dp = 72.dp
 
     /** 作品网格的列间距与行间距。 */
     val GridSpacing: Dp = 8.dp
@@ -361,8 +371,11 @@ internal fun WorkRowCard(
                 title = title,
                 contentDescription = coverContentDescription,
                 modifier = Modifier
+                    .fixedIntrinsicSize(
+                        width = WorkCardTokens.RowCoverWidth,
+                        height = WorkCardTokens.RowCoverHeight,
+                    )
                     .fillMaxHeight()
-                    .defaultMinSize(minHeight = WorkCardTokens.RowCoverHeight)
                     .aspectRatio(WorkCardTokens.CoverAspect),
             )
             Column(
@@ -371,8 +384,8 @@ internal fun WorkRowCard(
                     .padding(
                         start = WorkCardTokens.TextPaddingH,
                         end = textEndPadding,
-                        top = WorkCardTokens.TextPaddingV,
-                        bottom = WorkCardTokens.TextPaddingV,
+                        top = WorkCardTokens.RowTextPaddingV,
+                        bottom = WorkCardTokens.RowTextPaddingV,
                     ),
             ) {
                 Text(
@@ -425,3 +438,35 @@ internal fun WorkThumbnail(
             .then(heroModifier),
     )
 }
+
+/**
+ * 锁定向父级汇报的固有尺寸（Intrinsic Size），
+ * 彻底阻断异步加载的图片原始物理像素尺寸向父级泄露，
+ * 避免不同分辨率与比例的封面图片导致卡片高度被撑大或参差不齐。
+ */
+private class FixedIntrinsicSizeModifier(
+    private val width: Dp,
+    private val height: Dp,
+) : LayoutModifier {
+    override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) {
+            placeable.placeRelative(0, 0)
+        }
+    }
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int): Int =
+        height.roundToPx()
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(measurable: IntrinsicMeasurable, width: Int): Int =
+        height.roundToPx()
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int): Int =
+        width.roundToPx()
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(measurable: IntrinsicMeasurable, height: Int): Int =
+        width.roundToPx()
+}
+
+internal fun Modifier.fixedIntrinsicSize(width: Dp, height: Dp): Modifier =
+    this.then(FixedIntrinsicSizeModifier(width, height))
