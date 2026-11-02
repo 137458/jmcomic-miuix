@@ -204,4 +204,21 @@ class AccountManagerTest {
         assertEquals(true, withTimeoutOrNull(5000) { account.awaitRestored(); true })
         assertNull(account.user.value)
     }
+@Test
+    fun `线路切换换了网关后再次恢复会把会话注入新网关`() = runBlocking {
+        val session = Jm3Session(user = testUser(), cookies = emptyList())
+        val store = FakeSessionStore(stored = session)
+        var current = fakeGateway()
+        val account = AccountManager({ current }, store)
+        account.restore()
+
+        // 切线路换了网关实例：新客户端里没有 Cookie，重新恢复要把它补进去
+        var reinjected = false
+        current = fakeGateway { reinjected = true }
+        account.restore()
+
+        assertEquals(true, reinjected)
+        assertEquals(session.user, account.user.value)
+        assertEquals(0, store.clearCount)
+    }
 }

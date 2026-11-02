@@ -202,17 +202,12 @@ object Jm3Graph {
         // 旧网关的 HTTP 客户端持有连接池，切线路后不再可达：迁移完会话即主动释放。
         val previous = gatewayOverride
         appliedDomains = requested
-        if (requested.isEmpty()) {
-            gatewayOverride = null
-            previous?.let { old -> runCatching { old.close() } }
-            return@withLock
-        }
-        val next = GatewayFactory.create(requested, cachedDomainPool, ::rememberDomainPool)
-        runCatching { sessionStore.load() }.getOrNull()?.let { session ->
-            // 注入会话要等库完成线路探活（阻塞），不能在主线程上等。
-            withContext(Dispatchers.IO) { runCatching { next.restoreSession(session) } }
-        }
-        gatewayOverride = next
+        gatewayOverride =
+            if (requested.isEmpty()) null
+            else GatewayFactory.create(requested, cachedDomainPool, ::rememberDomainPool)
+        // 会话注入只由 AccountManager 负责：切到哪个网关（含切回默认线路）它都会把 Cookie 补进去，
+        // 这里再手写一份注入就成了两套实现，空表分支必然漏掉。
+        account.restore()
         previous?.let { old -> runCatching { old.close() } }
     }
 
@@ -384,7 +379,7 @@ fun Jm3App() {
         lastTopAlbumId = topAlbumId
     }
 
-    // 启动顺序：先恢复主题与线路，最后 restore 会话——保证 Cookie 注入到切换后的网关。
+    // 启动顺序：先恢复主题与线路（切了线路时 applyDomains 会把会话注入新网关），最后再兜一次会话恢复。
     LaunchedEffect(Unit) {
         // 设置读盘失败也要往下走：会话恢复是登录态的起点，不能被主题或线路拖住
         runCatching {

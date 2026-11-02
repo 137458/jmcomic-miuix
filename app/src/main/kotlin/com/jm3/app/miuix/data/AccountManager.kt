@@ -33,14 +33,19 @@ class AccountManager(
     @Volatile
     private var injectedGateway: Jm3Gateway? = null
 
-    /** 启动时恢复本地会话并注回网关；本地存在会话时立即恢复登录状态，不因瞬时网络或探活异常删除凭据。 */
+    /**
+     * 恢复本地会话并注入当前网关；本地存在会话时立即恢复登录状态，不因瞬时网络或探活异常删除凭据。
+     *
+     * 冷启动调一次；线路切换换了网关实例后再调一次，Cookie 才会跟着迁到新客户端。已注入当前网关时是空操作。
+     */
     suspend fun restore() {
-        if (_restored.value) return
+        val gateway = gatewayProvider()
+        if (_restored.value && injectedGateway === gateway) return
         // 无论成功失败都必须放行等待者，否则读取异常会让所有鉴权页面永久停在加载中
         try {
             val session = runCatching { store.load() }.getOrNull() ?: return
-            _user.value = session.user
-            inject(session)
+            if (!_restored.value) _user.value = session.user
+            if (injectedGateway !== gateway) inject(session)
         } finally {
             _restored.value = true
         }
