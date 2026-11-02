@@ -2,6 +2,7 @@ package com.jm3.app.miuix.data
 
 import com.jm3.core.CredentialPriming
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.SessionCookieSource
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.Jm3User
@@ -37,17 +38,19 @@ class AccountManagerTest {
     private fun fakeGateway(
         onLogin: ((String, String) -> Jm3Session)? = null,
         onPrimeCredentials: (String, String) -> Unit = { _, _ -> },
+        onCurrentCookies: () -> List<CookieSnapshot> = { emptyList() },
         onRestoreSession: (Jm3Session) -> Unit = {},
     ): Jm3Gateway {
         return Proxy.newProxyInstance(
             Jm3Gateway::class.java.classLoader,
-            arrayOf(Jm3Gateway::class.java, CredentialPriming::class.java),
+            arrayOf(Jm3Gateway::class.java, CredentialPriming::class.java, SessionCookieSource::class.java),
         ) { _, method, args ->
             when (method.name) {
                 "restoreSession" -> {
                     onRestoreSession(args[0] as Jm3Session)
                     null
                 }
+                "currentCookies" -> onCurrentCookies()
                 "primeCredentials" -> {
                     onPrimeCredentials(args[0] as String, args[1] as String)
                     null
@@ -83,8 +86,12 @@ class AccountManagerTest {
 
     private class FakeSessionStore(var stored: Jm3Session? = null) : SessionStorage {
         var clearCount = 0
+        var saveCount = 0
         override suspend fun load(): Jm3Session? = stored
-        override suspend fun save(session: Jm3Session) { stored = session }
+        override suspend fun save(session: Jm3Session) {
+            stored = session
+            saveCount++
+        }
         override suspend fun clear() {
             stored = null
             clearCount++
@@ -376,5 +383,71 @@ class AccountManagerTest {
         account.login("test_user", "secret")
 
         assertEquals("test_user", store.stored?.user?.username)
+    }
+
+    @Test
+    fun `退到后台时把库内刷新过的会话 Cookie 回写本地存储`() = runBlocking {
+        val session = Jm3Session(
+            user = testUser(),
+            cookies = listOf(CookieSnapshot("AVS", "stale", "18comic.vip", "/")),
+        )
+        val renewed = listOf(CookieSnapshot("AVS", "renewed", "18comic.vip", "/"))
+        val store = FakeSessionStore(stored = session)
+        val gateway = fakeGateway(onCurrentCookies = { renewed })
+        val account = account(store = store, gateway = { gateway })
+        account.restore()
+
+        account.persistSession()
+
+        // 库在请求内自己重登换了 Cookie：本地旧快照必须跟着换，否则下次冷启动白登一次
+        assertEquals(renewed, store.stored?.cookies)
+        assertEquals(1, store.saveCount)
+    }
+
+    @Test
+    fun `当前网关没拿到会话时后台回写不改动本地存储`() = runBlocking {
+        val session = Jm3Session(
+            user = testUser(),
+            cookies = listOf(CookieSnapshot("AVS", "stale", "18comic.vip", "/")),
+        )
+        val store = FakeSessionStore(stored = session)
+        var current = fakeGateway()
+        val account = account(store = store, gateway = { current })
+        account.restore()
+
+        // 切线路换了新网关：它手里的 Cookie 与本地会话无关，不能拿来覆盖
+        current = fakeGateway(onCurrentCookies = { listOf(CookieSnapshot("AVS", "other", "18comic.vip", "/")) })
+        account.persistSession()
+
+        assertEquals(session, store.stored)
+        assertEquals(0, store.saveCount)
+    }
+
+    @Test
+    fun `库内 Cookie 与本地一致时不重复写盘`() = runBlocking {
+        val session = Jm3Session(
+            user = testUser(),
+            cookies = listOf(CookieSnapshot("AVS", "token", "18comic.vip", "/")),
+        )
+        val store = FakeSessionStore(stored = session)
+        val gateway = fakeGateway(onCurrentCookies = { session.cookies })
+        val account = account(store = store, gateway = { gateway })
+        account.restore()
+
+        account.persistSession()
+
+        assertEquals(0, store.saveCount)
+    }
+
+    @Test
+    fun `未登录时后台回写不写盘`() = runBlocking {
+        val store = FakeSessionStore(stored = null)
+        val gateway = fakeGateway(onCurrentCookies = { listOf(CookieSnapshot("AVS", "token", "18comic.vip", "/")) })
+        val account = account(store = store, gateway = { gateway })
+
+        account.persistSession()
+
+        assertEquals(0, store.saveCount)
+        assertNull(store.stored)
     }
 }

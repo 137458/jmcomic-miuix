@@ -2,6 +2,8 @@ package com.jm3.app.miuix.data
 
 import com.jm3.core.CredentialPriming
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.SessionCookieSource
+import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.Jm3User
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +75,32 @@ class AccountManager(
     suspend fun awaitRestored() {
         _restored.first { it }
     }
+
+    /**
+     * 把网关当前持有的会话 Cookie 回写本地存储。
+     *
+     * 库在请求内自动重登后会刷新自己的 cookieJar，而本地存的是上一份快照；不回写的话下次冷启动
+     * 注入的还是旧 Cookie，白跑一次登录。应用退到后台时调用，读 Cookie 与落盘都在 IO 上。
+     */
+    suspend fun persistSession() {
+        val user = _user.value ?: return
+        val gateway = gatewayProvider()
+        // 当前网关没拿到会话：它手里的 Cookie 与本地会话无关（未登录，或切线路后还没注入）
+        if (injectedGateway !== gateway) return
+        val source = gateway as? SessionCookieSource ?: return
+        withContext(Dispatchers.IO) {
+            val cookies = runCatching { source.currentCookies() }.getOrNull().orEmpty()
+            if (cookies.isEmpty()) return@withContext
+            val stored = runCatching { store.load() }.getOrNull()
+            // 没变就别写：DataStore 每次落盘都要串行写文件，退到后台不该无谓写
+            if (stored != null && stored.user == user && sameCookies(stored.cookies, cookies)) return@withContext
+            runCatching { store.save(Jm3Session(user = user, cookies = cookies)) }
+        }
+    }
+
+    /** Cookie 的先后顺序取决于客户端内部存储，比较时忽略顺序。 */
+    private fun sameCookies(left: List<CookieSnapshot>, right: List<CookieSnapshot>): Boolean =
+        left.size == right.size && left.toSet() == right.toSet()
 
     /** 登录成功返回 null、持久化会话与凭据；失败返回错误消息。 */
     suspend fun login(username: String, password: String): String? =

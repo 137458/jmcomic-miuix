@@ -247,7 +247,7 @@ interface Jm3Gateway {
 class Jm3GatewayImpl internal constructor(
     private val clientProvider: () -> JmApiClient,
     private val domainControlsProvider: () -> DomainControls,
-) : Jm3Gateway, CredentialPriming {
+) : Jm3Gateway, CredentialPriming, SessionCookieSource {
 
     private val client: JmApiClient by lazy(clientProvider)
 
@@ -400,24 +400,30 @@ class Jm3GatewayImpl internal constructor(
 
     override fun login(username: String, password: String): Jm3Session {
         val info = client.login(username, password)
-        var cookies = client.cookies.map { it.toSnapshot() }
-        if (cookies.isEmpty()) {
-            val cm = cookieStoreOf(client)
-            if (cm != null) {
-                cookies = cm.cookies.map {
-                    CookieSnapshot(
-                        name = it.name,
-                        value = it.value,
-                        domain = sanitizeDomain(it.domain.orEmpty()),
-                        path = it.path.orEmpty().ifBlank { "/" },
-                    )
-                }
-            }
+        return Jm3Session(user = info.toUser(), cookies = currentCookies())
+    }
+
+    /**
+     * 客户端此刻持有的会话 Cookie。
+     *
+     * 库在请求内自动重登后会刷新自己的 cookieJar，本地持久化的那份随即成为旧快照，需要按此回写。
+     * 优先读当前请求域的 Cookie，库返回空表时退回整个 CookieStore（与登录时同一套兜底）。
+     */
+    override fun currentCookies(): List<CookieSnapshot> {
+        val direct = client.cookies.map { it.toSnapshot() }
+        val cookies = if (direct.isNotEmpty()) {
+            direct
+        } else {
+            cookieStoreOf(client)?.cookies?.map {
+                CookieSnapshot(
+                    name = it.name,
+                    value = it.value,
+                    domain = sanitizeDomain(it.domain.orEmpty()),
+                    path = it.path.orEmpty().ifBlank { "/" },
+                )
+            }.orEmpty()
         }
-        return Jm3Session(
-            user = info.toUser(),
-            cookies = cookies.map { it.copy(domain = sanitizeDomain(it.domain)) },
-        )
+        return cookies.map { it.copy(domain = sanitizeDomain(it.domain)) }
     }
 
     override fun logout() = client.logout()

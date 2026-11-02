@@ -56,6 +56,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * 退到后台时把网关里最新的会话 Cookie 回写本地。
+     *
+     * 库在请求内自动重登后会刷新自己的 cookieJar，本地存的仍是登录那一刻的快照：不回写的话
+     * 下次冷启动注入旧 Cookie，还得靠密码再登一次才恢复。写盘挂在 [Jm3Graph.appScope] 上，
+     * 不随 Activity 停止被取消。
+     */
+    override fun onStop() {
+        super.onStop()
+        Jm3Graph.appScope.launch { Jm3Graph.account.persistSession() }
+    }
+
     /** 阅读器挂载时把音量键交给翻页，其余场景保持系统音量行为。 */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (ReaderVolumeKeys.dispatch(keyCode)) return true
