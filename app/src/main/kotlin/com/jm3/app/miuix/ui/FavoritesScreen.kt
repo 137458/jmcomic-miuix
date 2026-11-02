@@ -125,8 +125,7 @@ fun FavoritesScreen(
             errorSessionExpired = false
             page = null
             val result = withContext(Dispatchers.IO) {
-                // 会话被服务端判失效时先静默重登再重放，别把一次过期直接显示成「登录已失效」
-                runCatching { Jm3Graph.account.withSessionRenewal { Jm3Graph.gateway.favorites(targetFolderId, 1) } }
+                runCatching { Jm3Graph.gateway.favorites(targetFolderId, 1) }
             }
             result
                 .onSuccess {
@@ -149,7 +148,7 @@ fun FavoritesScreen(
         scope.launch {
             val targetFolderId = folderId
             val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.account.withSessionRenewal { Jm3Graph.gateway.favorites(targetFolderId, 1) } }
+                runCatching { Jm3Graph.gateway.favorites(targetFolderId, 1) }
             }
             refreshing = false
             result
@@ -242,7 +241,7 @@ fun FavoritesScreen(
             tagsError = null
             tags = null
             val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.account.withSessionRenewal { Jm3Graph.gateway.tagsFavorite() } }
+                runCatching { Jm3Graph.gateway.tagsFavorite() }
             }
             result
                 .onSuccess { if (user?.uid == uid) tags = it }
@@ -330,7 +329,7 @@ fun FavoritesScreen(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    Jm3Graph.account.withSessionRenewal { Jm3Graph.gateway.favorites(targetFolderId, current.currentPage + 1) }
+                    Jm3Graph.gateway.favorites(targetFolderId, current.currentPage + 1)
                 }
             }
             val next = result.getOrNull()

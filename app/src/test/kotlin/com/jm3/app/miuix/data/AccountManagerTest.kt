@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.data
 
+import com.jm3.core.CredentialPriming
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
@@ -12,10 +13,8 @@ import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class AccountManagerTest {
 
@@ -37,15 +36,20 @@ class AccountManagerTest {
 
     private fun fakeGateway(
         onLogin: ((String, String) -> Jm3Session)? = null,
+        onPrimeCredentials: (String, String) -> Unit = { _, _ -> },
         onRestoreSession: (Jm3Session) -> Unit = {},
     ): Jm3Gateway {
         return Proxy.newProxyInstance(
             Jm3Gateway::class.java.classLoader,
-            arrayOf(Jm3Gateway::class.java),
+            arrayOf(Jm3Gateway::class.java, CredentialPriming::class.java),
         ) { _, method, args ->
             when (method.name) {
                 "restoreSession" -> {
                     onRestoreSession(args[0] as Jm3Session)
+                    null
+                }
+                "primeCredentials" -> {
+                    onPrimeCredentials(args[0] as String, args[1] as String)
                     null
                 }
                 "logout" -> null
@@ -325,55 +329,52 @@ class AccountManagerTest {
     }
 
     @Test
-    fun `鉴权请求被判会话失效时静默重登并重放一次`() = runBlocking {
-        val store = FakeSessionStore(stored = Jm3Session(user = testUser(), cookies = emptyList()))
-        val fresh = Jm3Session(user = testUser(), cookies = emptyList())
-        val credentials = FakeCredentialStorage(SavedCredentials("isczjk", "secret"))
-        val gateway = fakeGateway(onLogin = { _, _ -> fresh })
-        val account = AccountManager({ gateway }, store, credentials)
+    fun `恢复本地会话后把保存的凭据交给网关，让库内自动重登生效`() = runBlocking {
+        val session = Jm3Session(
+            user = testUser(),
+            cookies = listOf(CookieSnapshot("AVS", "token", "18comic.vip", "/")),
+        )
+        val primed = mutableListOf<Pair<String, String>>()
+        val gateway = fakeGateway(onPrimeCredentials = { username, password -> primed += username to password })
+
+        account(
+            store = FakeSessionStore(stored = session),
+            credentials = FakeCredentialStorage(SavedCredentials("test_user", "secret")),
+            gateway = { gateway },
+        ).restore()
+
+        assertEquals(listOf("test_user" to "secret"), primed)
+    }
+
+    @Test
+    fun `线路切换补注入会话时把凭据交给新网关`() = runBlocking {
+        val session = Jm3Session(user = testUser(), cookies = emptyList())
+        val store = FakeSessionStore(stored = session)
+        val primed = mutableListOf<Pair<String, String>>()
+        var gateway = fakeGateway()
+        val replacement = fakeGateway(onPrimeCredentials = { username, password -> primed += username to password })
+        val account = account(
+            store = store,
+            credentials = FakeCredentialStorage(SavedCredentials("test_user", "secret")),
+            gateway = { gateway },
+        )
         account.restore()
 
-        var calls = 0
-        val value = account.withSessionRenewal {
-            calls++
-            if (calls == 1) throw RuntimeException("""{"code":401,"errorMsg":"請先登入會員"}""")
-            "已收藏"
-        }
+        gateway = replacement
+        account.markSessionExpired()
 
-        assertEquals("已收藏", value)
-        assertEquals(2, calls)
-        assertEquals(fresh.user, account.user.value)
+        assertEquals(listOf("test_user" to "secret"), primed)
         assertEquals(0, store.clearCount)
     }
 
     @Test
-    fun `静默重登也失败时把原始失效错误交给页面`() = runBlocking {
-        val store = FakeSessionStore(stored = Jm3Session(user = testUser(), cookies = emptyList()))
-        val credentials = FakeCredentialStorage(SavedCredentials("isczjk", "expired"))
-        val gateway = fakeGateway(onLogin = { _, _ -> throw RuntimeException("帳號或密碼錯誤") })
-        val account = AccountManager({ gateway }, store, credentials)
-        account.restore()
+    fun `登录成功后把会话写进本地存储`() = runBlocking {
+        val store = FakeSessionStore()
+        val gateway = fakeGateway(onLogin = { username, _ -> Jm3Session(user = testUser().copy(username = username), cookies = emptyList()) })
+        val account = account(store = store, gateway = { gateway })
 
-        val error = assertFailsWith<IllegalStateException> {
-            account.withSessionRenewal<Unit> { throw IllegalStateException("請先登入會員") }
-        }
-        assertTrue(error.message.orEmpty().contains("請先登入會員"))
-    }
+        account.login("test_user", "secret")
 
-    @Test
-    fun `非会话失效的异常不触发静默重登`() = runBlocking {
-        val store = FakeSessionStore(stored = Jm3Session(user = testUser(), cookies = emptyList()))
-        var logins = 0
-        val gateway = fakeGateway(onLogin = { _, _ ->
-            logins++
-            Jm3Session(user = testUser(), cookies = emptyList())
-        })
-        val account = AccountManager({ gateway }, store, FakeCredentialStorage(SavedCredentials("a", "b")))
-        account.restore()
-
-        assertFailsWith<IllegalStateException> {
-            account.withSessionRenewal<Unit> { throw IllegalStateException("网络不可用") }
-        }
-        assertEquals(0, logins)
+        assertEquals("test_user", store.stored?.user?.username)
     }
 }

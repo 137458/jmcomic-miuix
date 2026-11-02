@@ -247,7 +247,7 @@ interface Jm3Gateway {
 class Jm3GatewayImpl internal constructor(
     private val clientProvider: () -> JmApiClient,
     private val domainControlsProvider: () -> DomainControls,
-) : Jm3Gateway {
+) : Jm3Gateway, CredentialPriming {
 
     private val client: JmApiClient by lazy(clientProvider)
 
@@ -285,6 +285,43 @@ class Jm3GatewayImpl internal constructor(
                 val cm = cookieManagerField?.get(client) as? java.net.CookieManager
                 cm?.cookieStore
             }.getOrNull()
+
+        /**
+         * 库把登录身份与密码都收在 AbstractJmClient 的私有字段里，恢复会话时只能反射写入。
+         * 成员名按 v1.1.12 字节码固定；取不到就当该能力不可用（null 而非抛异常）。
+         */
+        private val cacheUsernameMethod: java.lang.reflect.Method? by lazy {
+            runCatching {
+                AbstractJmClient::class.java.getDeclaredMethod("cacheUsername", String::class.java)
+                    .apply { isAccessible = true }
+            }.getOrNull()
+        }
+
+        private val autoLoginRefreshAllowedField: java.lang.reflect.Field? by lazy {
+            runCatching {
+                AbstractJmClient::class.java.getDeclaredField("autoLoginRefreshAllowed").apply { isAccessible = true }
+            }.getOrNull()
+        }
+
+        private val loginHostField: java.lang.reflect.Field? by lazy {
+            runCatching {
+                AbstractJmClient::class.java.getDeclaredField("loginHost").apply { isAccessible = true }
+            }.getOrNull()
+        }
+
+        /** 库的 protected 方法：用本客户端的内存密钥把明文密码加密后写进 encryptedPassword。 */
+        private val encryptPasswordInMemoryMethod: java.lang.reflect.Method? by lazy {
+            runCatching {
+                AbstractJmClient::class.java.getDeclaredMethod("encryptPasswordInMemory", String::class.java)
+                    .apply { isAccessible = true }
+            }.getOrNull()
+        }
+
+        private val encryptedPasswordField: java.lang.reflect.Field? by lazy {
+            runCatching {
+                AbstractJmClient::class.java.getDeclaredField("encryptedPassword").apply { isAccessible = true }
+            }.getOrNull()
+        }
     }
 
     override fun search(
@@ -402,27 +439,32 @@ class Jm3GatewayImpl internal constructor(
         }
 
         // 同步 AbstractJmClient 内部登录状态，避免依赖用户名或校验登录状态的接口因未登录态拦截
-        val clientInstance = client as? AbstractJmClient
-        if (clientInstance != null) {
-            runCatching {
-                val cacheMethod = AbstractJmClient::class.java.getDeclaredMethod("cacheUsername", String::class.java).apply {
-                    isAccessible = true
-                }
-                cacheMethod.invoke(clientInstance, session.user.username)
-            }
-            runCatching {
-                val autoLoginField = AbstractJmClient::class.java.getDeclaredField("autoLoginRefreshAllowed").apply {
-                    isAccessible = true
-                }
-                autoLoginField.set(clientInstance, true)
-            }
-            runCatching {
-                val hostField = AbstractJmClient::class.java.getDeclaredField("loginHost").apply {
-                    isAccessible = true
-                }
-                val bestHost = targetDomains.map { sanitizeDomain(it) }.firstOrNull { it.isNotBlank() } ?: "18comic.vip"
-                hostField.set(clientInstance, bestHost)
-            }
+        val clientInstance = client as? AbstractJmClient ?: return
+        applyLoginState(clientInstance, session.user.username)
+        runCatching {
+            val bestHost = targetDomains.map { sanitizeDomain(it) }.firstOrNull { it.isNotBlank() } ?: "18comic.vip"
+            loginHostField?.set(clientInstance, bestHost)
+        }
+    }
+
+    override fun primeCredentials(username: String, password: String) {
+        val clientInstance = client as? AbstractJmClient ?: return
+        applyLoginState(clientInstance, username, password)
+    }
+
+    /**
+     * 把登录态写进库客户端内存：用户名、允许自动重登，以及拿得到时加密后的密码。
+     *
+     * 密码缺省表示只恢复身份（会话 Cookie 仍在），此时库不会自动重登；
+     * 拿到本地凭据后再由 [primeCredentials] 补上，库内「失效 → 重登 → 重放」才会生效。
+     */
+    private fun applyLoginState(client: AbstractJmClient, username: String, password: String? = null) {
+        runCatching { cacheUsernameMethod?.invoke(client, username) }
+        runCatching { autoLoginRefreshAllowedField?.set(client, true) }
+        if (password == null) return
+        runCatching {
+            val encrypted = encryptPasswordInMemoryMethod?.invoke(client, password) as? ByteArray ?: return@runCatching
+            encryptedPasswordField?.set(client, encrypted)
         }
     }
 

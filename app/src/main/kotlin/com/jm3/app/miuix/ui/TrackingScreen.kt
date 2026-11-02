@@ -95,8 +95,7 @@ fun TrackingScreen(
             // 启动恢复会先置登录态再注入 Cookie，注入完成前的请求会被服务端当成未登录
             Jm3Graph.account.awaitRestored()
             val result = withContext(Dispatchers.IO) {
-                // 会话被服务端判失效时先静默重登再重放，别把一次过期直接显示成「登录已失效」
-                runCatching { Jm3Graph.account.withSessionRenewal { Jm3Graph.gateway.trackingList(1) } }
+                runCatching { Jm3Graph.gateway.trackingList(1) }
             }
             refreshing = false
             result
@@ -122,7 +121,7 @@ fun TrackingScreen(
         val page = nextPage
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.account.withSessionRenewal { Jm3Graph.gateway.trackingList(page) } }
+                runCatching { Jm3Graph.gateway.trackingList(page) }
             }
             loadingMore = false
             result

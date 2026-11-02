@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.data
 
+import com.jm3.core.CredentialPriming
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.Jm3User
@@ -7,7 +8,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import com.jm3.core.isSessionExpired
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,10 +36,6 @@ class AccountManager(
     /** 已把会话 Cookie 注入进去的网关实例；线路切换换了网关后自然失效。 */
     @Volatile
     private var injectedGateway: Jm3Gateway? = null
-
-    /** 静默重登成功次数：并发请求同时撞上失效时，后来者据此判断是否已经有人换过会话。 */
-    @Volatile
-    private var renewedGeneration = 0
 
     private val renewLock = Mutex()
 
@@ -125,24 +121,6 @@ class AccountManager(
     }
 
     /**
-     * 鉴权请求的统一入口：服务端判定会话失效时先静默重登一次，成功后把请求重放一遍。
-     *
-     * 这样冷启动后 Cookie 已作废时，页面拿到的还是一次正常数据，而不是一条「登录已失效」。
-     * 只有重登也不成功，原始失效错误才抛给页面按没登录处理。
-     */
-    suspend fun <T> withSessionRenewal(block: suspend () -> T): T {
-        val generation = renewedGeneration
-        return try {
-            block()
-        } catch (e: Exception) {
-            if (!isSessionExpired(e.message)) throw e
-            // 并发请求或启动恢复已经换过会话：直接重放，不再重复登录
-            if (renewedGeneration == generation && !renewSession()) throw e
-            block()
-        }
-    }
-
-    /**
      * 用本地保存的凭据静默重登；成功即刷新会话与用户态。
      *
      * 多个请求同时撞上失效时只登一次：锁内再确认一次凭据与网关。
@@ -153,26 +131,36 @@ class AccountManager(
         val result = withContext(Dispatchers.IO) {
             runCatching { gateway.login(saved.username, saved.password) }
         }
-        result.onSuccess { session ->
-            adopt(session, gateway)
-            runCatching { store.save(session) }
-        }
+        result.onSuccess { session -> adopt(session, gateway) }
         result.isSuccess
     }
 
-    /** 登录态落地：会话换新、用户态刷新、当前网关视为已注入。 */
-    private fun adopt(session: Jm3Session, gateway: Jm3Gateway) {
+    /** 登录态落地：会话落盘、用户态刷新、当前网关视为已注入。 */
+    private suspend fun adopt(session: Jm3Session, gateway: Jm3Gateway) {
         _user.value = session.user
         injectedGateway = gateway
         _restored.value = true
-        renewedGeneration++
+        // 会话落盘后冷启动优先用 Cookie 恢复，不必每次都拿密码去登录一次
+        runCatching { store.save(session) }
     }
 
+    /**
+     * 把会话注入网关，并把本地凭据一并交给它，让库内自动重登可用。
+     *
+     * 库只在内存里还留着加密密码时才会在会话失效后自行重登并重放请求（JmApiClient.shouldRefreshLogin），
+     * 而那段内存每次冷启动必为空；这里补一次，一次过期就不会直接落到页面上。
+     */
     private suspend fun inject(session: Jm3Session) {
         val gateway = gatewayProvider()
         withContext(Dispatchers.IO) {
             runCatching { gateway.restoreSession(session) }
-                .onSuccess { injectedGateway = gateway }
+                .onSuccess {
+                    injectedGateway = gateway
+                    val priming = gateway as? CredentialPriming ?: return@onSuccess
+                    // 凭据解密要走 Keystore，放到 IO 上做，别卡住发起恢复的界面线程
+                    val saved = runCatching { credentials.load() }.getOrNull() ?: return@onSuccess
+                    runCatching { priming.primeCredentials(saved.username, saved.password) }
+                }
         }
     }
 }
