@@ -2,6 +2,7 @@ package com.jm3.app.miuix.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.jm3.core.SessionCodec
@@ -16,6 +17,8 @@ class SessionStore(private val context: Context) : SessionStorage {
 
     private val key = stringPreferencesKey("session")
 
+    private val renewFailureKey = intPreferencesKey("renew_failure_count")
+
     override suspend fun load(): Jm3Session? =
         context.sessionDataStore.data.first()[key]?.let { SessionCodec.decode(it) }
 
@@ -25,5 +28,12 @@ class SessionStore(private val context: Context) : SessionStorage {
 
     override suspend fun clear() {
         context.sessionDataStore.edit { it.remove(key) }
+    }
+
+    override suspend fun renewFailureCount(): Int =
+        context.sessionDataStore.data.first()[renewFailureKey] ?: 0
+
+    override suspend fun setRenewFailureCount(count: Int) {
+        context.sessionDataStore.edit { it[renewFailureKey] = count }
     }
 }

@@ -17,6 +17,14 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
+ * 静默重登连续失败到这个次数，就认定保存的凭据已经彻底失效。
+ *
+ * 取 3 而不是 1：离线、DNS 抖动这类短时故障也会让一次重登失败，记一次就清凭据等于把还能用的密码丢掉。
+ * 而一次失败之后当前会话已被清掉，要等下次冷启动才会再试，攒到 3 次已经是好几轮启动之后的事。
+ */
+private const val RENEW_FAILURE_LIMIT = 3
+
+/**
  * 账号状态：登录/登出/启动恢复，向 UI 暴露只读 StateFlow。
  *
  * [gatewayProvider] 必须在同一条线路下返回同一个网关实例：这里靠实例身份判断当前网关是否已拿到会话 Cookie，
@@ -191,7 +199,36 @@ class AccountManager(
             renewedGateway = gateway
             withContext(Dispatchers.IO) {
                 runCatchingSuspending { gateway.login(saved.username, saved.password) }
-            }.onSuccess { session -> adopt(session, gateway) }.isSuccess
+            }
+                .onSuccess { session -> adopt(session, gateway) }
+                .onFailure { recordRenewFailure() }
+                .isSuccess
+        }
+    }
+
+    /**
+     * 记一次静默重登失败，连续失败到 [RENEW_FAILURE_LIMIT] 次就把保存的凭据清掉。
+     *
+     * 只清凭据：会话在服务端已经作废，留着这份密码只会在每次冷启动白跑一次注定失败的登录，
+     * 服务端那边的失败次数还会一直涨。计数必须落盘，因为一次失败之后当前会话就被清掉，
+     * 要等下次冷启动才会再试一次。
+     */
+    private suspend fun recordRenewFailure() {
+        withContext(Dispatchers.IO) {
+            val failures = runCatchingSuspending { store.renewFailureCount() }.getOrDefault(0) + 1
+            if (failures >= RENEW_FAILURE_LIMIT) {
+                runCatchingSuspending { credentials.clear() }
+                runCatchingSuspending { store.setRenewFailureCount(0) }
+            } else {
+                runCatchingSuspending { store.setRenewFailureCount(failures) }
+            }
+        }
+    }
+
+    /** 重登成功说明凭据还能用，把连续失败计数清掉。 */
+    private suspend fun resetRenewFailures() {
+        runCatchingSuspending {
+            if (store.renewFailureCount() != 0) store.setRenewFailureCount(0)
         }
     }
 
@@ -203,6 +240,7 @@ class AccountManager(
         sessionEpoch++
         // 会话落盘后冷启动优先用 Cookie 恢复，不必每次都拿密码去登录一次
         storeLock.withLock { runCatchingSuspending { store.save(session) } }
+        resetRenewFailures()
     }
 
     /**

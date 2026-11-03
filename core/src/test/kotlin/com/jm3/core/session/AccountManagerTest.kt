@@ -104,6 +104,9 @@ class AccountManagerTest {
     private class FakeSessionStore(var stored: Jm3Session? = null) : SessionStorage {
         var clearCount = 0
         var saveCount = 0
+
+        /** 静默重登连续失败次数：按落盘语义跨 AccountManager 实例共享。 */
+        var renewFailures = 0
         override suspend fun load(): Jm3Session? = stored
         override suspend fun save(session: Jm3Session) {
             stored = session
@@ -112,6 +115,10 @@ class AccountManagerTest {
         override suspend fun clear() {
             stored = null
             clearCount++
+        }
+        override suspend fun renewFailureCount(): Int = renewFailures
+        override suspend fun setRenewFailureCount(count: Int) {
+            renewFailures = count
         }
     }
 
@@ -251,6 +258,8 @@ class AccountManagerTest {
             override suspend fun load(): Jm3Session? = throw IllegalStateException("会话文件损坏")
             override suspend fun save(session: Jm3Session) = Unit
             override suspend fun clear() = Unit
+            override suspend fun renewFailureCount(): Int = 0
+            override suspend fun setRenewFailureCount(count: Int) = Unit
         }
         val account = AccountManager({ fakeGateway() }, store, FakeCredentialStorage())
 
@@ -350,6 +359,68 @@ class AccountManagerTest {
         assertNull(account.user.value)
         assertEquals(1, store.clearCount)
         assertNull(store.stored)
+    }
+
+    @Test
+    fun `冷启动静默重登连续失败达到阈值后清掉保存的凭据`() = runBlocking {
+        val store = FakeSessionStore(stored = null)
+        val credentials = FakeCredentialStorage(SavedCredentials("isczjk", "expired"))
+        // 每次冷启动都是新的 AccountManager 与新网关实例，失败次数只能靠落盘累计
+        val failing = { fakeGateway(onLogin = { _, _ -> throw RuntimeException("帳號或密碼錯誤") }) }
+
+        AccountManager(failing, store, credentials).restore()
+        assertEquals(1, store.renewFailures)
+        AccountManager(failing, store, credentials).restore()
+        assertEquals(2, store.renewFailures)
+        AccountManager(failing, store, credentials).restore()
+
+        // 第三次仍然失败：密码已经改了，再留着只会让每次冷启动都白跑一次登录
+        assertNull(credentials.stored)
+        assertEquals(1, credentials.clearCount)
+        assertEquals(0, store.renewFailures)
+    }
+
+    @Test
+    fun `静默重登连续失败未达阈值时保留凭据`() = runBlocking {
+        val store = FakeSessionStore(stored = null)
+        val credentials = FakeCredentialStorage(SavedCredentials("isczjk", "secret"))
+        val failing = { fakeGateway(onLogin = { _, _ -> throw RuntimeException("網路逾時") }) }
+
+        AccountManager(failing, store, credentials).restore()
+        AccountManager(failing, store, credentials).restore()
+
+        // 两次失败可能只是网络问题，凭据还得留着给下次冷启动用
+        assertEquals(2, store.renewFailures)
+        assertEquals(SavedCredentials("isczjk", "secret"), credentials.stored)
+        assertEquals(0, credentials.clearCount)
+    }
+
+    @Test
+    fun `静默重登中途成功一次就把失败计数归零`() = runBlocking {
+        val store = FakeSessionStore(stored = null)
+        val credentials = FakeCredentialStorage(SavedCredentials("isczjk", "secret"))
+        val failing = { fakeGateway(onLogin = { _, _ -> throw RuntimeException("網路逾時") }) }
+        AccountManager(failing, store, credentials).restore()
+        assertEquals(1, store.renewFailures)
+
+        val session = Jm3Session(
+            user = testUser(),
+            cookies = listOf(CookieSnapshot("AVS", "token", "18comic.vip", "/")),
+        )
+        val recovered = AccountManager({ fakeGateway(onLogin = { _, _ -> session }) }, store, credentials)
+        recovered.restore()
+
+        assertEquals(session.user, recovered.user.value)
+        assertEquals(0, store.renewFailures)
+
+        // 重登成功后会话会落盘；这里模拟它之后又被服务端判失效清掉，冷启动只剩凭据可试
+        store.stored = null
+
+        // 归零之后重新攒：再失败两次仍不到阈值，凭据还得留着
+        AccountManager(failing, store, credentials).restore()
+        AccountManager(failing, store, credentials).restore()
+        assertEquals(2, store.renewFailures)
+        assertEquals(SavedCredentials("isczjk", "secret"), credentials.stored)
     }
 
     @Test
