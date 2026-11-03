@@ -26,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -196,6 +197,9 @@ fun MainScreen(
                         }
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                             // 内容层同时是玻璃采样源；列表经 contentPadding 让出底栏，其余内容可滚到胶囊下方
+                            // 各页的 rememberSaveable 状态（例如列表滚动位置）会随组合销毁在切页时丢失，
+                            // 先按 tab 交给 state holder 保管，切回来时再还原。
+                            val saveableStateHolder = rememberSaveableStateHolder()
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -211,39 +215,42 @@ fun MainScreen(
                                     label = "MainTabTransition",
                                     modifier = Modifier.fillMaxSize(),
                                 ) { currentTab ->
-                                    when (currentTab) {
-                                        0 -> HomeScreen(
-                                            gateway = gateway,
-                                            onOpenAlbum = onOpenAlbum,
-                                            onOpenWeek = onOpenWeek,
-                                        )
-                                        1 -> BrowseScreen(
-                                            mode = BrowseMode.CATEGORY,
-                                            gateway = gateway,
-                                            onOpenAlbum = onOpenAlbum,
-                                        )
-                                        2 -> BrowseScreen(
-                                            mode = BrowseMode.RANK,
-                                            gateway = gateway,
-                                            onOpenAlbum = onOpenAlbum,
-                                        )
-                                        else -> MineScreen(
-                                            account = account,
-                                            snackbarHostState = snackbarHostState,
-                                            onOpenLogin = onOpenLogin,
-                                            onOpenFavorites = onOpenFavorites,
-                                            onOpenHistory = onOpenHistory,
-                                            onOpenShelf = onOpenShelf,
-                                            onOpenSettings = onOpenSettings,
-                                            onOpenNotifications = onOpenNotifications,
-                                            onOpenTracking = onOpenTracking,
-                                            onOpenProfile = onOpenProfile,
-                                            onOpenTasks = onOpenTasks,
-                                            onOpenWatchHistory = onOpenWatchHistory,
-                                            onOpenForum = onOpenForum,
-                                            onOpenNovel = onOpenNovel,
-                                            onOpenLibrary = onOpenLibrary,
-                                        )
+                                    // 键直接取 targetState 的 tab 索引，两处同源；转场期间新旧两页并存时键也唯一
+                                    saveableStateHolder.SaveableStateProvider(currentTab) {
+                                        when (currentTab) {
+                                            0 -> HomeScreen(
+                                                gateway = gateway,
+                                                onOpenAlbum = onOpenAlbum,
+                                                onOpenWeek = onOpenWeek,
+                                            )
+                                            1 -> BrowseScreen(
+                                                mode = BrowseMode.CATEGORY,
+                                                gateway = gateway,
+                                                onOpenAlbum = onOpenAlbum,
+                                            )
+                                            2 -> BrowseScreen(
+                                                mode = BrowseMode.RANK,
+                                                gateway = gateway,
+                                                onOpenAlbum = onOpenAlbum,
+                                            )
+                                            else -> MineScreen(
+                                                account = account,
+                                                snackbarHostState = snackbarHostState,
+                                                onOpenLogin = onOpenLogin,
+                                                onOpenFavorites = onOpenFavorites,
+                                                onOpenHistory = onOpenHistory,
+                                                onOpenShelf = onOpenShelf,
+                                                onOpenSettings = onOpenSettings,
+                                                onOpenNotifications = onOpenNotifications,
+                                                onOpenTracking = onOpenTracking,
+                                                onOpenProfile = onOpenProfile,
+                                                onOpenTasks = onOpenTasks,
+                                                onOpenWatchHistory = onOpenWatchHistory,
+                                                onOpenForum = onOpenForum,
+                                                onOpenNovel = onOpenNovel,
+                                                onOpenLibrary = onOpenLibrary,
+                                            )
+                                        }
                                     }
                                 }
                             }
