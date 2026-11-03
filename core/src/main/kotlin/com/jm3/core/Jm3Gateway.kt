@@ -112,6 +112,20 @@ interface Jm3Gateway {
     /** 恢复已持久化的会话：把 Cookie 注回库内 CookieJar。阻塞调用。 */
     fun restoreSession(session: Jm3Session)
 
+    /**
+     * 把本地凭据交给网关，让库的「会话失效 → 重登 → 重放」链路生效。阻塞调用。
+     *
+     * 库把登录身份与密码收在客户端实例内存里（JmApiClient.shouldRefreshLogin），那段内存每次冷启动必为空。
+     * 实现方只允许把它留在内存，不得持久化明文。
+     */
+    fun primeCredentials(credentials: SavedCredentials)
+
+    /** 抹掉网关内存里的登录凭据（登出时调用）：密码不再可解密，库也就不会自行重登。 */
+    fun forgetCredentials()
+
+    /** 网关此刻持有的会话 Cookie；取不到时返回空表，不抛异常。 */
+    fun currentCookies(): List<CookieSnapshot>
+
     /** 收藏列表（folderId=0 全部收藏）。阻塞调用。 */
     fun favorites(page: Int): FavoritePage
 
@@ -247,7 +261,7 @@ interface Jm3Gateway {
 class Jm3GatewayImpl internal constructor(
     private val clientProvider: () -> JmApiClient,
     private val domainControlsProvider: () -> DomainControls,
-) : Jm3Gateway, CredentialPriming, SessionCookieSource {
+) : Jm3Gateway {
 
     private val client: JmApiClient by lazy(clientProvider)
 
@@ -453,9 +467,15 @@ class Jm3GatewayImpl internal constructor(
         }
     }
 
-    override fun primeCredentials(username: String, password: String) {
+    override fun primeCredentials(credentials: SavedCredentials) {
         val clientInstance = client as? AbstractJmClient ?: return
-        applyLoginState(clientInstance, username, password)
+        applyLoginState(clientInstance, credentials.username, credentials.password)
+    }
+
+    override fun forgetCredentials() {
+        val clientInstance = client as? AbstractJmClient ?: return
+        runCatching { autoLoginRefreshAllowedField?.set(clientInstance, false) }
+        runCatching { encryptedPasswordField?.set(clientInstance, null) }
     }
 
     /**
