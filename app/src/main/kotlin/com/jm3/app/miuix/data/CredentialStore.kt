@@ -1,77 +1,28 @@
 package com.jm3.app.miuix.data
 
-import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import com.jm3.core.CredentialCipher
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** 自动登录凭据：只在登录成功后写入，用来在会话作废时静默重登。 */
-@Serializable
-data class SavedCredentials(val username: String, val password: String) {
-    // 凭据可能被顺手打进日志或崩溃报告，密码不能出现在 toString 里
-    override fun toString(): String = "SavedCredentials(username=$username)"
-}
-
-/** 自动登录凭据持久化契约；实现负责加密与存储。 */
-interface CredentialStorage {
-    suspend fun load(): SavedCredentials?
-    suspend fun save(credentials: SavedCredentials)
-    suspend fun clear()
-}
-
-/** 凭据与本地 JSON 互转；decode 对损坏输入返回 null。 */
-object CredentialCodec {
-    private val json = Json { ignoreUnknownKeys = true }
-
-    fun encode(credentials: SavedCredentials): String =
-        json.encodeToString(SavedCredentials.serializer(), credentials)
-
-    fun decode(raw: String): SavedCredentials? =
-        runCatching { json.decodeFromString(SavedCredentials.serializer(), raw) }.getOrNull()
-}
-
 /**
- * 用 Android Keystore 的 AES-GCM 密钥加密保存登录凭据。
+ * 用 Android Keystore 的 AES-GCM 密钥加解密登录凭据。
  *
  * 为什么需要它：jmcomic 客户端把密码用内存里的随机密钥加密后只保留在客户端实例中，
  * 进程一结束就没法自动重登，服务端会话一过期就只能让用户重新输密码。
  * 这里把凭据交给系统 Keystore 保管（密钥不出 TEE/StrongBox），落盘的只有密文，
  * 冷启动解密后再交给客户端登录，等于把「免登录」延长到凭据被用户主动清除为止。
+ *
+ * 落盘位置不在这里：密文经 [com.jm3.core.CredentialBlobStore] 写进 jm3_settings（ENGINEERING.md 一.5）。
  */
-class KeystoreCredentialStore(private val context: Context) : CredentialStorage {
+class KeystoreCredentialCipher : CredentialCipher {
 
-    private val prefs by lazy { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
-
-    override suspend fun load(): SavedCredentials? = withContext(Dispatchers.IO) {
-        val encrypted = prefs.getString(KEY_CREDENTIALS, null) ?: return@withContext null
-        val payload = runCatching { decrypt(encrypted) }.getOrNull()
-        if (payload == null) {
-            // 密钥没了（系统重置、锁屏方式变更、备份还原）：密文永远解不开，留着只会每次启动白算一遍
-            clear()
-            return@withContext null
-        }
-        CredentialCodec.decode(payload)
-    }
-
-    override suspend fun save(credentials: SavedCredentials) = withContext(Dispatchers.IO) {
-        val payload = CredentialCodec.encode(credentials)
-        prefs.edit().putString(KEY_CREDENTIALS, encrypt(payload)).apply()
-    }
-
-    override suspend fun clear() = withContext(Dispatchers.IO) {
-        prefs.edit().remove(KEY_CREDENTIALS).apply()
-    }
-
-    private fun encrypt(plain: String): String {
+    override fun encrypt(plain: String): String {
         val key = synchronized(keyLock) { secretKey() }
         val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, key) }
         val body = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
@@ -83,9 +34,12 @@ class KeystoreCredentialStore(private val context: Context) : CredentialStorage 
         return Base64.encodeToString(combined, Base64.NO_WRAP)
     }
 
-    private fun decrypt(encoded: String): String {
-        val combined = Base64.decode(encoded, Base64.NO_WRAP)
-        val ivSize = combined[0].toInt()
+    override fun decrypt(encrypted: String): String {
+        val combined = Base64.decode(encrypted, Base64.NO_WRAP)
+        require(combined.isNotEmpty()) { "凭据密文为空" }
+        // 长度只记在首字节里：128~255 会被 toInt() 读成负数，必须先按无符号解释
+        val ivSize = combined[0].toInt() and 0xFF
+        require(ivSize in 1 until combined.size) { "凭据密文损坏：IV 长度 $ivSize 超出密文长度 " + combined.size }
         val iv = combined.copyOfRange(1, 1 + ivSize)
         val body = combined.copyOfRange(1 + ivSize, combined.size)
         val cipher = Cipher.getInstance(TRANSFORMATION).apply {
@@ -109,8 +63,6 @@ class KeystoreCredentialStore(private val context: Context) : CredentialStorage 
     }
 
     private companion object {
-        const val PREFS_NAME = "jm3_credentials"
-        const val KEY_CREDENTIALS = "credentials"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val KEY_ALIAS = "jm3_credentials_key"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

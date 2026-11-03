@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.jm3.core.CredentialBlobStore
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.SettingsRepository
@@ -16,7 +17,7 @@ import kotlinx.coroutines.flow.first
 private val Context.settingsDataStore by preferencesDataStore(name = "jm3_settings")
 
 /** 应用设置持久化：主题模式、动态取色 + 自定义 API 线路（换行分隔），与 jm3_session 并列。 */
-class SettingsStore(private val context: Context) : SettingsRepository {
+class SettingsStore(private val context: Context) : SettingsRepository, CredentialBlobStore {
 
     private val themeKey = stringPreferencesKey("theme_mode")
     private val domainsKey = stringPreferencesKey("api_domains")
@@ -32,6 +33,7 @@ class SettingsStore(private val context: Context) : SettingsRepository {
     private val autoCheckUpdateKey = booleanPreferencesKey("auto_check_update")
     private val ignoredUpdateVersionKey = stringPreferencesKey("ignored_update_version")
     private val promptedUpdateVersionKey = stringPreferencesKey("prompted_update_version")
+    private val credentialsBlobKey = stringPreferencesKey("credentials_blob")
 
     override suspend fun themeMode(): ThemeMode =
         context.settingsDataStore.data.first()[themeKey]
@@ -188,6 +190,15 @@ class SettingsStore(private val context: Context) : SettingsRepository {
         val normalized = version?.trim()?.takeIf { it.isNotEmpty() }
         context.settingsDataStore.edit { prefs ->
             if (normalized == null) prefs.remove(promptedUpdateVersionKey) else prefs[promptedUpdateVersionKey] = normalized
+        }
+    }
+
+    /** 凭据密文与设置同库：一次 write 就是一次 DataStore 事务，不会像 apply() 那样丢写。 */
+    override suspend fun read(): String? = context.settingsDataStore.data.first()[credentialsBlobKey]
+
+    override suspend fun write(blob: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (blob == null) prefs.remove(credentialsBlobKey) else prefs[credentialsBlobKey] = blob
         }
     }
 

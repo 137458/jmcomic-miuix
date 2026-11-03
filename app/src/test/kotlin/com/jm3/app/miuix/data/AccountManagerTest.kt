@@ -1,8 +1,8 @@
 package com.jm3.app.miuix.data
 
-import com.jm3.core.CredentialPriming
+import com.jm3.core.CredentialStorage
 import com.jm3.core.Jm3Gateway
-import com.jm3.core.SessionCookieSource
+import com.jm3.core.SavedCredentials
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.Jm3User
@@ -37,13 +37,13 @@ class AccountManagerTest {
 
     private fun fakeGateway(
         onLogin: ((String, String) -> Jm3Session)? = null,
-        onPrimeCredentials: (String, String) -> Unit = { _, _ -> },
+        onPrimeCredentials: (SavedCredentials) -> Unit = {},
         onCurrentCookies: () -> List<CookieSnapshot> = { emptyList() },
         onRestoreSession: (Jm3Session) -> Unit = {},
     ): Jm3Gateway {
         return Proxy.newProxyInstance(
             Jm3Gateway::class.java.classLoader,
-            arrayOf(Jm3Gateway::class.java, CredentialPriming::class.java, SessionCookieSource::class.java),
+            arrayOf(Jm3Gateway::class.java),
         ) { _, method, args ->
             when (method.name) {
                 "restoreSession" -> {
@@ -52,9 +52,10 @@ class AccountManagerTest {
                 }
                 "currentCookies" -> onCurrentCookies()
                 "primeCredentials" -> {
-                    onPrimeCredentials(args[0] as String, args[1] as String)
+                    onPrimeCredentials(args[0] as SavedCredentials)
                     null
                 }
+                "forgetCredentials" -> null
                 "logout" -> null
                 "login" -> onLogin?.invoke(args[0] as String, args[1] as String)
                     ?: throw UnsupportedOperationException(method.name)
@@ -342,7 +343,7 @@ class AccountManagerTest {
             cookies = listOf(CookieSnapshot("AVS", "token", "18comic.vip", "/")),
         )
         val primed = mutableListOf<Pair<String, String>>()
-        val gateway = fakeGateway(onPrimeCredentials = { username, password -> primed += username to password })
+        val gateway = fakeGateway(onPrimeCredentials = { saved -> primed += saved.username to saved.password })
 
         account(
             store = FakeSessionStore(stored = session),
@@ -359,7 +360,7 @@ class AccountManagerTest {
         val store = FakeSessionStore(stored = session)
         val primed = mutableListOf<Pair<String, String>>()
         var gateway = fakeGateway()
-        val replacement = fakeGateway(onPrimeCredentials = { username, password -> primed += username to password })
+        val replacement = fakeGateway(onPrimeCredentials = { saved -> primed += saved.username to saved.password })
         val account = account(
             store = store,
             credentials = FakeCredentialStorage(SavedCredentials("test_user", "secret")),
@@ -449,5 +450,83 @@ class AccountManagerTest {
 
         assertEquals(0, store.saveCount)
         assertNull(store.stored)
+    }
+    @Test
+    fun `同一网关重复恢复只注入一次，不重复搬凭据`() = runBlocking {
+        val session = Jm3Session(user = testUser(), cookies = emptyList())
+        var injected = 0
+        val primed = mutableListOf<String>()
+        val gateway = fakeGateway(
+            onRestoreSession = { injected++ },
+            onPrimeCredentials = { primed += it.username },
+        )
+        val account = account(
+            store = FakeSessionStore(stored = session),
+            credentials = FakeCredentialStorage(SavedCredentials("test_user", "secret")),
+            gateway = { gateway },
+        )
+
+        account.restore()
+        account.restore()
+
+        // 启动与设置页保存都会调 restore：已注入过的网关不能再搬一遍 Cookie 与密码
+        assertEquals(1, injected)
+        assertEquals(1, primed.size)
+    }
+
+    @Test
+    fun `多个请求同时撞上会话失效时只重登一次`() = runBlocking {
+        val store = FakeSessionStore(stored = Jm3Session(user = testUser(), cookies = emptyList()))
+        val credentials = FakeCredentialStorage(SavedCredentials("isczjk", "secret"))
+        val gate = CountDownLatch(1)
+        var loginCount = 0
+        val fresh = Jm3Session(user = testUser(), cookies = emptyList())
+        val gateway = fakeGateway(
+            onLogin = { _, _ ->
+                loginCount++
+                // 让第一个请求在登录里停住，后两个请求必然在锁上排队
+                gate.await()
+                fresh
+            },
+        )
+        val account = account(store = store, credentials = credentials, gateway = { gateway })
+        account.restore()
+
+        val expirations = List(3) { launch { account.markSessionExpired() } }
+        gate.countDown()
+        expirations.forEach { it.join() }
+
+        // 三个请求拿到的是同一个失效结论，但只该换一次会话
+        assertEquals(1, loginCount)
+        assertEquals(fresh.user, account.user.value)
+        assertEquals(0, store.clearCount)
+    }
+
+    @Test
+    fun `登出时连同网关内存里的密码一起清掉`() = runBlocking {
+        var forgotten = 0
+        val gateway = Proxy.newProxyInstance(
+            Jm3Gateway::class.java.classLoader,
+            arrayOf(Jm3Gateway::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "forgetCredentials" -> {
+                    forgotten++
+                    null
+                }
+                "login" -> Jm3Session(user = testUser(), cookies = emptyList())
+                "currentCookies" -> emptyList<CookieSnapshot>()
+                "logout", "restoreSession" -> null
+                else -> throw UnsupportedOperationException(method.name)
+            }
+        } as Jm3Gateway
+        val account = account(store = FakeSessionStore(), gateway = { gateway })
+        account.login("isczjk", "secret")
+
+        account.logout()
+
+        // 用户主动登出后，客户端实例里不能再留着能自动重登的密码
+        assertEquals(1, forgotten)
+        assertNull(account.user.value)
     }
 }

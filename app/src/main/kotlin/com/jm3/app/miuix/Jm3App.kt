@@ -24,8 +24,7 @@ import coil3.compose.setSingletonImageLoaderFactory
 import coil3.request.crossfade
 import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.data.FileDomainPoolCache
-import com.jm3.app.miuix.data.CredentialStorage
-import com.jm3.app.miuix.data.KeystoreCredentialStore
+import com.jm3.app.miuix.data.KeystoreCredentialCipher
 import com.jm3.app.miuix.data.SessionStore
 import com.jm3.app.miuix.data.SettingsStore
 import com.jm3.app.miuix.data.download.DownloadManager
@@ -65,6 +64,8 @@ import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
 import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.update.UpdateDownloader
+import com.jm3.core.CredentialStorage
+import com.jm3.core.EncryptedCredentialStore
 import com.jm3.core.GatewayFactory
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadQueue
@@ -131,9 +132,16 @@ object Jm3Graph {
 
     val sessionStore: SessionStore by lazy { SessionStore(appContext()) }
 
-    val settings: SettingsRepository by lazy { SettingsStore(appContext()) }
+    /** 设置存储的具体类型要露给凭据密文用：两者同库（jm3_settings），不另开 SharedPreferences。 */
+    private val settingsStore: SettingsStore by lazy { SettingsStore(appContext()) }
 
-    val credentialStore: CredentialStorage by lazy { KeystoreCredentialStore(appContext()) }
+    val settings: SettingsRepository
+        get() = settingsStore
+
+    /** 登录凭据：加密交给 Keystore，密文与设置同库落盘。 */
+    val credentialStore: CredentialStorage by lazy {
+        EncryptedCredentialStore(settingsStore, KeystoreCredentialCipher())
+    }
 
     val account: AccountManager by lazy { AccountManager({ gateway }, sessionStore, credentialStore) }
 
@@ -199,18 +207,24 @@ object Jm3Graph {
     private val domainSwitchLock = Mutex()
 
     /** 应用自定义 API 线路：重建网关并把已持久化会话迁移过去；空表回库默认解析。 */
-    suspend fun applyDomains(apiDomains: List<String>) = domainSwitchLock.withLock {
-        val requested = Domains.normalize(apiDomains)
-        // 启动时默认就是空表且未切过线路：直接沿用 defaultGateway，不再多建一个网关。
-        if (requested == appliedDomains) return@withLock
-        // 旧网关的 HTTP 客户端持有连接池，切线路后不再可达：迁移完会话即主动释放。
-        val previous = gatewayOverride
-        appliedDomains = requested
-        gatewayOverride =
-            if (requested.isEmpty()) null
-            else GatewayFactory.create(requested, cachedDomainPool, ::rememberDomainPool)
-        // 会话注入只由 AccountManager 负责：切到哪个网关（含切回默认线路）它都会把 Cookie 补进去，
-        // 这里再手写一份注入就成了两套实现，空表分支必然漏掉。
+    suspend fun applyDomains(apiDomains: List<String>) {
+        var previous: Jm3Gateway? = null
+        val switched = domainSwitchLock.withLock {
+            val requested = Domains.normalize(apiDomains)
+            // 启动时默认就是空表且未切过线路：直接沿用 defaultGateway，不再多建一个网关。
+            if (requested == appliedDomains) return@withLock false
+            // 旧网关的 HTTP 客户端持有连接池，切线路后不再可达：迁移完会话即主动释放。
+            previous = gatewayOverride
+            appliedDomains = requested
+            gatewayOverride =
+                if (requested.isEmpty()) null
+                else GatewayFactory.create(requested, cachedDomainPool, ::rememberDomainPool)
+            true
+        }
+        if (!switched) return
+        // 会话注入要走网络与写盘，放到锁外：锁只保护网关实例本身的重建，
+        // 否则一次线路切换会把并发的其它切换全堵在网络超时上。
+        // 会话注入只由 AccountManager 负责：切到哪个网关（含切回默认线路）它都会把 Cookie 补进去。
         account.restore()
         previous?.let { old -> runCatching { old.close() } }
     }
