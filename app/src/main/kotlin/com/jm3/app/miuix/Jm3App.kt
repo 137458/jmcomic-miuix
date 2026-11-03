@@ -2,6 +2,7 @@ package com.jm3.app.miuix
 
 import android.app.Activity
 import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -67,6 +68,7 @@ import com.jm3.core.CredentialStorage
 import com.jm3.core.EncryptedCredentialStore
 import com.jm3.core.GatewayFactory
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.Jm3Log
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
@@ -234,6 +236,10 @@ object Jm3Graph {
 
     fun init(context: Context) {
         contextRef = context.applicationContext
+        // :core 不依赖 Android，事实日志出口只能由这里接上平台日志；没接时 :core 侧静默丢弃。
+        Jm3Log.sink = { tag, message, error ->
+            if (error == null) Log.w(tag, message) else Log.w(tag, message, error)
+        }
         // 网关装配是同步的且早于启动协程，线路池必须在这里就读出来（纯文本，一次几十字节）。
         cachedDomainPool = domainPoolCache.read()
     }

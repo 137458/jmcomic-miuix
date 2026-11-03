@@ -194,9 +194,9 @@ class SettingsStore(private val context: Context) : SettingsRepository, Credenti
     }
 
     /** 凭据密文与设置同库：一次 write 就是一次 DataStore 事务，不会像 apply() 那样丢写。 */
-    override suspend fun read(): String? = context.settingsDataStore.data.first()[credentialsBlobKey]
+    override suspend fun readCredentialBlob(): String? = context.settingsDataStore.data.first()[credentialsBlobKey]
 
-    override suspend fun write(blob: String?) {
+    override suspend fun writeCredentialBlob(blob: String?) {
         context.settingsDataStore.edit { prefs ->
             if (blob == null) prefs.remove(credentialsBlobKey) else prefs[credentialsBlobKey] = blob
         }

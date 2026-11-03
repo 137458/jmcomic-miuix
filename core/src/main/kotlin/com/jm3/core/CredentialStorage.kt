@@ -43,16 +43,24 @@ class InMemoryCredentialStorage(initial: SavedCredentials? = null) : CredentialS
  * 见 ENGINEERING.md 一.5）。
  */
 interface CredentialBlobStore {
-    suspend fun read(): String?
-    suspend fun write(blob: String?)
+    /**
+     * 读回落盘的密文。
+     *
+     * 名字带 CredentialBlob 是因为 Android 侧的实现同时还承担整库设置（SettingsRepository），
+     * 泛泛的 read/write 会与别的存取方法混在一起看不出存取的是什么。
+     */
+    suspend fun readCredentialBlob(): String?
+
+    /** 覆写落盘密文；null 表示删除。 */
+    suspend fun writeCredentialBlob(blob: String?)
 }
 
 /** 进程内实现：单测用。 */
 class InMemoryCredentialBlobStore(private var blob: String? = null) : CredentialBlobStore {
 
-    override suspend fun read(): String? = blob
+    override suspend fun readCredentialBlob(): String? = blob
 
-    override suspend fun write(blob: String?) {
+    override suspend fun writeCredentialBlob(blob: String?) {
         this.blob = blob
     }
 }
@@ -87,7 +95,7 @@ class EncryptedCredentialStore(
 ) : CredentialStorage {
 
     override suspend fun load(): SavedCredentials? {
-        val blob = blobStore.read() ?: return null
+        val blob = blobStore.readCredentialBlob() ?: return null
         // 纯 CPU 调用，不涉及挂起，不存在吞取消的问题
         val plain = runCatching { cipher.decrypt(blob) }.getOrNull()
         if (plain == null) {
@@ -98,10 +106,10 @@ class EncryptedCredentialStore(
     }
 
     override suspend fun save(credentials: SavedCredentials) {
-        blobStore.write(cipher.encrypt(CredentialCodec.encode(credentials)))
+        blobStore.writeCredentialBlob(cipher.encrypt(CredentialCodec.encode(credentials)))
     }
 
     override suspend fun clear() {
-        blobStore.write(null)
+        blobStore.writeCredentialBlob(null)
     }
 }

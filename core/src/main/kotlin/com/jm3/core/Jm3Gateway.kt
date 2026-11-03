@@ -248,6 +248,20 @@ class Jm3GatewayImpl internal constructor(
     private val domainControls: DomainControls by lazy(domainControlsProvider)
 
     companion object {
+        private const val TAG = "Jm3Gateway"
+
+        /**
+         * 取一个库内私有成员：取不到就返回 null，对应能力静默降级（老逻辑如此）。
+         *
+         * 降级不报错是对的，但必须留一条事实日志：库升级改了成员名时，界面只表现为「恢复会话没生效」，
+         * 没有日志就完全无从查起。只报成员名与异常类型，不打印成员值。
+         */
+        private fun <T> reflectiveMember(member: String, block: () -> T): T? =
+            runCatching(block).getOrElse { failure ->
+                Jm3Log.warn(TAG, "库内反射成员 $member 取不到（" + failure.javaClass.name + "），相关能力降级")
+                null
+            }
+
         /**
          * 生产装配：同一个库客户端既当请求入口又当域名能力来源。
          *
@@ -269,9 +283,9 @@ class Jm3GatewayImpl internal constructor(
         }
 
         private val cookieManagerField: java.lang.reflect.Field? by lazy {
-            runCatching {
+            reflectiveMember("cookieManager") {
                 AbstractJmClient::class.java.getDeclaredField("cookieManager").apply { isAccessible = true }
-            }.getOrNull()
+            }
         }
 
         internal fun cookieStoreOf(client: Any): java.net.CookieStore? =
@@ -285,36 +299,36 @@ class Jm3GatewayImpl internal constructor(
          * 成员名按 v1.1.12 字节码固定；取不到就当该能力不可用（null 而非抛异常）。
          */
         private val cacheUsernameMethod: java.lang.reflect.Method? by lazy {
-            runCatching {
+            reflectiveMember("cacheUsername") {
                 AbstractJmClient::class.java.getDeclaredMethod("cacheUsername", String::class.java)
                     .apply { isAccessible = true }
-            }.getOrNull()
+            }
         }
 
         private val autoLoginRefreshAllowedField: java.lang.reflect.Field? by lazy {
-            runCatching {
+            reflectiveMember("autoLoginRefreshAllowed") {
                 AbstractJmClient::class.java.getDeclaredField("autoLoginRefreshAllowed").apply { isAccessible = true }
-            }.getOrNull()
+            }
         }
 
         private val loginHostField: java.lang.reflect.Field? by lazy {
-            runCatching {
+            reflectiveMember("loginHost") {
                 AbstractJmClient::class.java.getDeclaredField("loginHost").apply { isAccessible = true }
-            }.getOrNull()
+            }
         }
 
         /** 库的 protected 方法：用本客户端的内存密钥把明文密码加密后写进 encryptedPassword。 */
         private val encryptPasswordInMemoryMethod: java.lang.reflect.Method? by lazy {
-            runCatching {
+            reflectiveMember("encryptPasswordInMemory") {
                 AbstractJmClient::class.java.getDeclaredMethod("encryptPasswordInMemory", String::class.java)
                     .apply { isAccessible = true }
-            }.getOrNull()
+            }
         }
 
         private val encryptedPasswordField: java.lang.reflect.Field? by lazy {
-            runCatching {
+            reflectiveMember("encryptedPassword") {
                 AbstractJmClient::class.java.getDeclaredField("encryptedPassword").apply { isAccessible = true }
-            }.getOrNull()
+            }
         }
     }
 
@@ -408,11 +422,13 @@ class Jm3GatewayImpl internal constructor(
         val cookies = if (direct.isNotEmpty()) {
             direct
         } else {
+            // 这里不再规范域名：两条来源（客户端直读 / CookieStore 兜底）统一由下面那次处理，
+            // 重复规范化只是白算一遍。
             cookieStoreOf(client)?.cookies?.map {
                 CookieSnapshot(
                     name = it.name,
                     value = it.value,
-                    domain = sanitizeDomain(it.domain.orEmpty()),
+                    domain = it.domain.orEmpty(),
                     path = it.path.orEmpty().ifBlank { "/" },
                 )
             }.orEmpty()

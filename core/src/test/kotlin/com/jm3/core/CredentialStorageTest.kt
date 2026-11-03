@@ -28,7 +28,7 @@ class CredentialStorageTest {
 
         store.save(saved)
 
-        val blob = blobStore.read().orEmpty()
+        val blob = blobStore.readCredentialBlob().orEmpty()
         assertEquals(true, blob.isNotEmpty())
         assertEquals(false, blob.contains("s3cret"), "落盘内容里出现了明文密码")
         assertEquals(saved, store.load())
@@ -47,14 +47,14 @@ class CredentialStorageTest {
         val store = EncryptedCredentialStore(blobStore, LostKeyCipher())
 
         assertNull(store.load())
-        assertNull(blobStore.read(), "解不开的密文应当就地清掉，否则每次启动都要白算一遍解密")
+        assertNull(blobStore.readCredentialBlob(), "解不开的密文应当就地清掉，否则每次启动都要白算一遍解密")
     }
 
     @Test
     fun `明文不是合法凭据 JSON 时读回空`() = runBlocking {
         val blobStore = InMemoryCredentialBlobStore()
         val store = EncryptedCredentialStore(blobStore, ReversingCipher())
-        blobStore.write("随便一段文本".reversed())
+        blobStore.writeCredentialBlob("随便一段文本".reversed())
 
         assertNull(store.load())
     }
@@ -68,7 +68,7 @@ class CredentialStorageTest {
         store.clear()
 
         assertNull(store.load())
-        assertNull(blobStore.read())
+        assertNull(blobStore.readCredentialBlob())
     }
 
     @Test
