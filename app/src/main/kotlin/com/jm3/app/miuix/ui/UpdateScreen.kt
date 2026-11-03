@@ -275,16 +275,22 @@ fun UpdateScreen(onBack: () -> Unit) {
     }
 
     val dialogRelease = (snapshot as? UpdateUiState.Available)?.release
-    if (showDialog && dialogRelease != null && downloadState !is UpdateDownloadState.Downloading) {
+    // 下载落定（完成或失败）就收起弹窗：安装与重试都在页面的下载卡上，弹窗只负责把进度显示完。
+    // key 用布尔而不是整个 state，否则每个进度 tick 都会重启一次 effect。
+    val downloadSettled =
+        downloadState is UpdateDownloadState.Done || downloadState is UpdateDownloadState.Failed
+    LaunchedEffect(downloadSettled) {
+        if (downloadSettled) showDialog = false
+    }
+    if (showDialog && dialogRelease != null) {
         UpdateAvailableDialog(
             show = showDialog,
             currentVersion = currentVersion,
             release = dialogRelease,
+            downloadState = downloadState,
             onDismiss = { showDialog = false },
-            onDownload = {
-                showDialog = false
-                startDownload(dialogRelease)
-            },
+            // 不关弹窗：刚点下去的主按钮原地变成"下载中 xx%"，进度不必回页面才看得到
+            onDownload = { startDownload(dialogRelease) },
             onOpenRelease = {
                 showDialog = false
                 openReleasePage(dialogRelease.htmlUrl)

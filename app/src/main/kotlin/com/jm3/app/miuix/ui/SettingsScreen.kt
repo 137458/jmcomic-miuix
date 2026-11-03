@@ -28,6 +28,7 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
+import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
@@ -98,6 +99,17 @@ private val TEST_UPDATE_RELEASE = ReleaseInfo(
     ),
 )
 
+/**
+ * 测试弹窗的"下载中"假状态：87/100 MB。
+ *
+ * 刻意取整除数，进度正好是 0.87，避免浮点乘法把 86.99999 截断成 86%（弹窗按截断取整）。
+ */
+private val TEST_DOWNLOADING_STATE = UpdateDownloadState.Downloading(
+    downloaded = 87L * 1_000_000,
+    total = 100L * 1_000_000,
+    speedBytesPerSec = 2_500_000L,
+)
+
 /** 设置中心：主题/线路/数据管理/关于。内容一屏内可读，关于作为分区而非独立页。 */
 @Composable
 fun SettingsScreen(
@@ -134,6 +146,7 @@ fun SettingsScreen(
     var versionTapCount by remember { mutableIntStateOf(0) }
     // 测试更新弹窗：只在本地预览弹窗外观，不检查远端
     var showTestUpdateDialog by remember { mutableStateOf(false) }
+    var testDownloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
 
     val versionName = remember {
         @Suppress("DEPRECATION")
@@ -391,7 +404,18 @@ fun SettingsScreen(
                 ArrowPreference(
                     title = "测试更新弹窗",
                     summary = "用固定假数据预览弹窗排版，不访问网络",
-                    onClick = { showTestUpdateDialog = true },
+                    onClick = {
+                        testDownloadState = UpdateDownloadState.Idle
+                        showTestUpdateDialog = true
+                    },
+                )
+                ArrowPreference(
+                    title = "测试更新弹窗（下载中）",
+                    summary = "预览下载中的弹窗：主按钮显示 87% 进度，忽略不可点",
+                    onClick = {
+                        testDownloadState = TEST_DOWNLOADING_STATE
+                        showTestUpdateDialog = true
+                    },
                 )
                 BasicComponent(
                     title = "开源组件",
@@ -499,14 +523,20 @@ fun SettingsScreen(
             show = showTestUpdateDialog,
             currentVersion = versionName,
             release = TEST_UPDATE_RELEASE,
+            downloadState = testDownloadState,
             onDismiss = { showTestUpdateDialog = false },
+            // 不关弹窗：把假状态切成"下载中"，现场看主按钮怎么写进度
             onDownload = {
-                showTestUpdateDialog = false
+                testDownloadState = TEST_DOWNLOADING_STATE
                 scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会开始应用内下载") }
             },
             onOpenRelease = {
                 showTestUpdateDialog = false
                 scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会打开 Releases 页面") }
+            },
+            onIgnore = { version ->
+                showTestUpdateDialog = false
+                scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会把 $version 记为忽略版本") }
             },
         )
     }
