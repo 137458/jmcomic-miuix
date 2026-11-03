@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -97,8 +96,6 @@ import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.VerticalScrollBar
-import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
@@ -643,13 +640,7 @@ private fun ReaderPages(
                 }
             }
             // 长图阅读时长列表无位置反馈，补 Miuix 滚动条（拖动可直接跳页）
-            if (!horizontal) {
-                VerticalScrollBar(
-                    adapter = rememberScrollBarAdapter(listState),
-                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                    trackPadding = innerPadding,
-                )
-            }
+            if (!horizontal) ListScrollBar(listState = listState, trackPadding = innerPadding)
         }
 
         // 底栏原由 Scaffold 的 floatingToolbar 槽承载；GlassScaffold 无该槽，

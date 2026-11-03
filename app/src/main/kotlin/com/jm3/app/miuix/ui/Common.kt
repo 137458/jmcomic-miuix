@@ -12,13 +12,16 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,12 +32,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImagePainter
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import top.yukonga.miuix.kmp.basic.Button
@@ -63,6 +69,8 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.VerticalScrollBar
+import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
@@ -327,6 +335,24 @@ fun LoadMoreFooter(
 }
 
 /**
+ * 列表滚动条：贴右缘铺满可用高度，轨道按 [trackPadding] 让出顶栏与底部安全区。
+ *
+ * 阅读历史与作品详情原先各抄一遍同样的适配器、对齐与轨道参数；抽成组件后滚动条
+ * 的落点只有一处定义，调整全屏边距时不会漏掉其中一处。
+ */
+@Composable
+fun BoxScope.ListScrollBar(
+    listState: LazyListState,
+    trackPadding: PaddingValues = PaddingValues(0.dp),
+) {
+    VerticalScrollBar(
+        adapter = rememberScrollBarAdapter(listState),
+        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+        trackPadding = trackPadding,
+    )
+}
+
+/**
  * 逐行结果卡：封面 + 标题 + 作者标签摘要，榜单模式在封面前补名次。
  *
  * 外观走 [WorkRowCard] 的统一契约；摘要只保留一行，超长日文标题限两行，
@@ -489,22 +515,25 @@ fun rememberSelectionHaptic(): () -> Unit {
     return remember(haptics) { { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) } }
 }
 
+/** 微光掠过一轮的时长：慢一档像呼吸，快一档像卡顿。 */
+private const val SHIMMER_PERIOD_MS = 1200
+
 /**
  * 微光骨架屏动效：封面图片未完成加载时展现平滑对角线微光掠过，消除纯灰块突兀感。
+ *
+ * 微光色取主题里高一层表面色的半透明，周期由 SHIMMER_PERIOD_MS 统一：调用点只回答
+ * 「要不要闪」，不再各自挑颜色与节奏。
  */
 @Composable
-fun Modifier.shimmer(
-    visible: Boolean = true,
-    shimmerColor: Color = MiuixTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
-    durationMillis: Int = 1200,
-): Modifier {
+fun Modifier.shimmer(visible: Boolean = true): Modifier {
     if (!visible) return this
+    val shimmerColor = MiuixTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
     val transition = rememberInfiniteTransition(label = "shimmer")
     val progress by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = durationMillis, easing = LinearEasing),
+            animation = tween(durationMillis = SHIMMER_PERIOD_MS, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "shimmerProgress",
@@ -527,6 +556,34 @@ fun Modifier.shimmer(
     }
 }
 
+/**
+ * 封面骨架屏状态：图片首帧落地（成功或失败）后置位，微光随之停下。
+ *
+ * 只认成功会让加载失败的行一直闪——弱网下失败很常见，持续闪烁比原来的纯灰底更刺眼。
+ */
+@Stable
+internal class CoverSkeletonState(settled: Boolean) {
+    var settled by mutableStateOf(settled)
+        private set
+
+    /** 记录 Coil 的加载结果：成功与失败都算落地，只忽略仍在途中的状态。 */
+    fun onImageState(state: AsyncImagePainter.State) {
+        if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) {
+            settled = true
+        }
+    }
+}
+
+/** 按封面 URL 记住骨架屏状态：换 URL 重新开闪，同一 URL 复用既有状态。 */
+@Composable
+internal fun rememberCoverSkeletonState(url: String?): CoverSkeletonState =
+    remember(url) { CoverSkeletonState(settled = url.isNullOrBlank()) }
+
+/** 封面骨架屏底衬：灰底 + 微光，配合 [CoverSkeletonState.onImageState] 在图片落地后自动停闪。 */
+@Composable
+internal fun Modifier.coverSkeleton(state: CoverSkeletonState): Modifier =
+    this.background(MiuixTheme.colorScheme.surfaceContainerHigh)
+        .shimmer(visible = !state.settled)
 
 /**
  * 榜单瀑布流结果：两列封面卡，名次叠在封面左上角。

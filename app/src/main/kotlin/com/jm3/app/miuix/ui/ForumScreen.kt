@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -364,6 +365,26 @@ fun ForumScreen(
 }
 
 /**
+ * 论坛「相关作品」行的几何：行内边距、底色圆角、缩略图与文案的间距。
+ *
+ * 只服务这一行，与 [WorkCardTokens] 的文字内距不是一回事；收成常量是为了让三处对齐关系
+ * （行内边距、圆角、图文间距）改一处即全动，不会漏掉其中一处。
+ */
+private object RelatedWorkTokens {
+    /** 行底色块的圆角。 */
+    val RelatedWorkCorner = 10.dp
+
+    /** 缩略图与右侧文案的间距，也是两行文案左缘对齐的基准。 */
+    val RelatedWorkThumbGap = 10.dp
+
+    /** 行外层内边距：左右让出卡片内边距，底部留一点呼吸。 */
+    val RelatedWorkOuterInset = PaddingValues(start = 12.dp, end = 12.dp, bottom = 10.dp)
+
+    /** 行内边距：底色块内的内容让出圆角，避免文字贴边。 */
+    val RelatedWorkInnerPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+}
+
+/**
  * 论坛单条：楼层内容沿用评论区排版（头像/等级/徽章/分段正文），底部补关联作品入口。
  *
  * 关联作品做成一行紧凑卡片：左侧 3:4 缩略封面（[WorkThumbnail]，与历史、追更行同尺寸），
@@ -391,12 +412,12 @@ private fun ForumTopicCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
-                        .squircleBackground(MiuixTheme.colorScheme.surfaceContainerHigh, 10.dp)
+                        .padding(RelatedWorkTokens.RelatedWorkOuterInset)
+                        .squircleBackground(MiuixTheme.colorScheme.surfaceContainerHigh, RelatedWorkTokens.RelatedWorkCorner)
                         .clickable { onOpenAlbum(albumId) }
                         // 触感交给点击本身，避免整行点击时重复震动
                         .pressScale(hapticFeedback = false)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                        .padding(RelatedWorkTokens.RelatedWorkInnerPadding),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     WorkThumbnail(
@@ -404,11 +425,11 @@ private fun ForumTopicCard(
                         albumId = albumId,
                         contentDescription = albumName,
                     )
-                    // 图与文案的间距沿用评论区头像到正文的 10dp，两行内容左缘才对得齐
+                    // 间距与缩略图间距同值，两行内容左缘才对得齐
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(start = 10.dp),
+                            .padding(start = RelatedWorkTokens.RelatedWorkThumbGap),
                     ) {
                         Text(
                             text = "相关作品",
