@@ -623,7 +623,9 @@ private fun ReaderPages(
                     )
                 }
             } else {
-                LazyColumn(
+                // 长列表与它的滚动条必须同层：TrackedLazyColumn 内部就是 Box { LazyColumn + ListScrollBar }，
+                // 轨道与列表共用同一份 contentPadding；横向模式用的是 Pager，不经过这里
+                TrackedLazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
@@ -670,8 +672,6 @@ private fun ReaderPages(
                     item(key = "toolbar-space") { Spacer(modifier = Modifier.height(96.dp)) }
                 }
             }
-            // 长图阅读时长列表无位置反馈，补 Miuix 滚动条（拖动可直接跳页）
-            if (!horizontal) ListScrollBar(listState = listState, trackPadding = innerPadding)
         }
 
         // 底栏原由 Scaffold 的 floatingToolbar 槽承载；GlassScaffold 无该槽，

@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -337,19 +338,46 @@ fun LoadMoreFooter(
 /**
  * 列表滚动条：贴右缘铺满可用高度，轨道按 [trackPadding] 让出顶栏与底部安全区。
  *
- * 阅读历史与作品详情原先各抄一遍同样的适配器、对齐与轨道参数；抽成组件后滚动条
- * 的落点只有一处定义，调整全屏边距时不会漏掉其中一处。
+ * 由 [TrackedLazyColumn] 在同一层 [Box] 内调用，轨道内边距与列表内边距共用同一份参数；
+ * 调用方不再手工让两者对齐。
  */
 @Composable
 fun BoxScope.ListScrollBar(
     listState: LazyListState,
-    trackPadding: PaddingValues = PaddingValues(0.dp),
+    trackPadding: PaddingValues,
 ) {
     VerticalScrollBar(
         adapter = rememberScrollBarAdapter(listState),
         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
         trackPadding = trackPadding,
     )
+}
+
+/**
+ * 带滚动条的列表容器：把 [Box]、[LazyColumn] 与 [ListScrollBar] 收进一处。
+ *
+ * 滚动条落点与列表首尾留白都取自同一个 [contentPadding]，新增列表不会再漏挂滚动条，
+ * 也不会因为两处 padding 各写一遍而让轨道错位。
+ *
+ * @param showScrollBar 横向翻页这类没有位置反馈的容器由调用方关掉。
+ */
+@Composable
+fun TrackedLazyColumn(
+    state: LazyListState,
+    contentPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+    showScrollBar: Boolean = true,
+    content: LazyListScope.() -> Unit,
+) {
+    Box(modifier = modifier) {
+        LazyColumn(
+            state = state,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding,
+            content = content,
+        )
+        if (showScrollBar) ListScrollBar(listState = state, trackPadding = contentPadding)
+    }
 }
 
 /**
