@@ -106,17 +106,7 @@ private const val COMMENT_BODY_MAX_LINES = 12
 /** 徽章图的无障碍描述：徽章本身无文字，读屏需要知道这里是一枚徽章。 */
 private const val COMMENT_BADGE_DESCRIPTION = "徽章"
 
-sealed interface AlbumUiState {
-    data object Loading : AlbumUiState
-    data class Loaded(val detail: AlbumDetail) : AlbumUiState
-    data class Failed(val message: String) : AlbumUiState
-}
-
-private sealed interface CommentsUiState {
-    data object Loading : CommentsUiState
-    data class Loaded(val page: CommentPage, val lastPage: Int) : CommentsUiState
-    data object Failed : CommentsUiState
-}
+// AlbumUiState 和 CommentsUiState 已下沉至 AlbumDetailStateHolder 统一定义
 
 /** 详情页：信息/简介/标签/相关作品/章节分组/评论，对齐原版 Desc + Series 能力域。 */
 @Composable
@@ -134,107 +124,22 @@ fun AlbumDetailScreen(
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val user by Jm3Graph.account.user.collectAsState()
-
-    var state by remember(albumId) { mutableStateOf<AlbumUiState>(AlbumUiState.Loading) }
-    var comments by remember(albumId) { mutableStateOf<CommentsUiState>(CommentsUiState.Loading) }
-    var favoriteBusy by remember(albumId) { mutableStateOf(false) }
-    var favorited by remember(albumId) { mutableStateOf(false) }
-    var folders by remember(albumId) { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var showFolderSheet by remember(albumId) { mutableStateOf(false) }
-    var folderBusy by remember(albumId) { mutableStateOf(false) }
-    var likeBusy by remember(albumId) { mutableStateOf(false) }
-    var liked by remember(albumId) { mutableStateOf(false) }
-    var tracking by remember(albumId) { mutableStateOf<Boolean?>(null) }
-    var trackingBusy by remember(albumId) { mutableStateOf(false) }
-    var latestPhotoId by remember(albumId) { mutableStateOf<String?>(null) }
-    var readPhotoIds by remember(albumId) { mutableStateOf<Set<String>>(emptySet()) }
-    var descriptionExpanded by remember(albumId) { mutableStateOf(false) }
-    var expandedGroups by remember(albumId) { mutableStateOf(setOf(0)) }
-    var commentText by remember(albumId) { mutableStateOf("") }
-    var commentBusy by remember(albumId) { mutableStateOf(false) }
-    // 回复目标与发送态：选中某条评论后由底部回复面板接管输入
-    var replyTarget by remember(albumId) { mutableStateOf<CommentItem?>(null) }
-    var replyBusy by remember(albumId) { mutableStateOf(false) }
-    var commentsLoadingMore by remember(albumId) { mutableStateOf(false) }
-    // 评论加载更多失败单独置位，供底部给出重试入口
-    var commentsLoadFailed by remember(albumId) { mutableStateOf(false) }
-    val listState = rememberLazyListState()
-    var pullRefreshing by remember(albumId) { mutableStateOf(false) }
-    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
+
+    val stateHolder = remember(albumId) {
+        AlbumDetailStateHolder(
+            albumId = albumId,
+            gateway = Jm3Graph.gateway,
+            history = Jm3Graph.history,
+            scope = scope,
+            showMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
+        )
+    }
+    val uiState by stateHolder.uiState.collectAsState()
+
+    val listState = rememberLazyListState()
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val selectionHaptic = rememberSelectionHaptic()
-
-    /** 打开收藏夹选择面板；登录后拉取收藏夹名称表，失败时只保留「全部收藏」。 */
-    fun openFolderSheet() {
-        showFolderSheet = true
-        scope.launch {
-            val page = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.favorites(1) }.getOrNull()
-            }
-            if (page != null && page.folders.isNotEmpty()) folders = page.folders
-        }
-    }
-
-    fun cancelFavorite() {
-        if (favoriteBusy) return
-        favoriteBusy = true
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleFavorite(albumId) }
-            }
-            favoriteBusy = false
-            result
-                .onSuccess {
-                    favorited = false
-                    showFolderSheet = false
-                    snackbarHostState.showSnackbar("已取消收藏")
-                }
-                .onFailure { snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试")) }
-        }
-    }
-
-    /** 收藏按钮：未收藏先选收藏夹（原版 FolderModal 语义），已收藏直接取消。 */
-    fun onFavoriteClick() {
-        if (user == null) {
-            onOpenLogin()
-            return
-        }
-        if (favorited) {
-            cancelFavorite()
-        } else {
-            openFolderSheet()
-        }
-    }
-
-    /** 选择收藏夹：未收藏则加入该夹，已收藏则移动；成功后关闭面板并回显。 */
-    fun pickFolder(folderId: String) {
-        if (folderBusy) return
-        folderBusy = true
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (favorited) {
-                        Jm3Graph.gateway.manageFavoriteFolder(
-                            action = FavoriteFolderAction.MOVE,
-                            folderId = folderId,
-                            albumId = albumId,
-                        )
-                    } else {
-                        Jm3Graph.gateway.toggleFavorite(albumId, folderId)
-                    }
-                }
-            }
-            folderBusy = false
-            result
-                .onSuccess {
-                    favorited = true
-                    showFolderSheet = false
-                    val name = folders[folderId] ?: "全部收藏"
-                    snackbarHostState.showSnackbar("已收藏到「$name」")
-                }
-                .onFailure { snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试")) }
-        }
-    }
 
     fun copyText(label: String, value: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -242,53 +147,9 @@ fun AlbumDetailScreen(
         scope.launch { snackbarHostState.showSnackbar("复制成功！") }
     }
 
-    fun like() {
-        if (user == null) {
-            onOpenLogin()
-            return
-        }
-        if (likeBusy) return
-        if (liked) {
-            scope.launch { snackbarHostState.showSnackbar("已经喜欢过了") }
-            return
-        }
-        likeBusy = true
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleLike(albumId) }
-            }
-            likeBusy = false
-            result
-                .onSuccess {
-                    liked = true
-                    snackbarHostState.showSnackbar("已喜欢")
-                }
-                .onFailure { snackbarHostState.showSnackbar("操作失败：" + (it.message ?: "请稍后重试")) }
-        }
-    }
-
-    fun toggleTracking() {
-        if (user == null) {
-            onOpenLogin()
-            return
-        }
-        if (trackingBusy) return
-        trackingBusy = true
-        scope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.setTracking(albumId) }
-                    .mapCatching { Jm3Graph.gateway.isTracking(albumId) }
-                    .getOrNull()
-            }
-            trackingBusy = false
-            tracking = next
-            next?.let { snackbarHostState.showSnackbar(if (it) "已开启连载追踪" else "已取消连载追踪") }
-        }
-    }
-
     fun share(detail: AlbumDetail) {
         val host = Jm3Graph.gateway.usedDomain()
-        val link = host?.takeIf { it.isNotBlank() }?.let { "https://$it/album/${detail.id}" }
+        val link = host?.takeIf { it.isNotBlank() }?.let { "https://" + it + "/album/" + detail.id }
         val text = buildString {
             append(detail.title)
             if (link != null) append('\n').append(link)
@@ -300,131 +161,17 @@ fun AlbumDetailScreen(
         context.startActivity(Intent.createChooser(send, "分享作品"))
     }
 
-    fun loadMoreComments() {
-        val loaded = comments as? CommentsUiState.Loaded ?: return
-        if (commentsLoadingMore || loaded.page.items.size >= loaded.page.total) return
-        commentsLoadingMore = true
-        scope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.comments(albumId, loaded.lastPage + 1) }.getOrNull()
-            }
-            commentsLoadingMore = false
-            if (next != null) {
-                commentsLoadFailed = false
-                comments = CommentsUiState.Loaded(loaded.page.mergedWith(next), loaded.lastPage + 1)
-            } else {
-                commentsLoadFailed = true
-            }
-        }
-    }
-
-    suspend fun loadDetail() {
-        state = withContext(Dispatchers.IO) {
-            runCatching { AlbumUiState.Loaded(Jm3Graph.gateway.album(albumId)) }
-                .getOrElse { AlbumUiState.Failed(it.message ?: "加载失败") }
-        }
-        // 详情返回后才拿到收藏/点赞态，用库返回值初始化，避免把已操作过的相册当未操作
-        (state as? AlbumUiState.Loaded)?.let { loaded ->
-            favorited = loaded.detail.favorited
-            liked = loaded.detail.liked
-        }
-    }
-
-    suspend fun loadComments() {
-        comments = withContext(Dispatchers.IO) {
-            runCatching { CommentsUiState.Loaded(Jm3Graph.gateway.comments(albumId, 1), 1) }
-                .getOrDefault(CommentsUiState.Failed)
-        }
-    }
-
-    fun postComment() {
-        val text = commentText.trim()
-        if (text.isEmpty() || commentBusy) return
-        commentBusy = true
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.postComment(albumId, text) }
-            }
-            commentBusy = false
-            result
-                .onSuccess {
-                    commentText = ""
-                    snackbarHostState.showSnackbar("评论已发表")
-                    loadComments()
-                }
-                .onFailure { snackbarHostState.showSnackbar("发表失败：" + (it.message ?: "请稍后重试")) }
-        }
-    }
-
-    fun sendReply(text: String) {
-        val target = replyTarget ?: return
-        if (text.isBlank() || replyBusy) return
-        replyBusy = true
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.replyComment(albumId, text, target.id) }
-            }
-            replyBusy = false
-            result
-                .onSuccess {
-                    replyTarget = null
-                    snackbarHostState.showSnackbar("回复已发送")
-                    loadComments()
-                }
-                .onFailure { snackbarHostState.showSnackbar("回复失败：" + (it.message ?: "请稍后重试")) }
-        }
-    }
-
-    suspend fun loadHistory() {
-        latestPhotoId = runCatching { Jm3Graph.history.latestForAlbum(albumId) }.getOrNull()?.photoId
-        readPhotoIds = runCatching { Jm3Graph.history.readPhotoIds(albumId) }.getOrDefault(emptySet())
-    }
-
-    LaunchedEffect(albumId) {
-        loadDetail()
-        loadComments()
-        loadHistory()
-    }
-
-    // 登录态变化后重新读取追踪状态；未登录时清空，避免显示上一个账号的状态。
-    LaunchedEffect(user?.uid, albumId) {
-        if (user == null) {
-            tracking = null
-            return@LaunchedEffect
-        }
-        tracking = withContext(Dispatchers.IO) {
-            runCatching { Jm3Graph.gateway.isTracking(albumId) }.getOrNull()
-        }
-    }
-
-    // 续读目标所在的章节组默认展开，其余收起。
-    LaunchedEffect(latestPhotoId, state) {
-        val detail = (state as? AlbumUiState.Loaded)?.detail ?: return@LaunchedEffect
-        val index = detail.chapters.indexOfFirst { it.id == latestPhotoId }
-        if (index >= 0) expandedGroups = expandedGroups + index / CHAPTER_GROUP_SIZE
-    }
-
-    fun refresh() {
-        if (pullRefreshing) return
-        pullRefreshing = true
-        scope.launch {
-            try {
-                loadDetail()
-                loadComments()
-                loadHistory()
-            } finally {
-                pullRefreshing = false
-            }
-        }
+    LaunchedEffect(albumId, user?.uid) {
+        stateHolder.loadAll(user?.uid)
     }
 
     val heroHost = LocalAlbumHeroHost.current
     val effectiveCoverUrl = initialCoverUrl?.takeIf { it.isNotBlank() } ?: heroHost?.coverUrl(albumId)?.takeIf { it.isNotBlank() }
     val effectiveTitle = initialTitle?.takeIf { it.isNotBlank() } ?: heroHost?.albumTitle(albumId)?.takeIf { it.isNotBlank() }
 
-    val loadedDetail = (state as? AlbumUiState.Loaded)?.detail
+    val loadedDetail = (uiState.albumState as? AlbumUiState.Loaded)?.detail
     val currentTitle = loadedDetail?.title?.takeIf { it.isNotBlank() } ?: effectiveTitle?.takeIf { it.isNotBlank() } ?: "详情"
-    val resumeId = latestPhotoId?.takeIf { id -> loadedDetail?.chapters?.any { it.id == id } == true }
+    val resumeId = uiState.latestPhotoId?.takeIf { id -> loadedDetail?.chapters?.any { it.id == id } == true }
 
     var rootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
@@ -477,8 +224,8 @@ fun AlbumDetailScreen(
                 snackbarHost = { GlassSnackbarHost(snackbarHostState) },
             ) { innerPadding ->
                 GlassPullToRefresh(
-                    isRefreshing = pullRefreshing,
-                    onRefresh = ::refresh,
+                    isRefreshing = uiState.pullRefreshing,
+                    onRefresh = stateHolder::refresh,
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
@@ -498,16 +245,16 @@ fun AlbumDetailScreen(
                                 fallbackCoverUrl = effectiveCoverUrl,
                                 resumeId = resumeId,
                                 loggedIn = user != null,
-                                favorited = favorited,
-                                favoriteBusy = favoriteBusy,
-                                liked = liked,
-                                likeBusy = likeBusy,
-                                tracking = tracking,
-                                trackingBusy = trackingBusy,
+                                favorited = uiState.favorited,
+                                favoriteBusy = uiState.favoriteBusy,
+                                liked = uiState.liked,
+                                likeBusy = uiState.likeBusy,
+                                tracking = uiState.tracking,
+                                trackingBusy = uiState.trackingBusy,
                                 onRead = { photoId -> onOpenReader(photoId) },
-                                onFavorite = ::onFavoriteClick,
-                                onLike = ::like,
-                                onTrack = ::toggleTracking,
+                                onFavorite = { stateHolder.onFavoriteClick(user != null, onOpenLogin) },
+                                onLike = { stateHolder.like(user != null, onOpenLogin) },
+                                onTrack = { stateHolder.toggleTracking(user != null, onOpenLogin) },
                                 onOpenSearch = onOpenSearch,
                                 onDownloadAll = if (loadedDetail == null || loadedDetail.chapters.isEmpty()) {
                                     null
@@ -524,7 +271,7 @@ fun AlbumDetailScreen(
                             )
                         }
 
-                        when (val s = state) {
+                        when (val s = uiState.albumState) {
                             is AlbumUiState.Loading -> {
                                 item(key = "detail-loading") {
                                     Box(
@@ -541,7 +288,7 @@ fun AlbumDetailScreen(
                                 item(key = "detail-failed") {
                                     ErrorScreen(
                                         message = "详情加载失败：${s.message}",
-                                        onRetry = { scope.launch { loadDetail() } },
+                                        onRetry = { stateHolder.refresh() },
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(16.dp),
@@ -568,16 +315,12 @@ fun AlbumDetailScreen(
                                         ChapterGroupCard(
                                             group = group,
                                             startPosition = groupIndex * CHAPTER_GROUP_SIZE,
-                                            expanded = groupIndex in expandedGroups,
+                                            expanded = groupIndex in uiState.expandedGroups,
                                             resumeId = resumeId,
-                                            readPhotoIds = readPhotoIds,
+                                            readPhotoIds = uiState.readPhotoIds,
                                             onToggle = {
                                                 selectionHaptic()
-                                                expandedGroups = if (groupIndex in expandedGroups) {
-                                                    expandedGroups - groupIndex
-                                                } else {
-                                                    expandedGroups + groupIndex
-                                                }
+                                                stateHolder.toggleGroup(groupIndex)
                                             },
                                             onRead = { photoId -> onOpenReader(photoId) },
                                             onDownload = { chapter, title ->
@@ -594,8 +337,8 @@ fun AlbumDetailScreen(
                                     item(key = "description") {
                                         DescriptionSection(
                                             text = detail.description,
-                                            expanded = descriptionExpanded,
-                                            onToggle = { descriptionExpanded = !descriptionExpanded },
+                                            expanded = uiState.descriptionExpanded,
+                                            onToggle = { stateHolder.setDescriptionExpanded(!uiState.descriptionExpanded) },
                                             onCopy = { copyText("简介", detail.description) },
                                         )
                                     }
@@ -642,20 +385,20 @@ fun AlbumDetailScreen(
                                     }
                                 }
                                 item(key = "comments-title") {
-                                    val total = (comments as? CommentsUiState.Loaded)?.page?.total
+                                    val total = (uiState.commentsState as? CommentsUiState.Loaded)?.page?.total
                                     SmallTitle(text = if (total != null) "评论（$total）" else "评论")
                                 }
                                 item(key = "comment-composer") {
                                     CommentComposer(
                                         loggedIn = user != null,
-                                        text = commentText,
-                                        busy = commentBusy,
-                                        onTextChange = { commentText = it.take(COMMENT_MAX_LENGTH) },
+                                        text = uiState.commentText,
+                                        busy = uiState.commentBusy,
+                                        onTextChange = stateHolder::setCommentText,
                                         onLogin = onOpenLogin,
-                                        onSend = ::postComment,
+                                        onSend = stateHolder::postComment,
                                     )
                                 }
-                                when (val cs = comments) {
+                                when (val cs = uiState.commentsState) {
                                     is CommentsUiState.Loading -> item(key = "comments-loading") {
                                         Box(
                                             modifier = Modifier.fillMaxWidth().padding(24.dp),
@@ -667,7 +410,7 @@ fun AlbumDetailScreen(
                                     is CommentsUiState.Failed -> item(key = "comments-failed") {
                                         ErrorScreen(
                                             message = "评论加载失败",
-                                            onRetry = { scope.launch { loadComments() } },
+                                            onRetry = { stateHolder.reloadComments() },
                                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                                         )
                                     }
@@ -687,16 +430,16 @@ fun AlbumDetailScreen(
                                                         CommentRow(
                                                             item = comment,
                                                             onReply = {
-                                                                if (user == null) onOpenLogin() else replyTarget = comment
+                                                                if (user == null) onOpenLogin() else stateHolder.setReplyTarget(comment)
                                                             },
                                                         )
                                                     }
                                                     if (cs.page.items.isNotEmpty()) {
                                                         LoadMoreFooter(
-                                                            loadingMore = commentsLoadingMore,
+                                                            loadingMore = uiState.commentsLoadingMore,
                                                             hasMore = cs.page.items.size < cs.page.total,
-                                                            loadMoreFailed = commentsLoadFailed,
-                                                            onLoadMore = ::loadMoreComments,
+                                                            loadMoreFailed = uiState.commentsLoadFailed,
+                                                            onLoadMore = stateHolder::loadMoreComments,
                                                             modifier = Modifier.padding(top = 8.dp),
                                                         )
                                                     }
@@ -710,32 +453,32 @@ fun AlbumDetailScreen(
                     }
                     // 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏
                     OverlayBottomSheet(
-                        show = showFolderSheet,
-                        title = if (favorited) "移动收藏夹" else "选择收藏夹",
-                        onDismissRequest = { showFolderSheet = false },
+                        show = uiState.showFolderSheet,
+                        title = if (uiState.favorited) "移动收藏夹" else "选择收藏夹",
+                        onDismissRequest = stateHolder::closeFolderSheet,
                     ) {
                         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                            val allLabel = folders["0"] ?: "全部收藏"
+                            val allLabel = uiState.folders["0"] ?: "全部收藏"
                             BasicComponent(
                                 title = allLabel,
                                 summary = "默认收藏夹",
-                                onClick = { pickFolder("0") },
+                                onClick = { stateHolder.pickFolder("0") },
                             )
-                            folders.entries
+                            uiState.folders.entries
                                 .filter { it.key != "0" }
                                 .forEach { (id, name) ->
                                     BasicComponent(
                                         title = name,
-                                        onClick = { pickFolder(id) },
+                                        onClick = { stateHolder.pickFolder(id) },
                                     )
                                 }
                         }
-                        if (favorited) {
+                        if (uiState.favorited) {
                             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
                                 TextButton(
                                     text = "取消收藏",
-                                    onClick = ::cancelFavorite,
-                                    enabled = !favoriteBusy,
+                                    onClick = stateHolder::cancelFavorite,
+                                    enabled = !uiState.favoriteBusy,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -743,11 +486,11 @@ fun AlbumDetailScreen(
                     }
                     // 回复面板：标题带被回复作者，发送后刷新评论列表以显示新回复
                     CommentReplySheet(
-                        show = replyTarget != null,
-                        targetAuthor = replyTarget?.author,
-                        busy = replyBusy,
-                        onDismiss = { replyTarget = null },
-                        onSend = ::sendReply,
+                        show = uiState.replyTarget != null,
+                        targetAuthor = uiState.replyTarget?.author,
+                        busy = uiState.replyBusy,
+                        onDismiss = { stateHolder.setReplyTarget(null) },
+                        onSend = stateHolder::sendReply,
                     )
                 }
             }
