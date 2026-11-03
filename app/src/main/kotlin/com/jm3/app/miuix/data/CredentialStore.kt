@@ -3,6 +3,7 @@ package com.jm3.app.miuix.data
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import com.jm3.core.CredentialCipher
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -34,7 +35,7 @@ class KeystoreCredentialCipher : CredentialCipher {
         return Base64.encodeToString(combined, Base64.NO_WRAP)
     }
 
-    override fun decrypt(encrypted: String): String {
+    override fun decrypt(encrypted: String): String = try {
         val combined = Base64.decode(encrypted, Base64.NO_WRAP)
         require(combined.isNotEmpty()) { "凭据密文为空" }
         // 长度只记在首字节里：128~255 会被 toInt() 读成负数，必须先按无符号解释
@@ -45,12 +46,34 @@ class KeystoreCredentialCipher : CredentialCipher {
         val cipher = Cipher.getInstance(TRANSFORMATION).apply {
             init(Cipher.DECRYPT_MODE, synchronized(keyLock) { secretKey() }, GCMParameterSpec(GCM_TAG_BITS, iv))
         }
-        return String(cipher.doFinal(body), Charsets.UTF_8)
+        String(cipher.doFinal(body), Charsets.UTF_8)
+    } catch (e: Exception) {
+        // 上层只会把解不开的密文清掉，这条日志是事后区分「密钥没了」与「密文损坏」的唯一线索；
+        // 只记密文长度与异常，不记密文本体与明文。
+        Log.w(TAG, "凭据解密失败，密文长度 " + encrypted.length, e)
+        throw e
     }
 
     private fun secretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey?.let { return it }
+        // 记录读不出来（系统升级、备份恢复、密钥库损坏）或类型不符时，这条密钥已经无法加解密；
+        // 不自清的话此后每次加密都会失败，表现是自动登录永久静默失效，且没有任何痕迹。
+        var unusable = false
+        val entry = runCatching { keyStore.getEntry(KEY_ALIAS, null) }
+            .getOrElse { failure ->
+                Log.w(TAG, "Keystore 凭据密钥不可读，删除后重建", failure)
+                unusable = true
+                null
+            }
+        (entry as? KeyStore.SecretKeyEntry)?.secretKey?.let { return it }
+        if (entry != null) {
+            Log.w(TAG, "Keystore 凭据密钥不可用（" + entry.javaClass.simpleName + "），删除后重建")
+            unusable = true
+        }
+        if (unusable) {
+            // 删除后旧密文再也解不开，等价于用户需要重新登录一次；这比永久静默失效可接受。
+            keyStore.deleteEntry(KEY_ALIAS)
+        }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
@@ -68,6 +91,7 @@ class KeystoreCredentialCipher : CredentialCipher {
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val GCM_TAG_BITS = 128
         const val KEY_SIZE_BITS = 256
+        const val TAG = "KeystoreCredentialCipher"
         val keyLock = Any()
     }
 }
