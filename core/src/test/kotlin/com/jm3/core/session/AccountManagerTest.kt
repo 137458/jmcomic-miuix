@@ -442,6 +442,28 @@ class AccountManagerTest {
     }
 
     @Test
+    fun `注入会话落在调用方已经判定过的那个网关实例上`() = runBlocking {
+        val session = Jm3Session(user = testUser(), cookies = emptyList())
+        val store = FakeSessionStore(stored = session)
+        var firstInjections = 0
+        var secondInjections = 0
+        val judged = fakeGateway(onRestoreSession = { firstInjections++ })
+        val stray = fakeGateway(onRestoreSession = { secondInjections++ })
+        var calls = 0
+        // 每次取网关都给一个新实例：注入若自己去要网关，拿到的就不是 restore() 开头判定的那个
+        val account = AccountManager(
+            gatewayProvider = { if (calls++ == 0) judged else stray },
+            store = store,
+            credentials = FakeCredentialStorage(),
+        )
+
+        account.restore()
+
+        assertEquals(1, firstInjections)
+        assertEquals(0, secondInjections)
+    }
+
+    @Test
     fun `线路切换补注入会话时把凭据交给新网关`() = runBlocking {
         val session = Jm3Session(user = testUser(), cookies = emptyList())
         val store = FakeSessionStore(stored = session)

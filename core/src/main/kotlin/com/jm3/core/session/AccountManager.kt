@@ -76,13 +76,13 @@ class AccountManager(
             val session = loadSession()
             if (session != null) {
                 if (_user.value == null) _user.value = session.user
-                if (injectedGateway !== gateway) inject(session)
+                if (injectedGateway !== gateway) inject(gateway, session)
             } else if (renewedGateway !== gateway) {
                 renewSession()
             }
         } finally {
             // 无论成功失败都必须放行等待者，否则读取异常会让所有鉴权页面永久停在加载中
-            _restored.value = true
+            openStartupGate()
         }
     }
 
@@ -94,6 +94,16 @@ class AccountManager(
      */
     suspend fun awaitRestored() {
         _restored.first { it }
+    }
+
+    /**
+     * 放行启动门控：之前挂起的 [awaitRestored] 在这一刻全部返回，页面开始发鉴权请求。
+     *
+     * 只有两处该调用它——[restore] 的收尾（成功失败都要放行）与登录态落地 [adopt]；
+     * 这里单独起名是因为「放行」是个必须全项目一致的时机决策，写在两处裸赋值里迟早会被改漏一处。
+     */
+    private fun openStartupGate() {
+        _restored.value = true
     }
 
     /**
@@ -176,7 +186,7 @@ class AccountManager(
     suspend fun markSessionExpired() {
         val gateway = gatewayProvider()
         if (injectedGateway !== gateway) {
-            loadSession()?.let { inject(it) }
+            loadSession()?.let { inject(gateway, it) }
             return
         }
         if (renewSession()) return
@@ -236,7 +246,7 @@ class AccountManager(
     private suspend fun adopt(session: Jm3Session, gateway: SessionAuth) {
         _user.value = session.user
         injectedGateway = gateway
-        _restored.value = true
+        openStartupGate()
         sessionEpoch++
         // 会话落盘后冷启动优先用 Cookie 恢复，不必每次都拿密码去登录一次
         storeLock.withLock { runCatchingSuspending { store.save(session) } }
@@ -246,11 +256,14 @@ class AccountManager(
     /**
      * 把会话注入网关，并把本地凭据一并交给它，让库内自动重登可用。
      *
+     * [gateway] 由调用方传入它已经判定过的那个实例：这里若自己去问 [gatewayProvider] 要，线路切换的
+     * 瞬间可能拿到另一个实例，于是 Cookie 注进了一个没人用的客户端，当前网关依旧未登录，
+     * 而 [injectedGateway] 还会被错记成那个替身。
+     *
      * 库只在内存里还留着加密密码时才会在会话失效后自行重登并重放请求（JmApiClient.shouldRefreshLogin），
      * 而那段内存每次冷启动必为空；这里补一次，一次过期就不会直接落到页面上。
      */
-    private suspend fun inject(session: Jm3Session) {
-        val gateway = gatewayProvider()
+    private suspend fun inject(gateway: SessionAuth, session: Jm3Session) {
         withContext(Dispatchers.IO) {
             runCatchingSuspending { gateway.restoreSession(session) }.onSuccess {
                 injectedGateway = gateway
