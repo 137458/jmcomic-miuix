@@ -118,7 +118,7 @@
    - 库反射契约：core/src/test/kotlin/com/jm3/core/LibrarySessionReflectionTest.kt（字段名与类型对得上真实 jar；prime 之后能解出原密码、forget 之后解不出）。
    - 会话续期与 Cookie 回写：core/src/main/kotlin/com/jm3/core/session/AccountManager.kt → core/src/test/kotlin/com/jm3/core/session/AccountManagerTest.kt（27 用例；同网关只静默重登一次、并发续期只登一次、登出后不被回写、回写内容与顺序无关、静默重登连续失败到 `RENEW_FAILURE_LIMIT` 才清凭据且成功即归零、会话注入落在调用方已经判定过的那个网关实例上）。账号编排不留 :app：它只依赖 `SessionAuth`、`SessionStorage`、`CredentialStorage` 三个契约，放进 :core 才能被 JVM 单测直接覆盖。
 7. 断言纪律：只测公共入口；不打桩自身控制的协作者；不用 `Thread.sleep` 等时序；一个用例只表达一个业务规则；计算与规则逻辑至少用两组差异数据（常规 + 边界）验证。
-8. 提交与 CHANGELOG：提交信息用 Conventional Commits（如 `feat(reader): 支持放大后边缘拖拽翻页`），一个逻辑变更一次提交，不混入生成物与过程物。CHANGELOG 只写进“未发布”段并按 新增/修复/优化 分类（CHANGELOG.md:3、:5），不改历史版本区块。
+8. 提交与 CHANGELOG：提交信息用 Conventional Commits（如 `feat(reader): 支持放大后边缘拖拽翻页`），主题行一律中文（正文可酌情补理由），一个逻辑变更一次提交，不混入生成物与过程物。历史里 `5b30084` 那条英文主题行不再出现，也不改写已推送的历史：Cherry-pick 与 `git log --grep` 都靠这段文本定位，为一行语言风格去动已推送提交的代价远大于收益。CHANGELOG 只写进“未发布”段并按 新增/修复/优化 分类（CHANGELOG.md:3、:5），不改历史版本区块。
 
 ## 附录 A：已定决策与理由
 
