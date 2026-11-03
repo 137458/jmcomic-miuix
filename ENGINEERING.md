@@ -34,7 +34,7 @@
 
 ## 二、Network：网络与协议边界
 
-1. 网络唯一入口是 `Jm3Gateway`（core/src/main/kotlin/com/jm3/core/Jm3Gateway.kt:45）。它的所有方法都是阻塞调用（接口注释逐条标注，见 :46、:55、:58、:61、:64），调用方必须已经在 IO 线程上：`withContext(Dispatchers.IO)` 或 `appScope`。
+1. 网络唯一入口是 `Jm3Gateway`（core/src/main/kotlin/com/jm3/core/Jm3Gateway.kt 的 `interface Jm3Gateway : SessionAuth`）。它的所有方法都是阻塞调用（接口声明处的 KDoc 逐条标注），调用方必须已经在 IO 线程上：`withContext(Dispatchers.IO)` 或 `appScope`。鉴权面（`login`/`logout`/`restoreSession`/`primeCredentials`/`forgetCredentials`/`currentCookies`）声明在父接口 `SessionAuth`（core/src/main/kotlin/com/jm3/core/SessionAuth.kt）里，账号编排 `AccountManager` 只依赖这 6 个方法：它不该知道搜索、下载、评论这些能力，旧实现靠反射代理伪造整张网关接口，改名时编译期毫无反应。
 2. 协议库（io.github.jukomu.jmcomic）只允许出现在 :core。:app 的依赖里没有 `jmcomic-api`，它只通过 `api(libs.jmcomic.api)`（core/build.gradle.kts:18）传递可见。新增功能要新的网络能力时，先在 :core 的网关接口上加方法，不要在 :app 里直接 new 协议客户端。
 3. 网关实例的切换走 `Jm3Graph.gatewayOverride` 与 `GatewayFactory`（Jm3App.kt:108-112、:210-229、core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:9）。线路（域名）只能通过 `Domains`（core/src/main/kotlin/com/jm3/core/settings/Domains.kt:4）与设置项改动，禁止在屏幕里硬编码 URL。
    - 启动期的域名只有两处来源：设置页的自定义线路，以及上次刷新落盘的线路池（`DomainPoolCache`）。官方线路表由分发服务器下发，运行时在 core/src/main/kotlin/com/jm3/core/DomainTable.kt 拉取并解密，禁止把域名写进源码：服务端换表后写死的表必然过期，那时的表现是首屏直接报错而不是变慢。
@@ -88,7 +88,7 @@
 
 1. 拆 Issue 四项：需求（要什么）、验收（怎么判定完成）、架构约束（允许改哪些文件、必须复用哪些现成实现）、测试要求（哪些用例必须存在）。仓库目前没有 `.github` 目录（无 Issue 模板、无 CI），新建模板时按这四项写。
 2. Agent 可直接做的：:app 屏幕与组件、:core 新增纯函数与其测试、文案与样式、本文件的规则补充。
-   必须先问人的：`Jm3Gateway` 接口签名（core/src/main/kotlin/com/jm3/core/Jm3Gateway.kt:45）、`DownloadTask` 状态机、依赖方向、签名与密钥配置、R8 规则放宽、本文件“禁止”类条款的例外。
+   必须先问人的：`Jm3Gateway` 与 `SessionAuth` 接口签名（core/src/main/kotlin/com/jm3/core/Jm3Gateway.kt、core/src/main/kotlin/com/jm3/core/SessionAuth.kt）、`DownloadTask` 状态机、依赖方向、签名与密钥配置、R8 规则放宽、本文件“禁止”类条款的例外。
 3. 完成定义（缺一项不算完成）：编译通过 → 相关测试通过 → CHANGELOG 更新 → 一次一个逻辑变更的提交。
    - 编译：`.\gradlew.bat :app:assembleDebug`；纯 :core 改动至少 `:core:compileKotlin`。
    - 测试：`.\gradlew.bat :core:test` 与 `.\gradlew.bat :app:testDebugUnitTest`（JUnit Platform，core/build.gradle.kts:24、:28-30，app/build.gradle.kts:68-70、:104）。

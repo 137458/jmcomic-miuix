@@ -1,8 +1,8 @@
 package com.jm3.app.miuix.data
 
 import com.jm3.core.CredentialStorage
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.SavedCredentials
+import com.jm3.core.SessionAuth
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.Jm3User
@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,29 +38,46 @@ class AccountManagerTest {
         onLogin: ((String, String) -> Jm3Session)? = null,
         onPrimeCredentials: (SavedCredentials) -> Unit = {},
         onCurrentCookies: () -> List<CookieSnapshot> = { emptyList() },
+        onForgetCredentials: () -> Unit = {},
         onRestoreSession: (Jm3Session) -> Unit = {},
-    ): Jm3Gateway {
-        return Proxy.newProxyInstance(
-            Jm3Gateway::class.java.classLoader,
-            arrayOf(Jm3Gateway::class.java),
-        ) { _, method, args ->
-            when (method.name) {
-                "restoreSession" -> {
-                    onRestoreSession(args[0] as Jm3Session)
-                    null
-                }
-                "currentCookies" -> onCurrentCookies()
-                "primeCredentials" -> {
-                    onPrimeCredentials(args[0] as SavedCredentials)
-                    null
-                }
-                "forgetCredentials" -> null
-                "logout" -> null
-                "login" -> onLogin?.invoke(args[0] as String, args[1] as String)
-                    ?: throw UnsupportedOperationException(method.name)
-                else -> throw UnsupportedOperationException(method.name)
-            }
-        } as Jm3Gateway
+    ): FakeGateway = FakeGateway(
+        onLogin = onLogin,
+        onPrimeCredentials = onPrimeCredentials,
+        onCurrentCookies = onCurrentCookies,
+        onForgetCredentials = onForgetCredentials,
+        onRestoreSession = onRestoreSession,
+    )
+
+    /**
+     * 手写的鉴权假实现：只实现 [SessionAuth] 这 6 个方法，行为全部由构造参数注入。
+     *
+     * 旧做法用反射代理伪造整张网关接口，按方法名字符串分派：接口改名在编译期毫无反应，只在运行时抛异常。
+     * 换成真类后，多实现一个、少实现一个都过不了编译。
+     */
+    private class FakeGateway(
+        /** 没配置时 login 直接失败：用例真走到登录就说明假网关缺桩，不能悄悄返回一个假会话。 */
+        private val onLogin: ((String, String) -> Jm3Session)? = null,
+        private val onPrimeCredentials: (SavedCredentials) -> Unit = {},
+        private val onCurrentCookies: () -> List<CookieSnapshot> = { emptyList() },
+        private val onForgetCredentials: () -> Unit = {},
+        /** 必须留在最后一个参数：多个用例用尾随 lambda 配置会话注入行为。 */
+        private val onRestoreSession: (Jm3Session) -> Unit = {},
+    ) : SessionAuth {
+
+        override fun login(username: String, password: String): Jm3Session =
+            onLogin?.invoke(username, password)
+                ?: error("该用例未配置 onLogin，FakeGateway 不应被要求登录")
+
+        /** 登出后的存储清理由 AccountManager 自己断言，这里只保证不抛异常。 */
+        override fun logout() = Unit
+
+        override fun restoreSession(session: Jm3Session) = onRestoreSession(session)
+
+        override fun primeCredentials(credentials: SavedCredentials) = onPrimeCredentials(credentials)
+
+        override fun forgetCredentials() = onForgetCredentials()
+
+        override fun currentCookies(): List<CookieSnapshot> = onCurrentCookies()
     }
 
     private class FakeCredentialStorage(var stored: SavedCredentials? = null) : CredentialStorage {
@@ -82,7 +98,7 @@ class AccountManagerTest {
     private fun account(
         store: SessionStorage,
         credentials: CredentialStorage = FakeCredentialStorage(),
-        gateway: () -> Jm3Gateway = { fakeGateway() },
+        gateway: () -> SessionAuth = { fakeGateway() },
     ): AccountManager = AccountManager(gateway, store, credentials)
 
     private class FakeSessionStore(var stored: Jm3Session? = null) : SessionStorage {
@@ -505,21 +521,10 @@ class AccountManagerTest {
     @Test
     fun `登出时连同网关内存里的密码一起清掉`() = runBlocking {
         var forgotten = 0
-        val gateway = Proxy.newProxyInstance(
-            Jm3Gateway::class.java.classLoader,
-            arrayOf(Jm3Gateway::class.java),
-        ) { _, method, _ ->
-            when (method.name) {
-                "forgetCredentials" -> {
-                    forgotten++
-                    null
-                }
-                "login" -> Jm3Session(user = testUser(), cookies = emptyList())
-                "currentCookies" -> emptyList<CookieSnapshot>()
-                "logout", "restoreSession" -> null
-                else -> throw UnsupportedOperationException(method.name)
-            }
-        } as Jm3Gateway
+        val gateway = fakeGateway(
+            onLogin = { _, _ -> Jm3Session(user = testUser(), cookies = emptyList()) },
+            onForgetCredentials = { forgotten++ },
+        )
         val account = account(store = FakeSessionStore(), gateway = { gateway })
         account.login("isczjk", "secret")
 

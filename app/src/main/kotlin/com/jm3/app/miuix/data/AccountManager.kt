@@ -1,7 +1,7 @@
 package com.jm3.app.miuix.data
 
 import com.jm3.core.CredentialStorage
-import com.jm3.core.Jm3Gateway
+import com.jm3.core.SessionAuth
 import com.jm3.core.SavedCredentials
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
@@ -23,7 +23,7 @@ import kotlinx.coroutines.withContext
  * 换了实例即视为需要重新注入。
  */
 class AccountManager(
-    private val gatewayProvider: () -> Jm3Gateway,
+    private val gatewayProvider: () -> SessionAuth,
     private val store: SessionStorage,
     private val credentials: CredentialStorage,
 ) {
@@ -38,11 +38,11 @@ class AccountManager(
 
     /** 已把会话 Cookie 注入进去的网关实例；线路切换换了网关后自然失效。 */
     @Volatile
-    private var injectedGateway: Jm3Gateway? = null
+    private var injectedGateway: SessionAuth? = null
 
     /** 静默重登已经试过的网关实例：同一实例只试一次，换线路换了网关才允许再试。 */
     @Volatile
-    private var renewedGateway: Jm3Gateway? = null
+    private var renewedGateway: SessionAuth? = null
 
     /** 会话代次：每落地一次登录会话自增。并发续期靠它判断「别人已经续上了，不必再登一次」。 */
     @Volatile
@@ -113,7 +113,7 @@ class AccountManager(
      */
     private suspend fun rewriteSession(
         user: Jm3User,
-        gateway: Jm3Gateway,
+        gateway: SessionAuth,
         cookies: List<CookieSnapshot>,
     ) {
         if (_user.value != user || injectedGateway !== gateway) return
@@ -196,7 +196,7 @@ class AccountManager(
     }
 
     /** 登录态落地：会话落盘、用户态刷新、当前网关视为已注入。 */
-    private suspend fun adopt(session: Jm3Session, gateway: Jm3Gateway) {
+    private suspend fun adopt(session: Jm3Session, gateway: SessionAuth) {
         _user.value = session.user
         injectedGateway = gateway
         _restored.value = true

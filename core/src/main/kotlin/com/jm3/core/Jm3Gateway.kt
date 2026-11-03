@@ -42,7 +42,7 @@ import io.github.jukomu.jmcomic.core.client.AbstractJmClient
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
 
-interface Jm3Gateway {
+interface Jm3Gateway : SessionAuth {
     /** 搜索。scope 对应原版搜索类型（站内/作品/作者/标签/登场人物），time 由服务端过滤时间范围。阻塞调用。 */
     fun search(
         text: String,
@@ -103,28 +103,8 @@ interface Jm3Gateway {
     /** 封面地址；域名未就绪等场景返回 null。 */
     fun coverUrl(albumId: String, size: String = "_3x4"): String?
 
-    /** 登录并返回会话（含 AVS Cookie 快照）。阻塞调用。 */
-    fun login(username: String, password: String): Jm3Session
-
-    /** 登出并清空库内会话。阻塞调用。 */
-    fun logout()
-
-    /** 恢复已持久化的会话：把 Cookie 注回库内 CookieJar。阻塞调用。 */
-    fun restoreSession(session: Jm3Session)
-
-    /**
-     * 把本地凭据交给网关，让库的「会话失效 → 重登 → 重放」链路生效。阻塞调用。
-     *
-     * 库把登录身份与密码收在客户端实例内存里（JmApiClient.shouldRefreshLogin），那段内存每次冷启动必为空。
-     * 实现方只允许把它留在内存，不得持久化明文。
-     */
-    fun primeCredentials(credentials: SavedCredentials)
-
-    /** 抹掉网关内存里的登录凭据（登出时调用）：密码不再可解密，库也就不会自行重登。 */
-    fun forgetCredentials()
-
-    /** 网关此刻持有的会话 Cookie；取不到时返回空表，不抛异常。 */
-    fun currentCookies(): List<CookieSnapshot>
+    // 鉴权面（login/logout/restoreSession/primeCredentials/forgetCredentials/currentCookies）
+    // 由父接口 SessionAuth 声明，见 core/src/main/kotlin/com/jm3/core/SessionAuth.kt。
 
     /** 收藏列表（folderId=0 全部收藏）。阻塞调用。 */
     fun favorites(page: Int): FavoritePage
