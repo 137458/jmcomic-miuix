@@ -1,4 +1,4 @@
-package com.jm3.app.miuix.data
+package com.jm3.core.session
 
 import com.jm3.core.CredentialStorage
 import com.jm3.core.SessionAuth

@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
-import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
@@ -33,6 +32,7 @@ import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.isSessionExpired
 import com.jm3.core.model.DailyCheckInStatus
+import com.jm3.core.session.AccountManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

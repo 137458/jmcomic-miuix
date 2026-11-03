@@ -22,7 +22,6 @@ import androidx.room.Room
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.request.crossfade
-import com.jm3.app.miuix.data.AccountManager
 import com.jm3.app.miuix.data.FileDomainPoolCache
 import com.jm3.app.miuix.data.KeystoreCredentialCipher
 import com.jm3.app.miuix.data.SessionStore
@@ -71,6 +70,7 @@ import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
+import com.jm3.core.session.AccountManager
 import com.jm3.core.settings.Domains
 import com.jm3.core.settings.SettingsRepository
 import com.jm3.core.settings.PaginationMode
