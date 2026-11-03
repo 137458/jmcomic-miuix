@@ -53,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -277,15 +278,17 @@ private fun ReaderPages(
     // 页宽固定为容器宽；解码尺寸不再写死 3:4，而是按这一页的真实宽高比推算，
     // 否则 800x20000 的长条图会被解成 58x1440 再拉满整宽，放大十几倍必然发糊。
     val pageWidthPx = windowSize.width.coerceAtLeast(1)
-    // 已解码页的真实宽高比：解码成功即回填，本页下一帧与同章后续页的占位、解码尺寸都沿用它
+    // 已解码页的真实宽高比：解码成功即回填，只驱动页框布局
     val pageRatios = remember(photo) { mutableStateMapOf<Int, Float>() }
+    // 只驱动请求尺寸的比例：仅当解码结果顶满请求框时才回填，避免一次回填就把内存缓存键换掉
+    val decodeRatios = remember(photo) { mutableStateMapOf<Int, Float>() }
     var chapterRatioSeed by remember(photo) { mutableStateOf<Float?>(null) }
     // 左右模式整屏展示，解码尺寸按屏幕容器
     val screenSize = remember(windowSize.width, windowSize.height) {
         Size(windowSize.width.coerceAtLeast(1), windowSize.height.coerceAtLeast(1))
     }
-    // 已发起预加载的页号；翻页向前向后都只发一次
-    val prefetched = remember { mutableSetOf<Int>() }
+    // 已发起预加载的页号；翻页向前向后都只发一次。键随章节走，换话后重新计
+    val prefetched = remember(photo) { mutableSetOf<Int>() }
     // 当前页是否处于放大态：放大时让出翻页手势，交给缩放层自己消费
     var pageZoomed by remember(photo) { mutableStateOf(false) }
     LaunchedEffect(pagerState.currentPage) { pageZoomed = false }
@@ -626,20 +629,36 @@ private fun ReaderPages(
                     contentPadding = innerPadding,
                 ) {
                     items(photo.images, key = { it.index }) { image ->
-                        // 已知比例优先取本页自己的，其次借同章上一页的：新页首帧不必先按 3:4 撑开再跳变
-                        val ratio = readerPagePlaceholderRatio(pageRatios[image.index], chapterRatioSeed)
+                        // 布局比例优先本页已知比例、其次章节种子；请求尺寸只认解码比例，两者分开演进
+                        val frame = readerPageFrame(
+                            pageWidthPx = pageWidthPx,
+                            knownRatio = pageRatios[image.index],
+                            chapterSeed = chapterRatioSeed,
+                            decodeRatio = decodeRatios[image.index],
+                        )
                         ReaderPage(
                             image = image,
                             imageLoader = imageLoader,
-                            decodeSize = readerPageRequestSize(pageWidthPx, ratio),
+                            decodeSize = frame.decodeSize.toCoilSize(),
                             dynamicAspectRatio = true,
-                            aspectRatio = ratio,
+                            aspectRatio = frame.layoutRatio,
                             modifier = Modifier.fillMaxWidth(),
-                            // 解码出真实比例后回填，供本页重排与同章后续页占位、预取使用
-                            onIntrinsicRatio = { detected ->
+                            // 解码出真实比例后回填：布局立刻重排，请求尺寸只在受框限制时重算
+                            onIntrinsicRatio = { detected, decodedWidth, decodedHeight ->
                                 if (pageRatios[image.index] != detected) {
                                     pageRatios[image.index] = detected
-                                    chapterRatioSeed = detected
+                                }
+                                // 条幅不进种子池，否则同章后续页的占位框与解码尺寸一起被带偏
+                                chapterSeedCandidate(detected)?.let { chapterRatioSeed = it }
+                                // 顶满请求框说明画面被框限制住；没顶满时重算只会再解一次同一张位图
+                                val boxLimited = isBoxLimited(
+                                    requestedWidthPx = frame.decodeSize.width,
+                                    requestedHeightPx = frame.decodeSize.height,
+                                    decodedWidthPx = decodedWidth,
+                                    decodedHeightPx = decodedHeight,
+                                )
+                                if (boxLimited && decodeRatios[image.index] != detected) {
+                                    decodeRatios[image.index] = detected
                                 }
                             },
                             // 长图模式按图片真实比例自适应展开无缝拼接，双击打开整屏缩放层
@@ -863,16 +882,21 @@ private fun ReaderPages(
                 // 末尾补了工具栏留白项，页码需按图片数收敛，避免显示 N+1/N
                 val total = photo.images.size
                 currentPage = if (total == 0) 0 else (first + 1).coerceAtMost(total)
-                // 预加载可见页之后的 1..3 页；尺寸与展示同源，否则内存缓存键不同，预取等于白解
+                // 预加载可见页之后的 1..3 页；尺寸与展示走同一处换算，否则内存缓存键不同，预取等于白解
                 for (offset in 1..3) {
                     val index = first + offset
                     if (index < photo.images.size && prefetched.add(index)) {
                         val page = photo.images[index]
-                        val ratio = readerPagePlaceholderRatio(pageRatios[page.index], chapterRatioSeed)
+                        val size = readerPageFrame(
+                            pageWidthPx = pageWidthPx,
+                            knownRatio = pageRatios[page.index],
+                            chapterSeed = chapterRatioSeed,
+                            decodeRatio = decodeRatios[page.index],
+                        ).decodeSize.toCoilSize()
                         imageLoader.enqueue(
                             ImageRequest.Builder(context)
                                 .data(page)
-                                .size(readerPageRequestSize(pageWidthPx, ratio))
+                                .size(size)
                                 .build(),
                         )
                     }
@@ -972,11 +996,8 @@ private fun ReaderToolbar(
 }
 
 
-/** 把纯函数算出的解码像素换算成 Coil 的 Size；预取与展示共用同一入口，内存缓存键才一致。 */
-private fun readerPageRequestSize(pageWidthPx: Int, aspectRatio: Float?): Size {
-    val decoded = readerPageDecodeSize(pageWidthPx, aspectRatio)
-    return Size(decoded.width, decoded.height)
-}
+/** 纯函数算出的解码像素转成 Coil 的 Size；预取与展示共用这一处，内存缓存键才一致。 */
+private fun IntSize.toCoilSize(): Size = Size(width, height)
 
 @Composable
 private fun ReaderPage(
@@ -988,7 +1009,7 @@ private fun ReaderPage(
     isCurrentPage: Boolean = true,
     dynamicAspectRatio: Boolean = false,
     aspectRatio: Float = DEFAULT_PAGE_ASPECT_RATIO,
-    onIntrinsicRatio: ((Float) -> Unit)? = null,
+    onIntrinsicRatio: ((detected: Float, decodedWidthPx: Float, decodedHeightPx: Float) -> Unit)? = null,
     onTap: (() -> Unit)? = null,
     onZoomChanged: ((Boolean) -> Unit)? = null,
     onDoubleTap: (() -> Unit)? = null,
@@ -1116,9 +1137,12 @@ private fun ReaderPage(
             onSuccess = { state ->
                 failed = false
                 if (dynamicAspectRatio) {
-                    // 判定收敛到 pageAspectRatio 纯函数：非有限值、非正数一律不采信
-                    pageAspectRatio(state.painter.intrinsicSize.width, state.painter.intrinsicSize.height)
-                        ?.let { detected -> onIntrinsicRatio?.invoke(detected) }
+                    val intrinsic = state.painter.intrinsicSize
+                    // 判定收敛到 pageAspectRatio 纯函数：非有限值、非正数一律不采信。
+                    // 解码出的像素宽高一起交出去，调用方才能判断画面是否被请求框限制住
+                    pageAspectRatio(intrinsic.width, intrinsic.height)?.let { detected ->
+                        onIntrinsicRatio?.invoke(detected, intrinsic.width, intrinsic.height)
+                    }
                 }
             },
             onError = { failed = true },

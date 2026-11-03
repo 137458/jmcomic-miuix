@@ -1,8 +1,10 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.ui.unit.IntSize
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -112,4 +114,93 @@ class ReaderPageLogicTest {
         assertEquals(0.04f, readerPagePlaceholderRatio(0f, 0.04f))
         assertEquals(0.75f, readerPagePlaceholderRatio(Float.NaN, null))
     }
+
+    @Test
+    fun 条幅不参与章节种子() {
+        // 1:25 的条幅若当章节种子，后续未解码页的占位框会被撑到上万 px，加载完成后又塌回来
+        assertNull(chapterSeedCandidate(0.04f))
+    }
+
+    @Test
+    fun 章节种子下限取到一比二() {
+        // 边界值本身可以当种子，更窄的长条交给本页自己的比例
+        assertEquals(0.5f, chapterSeedCandidate(0.5f))
+        assertEquals(0.75f, chapterSeedCandidate(0.75f))
+    }
+
+    @Test
+    fun 非法比例不能当章节种子() {
+        assertNull(chapterSeedCandidate(0f))
+        assertNull(chapterSeedCandidate(Float.NaN))
+        assertNull(chapterSeedCandidate(Float.POSITIVE_INFINITY))
+    }
+
+    @Test
+    fun 请求尺寸只跟随解码比例() {
+        // 布局比例已是 3:4，请求尺寸仍按解码比例 1:2 算：两份状态各管一段
+        val frame = readerPageFrame(1080, knownRatio = 0.75f, chapterSeed = null, decodeRatio = 0.5f)
+        assertEquals(0.75f, frame.layoutRatio)
+        assertEquals(IntSize(1080, 2160), frame.decodeSize)
+    }
+
+    @Test
+    fun 解码比例未知时请求按三比四兜底() {
+        val frame = readerPageFrame(1080, knownRatio = 0.5f, chapterSeed = null, decodeRatio = null)
+        assertEquals(0.5f, frame.layoutRatio)
+        assertEquals(IntSize(1080, 1440), frame.decodeSize)
+    }
+
+    @Test
+    fun 布局比例变化不改变请求尺寸() {
+        // 回填真实比例只重排布局；请求尺寸跟着变会让 coil3 判缓存失效，每页都重解一次
+        val unknown = readerPageFrame(1080, knownRatio = null, chapterSeed = 0.75f, decodeRatio = null)
+        val detected = readerPageFrame(1080, knownRatio = 0.5f, chapterSeed = 0.5f, decodeRatio = null)
+        assertEquals(0.75f, unknown.layoutRatio)
+        assertEquals(0.5f, detected.layoutRatio)
+        assertEquals(unknown.decodeSize, detected.decodeSize)
+    }
+
+    @Test
+    fun 顶满请求框才算受框限制() {
+        // 源码 800x1200 小于 1080x1440 的请求框：两维都没顶满，重算只会再解一次同一张图
+        assertFalse(isBoxLimited(1080, 1440, 800f, 1200f))
+        // 解出 77x1440：高度顶满，按真实比例重算才能换到 328x8192
+        assertTrue(isBoxLimited(1080, 1440, 77f, 1440f))
+        // 宽度顶满同样算受框限制
+        assertTrue(isBoxLimited(1080, 1440, 1080f, 540f))
+    }
+
+    @Test
+    fun 各比例收敛后仍保持等比() {
+        // 离散点用例可能同时通过，等比这条不变式才能锁住钳位链路
+        for (ratio in listOf(0.25f, 0.5f, 0.667f, 0.75f, 1f, 1.5f, 2f)) {
+            val size = readerPageDecodeSize(1080, ratio)
+            val actual = size.width.toFloat() / size.height.toFloat()
+            assertTrue(abs(actual - ratio) / ratio < 0.01f, "比例 $ratio 收敛后为 $actual")
+        }
+    }
+
+    @Test
+    fun 面积上限边界() {
+        // 正好 4 MP 不缩放
+        assertEquals(IntSize(1000, 4000), readerPageDecodeSize(1000, 0.25f))
+        // 超过 4 MP 按面积缩回预算内，取整不能把面积又顶出去
+        val shrunk = readerPageDecodeSize(1000, 0.24f)
+        assertEquals(IntSize(979, 4082), shrunk)
+        assertTrue(shrunk.width.toLong() * shrunk.height <= MAX_PAGE_DECODE_PIXELS)
+    }
+
+    @Test
+    fun 极端比例不崩且至少一像素() {
+        // 宽 / 极小比例会溢出到 Int.MAX，两维仍须不小于 1：coil3 的 Dimension.Pixels 要求 px > 0
+        assertEquals(IntSize(1, 8192), readerPageDecodeSize(1080, 1e-30f))
+    }
+
+    @Test
+    fun 超大页宽也不越预算() {
+        // 单边上限先于面积预算生效，页宽再大也要落回预算内
+        val size = readerPageDecodeSize(Int.MAX_VALUE, 0.75f)
+        assertTrue(size.width.toLong() * size.height <= MAX_PAGE_DECODE_PIXELS)
+    }
 }
+
