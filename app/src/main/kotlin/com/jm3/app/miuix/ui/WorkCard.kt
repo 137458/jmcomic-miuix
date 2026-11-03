@@ -108,10 +108,9 @@ internal fun WorkCover(
     cornerDp: Float = HERO_CARD_CORNER_DP,
     contentScale: ContentScale = ContentScale.Crop,
 ) {
-    val skeleton = rememberCoverSkeletonState(url)
-    Box(modifier = modifier.coverSkeleton(skeleton)) {
-        if (url == null) return@Box
-        val heroModifier = if (albumId != null) {
+    Box(modifier = modifier) {
+        // 缺图时封面位置由 AlbumCoverImage 自己的骨架底衬占住，卡片尺寸一律由调用方给定
+        val heroModifier = if (albumId != null && url != null) {
             Modifier.albumHeroCover(albumId = albumId, url = url, title = title, cornerDp = cornerDp)
         } else {
             Modifier
@@ -121,7 +120,7 @@ internal fun WorkCover(
             contentDescription = contentDescription,
             contentScale = contentScale,
             modifier = Modifier.fillMaxSize().then(heroModifier),
-            onState = skeleton::onImageState,
+            skeleton = true,
         )
     }
 }
@@ -425,7 +424,6 @@ internal fun WorkThumbnail(
         Spacer(modifier = modifier.then(thumbSize))
         return
     }
-    val skeleton = rememberCoverSkeletonState(url)
     val heroModifier = if (albumId != null) {
         Modifier.albumHeroCover(albumId = albumId, url = url, cornerDp = HERO_THUMB_CORNER_DP)
     } else {
@@ -434,14 +432,13 @@ internal fun WorkThumbnail(
     Box(
         modifier = modifier
             .then(thumbSize)
-            .squircleClip(HERO_THUMB_CORNER_DP.dp)
-            .coverSkeleton(skeleton),
+            .squircleClip(HERO_THUMB_CORNER_DP.dp),
     ) {
         AlbumCoverImage(
             url = url,
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize().then(heroModifier),
-            onState = skeleton::onImageState,
+            skeleton = true,
         )
     }
 }

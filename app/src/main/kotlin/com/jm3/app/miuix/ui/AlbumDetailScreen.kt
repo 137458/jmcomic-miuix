@@ -797,6 +797,8 @@ private fun DetailHeader(
                         contentDescription = title,
                         modifier = Modifier.fillMaxSize(),
                         crossfade = false,
+                        // 首帧出图前先铺骨架底衬，转场落点不会先露出卡片底色
+                        skeleton = true,
                         // 首帧画出（或确认失败）后告诉飞行层：覆盖层要等这一步才收场
                         onState = { state ->
                             if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) {

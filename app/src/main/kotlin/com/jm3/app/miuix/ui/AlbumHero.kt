@@ -310,6 +310,10 @@ fun buildAlbumCoverRequest(context: Context, url: String?, crossfade: Boolean = 
  *
  * 列表卡片保留默认淡入；详情头图与飞行覆盖层必须传 [crossfade] = false——它们的显隐由 hero
  * 转场自己控制，再叠一次淡入就是用户看到的"封面闪一下"。
+ *
+ * [skeleton] = true 时由本组件自己铺骨架底衬并接收加载状态：骨架屏与图片必须落在同一份修饰符链上，
+ * 否则 hero 转场给卡片打的隐藏透明度盖不住调用方包在外面的那层灰底，飞行途中会留下灰块。
+ * 状态按 [url] 记忆，同一条缓存命中不会因为重组把骨架屏重新点亮。
  */
 @Composable
 fun AlbumCoverImage(
@@ -318,16 +322,29 @@ fun AlbumCoverImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     crossfade: Boolean = true,
+    skeleton: Boolean = false,
     onState: ((AsyncImagePainter.State) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val request = remember(url, crossfade) { buildAlbumCoverRequest(context, url, crossfade) }
+    // 状态无条件记忆：它只在自己的 url 变化时重置，多记住一份不会影响不铺骨架的调用点
+    val skeletonState = rememberCoverSkeletonState(url)
+    // 显式声明期望类型：骨架分支的 Lambda 末句是 `onState?.invoke`，返回值是 Unit?，
+    // 没有 Unit 上下文时会被推成 (State) -> Unit?，与 AsyncImage 的参数类型不符。
+    val chainedOnState: ((AsyncImagePainter.State) -> Unit)? = if (skeleton) {
+        { state ->
+            skeletonState.onImageState(state)
+            onState?.invoke(state)
+        }
+    } else {
+        onState
+    }
     AsyncImage(
         model = request,
         contentDescription = contentDescription,
         contentScale = contentScale,
-        modifier = modifier,
-        onState = onState,
+        modifier = if (skeleton) modifier.coverSkeleton(skeletonState) else modifier,
+        onState = chainedOnState,
     )
 }
 
