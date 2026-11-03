@@ -11,7 +11,9 @@ import kotlin.test.assertTrue
 class CancellationTest {
 
     @Test
-    fun `取消原样抛出而不进 Result`() = runBlocking {
+    // 表达式体的返回类型会跟着最后一句走：assertFailsWith 返回被捕获的异常，JUnit 5 只执行返回 void 的用例，
+    // 少写这个 <Unit> 时该用例根本不跑，报告里看不到任何失败。
+    fun `取消原样抛出而不进 Result`() = runBlocking<Unit> {
         assertFailsWith<CancellationException> {
             runCatchingSuspending<Unit> { throw CancellationException("页面已关闭") }
         }
