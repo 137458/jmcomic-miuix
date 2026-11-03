@@ -897,6 +897,7 @@ private fun ReaderPages(
                             ImageRequest.Builder(context)
                                 .data(page)
                                 .size(size)
+                                .configureReaderDefaults()
                                 .build(),
                         )
                     }
@@ -918,6 +919,7 @@ private fun ReaderPages(
                             ImageRequest.Builder(context)
                                 .data(photo.images[index])
                                 .size(screenSize)
+                                .configureReaderDefaults()
                                 .build(),
                         )
                     }
@@ -1024,6 +1026,7 @@ private fun ReaderPage(
     val request = remember(image, decodeSize, context, retryKey, zoomEnabled) {
         ImageRequest.Builder(context)
             .data(image)
+            .configureReaderDefaults()
             .apply {
                 if (zoomEnabled) {
                     // 解码尺寸交给 telephoto 按视口与缩放级别决定，写死尺寸会让放大后发糊

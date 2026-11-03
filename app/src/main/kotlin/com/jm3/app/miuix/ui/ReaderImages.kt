@@ -11,7 +11,10 @@ import coil3.decode.ImageSource
 import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.key.Keyer
+import android.graphics.Bitmap
+import coil3.request.ImageRequest
 import coil3.request.Options
+import coil3.request.bitmapConfig
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.PageNumbers
@@ -149,4 +152,13 @@ fun rememberReaderImageLoader(
                 .build()
         }
     }
+}
+
+/**
+ * 阅读器页图请求的标准配置：
+ * 统一指定 RGB_565 减少 50% 内存开销（单页 4MP 仅占约 8MB，大幅降低瀑布流连续解码的 GC 压力与 OOM 风险），
+ * 并保证预取与展示请求的配置完全对齐，避免因配置漂移导致 Coil 缓存未命中重新解码。
+ */
+fun ImageRequest.Builder.configureReaderDefaults(): ImageRequest.Builder = apply {
+    bitmapConfig(Bitmap.Config.RGB_565)
 }

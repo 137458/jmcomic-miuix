@@ -20,11 +20,29 @@ import kotlin.math.sqrt
 internal const val DEFAULT_PAGE_ASPECT_RATIO = 3f / 4f
 
 /**
- * 单页解码的像素预算：4.0 MP，ARGB_8888 约 16 MB。
+ * 单页解码的像素预算：4.0 MP。
+ * 在 ARGB_8888 下约 16 MB，在 RGB_565 下约 8 MB。
  * 跟随真实比例后超长条幅的高度会失控（1080 宽、1:25 的条幅约 27000 px，原图直解要 116 MB），
- * 这里按面积等比收敛，宁可牺牲长条图的细节也不让单页位图突破 16 MB。
+ * 这里按面积等比收敛，宁可牺牲长条图的细节也不让单页位图突破预算。
  */
 internal const val MAX_PAGE_DECODE_PIXELS = 4_000_000
+
+/**
+ * RGB_565 格式下每像素 2 字节，相比默认 ARGB_8888（每像素 4 字节）节省 50% 内存。
+ */
+internal const val BYTES_PER_PIXEL_RGB_565 = 2
+internal const val BYTES_PER_PIXEL_ARGB_8888 = 4
+
+/**
+ * 估算给定解码尺寸在指定像素格式下的内存占用（字节数）。
+ */
+internal fun estimatePageMemoryBytes(
+    size: IntSize,
+    isRgb565: Boolean = true,
+): Long {
+    val bpp = if (isRgb565) BYTES_PER_PIXEL_RGB_565 else BYTES_PER_PIXEL_ARGB_8888
+    return size.width.toLong() * size.height.toLong() * bpp
+}
 
 /** 解码位图的单边上限：8192 已覆盖 4K 屏整页需求，再大在部分解码器与纹理上传上不安全。 */
 internal const val MAX_PAGE_DECODE_EDGE_PX = 8_192
