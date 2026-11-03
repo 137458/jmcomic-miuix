@@ -54,6 +54,7 @@ class DownloadManager(
     private val recordStore: DownloadRecordStore,
     private val pageSource: GatewayPageFetcher,
     private val appScope: CoroutineScope,
+    private val deltaTracker: DownloadRecordDeltaTracker = DownloadRecordDeltaTracker(),
 ) {
 
     private val started = AtomicBoolean(false)
@@ -68,20 +69,26 @@ class DownloadManager(
         }
         appScope.launch {
             queue.updates.collect { tasks ->
-                tasks.values.forEach { task ->
-                    recordStore.upsert(
-                        record = DownloadRecord(
-                            photoId = task.photoId,
-                            albumId = task.albumId,
-                            title = task.title,
-                            total = task.total,
-                            donePages = task.index,
-                            status = task.status,
-                            updatedAt = 0L,
-                        ),
-                        pagesJson = pageSource.pagesJsonOrNull(task.photoId),
-                    )
+                val now = System.currentTimeMillis()
+                val toPersist = deltaTracker.filterTasksToPersist(tasks.values, nowMs = now)
+                if (toPersist.isNotEmpty()) {
+                    toPersist.forEach { task ->
+                        recordStore.upsert(
+                            record = DownloadRecord(
+                                photoId = task.photoId,
+                                albumId = task.albumId,
+                                title = task.title,
+                                total = task.total,
+                                donePages = task.index,
+                                status = task.status,
+                                updatedAt = 0L,
+                            ),
+                            pagesJson = pageSource.pagesJsonOrNull(task.photoId),
+                        )
+                    }
+                    deltaTracker.onPersisted(toPersist, nowMs = now)
                 }
+                deltaTracker.pruneMissing(tasks.keys)
             }
         }
     }
