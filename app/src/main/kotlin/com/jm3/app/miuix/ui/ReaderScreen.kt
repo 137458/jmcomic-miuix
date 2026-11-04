@@ -71,6 +71,12 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
+import com.jm3.core.reader.ReaderPagePlan
+import com.jm3.core.reader.jumpTo
+import com.jm3.core.reader.prefetchAhead
+import com.jm3.core.reader.settleJump
+import com.jm3.core.reader.stepPages
+import com.jm3.core.reader.visiblePage
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.glassEdgeHighlight
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
@@ -297,7 +303,8 @@ private fun ReaderPages(
     LaunchedEffect(pagerState.currentPage) { pageZoomed = false }
     // 长图模式下双击打开的整屏缩放层：存放 photo.images 下标，null 表示未打开
     var zoomOverlayIndex by remember(photo) { mutableStateOf<Int?>(null) }
-    var currentPage by remember(photo) { mutableStateOf(if (photo.images.isEmpty()) 0 else 1) }
+    // 页码的唯一真源：顶栏、跳页器、音量键与预取都从这份计划取页码，跳页冻结也在这里
+    var pagePlan by remember(photo) { mutableStateOf(ReaderPagePlan.initial(photo.images.size)) }
     var showPageSheet by remember { mutableStateOf(false) }
     var showChapterSheet by remember { mutableStateOf(false) }
     var showCommentSheet by remember { mutableStateOf(false) }
@@ -341,23 +348,29 @@ private fun ReaderPages(
         }
     }
 
-    /** 跳页：左右模式走弹簧动画，直向模式滚动列表并冻结页码回写。 */
+    /** 跳页：先让计划进入“跳页中”，再驱动 pager 或列表；落地后才恢复可见页回写。 */
     fun goToPage(page: Int) {
-        val target = page.coerceIn(1, totalPages)
+        val next = jumpTo(pagePlan, page)
+        if (next == pagePlan) return
+        pagePlan = next
+        val target = next.pendingTarget ?: return
         if (horizontal) {
-            currentPage = target
-            scope.launch { pagerState.springAnimateToPage(target - 1) }
+            scope.launch {
+                pagerState.springAnimateToPage(target - 1)
+                pagePlan = settleJump(pagePlan, target)
+            }
         } else {
-            currentPage = target
-            // 跳页期间阻止“可见页→页码”回写覆盖目标页：滚动落定后再恢复由可见页驱动。
-            scope.launch { listState.scrollToItem(target - 1) }
+            scope.launch {
+                listState.scrollToItem(target - 1)
+                pagePlan = settleJump(pagePlan, target)
+            }
         }
     }
 
     /** 切换阅读方向：同一章节内保持当前页，不重新请求图片。 */
     fun switchMode(nextHorizontal: Boolean) {
         if (nextHorizontal == horizontal) return
-        val page = currentPage.coerceIn(1, totalPages)
+        val page = pagePlan.currentPage.coerceIn(1, totalPages)
         horizontal = nextHorizontal
         scope.launch { Jm3Graph.settings.setReaderHorizontal(nextHorizontal) }
         if (nextHorizontal) {
@@ -510,7 +523,7 @@ private fun ReaderPages(
                     val now = System.currentTimeMillis()
                     if (now - lastVolumeAt >= VOLUME_THROTTLE_MS) {
                         lastVolumeAt = now
-                        goToPage(currentPage + delta)
+                        goToPage(stepPages(pagePlan, delta))
                     }
                     true
                 }
@@ -524,10 +537,10 @@ private fun ReaderPages(
     }
 
     // 最后一话最后一页弹追更引导；勾选静默后三天内不再出现
-    LaunchedEffect(currentPage, photo.images.size) {
+    LaunchedEffect(pagePlan.currentPage, photo.images.size) {
         if (trackPromptShown || photo.images.isEmpty()) return@LaunchedEffect
         if (chapters.isEmpty() || chapterIndex != chapters.lastIndex) return@LaunchedEffect
-        if (currentPage != photo.images.size) return@LaunchedEffect
+        if (pagePlan.currentPage != photo.images.size) return@LaunchedEffect
         if (System.currentTimeMillis() < Jm3Graph.settings.trackPromptMuteUntil()) return@LaunchedEffect
         trackPromptShown = true
         showTrackPrompt = true
@@ -547,9 +560,9 @@ private fun ReaderPages(
                             Icon(imageVector = MiuixIcons.ChevronBackward, contentDescription = "上一话")
                         }
                         TextButton(
-                            text = "$currentPage/${photo.images.size}",
+                            text = "${pagePlan.currentPage}/${photo.images.size}",
                             onClick = {
-                                pickerValue = currentPage
+                                pickerValue = pagePlan.currentPage
                                 showPageSheet = true
                             },
                             minWidth = 0.dp,
@@ -882,12 +895,10 @@ private fun ReaderPages(
         snapshotFlow { listState.firstVisibleItemIndex }
             .collectLatest { first ->
                 // 末尾补了工具栏留白项，页码需按图片数收敛，避免显示 N+1/N
-                val total = photo.images.size
-                currentPage = if (total == 0) 0 else (first + 1).coerceAtMost(total)
+                pagePlan = visiblePage(pagePlan, first)
                 // 预加载可见页之后的 1..3 页；尺寸与展示走同一处换算，否则内存缓存键不同，预取等于白解
-                for (offset in 1..3) {
-                    val index = first + offset
-                    if (index < photo.images.size && prefetched.add(index)) {
+                for (index in prefetchAhead(pagePlan)) {
+                    if (prefetched.add(index)) {
                         val page = photo.images[index]
                         val size = readerPageFrame(
                             pageWidthPx = pageWidthPx,
@@ -912,11 +923,9 @@ private fun ReaderPages(
         if (!horizontal) return@LaunchedEffect
         snapshotFlow { pagerState.currentPage }
             .collectLatest { page ->
-                val total = photo.images.size
-                currentPage = if (total == 0) 0 else (page + 1).coerceAtMost(total)
-                for (offset in 1..3) {
-                    val index = page + offset
-                    if (index < photo.images.size && prefetched.add(index)) {
+                pagePlan = visiblePage(pagePlan, page)
+                for (index in prefetchAhead(pagePlan)) {
+                    if (prefetched.add(index)) {
                         imageLoader.enqueue(
                             ImageRequest.Builder(context)
                                 .data(photo.images[index])
