@@ -60,22 +60,6 @@ private val GlassFabIconSize = 20.dp
 /** 无障碍最小点击区下限。 */
 private const val GLASS_FAB_MIN_ITEM_SIZE_DP = 44f
 
-/**
- * 三态降级判定，与 [FloatingBottomBar] 的现行内联判定等价：
- * 液态玻璃需要 backdrop 与 RuntimeShader 同时可用；模糊只需要 backdrop；
- * 其余情况退回实色，保证没有采样源时仍然可读。
- */
-internal fun resolveFloatingBottomBarMode(
-    requested: FloatingBottomBarMode,
-    hasBackdrop: Boolean,
-    shaderSupported: Boolean,
-): FloatingBottomBarMode = when {
-    requested == FloatingBottomBarMode.LiquidGlass && hasBackdrop && shaderSupported ->
-        FloatingBottomBarMode.LiquidGlass
-    requested == FloatingBottomBarMode.Blur && hasBackdrop -> FloatingBottomBarMode.Blur
-    else -> FloatingBottomBarMode.None
-}
-
 /** 单枚按钮的边长：铺满胶囊高度减去上下内边距，但不低于无障碍下限。 */
 internal fun glassFabItemSizeDp(
     capsuleHeightDp: Float,
@@ -110,8 +94,7 @@ fun GlassFloatingActionBar(
     if (items.isEmpty()) return
 
     val backdrop = LocalGlassBackdrop.current
-    val mode = resolveFloatingBottomBarMode(
-        requested = FloatingBottomBarMode.LiquidGlass,
+    val tier = resolveGlassTier(
         hasBackdrop = backdrop != null,
         shaderSupported = isRuntimeShaderSupported(),
     )
@@ -131,7 +114,7 @@ fun GlassFloatingActionBar(
     ).dp
 
     val surfaceModifier = when {
-        backdrop != null && mode == FloatingBottomBarMode.LiquidGlass -> Modifier.drawBackdrop(
+        backdrop != null && tier == GlassTier.LiquidGlass -> Modifier.drawBackdrop(
             backdrop = backdrop,
             shape = { CircleShape },
             effects = {
@@ -144,7 +127,7 @@ fun GlassFloatingActionBar(
             highlight = { glassEdgeHighlight },
             onDrawSurface = { drawRect(containerColor.copy(alpha = 0.4f)) },
         )
-        backdrop != null && mode == FloatingBottomBarMode.Blur -> Modifier.drawBackdrop(
+        backdrop != null && tier == GlassTier.Blur -> Modifier.drawBackdrop(
             backdrop = backdrop,
             shape = { CircleShape },
             effects = {

@@ -123,7 +123,12 @@ fun GlassScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val backdrop = rememberBlurBackdrop()
-    val shaderReady = backdrop != null && isRuntimeShaderSupported()
+    val glassTier = resolveGlassTier(
+        hasBackdrop = backdrop != null,
+        shaderSupported = isRuntimeShaderSupported(),
+    )
+    // 能画出玻璃才有模糊层；顺带把采样源收窄成非空，供模糊层直接用。
+    val blurBackdrop = backdrop?.takeIf { glassTier.drawsBackdrop }
     val containerColor = MiuixTheme.colorScheme.surface
     val scrollBehavior = MiuixScrollBehavior()
     val density = LocalDensity.current
@@ -183,7 +188,7 @@ fun GlassScaffold(
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
                             .then(
-                                if (shaderReady) {
+                                if (blurBackdrop != null) {
                                     Modifier
                                 } else {
                                     // 不支持 RuntimeShader 时退化为实色，避免顶栏内容叠在正文上。
@@ -191,13 +196,13 @@ fun GlassScaffold(
                                 },
                             ),
                     ) {
-                        if (shaderReady) {
+                        if (blurBackdrop != null) {
                             // 模糊层单独成节点：滚动淡入的 alpha 只作用于模糊与底色，
                             // 不会把叠在其上的标题、页签一起淡出。
                             Box(
                                 modifier = Modifier
                                     .matchParentSize()
-                                    .topBarProgressiveBlur(backdrop)
+                                    .topBarProgressiveBlur(blurBackdrop)
                                     .topBarBlurFadeIn(scrollBehavior.state),
                             )
                         }

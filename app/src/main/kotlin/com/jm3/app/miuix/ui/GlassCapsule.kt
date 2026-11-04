@@ -15,9 +15,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.glass.GlassTier
 import com.jm3.app.miuix.ui.glass.LocalGlassBackdrop
 import com.jm3.app.miuix.ui.glass.glassEdgeHighlight
 import com.jm3.app.miuix.ui.glass.lens
+import com.jm3.app.miuix.ui.glass.resolveGlassTier
 import com.jm3.app.miuix.ui.glass.vibrancy
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.blur
@@ -61,13 +63,16 @@ private fun glassCapsuleShape(): Shape = remember { RoundedCornerShape(GlassCaps
 @Composable
 internal fun glassCapsuleSurface(tint: Color, tintAlpha: Float): Modifier {
     val backdrop = LocalGlassBackdrop.current
-    val shaderReady = backdrop != null && isRuntimeShaderSupported()
+    val tier = resolveGlassTier(
+        hasBackdrop = backdrop != null,
+        shaderSupported = isRuntimeShaderSupported(),
+    )
     val shape = glassCapsuleShape()
 
     return when {
         backdrop == null -> Modifier.background(tint, shape)
 
-        shaderReady -> Modifier.drawBackdrop(
+        tier == GlassTier.LiquidGlass -> Modifier.drawBackdrop(
             backdrop = backdrop,
             shape = { shape },
             effects = {

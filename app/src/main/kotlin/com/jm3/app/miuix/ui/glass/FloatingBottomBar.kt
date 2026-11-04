@@ -219,15 +219,20 @@ fun FloatingBottomBar(
     backdrop: Backdrop?,
     tabsCount: Int,
     modifier: Modifier = Modifier,
-    mode: FloatingBottomBarMode = if (isRuntimeShaderSupported() && backdrop != null) FloatingBottomBarMode.LiquidGlass else FloatingBottomBarMode.Blur,
+    mode: FloatingBottomBarMode = defaultFloatingBottomBarMode(backdrop != null, isRuntimeShaderSupported()),
     colors: FloatingBottomBarColors = FloatingBottomBarDefaults.colors(),
     directSelector: FloatingBottomBarDirectSelector? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val isDark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
     val pillShape = remember { CircleShape }
-    val isLiquidGlassMode = mode == FloatingBottomBarMode.LiquidGlass && backdrop != null && isRuntimeShaderSupported()
-    val isBlurMode = mode == FloatingBottomBarMode.Blur && backdrop != null
+    val tier = resolveGlassTier(
+        hasBackdrop = backdrop != null,
+        shaderSupported = isRuntimeShaderSupported(),
+        requested = mode,
+    )
+    val isLiquidGlassMode = tier == GlassTier.LiquidGlass
+    val isBlurMode = tier == GlassTier.Blur
     val containerColor = if (isLiquidGlassMode) colors.containerColor.copy(alpha = 0.4f) else colors.containerColor
 
     val tabsBackdrop = rememberLayerBackdrop()
@@ -424,7 +429,7 @@ fun IosLiquidGlassNavigationBar(
     onItemClick: (Int) -> Unit,
     backdrop: Backdrop?,
     modifier: Modifier = Modifier,
-    mode: FloatingBottomBarMode = if (isRuntimeShaderSupported() && backdrop != null) FloatingBottomBarMode.LiquidGlass else FloatingBottomBarMode.Blur,
+    mode: FloatingBottomBarMode = defaultFloatingBottomBarMode(backdrop != null, isRuntimeShaderSupported()),
     colors: FloatingBottomBarColors = FloatingBottomBarDefaults.colors(),
     badge: (Int) -> (@Composable () -> Unit)? = { null },
 ) {

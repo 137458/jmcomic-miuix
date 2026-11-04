@@ -1,16 +1,14 @@
 package com.jm3.app.miuix.ui
 
-import com.jm3.app.miuix.ui.glass.FloatingBottomBarMode
 import com.jm3.app.miuix.ui.glass.glassFabCapsuleWidthDp
 import com.jm3.app.miuix.ui.glass.glassFabItemSizeDp
-import com.jm3.app.miuix.ui.glass.resolveFloatingBottomBarMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
  * 右下角操作胶囊的布局与降级契约：
  * 宽度必须等于「左右内边距 + 按钮边长 + 间距」的显式算式（胶囊不随内容偷偷变形），
- * 单枚按钮点击区不得低于 44dp，三态降级不得在缺少采样源时仍走玻璃。
+ * 单枚按钮点击区不得低于 44dp。三态降级的判定由 glass/GlassTier.kt 统一负责。
  */
 class GlassFloatingActionBarTest {
 
@@ -72,62 +70,5 @@ class GlassFloatingActionBarTest {
         assertEquals(44f, glassFabItemSizeDp(capsuleHeightDp = 48f, verticalPaddingDp = 4f))
         // 40 - 8 = 32，同样被抬到下限
         assertEquals(44f, glassFabItemSizeDp(capsuleHeightDp = 40f, verticalPaddingDp = 4f))
-    }
-
-    @Test
-    fun 液态玻璃要求采样源与着色器同时可用() {
-        assertEquals(
-            FloatingBottomBarMode.LiquidGlass,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.LiquidGlass, hasBackdrop = true, shaderSupported = true),
-        )
-        // 有采样源但没有 RuntimeShader：退回实色，不降到模糊（与底栏判定一致）
-        assertEquals(
-            FloatingBottomBarMode.None,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.LiquidGlass, hasBackdrop = true, shaderSupported = false),
-        )
-        assertEquals(
-            FloatingBottomBarMode.None,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.LiquidGlass, hasBackdrop = false, shaderSupported = true),
-        )
-        assertEquals(
-            FloatingBottomBarMode.None,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.LiquidGlass, hasBackdrop = false, shaderSupported = false),
-        )
-    }
-
-    @Test
-    fun 模糊降级只要求采样源() {
-        assertEquals(
-            FloatingBottomBarMode.Blur,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.Blur, hasBackdrop = true, shaderSupported = true),
-        )
-        assertEquals(
-            FloatingBottomBarMode.Blur,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.Blur, hasBackdrop = true, shaderSupported = false),
-        )
-        assertEquals(
-            FloatingBottomBarMode.None,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.Blur, hasBackdrop = false, shaderSupported = true),
-        )
-        assertEquals(
-            FloatingBottomBarMode.None,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.Blur, hasBackdrop = false, shaderSupported = false),
-        )
-    }
-
-    @Test
-    fun 请求实色时不会被升级成玻璃() {
-        assertEquals(
-            FloatingBottomBarMode.None,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.None, hasBackdrop = true, shaderSupported = true),
-        )
-        assertEquals(
-            FloatingBottomBarMode.None,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.None, hasBackdrop = true, shaderSupported = false),
-        )
-        assertEquals(
-            FloatingBottomBarMode.None,
-            resolveFloatingBottomBarMode(FloatingBottomBarMode.None, hasBackdrop = false, shaderSupported = false),
-        )
     }
 }
