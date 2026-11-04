@@ -72,17 +72,25 @@ class KeystoreCredentialCipher : CredentialCipher {
         }
         if (unusable) {
             // 删除后旧密文再也解不开，等价于用户需要重新登录一次；这比永久静默失效可接受。
-            keyStore.deleteEntry(KEY_ALIAS)
+            // 删除失败不中断重建：下面 generateKey 会覆盖同名条目，真失败时由下面的日志留下痕迹。
+            runCatching { keyStore.deleteEntry(KEY_ALIAS) }
+                .onFailure { Log.w(TAG, "Keystore 凭据密钥旧条目删除失败，继续尝试重建", it) }
         }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        generator.init(
-            KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(KEY_SIZE_BITS)
-                .build(),
-        )
-        return generator.generateKey()
+        // 重建失败等于自动登录彻底断掉，必须留下明确记录，而不是只往上抛一个没头没尾的异常
+        try {
+            val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            generator.init(
+                KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(KEY_SIZE_BITS)
+                    .build(),
+            )
+            return generator.generateKey()
+        } catch (e: Exception) {
+            Log.e(TAG, "Keystore 凭据密钥重建失败，自动登录不可用", e)
+            throw e
+        }
     }
 
     private companion object {
