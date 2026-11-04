@@ -27,11 +27,14 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.mergedWith
+import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.SearchPage
+import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.replacedBy
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,9 +44,12 @@ import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 
 private sealed interface SearchUiState {
     data object Loading : SearchUiState
-    data class Loaded(val page: SearchPage) : SearchUiState
+    data class Loaded(val feed: PagedFeed<SearchResult>) : SearchUiState
     data class Failed(val message: String) : SearchUiState
 }
+
+/** 空列表起手：第一页由 [replacedBy] 落进来。 */
+private fun emptyFeed() = PagedFeed<SearchResult>()
 
 /** 独立搜索结果页：标签/作者/作品/人物点击与外部入口共用，支持排序与分页。 */
 @Composable
@@ -56,9 +62,6 @@ fun SearchScreen(
     var state by remember(query, scope) { mutableStateOf<SearchUiState>(SearchUiState.Loading) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
-    var loadingMore by remember { mutableStateOf(false) }
-    // 加载更多失败单独置位，供列表底部给出重试入口
-    var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 排序/下拉刷新会替换第一页，旧的分页响应只在代次未变时落地
@@ -85,7 +88,7 @@ fun SearchScreen(
             val next = withContext(Dispatchers.IO) { runCatching { fetch(1, order) } }
             if (token != requestToken) return@launch
             state = next.fold(
-                onSuccess = { SearchUiState.Loaded(it) },
+                onSuccess = { SearchUiState.Loaded(emptyFeed().replacedBy(it)) },
                 onFailure = { SearchUiState.Failed(it.message ?: "搜索失败") },
             )
             refreshing = false
@@ -94,27 +97,26 @@ fun SearchScreen(
 
     fun loadMore() {
         val loaded = state as? SearchUiState.Loaded ?: return
-        if (loadingMore || loaded.page.currentPage >= loaded.page.totalPages) return
+        if (!loaded.feed.canLoadMore) return
         val token = requestToken
-        loadingMore = true
+        val requested = loaded.feed.beginLoadMore()
+        state = SearchUiState.Loaded(requested)
         coroutineScope.launch {
             val next = withContext(Dispatchers.IO) {
-                runCatching { fetch(loaded.page.currentPage + 1, order) }.getOrNull()
+                runCatching { fetch(requested.page + 1, order) }.getOrNull()
             }
-            loadingMore = false
-            if (next != null && token == requestToken) {
-                loadMoreFailed = false
-                state = SearchUiState.Loaded(loaded.page.mergedWith(next))
-            } else if (token == requestToken) {
-                loadMoreFailed = true
-            }
+            if (token != requestToken) return@launch
+            val current = state as? SearchUiState.Loaded ?: return@launch
+            state = SearchUiState.Loaded(
+                if (next != null) current.feed.appendedBy(next) else current.feed.failLoadMore(),
+            )
         }
     }
 
     /** 点击分页：整页替换并回到列表顶部。 */
     fun jumpToPage(target: Int) {
         val loaded = state as? SearchUiState.Loaded ?: return
-        if (target < 1 || target > loaded.page.totalPages) return
+        if (target < 1 || target > (loaded.feed.pageCount ?: 1)) return
         requestToken++
         val token = requestToken
         state = SearchUiState.Loading
@@ -123,7 +125,7 @@ fun SearchScreen(
             if (token != requestToken) return@launch
             next.fold(
                 onSuccess = {
-                    state = SearchUiState.Loaded(it)
+                    state = SearchUiState.Loaded(emptyFeed().replacedBy(it))
                     listState.scrollToItem(0)
                 },
                 onFailure = { state = SearchUiState.Failed(it.message ?: "搜索失败") },
@@ -135,7 +137,7 @@ fun SearchScreen(
         loadFirstPage()
     }
 
-    LaunchedEffect((state as? SearchUiState.Loaded)?.page, clickPaging) {
+    LaunchedEffect((state as? SearchUiState.Loaded)?.feed?.let { it.page to it.hasMore }, clickPaging) {
         if (clickPaging || state !is SearchUiState.Loaded) return@LaunchedEffect
         snapshotFlow {
             val info = listState.layoutInfo
@@ -211,15 +213,13 @@ fun SearchScreen(
                     }
                     is SearchUiState.Loaded -> if (clickPaging) {
                         pagedSearchResultItems(
-                            page = s.page,
+                            feed = s.feed,
                             onPageChange = ::jumpToPage,
                             onOpenAlbum = onOpenAlbum,
                         )
                     } else {
                         searchResultItems(
-                            page = s.page,
-                            loadingMore = loadingMore,
-                            loadMoreFailed = loadMoreFailed,
+                            feed = s.feed,
                             onLoadMore = ::loadMore,
                             onOpenAlbum = onOpenAlbum,
                         )

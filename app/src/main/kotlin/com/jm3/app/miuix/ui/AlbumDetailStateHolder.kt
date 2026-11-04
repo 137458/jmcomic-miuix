@@ -2,10 +2,11 @@ package com.jm3.app.miuix.ui
 
 import com.jm3.core.history.HistoryRepository
 import com.jm3.core.Jm3Gateway
-import com.jm3.core.mergedWith
+import com.jm3.core.appendedBy
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.CommentItem
-import com.jm3.core.model.CommentPage
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.replacedBy
 import com.jm3.core.model.FavoriteFolderAction
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -27,7 +28,7 @@ sealed interface AlbumUiState {
 
 sealed interface CommentsUiState {
     data object Loading : CommentsUiState
-    data class Loaded(val page: CommentPage, val lastPage: Int) : CommentsUiState
+    data class Loaded(val feed: PagedFeed<CommentItem>) : CommentsUiState
     data object Failed : CommentsUiState
 }
 
@@ -51,8 +52,6 @@ data class AlbumDetailViewState(
     val commentBusy: Boolean = false,
     val replyTarget: CommentItem? = null,
     val replyBusy: Boolean = false,
-    val commentsLoadingMore: Boolean = false,
-    val commentsLoadFailed: Boolean = false,
     val pullRefreshing: Boolean = false,
 )
 
@@ -108,7 +107,7 @@ class AlbumDetailStateHolder(
 
     suspend fun loadComments() {
         val commentsResult = withContext(ioDispatcher) {
-            runCatching { CommentsUiState.Loaded(gateway.comments(albumId, 1), 1) }
+            runCatching { CommentsUiState.Loaded(PagedFeed<CommentItem>().replacedBy(gateway.comments(albumId, 1))) }
                 .getOrDefault(CommentsUiState.Failed)
         }
         _uiState.update { it.copy(commentsState = commentsResult) }
@@ -345,25 +344,22 @@ class AlbumDetailStateHolder(
 
     fun loadMoreComments() {
         val loaded = _uiState.value.commentsState as? CommentsUiState.Loaded ?: return
-        if (_uiState.value.commentsLoadingMore || loaded.page.items.size >= loaded.page.total) return
-        _uiState.update { it.copy(commentsLoadingMore = true) }
+        val requested = loaded.feed.beginLoadMore()
+        // 已经在拉或没有下一页时原样返回，不重复发请求
+        if (requested === loaded.feed) return
+        _uiState.update { it.copy(commentsState = CommentsUiState.Loaded(requested)) }
         scope.launch {
             val next = withContext(ioDispatcher) {
-                runCatching { gateway.comments(albumId, loaded.lastPage + 1) }.getOrNull()
+                runCatching { gateway.comments(albumId, requested.page + 1) }.getOrNull()
             }
             _uiState.update { current ->
-                if (next != null) {
-                    current.copy(
-                        commentsLoadingMore = false,
-                        commentsLoadFailed = false,
-                        commentsState = CommentsUiState.Loaded(loaded.page.mergedWith(next), loaded.lastPage + 1),
-                    )
+                val currentLoaded = current.commentsState as? CommentsUiState.Loaded ?: return@update current
+                val nextFeed = if (next != null) {
+                    currentLoaded.feed.appendedBy(next)
                 } else {
-                    current.copy(
-                        commentsLoadingMore = false,
-                        commentsLoadFailed = true,
-                    )
+                    currentLoaded.feed.failLoadMore()
                 }
+                current.copy(commentsState = CommentsUiState.Loaded(nextFeed))
             }
         }
     }

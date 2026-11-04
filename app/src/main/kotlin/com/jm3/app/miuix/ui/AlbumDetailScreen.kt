@@ -385,7 +385,7 @@ fun AlbumDetailScreen(
                                     }
                                 }
                                 item(key = "comments-title") {
-                                    val total = (uiState.commentsState as? CommentsUiState.Loaded)?.page?.total
+                                    val total = (uiState.commentsState as? CommentsUiState.Loaded)?.feed?.total
                                     SmallTitle(text = if (total != null) "评论（$total）" else "评论")
                                 }
                                 item(key = "comment-composer") {
@@ -418,7 +418,7 @@ fun AlbumDetailScreen(
                                         item(key = "comments-card") {
                                             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                                                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                                    if (cs.page.items.isEmpty()) {
+                                                    if (cs.feed.items.isEmpty()) {
                                                         Text(
                                                             text = "暂无评论，来抢沙发",
                                                             style = MiuixTheme.textStyles.footnote1,
@@ -426,7 +426,7 @@ fun AlbumDetailScreen(
                                                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                                                         )
                                                     }
-                                                    for (comment in cs.page.items) {
+                                                    for (comment in cs.feed.items) {
                                                         CommentRow(
                                                             item = comment,
                                                             onReply = {
@@ -434,11 +434,11 @@ fun AlbumDetailScreen(
                                                             },
                                                         )
                                                     }
-                                                    if (cs.page.items.isNotEmpty()) {
+                                                    if (cs.feed.items.isNotEmpty()) {
                                                         LoadMoreFooter(
-                                                            loadingMore = uiState.commentsLoadingMore,
-                                                            hasMore = cs.page.items.size < cs.page.total,
-                                                            loadMoreFailed = uiState.commentsLoadFailed,
+                                                            loadingMore = cs.feed.loadingMore,
+                                                            hasMore = cs.feed.hasMore,
+                                                            loadMoreFailed = cs.feed.loadMoreFailed,
                                                             onLoadMore = stateHolder::loadMoreComments,
                                                             modifier = Modifier.padding(top = 8.dp),
                                                         )

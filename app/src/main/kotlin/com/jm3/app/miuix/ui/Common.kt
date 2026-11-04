@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImagePainter
 import com.jm3.core.model.SearchPage
+import com.jm3.core.paging.PagedFeed
 import com.jm3.core.model.SearchResult
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -419,19 +420,17 @@ private fun SearchResultCard(
  * @param ranked 榜单模式：在封面前补名次序号（跨页累加，合并多页后依然连续）。
  */
 fun LazyListScope.searchResultItems(
-    page: SearchPage,
-    loadingMore: Boolean,
-    loadMoreFailed: Boolean,
+    feed: PagedFeed<SearchResult>,
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     ranked: Boolean = false,
 ) {
-    if (page.items.isEmpty()) {
+    if (feed.items.isEmpty()) {
         item(key = "empty") {
             EmptyState(title = "无结果", hint = "换个关键词再试试")
         }
     }
-    itemsIndexed(page.items, key = { _, result -> result.id }) { index, result ->
+    itemsIndexed(feed.items, key = { _, result -> result.id }) { index, result ->
         SearchResultCard(
             result = result,
             rank = if (ranked) index + 1 else null,
@@ -439,17 +438,45 @@ fun LazyListScope.searchResultItems(
         )
     }
     // 单页结果（如每周必看）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
-    if (page.items.isNotEmpty() && page.totalPages > 1) {
+    if (feed.items.isNotEmpty() && (feed.pageCount ?: 1) > 1) {
         item(key = "load-more") {
             LoadMoreFooter(
-                loadingMore = loadingMore,
-                hasMore = page.currentPage < page.totalPages,
-                loadMoreFailed = loadMoreFailed,
+                loadingMore = feed.loadingMore,
+                hasMore = feed.hasMore,
+                loadMoreFailed = feed.loadMoreFailed,
                 onLoadMore = onLoadMore,
             )
         }
     }
 }
+
+/** 旧签名适配：把一页结果与两个布尔折成 [PagedFeed] 再转给上面那个入口，供尚未迁移的屏幕使用。 */
+fun LazyListScope.searchResultItems(
+    page: SearchPage,
+    loadingMore: Boolean,
+    loadMoreFailed: Boolean,
+    onLoadMore: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+    ranked: Boolean = false,
+) {
+    searchResultItems(
+        feed = page.asFeed(loadingMore = loadingMore, loadMoreFailed = loadMoreFailed),
+        onLoadMore = onLoadMore,
+        onOpenAlbum = onOpenAlbum,
+        ranked = ranked,
+    )
+}
+
+/** 把服务端一页结果折成只有一页的 [PagedFeed]。 */
+private fun SearchPage.asFeed(loadingMore: Boolean = false, loadMoreFailed: Boolean = false): PagedFeed<SearchResult> =
+    PagedFeed(
+        items = items,
+        page = currentPage,
+        pageCount = totalPages,
+        hasMore = currentPage < totalPages,
+        loadingMore = loadingMore,
+        loadMoreFailed = loadMoreFailed,
+    )
 
 /** 点击分页条：上一页 / 页码 / 下一页，供任意结果列表在“点击切换分页”模式下复用。 */
 @Composable
@@ -492,17 +519,28 @@ fun PagerBar(page: Int, totalPages: Int, onPageChange: (Int) -> Unit) {
 
 /** 点击分页结果列表：单页整页展示，底部附翻页条；与无限滚动共用同一行样式。 */
 fun LazyListScope.pagedSearchResultItems(
+    feed: PagedFeed<SearchResult>,
+    onPageChange: (Int) -> Unit,
+    onOpenAlbum: (String) -> Unit,
+) {
+    if (feed.items.isEmpty()) {
+        item(key = "empty") { EmptyState(title = "无结果", hint = "换个关键词再试试") }
+    }
+    items(feed.items, key = { it.id }) { result ->
+        SearchResultCard(result = result, onClick = { onOpenAlbum(result.id) })
+    }
+    item(key = "pager") {
+        PagerBar(page = feed.page, totalPages = feed.pageCount ?: 1, onPageChange = onPageChange)
+    }
+}
+
+/** 旧签名适配：一页结果折成 [PagedFeed] 后转给新入口，供尚未迁移的屏幕使用。 */
+fun LazyListScope.pagedSearchResultItems(
     page: SearchPage,
     onPageChange: (Int) -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
-    if (page.items.isEmpty()) {
-        item(key = "empty") { EmptyState(title = "无结果", hint = "换个关键词再试试") }
-    }
-    items(page.items, key = { it.id }) { result ->
-        SearchResultCard(result = result, onClick = { onOpenAlbum(result.id) })
-    }
-    item(key = "pager") { ResultPagerBar(page = page, onPageChange = onPageChange) }
+    pagedSearchResultItems(feed = page.asFeed(), onPageChange = onPageChange, onOpenAlbum = onOpenAlbum)
 }
 
 /**

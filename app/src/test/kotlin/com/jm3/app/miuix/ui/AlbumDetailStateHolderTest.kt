@@ -244,4 +244,91 @@ class AlbumDetailStateHolderTest {
 
         testScope.cancel()
     }
+
+    private fun comment(id: String) = CommentItem(
+        id = id,
+        author = "用户 $id",
+        content = "内容 $id",
+        postDate = "2026-01-01",
+        likes = 0,
+        replies = emptyList(),
+    )
+
+    @Test
+    fun 加载更多评论按id去重并在取满总数后停止请求() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val requestedPages = mutableListOf<Int>()
+        val gateway = fakeGateway(
+            onComments = { _, page ->
+                requestedPages.add(page)
+                when (page) {
+                    1 -> CommentPage(total = 3, items = listOf(comment("c1"), comment("c2")))
+                    2 -> CommentPage(total = 3, items = listOf(comment("c2"), comment("c3")))
+                    else -> error("没有下一页却仍然请求了第 " + page + " 页")
+                }
+            }
+        )
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = gateway,
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = {},
+            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+        )
+
+        holder.loadAll(userUid = null)
+        advanceUntilIdle()
+        val firstFeed = (holder.uiState.value.commentsState as CommentsUiState.Loaded).feed
+        assertEquals(listOf("c1", "c2"), firstFeed.items.map { it.id })
+        assertTrue(firstFeed.canLoadMore)
+
+        holder.loadMoreComments()
+        advanceUntilIdle()
+        val secondFeed = (holder.uiState.value.commentsState as CommentsUiState.Loaded).feed
+        assertEquals(listOf("c1", "c2", "c3"), secondFeed.items.map { it.id }, "重复的 c2 不应被追加第二次")
+        assertFalse(secondFeed.hasMore, "已取满总数后不应再认为有下一页")
+        assertFalse(secondFeed.canLoadMore)
+
+        holder.loadMoreComments()
+        advanceUntilIdle()
+        assertEquals(listOf(1, 2), requestedPages, "没有下一页时不应再向网关发请求")
+
+        testScope.cancel()
+    }
+
+    @Test
+    fun 加载更多评论失败时保留已加载条目并置重试标记() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val gateway = fakeGateway(
+            onComments = { _, page ->
+                if (page == 1) {
+                    CommentPage(total = 5, items = listOf(comment("c1")))
+                } else {
+                    throw RuntimeException("网络连接异常")
+                }
+            }
+        )
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = gateway,
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = {},
+            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+        )
+
+        holder.loadAll(userUid = null)
+        advanceUntilIdle()
+        holder.loadMoreComments()
+        advanceUntilIdle()
+
+        val feed = (holder.uiState.value.commentsState as CommentsUiState.Loaded).feed
+        assertEquals(listOf("c1"), feed.items.map { it.id }, "第二页失败不应清掉已加载的条目")
+        assertTrue(feed.loadMoreFailed)
+        assertFalse(feed.loadingMore)
+        assertTrue(feed.canLoadMore, "失败后应允许用户重试")
+
+        testScope.cancel()
+    }
 }
