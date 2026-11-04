@@ -67,6 +67,7 @@ fun WatchHistoryScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var deletingId by remember { mutableStateOf<String?>(null) }
+    val heroHost = LocalAlbumHeroHost.current
     val scope = rememberCoroutineScope()
 
     fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
@@ -171,7 +172,10 @@ fun WatchHistoryScreen(
                                         item.tags.joinToString(" "),
                                     ).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { null },
                                     startAction = { WatchCover(item.id, item.coverUrl) },
-                                    onClick = { onOpenAlbum(item.id) },
+                                    onClick = {
+                                        heroHost?.startForward(item.id, item.coverUrl, HERO_THUMB_CORNER_DP, item.title)
+                                        onOpenAlbum(item.id)
+                                    },
                                     endActions = {
                                         IconButton(
                                             onClick = { delete(item) },

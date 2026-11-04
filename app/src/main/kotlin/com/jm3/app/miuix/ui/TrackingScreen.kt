@@ -75,6 +75,7 @@ fun TrackingScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var removingId by remember { mutableStateOf<String?>(null) }
+    val heroHost = LocalAlbumHeroHost.current
     val scope = rememberCoroutineScope()
 
     /**
@@ -215,7 +216,10 @@ fun TrackingScreen(
                                     title = item.name,
                                     summary = item.updateAt?.toReadableTime(),
                                     startAction = { TrackingCover(item.id, item.coverUrl) },
-                                    onClick = { onOpenAlbum(item.id) },
+                                    onClick = {
+                                        heroHost?.startForward(item.id, item.coverUrl, HERO_THUMB_CORNER_DP, item.name)
+                                        onOpenAlbum(item.id)
+                                    },
                                     endActions = {
                                         IconButton(
                                             onClick = { unfollow(item) },

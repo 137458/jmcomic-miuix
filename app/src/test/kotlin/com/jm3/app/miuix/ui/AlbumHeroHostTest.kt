@@ -358,4 +358,29 @@ class AlbumHeroHostTest {
         assertFalse(host.isCoverHidden(albumId))
         assertFalse(host.isHeaderHidden(albumId))
     }
+
+    @Test
+    fun 追踪与云端观看记录行以缩略图契约圆角起飞并完成反向飞行() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_THUMB_CORNER_DP)
+        val started = host.startForward(albumId, coverUrl, HERO_THUMB_CORNER_DP, "测试作品")
+        assertTrue(started)
+        assertEquals(HERO_THUMB_CORNER_DP, host.pending?.cornerFromDp)
+        assertEquals("测试作品", host.albumTitle(albumId))
+
+        host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
+        assertTrue(host.resolvePending())
+        assertEquals(HERO_THUMB_CORNER_DP, host.flight?.cornerFromDp)
+        assertEquals(HERO_CARD_CORNER_DP, host.flight?.cornerToDp)
+
+        val flightId = host.flight!!.id
+        host.markOverlayReady(flightId)
+        host.finishFlight(flightId)
+
+        // 反向飞行落回追踪与观看记录缩略图契约圆角
+        assertTrue(host.startBackward(albumId))
+        assertEquals(HERO_CARD_CORNER_DP, host.flight?.cornerFromDp)
+        assertEquals(HERO_THUMB_CORNER_DP, host.flight?.cornerToDp)
+        host.finishFlight(host.flight!!.id)
+    }
 }
