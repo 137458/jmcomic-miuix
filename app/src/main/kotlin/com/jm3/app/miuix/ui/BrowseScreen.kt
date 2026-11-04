@@ -78,18 +78,14 @@ enum class BrowseMode(val title: String) {
     RANK("榜单"),
 }
 
-private sealed interface BrowseUiState {
-    data object Loading : BrowseUiState
-    data class Loaded(val page: SearchPage) : BrowseUiState
-    data class Failed(val message: String) : BrowseUiState
-}
-
 @Composable
 fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
     var categoryValue by rememberSaveable { mutableStateOf(BrowseCategory.ALL.apiValue) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
-    var state by remember { mutableStateOf<BrowseUiState>(BrowseUiState.Loading) }
+    // 筛选口径与列表结果一起进缓存：切 tab 回来时按同一口径取回上次的结果，滚动位置才有内容可落
+    val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
+    var state by remember { mutableStateOf(BrowseSessionCache.stateFor(pageKey)) }
     var loadingMore by remember { mutableStateOf(false) }
     // 加载更多失败单独置位，供列表底部给出重试入口
     var loadMoreFailed by remember { mutableStateOf(false) }
@@ -127,19 +123,30 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         BrowseMode.RANK -> BrowseFilter(category = BrowseCategory.ALL, order = order, time = time)
     }
 
+    /**
+     * 列表状态与缓存一起改。
+     *
+     * 只改 state 的话，切走再回来缓存里还是上一份，页面会先闪一次旧列表再跳成新的。
+     */
+    fun publish(key: BrowsePageKey, next: BrowseUiState) {
+        state = next
+        BrowseSessionCache.remember(key, next)
+    }
+
     fun refresh(byPull: Boolean = false) {
         if (byPull) refreshing = true
         requestToken++
         val token = requestToken
+        val key = pageKey
         // 下拉刷新时保留当前列表，避免刷新指示器下方整屏空白
-        if (!byPull) state = BrowseUiState.Loading
+        if (!byPull) publish(key, BrowseUiState.Loading)
         scope.launch {
             val next = withContext(Dispatchers.IO) {
                 runCatching { BrowseUiState.Loaded(gateway.browse(filter(), 1)) }
                     .getOrElse { BrowseUiState.Failed(it.message ?: "加载失败") }
             }
             if (token != requestToken) return@launch
-            state = next
+            publish(key, next)
             refreshing = false
         }
     }
@@ -157,7 +164,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             // 加载期间切换了筛选：这批结果属于旧条件，丢弃以免串页
             if (next != null && token == requestToken) {
                 loadMoreFailed = false
-                state = loaded.copy(page = loaded.page.mergedWith(next))
+                publish(pageKey, loaded.copy(page = loaded.page.mergedWith(next)))
             } else if (token == requestToken) {
                 loadMoreFailed = true
             }
@@ -195,6 +202,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     }
 
     LaunchedEffect(mode, categoryValue, orderValue, timeValue) {
+        // 同一口径的结果还在缓存里（切 tab 回来就是这个情况）：直接拿来用，别退回 Loading 把位置冲掉
+        if (BrowseSessionCache.hasPage(pageKey)) return@LaunchedEffect
         refresh()
     }
 
