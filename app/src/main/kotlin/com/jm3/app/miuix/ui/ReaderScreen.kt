@@ -287,8 +287,11 @@ private fun ReaderPages(
     val screenSize = remember(windowSize.width, windowSize.height) {
         Size(windowSize.width.coerceAtLeast(1), windowSize.height.coerceAtLeast(1))
     }
-    // 已发起预加载的页号；翻页向前向后都只发一次。键随章节走，换话后重新计
-    val prefetched = remember(photo) { mutableSetOf<Int>() }
+    // 横向翻页整屏、纵向按容器宽，两套排布的解码尺寸不同
+    var horizontal by remember { mutableStateOf(false) }
+    // 已发起预加载的页号；翻页向前向后都只发一次。键随章节与布局基线走：
+    // 换话、页宽变了或切换纵横后，按旧尺寸解的页要重新发一次，否则新尺寸永远等不到解码
+    val prefetched = remember(photo, pageWidthPx, horizontal) { mutableSetOf<Int>() }
     // 当前页是否处于放大态：放大时让出翻页手势，交给缩放层自己消费
     var pageZoomed by remember(photo) { mutableStateOf(false) }
     LaunchedEffect(pagerState.currentPage) { pageZoomed = false }
@@ -301,7 +304,6 @@ private fun ReaderPages(
     var pickerValue by remember { mutableIntStateOf(1) }
     // 原版点击正文切换上下栏显隐
     var chromeVisible by remember { mutableStateOf(true) }
-    var horizontal by remember { mutableStateOf(false) }
     var lastVolumeAt by remember { mutableLongStateOf(0L) }
     var favorited by remember(photo.albumId) { mutableStateOf(favoritedInit) }
     var liked by remember(photo.albumId) { mutableStateOf(likedInit) }
