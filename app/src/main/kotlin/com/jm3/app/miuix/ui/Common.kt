@@ -338,11 +338,11 @@ fun LoadMoreFooter(
 /**
  * 列表滚动条：贴右缘铺满可用高度，轨道按 [trackPadding] 让出顶栏与底部安全区。
  *
- * 由 [TrackedLazyColumn] 在同一层 [Box] 内调用，轨道内边距与列表内边距共用同一份参数；
- * 调用方不再手工让两者对齐。
+ * 只由 [TrackedLazyColumn] 在同一层 [Box] 内调用，轨道内边距与列表内边距共用同一份参数；
+ * 调用方不再手工让两者对齐，也不必自己决定要不要滚动条。
  */
 @Composable
-fun BoxScope.ListScrollBar(
+private fun BoxScope.ListScrollBar(
     listState: LazyListState,
     trackPadding: PaddingValues,
 ) {
@@ -357,16 +357,14 @@ fun BoxScope.ListScrollBar(
  * 带滚动条的列表容器：把 [Box]、[LazyColumn] 与 [ListScrollBar] 收进一处。
  *
  * 滚动条落点与列表首尾留白都取自同一个 [contentPadding]，新增列表不会再漏挂滚动条，
- * 也不会因为两处 padding 各写一遍而让轨道错位。
- *
- * @param showScrollBar 横向翻页这类没有位置反馈的容器由调用方关掉。
+ * 也不会因为两处 padding 各写一遍而让轨道错位。所有调用方都是纵向列表，滚动条一律常开；
+ * 横向翻页走 HorizontalPager，不经过这里。
  */
 @Composable
 fun TrackedLazyColumn(
     state: LazyListState,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
-    showScrollBar: Boolean = true,
     content: LazyListScope.() -> Unit,
 ) {
     Box(modifier = modifier) {
@@ -376,7 +374,7 @@ fun TrackedLazyColumn(
             contentPadding = contentPadding,
             content = content,
         )
-        if (showScrollBar) ListScrollBar(listState = state, trackPadding = contentPadding)
+        ListScrollBar(listState = state, trackPadding = contentPadding)
     }
 }
 
