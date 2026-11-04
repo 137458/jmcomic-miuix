@@ -263,6 +263,18 @@ class Jm3GatewayImpl internal constructor(
             }
 
         /**
+         * 反射写库内状态这类「失败也能继续跑」的动作：出错记一条事实日志再吞掉。
+         *
+         * 这类动作失败不抛给用户，界面上只表现为「自动重登没生效」「会话恢复不完整」，
+         * 不留日志就完全无从查起。只报动作名与异常类型，不打印成员值。
+         */
+        internal fun quietly(what: String, block: () -> Unit) {
+            runCatching(block).onFailure { failure ->
+                Jm3Log.warn(TAG, what + " 失败（" + failure.javaClass.name + "），相关能力降级")
+            }
+        }
+
+        /**
          * 生产装配：同一个库客户端既当请求入口又当域名能力来源。
          *
          * clientProvider 每次调用都会新建库客户端，而库客户端的首次使用要跑完整初始化
@@ -292,7 +304,10 @@ class Jm3GatewayImpl internal constructor(
             runCatching {
                 val cm = cookieManagerField?.get(client) as? java.net.CookieManager
                 cm?.cookieStore
-            }.getOrNull()
+            }.getOrElse { failure ->
+                Jm3Log.warn(TAG, "读库内 CookieStore 失败（" + failure.javaClass.name + "），会话回写只剩客户端直读")
+                null
+            }
 
         /**
          * 库把登录身份与密码都收在 AbstractJmClient 的私有字段里，恢复会话时只能反射写入。
@@ -441,7 +456,8 @@ class Jm3GatewayImpl internal constructor(
     override fun restoreSession(session: Jm3Session) {
         // 线路由库在每次启动后重新裁决，登录域未必再被选中：会话 Cookie 需覆盖当前全部候选域名与常用镜像。
         val targetDomains = linkedSetOf<String>()
-        runCatching { targetDomains.addAll(domainControls.candidateDomains()) }
+        // 域名能力取不到就没法把 Cookie 铺满全部候选域名，首批请求可能漏带会话
+        quietly("读取候选域名") { targetDomains.addAll(domainControls.candidateDomains()) }
         for (c in session.cookies) {
             targetDomains.add(c.domain)
         }
@@ -457,7 +473,7 @@ class Jm3GatewayImpl internal constructor(
         // 同步 AbstractJmClient 内部登录状态，避免依赖用户名或校验登录状态的接口因未登录态拦截
         val clientInstance = client as? AbstractJmClient ?: return
         applyLoginState(clientInstance, session.user.username)
-        runCatching {
+        quietly("写入库内登录域") {
             val bestHost = targetDomains.map { sanitizeDomain(it) }.firstOrNull { it.isNotBlank() } ?: "18comic.vip"
             loginHostField?.set(clientInstance, bestHost)
         }
@@ -470,8 +486,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun forgetCredentials() {
         val clientInstance = client as? AbstractJmClient ?: return
-        runCatching { autoLoginRefreshAllowedField?.set(clientInstance, false) }
-        runCatching { encryptedPasswordField?.set(clientInstance, null) }
+        quietly("关闭库内自动重登") { autoLoginRefreshAllowedField?.set(clientInstance, false) }
+        quietly("清掉库内内存密码") { encryptedPasswordField?.set(clientInstance, null) }
     }
 
     /**
@@ -481,11 +497,11 @@ class Jm3GatewayImpl internal constructor(
      * 拿到本地凭据后再由 [primeCredentials] 补上，库内「失效 → 重登 → 重放」才会生效。
      */
     private fun applyLoginState(client: AbstractJmClient, username: String, password: String? = null) {
-        runCatching { cacheUsernameMethod?.invoke(client, username) }
-        runCatching { autoLoginRefreshAllowedField?.set(client, true) }
+        quietly("写入库内用户名") { cacheUsernameMethod?.invoke(client, username) }
+        quietly("打开库内自动重登") { autoLoginRefreshAllowedField?.set(client, true) }
         if (password == null) return
-        runCatching {
-            val encrypted = encryptPasswordInMemoryMethod?.invoke(client, password) as? ByteArray ?: return@runCatching
+        quietly("写入库内内存密码") {
+            val encrypted = encryptPasswordInMemoryMethod?.invoke(client, password) as? ByteArray ?: return@quietly
             encryptedPasswordField?.set(client, encrypted)
         }
     }
