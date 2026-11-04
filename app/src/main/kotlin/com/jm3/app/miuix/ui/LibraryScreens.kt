@@ -47,6 +47,7 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
@@ -55,6 +56,8 @@ import com.jm3.core.model.CreatorRelatedWork
 import com.jm3.core.model.CreatorWork
 import com.jm3.core.model.CreatorWorkMeta
 import com.jm3.core.model.CreatorWorkPage
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.sessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -349,15 +352,17 @@ fun CreatorWorksScreen(
         if (showLoading) loading = true
         error = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
             }
             if (token != loadToken) return@launch
             loading = false
             refreshing = false
-            result
-                .onSuccess { data = it }
-                .onFailure { error = it.message ?: "加载失败" }
+            when (outcome) {
+                is SessionOutcome.Ok -> data = outcome.value
+                SessionOutcome.Expired -> error = LOGIN_EXPIRED_MESSAGE
+                is SessionOutcome.Failed -> error = outcome.messageOr("加载失败")
+            }
         }
     }
 
@@ -527,14 +532,16 @@ fun CreatorWorkDetailScreen(
         loading = true
         error = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.creatorWork(workId) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.creatorWork(workId) }
             }
             if (token != loadToken) return@launch
             loading = false
-            result
-                .onSuccess { work = it }
-                .onFailure { error = it.message ?: "加载失败" }
+            when (outcome) {
+                is SessionOutcome.Ok -> work = outcome.value
+                SessionOutcome.Expired -> error = LOGIN_EXPIRED_MESSAGE
+                is SessionOutcome.Failed -> error = outcome.messageOr("加载失败")
+            }
         }
     }
 

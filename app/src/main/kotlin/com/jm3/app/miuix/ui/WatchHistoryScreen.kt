@@ -23,7 +23,10 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.SearchResult
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.sessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -76,29 +79,41 @@ fun WatchHistoryScreen(
         if (showLoading) state = WatchUiState.Loading
         if (!replace) loadingMore = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.watchHistory(targetPage) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.watchHistory(targetPage) }
             }
             refreshing = false
             loadingMore = false
-            result
-                .onSuccess { list ->
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    val list = outcome.value
                     items = if (replace) list else (items + list).distinctBy { it.id }
                     page = targetPage
                     hasNext = list.size >= WATCH_PAGE_SIZE
                     loadMoreFailed = false
                     state = WatchUiState.Loaded
                 }
-                .onFailure {
+
+                // 会话失效不是「加载失败」：文案要说清原因，别让用户反复点重试
+                SessionOutcome.Expired -> if (replace) {
+                    state = WatchUiState.Failed(LOGIN_EXPIRED_MESSAGE)
+                } else {
+                    loadMoreFailed = true
+                    snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                }
+
+                is SessionOutcome.Failed -> {
+                    val message = outcome.messageOr("观看记录加载失败")
                     if (replace) {
-                        state = WatchUiState.Failed(it.message ?: "观看记录加载失败")
+                        state = WatchUiState.Failed(message)
                     } else {
                         // 追加失败保留已有列表：hasNext 不动，交给页脚的重试入口，
                         // 否则失败会被误画成「已经到底了」，用户再也翻不动
                         loadMoreFailed = true
-                        snackbarHostState.showSnackbar("加载失败：" + (it.message ?: "请稍后重试"))
+                        snackbarHostState.showSnackbar("加载失败：" + message)
                     }
                 }
+            }
         }
     }
 

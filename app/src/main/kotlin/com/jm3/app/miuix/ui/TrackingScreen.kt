@@ -27,8 +27,9 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.LOGIN_EXPIRED_MESSAGE
-import com.jm3.core.isSessionExpired
 import com.jm3.core.model.TrackingItem
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.sessionOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,7 +86,7 @@ fun TrackingScreen(
      */
     fun expireSession() {
         state = TrackingUiState.Failed(LOGIN_EXPIRED_MESSAGE, sessionExpired = true)
-        scope.launch { Jm3Graph.account.markSessionExpired() }
+        scope.clearExpiredSession()
     }
 
     fun loadFirstPage(showLoading: Boolean = true) {
@@ -95,22 +96,25 @@ fun TrackingScreen(
         scope.launch {
             // 启动恢复会先置登录态再注入 Cookie，注入完成前的请求会被服务端当成未登录
             Jm3Graph.account.awaitRestored()
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.trackingList(1) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.trackingList(1) }
             }
             refreshing = false
-            result
-                .onSuccess {
-                    items = it.items
-                    total = it.total
-                    endReached = it.items.isEmpty() || it.items.size >= it.total
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    val page = outcome.value
+                    items = page.items
+                    total = page.total
+                    endReached = page.items.isEmpty() || page.items.size >= page.total
                     state = TrackingUiState.Loaded
                 }
-                .onFailure {
-                    if (isSessionExpired(it.message)) expireSession() else {
-                        state = TrackingUiState.Failed(it.message ?: "追踪列表加载失败")
-                    }
+
+                SessionOutcome.Expired -> expireSession()
+
+                is SessionOutcome.Failed -> {
+                    state = TrackingUiState.Failed(outcome.messageOr("追踪列表加载失败"))
                 }
+            }
         }
     }
 
@@ -121,12 +125,13 @@ fun TrackingScreen(
         loadingMore = true
         val page = nextPage
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.trackingList(page) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.trackingList(page) }
             }
             loadingMore = false
-            result
-                .onSuccess { next ->
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    val next = outcome.value
                     loadMoreFailed = false
                     // 接口按页返回且无总页数，按累计条数对比总数收敛；空页直接视为到底
                     items = (items + next.items).distinctBy { it.id }
@@ -134,9 +139,11 @@ fun TrackingScreen(
                     nextPage = page + 1
                     if (next.items.isEmpty() || items.size >= total) endReached = true
                 }
-                .onFailure {
-                    if (isSessionExpired(it.message)) expireSession() else loadMoreFailed = true
-                }
+
+                SessionOutcome.Expired -> expireSession()
+
+                is SessionOutcome.Failed -> loadMoreFailed = true
+            }
         }
     }
 
@@ -144,21 +151,23 @@ fun TrackingScreen(
         if (removingId != null) return
         removingId = item.id
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.setTracking(item.id) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.setTracking(item.id) }
             }
             removingId = null
-            result
-                .onSuccess {
+            when (outcome) {
+                is SessionOutcome.Ok -> {
                     items = items.filterNot { it.id == item.id }
                     total = (total - 1).coerceAtLeast(items.size)
                     snackbarHostState.showSnackbar("已取消追踪")
                 }
-                .onFailure {
-                    if (isSessionExpired(it.message)) expireSession() else {
-                        snackbarHostState.showSnackbar("操作失败：" + (it.message ?: "请稍后重试"))
-                    }
+
+                SessionOutcome.Expired -> expireSession()
+
+                is SessionOutcome.Failed -> {
+                    snackbarHostState.showSnackbar("操作失败：" + outcome.messageOr("请稍后重试"))
                 }
+            }
         }
     }
 

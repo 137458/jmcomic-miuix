@@ -24,7 +24,10 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.UserProfile
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.sessionOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -98,15 +101,19 @@ fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
         }
         if (showLoading) state = ProfileUiState.Loading
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.userProfile(uid) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.userProfile(uid) }
             }
-            result
-                .onSuccess {
-                    applyProfile(it)
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    applyProfile(outcome.value)
                     state = ProfileUiState.Loaded
                 }
-                .onFailure { state = ProfileUiState.Failed(it.message ?: "个人资料加载失败") }
+
+                SessionOutcome.Expired -> state = ProfileUiState.Failed(LOGIN_EXPIRED_MESSAGE)
+
+                is SessionOutcome.Failed -> state = ProfileUiState.Failed(outcome.messageOr("个人资料加载失败"))
+            }
         }
     }
 

@@ -514,6 +514,7 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.Tracking>(swipeDismiss = NavSwipeDirection.LeftToRight) {

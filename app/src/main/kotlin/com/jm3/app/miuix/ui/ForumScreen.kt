@@ -36,8 +36,11 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.ForumScope
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.sessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -66,7 +69,8 @@ private const val FORUM_RULES_TEXT = "禁止发布违法违规、骚扰与剧透
 private sealed interface ForumUiState {
     data object Loading : ForumUiState
     data object Loaded : ForumUiState
-    data class Failed(val message: String) : ForumUiState
+    // sessionExpired 区分「重试可能好」和「会话没了」：后者只能去登录，给重试按钮是骗人的
+    data class Failed(val message: String, val sessionExpired: Boolean = false) : ForumUiState
 }
 
 /**
@@ -117,13 +121,14 @@ fun ForumScreen(
         // 追加请求要立刻进入加载态，页脚才能显示进度；置位同时充当在途守卫
         if (!replace) loadingMore = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.forum(forumScope, targetPage) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.forum(forumScope, targetPage) }
             }
             refreshing = false
             loadingMore = false
-            result
-                .onSuccess { resultPage ->
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    val resultPage = outcome.value
                     items = if (replace) {
                         resultPage.items
                     } else {
@@ -140,19 +145,31 @@ fun ForumScreen(
                     loadMoreFailed = false
                     state = ForumUiState.Loaded
                 }
-                .onFailure {
+
+                // 会话失效：同一张 401 不能再报成「论坛加载失败」，能做的只有去登录
+                SessionOutcome.Expired -> if (items.isEmpty()) {
+                    state = ForumUiState.Failed(LOGIN_EXPIRED_MESSAGE, sessionExpired = true)
+                } else {
+                    state = ForumUiState.Loaded
+                    loadMoreFailed = true
+                    snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                }
+
+                is SessionOutcome.Failed -> {
                     failedPage = targetPage
+                    val message = outcome.messageOr("论坛加载失败")
                     if (items.isEmpty()) {
                         // 列表为空时没有可回退的内容，才进整屏错误态
-                        state = ForumUiState.Failed(it.message ?: "论坛加载失败")
+                        state = ForumUiState.Failed(message)
                     } else {
                         // 已有内容时失败不回退成错误页：否则整块内容会被错误页顶掉，
                         // 翻页失败只标记页脚可重试，刷新失败靠 snackbar 告知并保留旧内容
                         state = ForumUiState.Loaded
                         loadMoreFailed = true
-                        snackbarHostState.showSnackbar("加载失败：" + (it.message ?: "请稍后重试"))
+                        snackbarHostState.showSnackbar("加载失败：" + message)
                     }
                 }
+            }
         }
     }
 
@@ -257,11 +274,15 @@ fun ForumScreen(
     ) { innerPadding ->
         when (val s = state) {
             ForumUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            is ForumUiState.Failed -> ErrorScreen(
-                message = s.message,
-                onRetry = { fetch(targetPage = failedPage, replace = true, showLoading = true) },
-                modifier = Modifier.padding(innerPadding),
-            )
+            is ForumUiState.Failed -> if (s.sessionExpired) {
+                LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
+            } else {
+                ErrorScreen(
+                    message = s.message,
+                    onRetry = { fetch(targetPage = failedPage, replace = true, showLoading = true) },
+                    modifier = Modifier.padding(innerPadding),
+                )
+            }
             // 加载成功就渲染列表：即使没有内容也保留列表本体，
             // 闲聊档的规则卡与下拉刷新在空态下才不会跟着一起消失
             ForumUiState.Loaded -> {

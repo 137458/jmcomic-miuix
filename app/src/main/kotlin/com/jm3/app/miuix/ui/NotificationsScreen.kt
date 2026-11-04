@@ -30,12 +30,15 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.NOTIFICATION_TYPE_FOLLOW
 import com.jm3.core.model.NotificationBody
 import com.jm3.core.model.NotificationItem
 import com.jm3.core.model.NotificationPage
 import com.jm3.core.notificationBody
 import com.jm3.core.notificationDisplayTitle
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.sessionOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,10 +65,13 @@ fun NotificationsScreen(
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
     onOpenAlbum: (albumId: String) -> Unit = {},
+    onOpenLogin: () -> Unit = {},
 ) {
     var page by remember { mutableStateOf<NotificationPage?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    // 会话失效与「刷新失败」要分开：前者给重试按钮是骗人的，只能去登录
+    var sessionExpired by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var markingId by remember { mutableStateOf<String?>(null) }
@@ -88,25 +94,35 @@ fun NotificationsScreen(
     fun load(showLoading: Boolean = true) {
         if (showLoading) loading = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.notifications() }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.notifications() }
             }
             loading = false
             refreshing = false
-            result
-                .onSuccess {
+            when (outcome) {
+                is SessionOutcome.Ok -> {
                     error = null
-                    page = it
-                    syncUnread(it.items)
+                    sessionExpired = false
+                    page = outcome.value
+                    syncUnread(outcome.value.items)
                 }
-                .onFailure {
+
+                SessionOutcome.Expired -> if (page == null) {
+                    error = LOGIN_EXPIRED_MESSAGE
+                    sessionExpired = true
+                } else {
+                    snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                }
+
+                is SessionOutcome.Failed -> {
                     // 已有数据时保留列表，只用 Snackbar 提示刷新失败，避免整屏被错误态替换
                     if (page == null) {
-                        error = it.message ?: "信箱加载失败"
+                        error = outcome.messageOr("信箱加载失败")
                     } else {
-                        snackbarHostState.showSnackbar("刷新失败：" + (it.message ?: "请稍后重试"))
+                        snackbarHostState.showSnackbar("刷新失败：" + outcome.messageOr("请稍后重试"))
                     }
                 }
+            }
         }
     }
 
@@ -167,6 +183,7 @@ fun NotificationsScreen(
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
+            sessionExpired -> LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
             error != null -> ErrorScreen(
                 message = error.orEmpty(),
                 onRetry = { load() },

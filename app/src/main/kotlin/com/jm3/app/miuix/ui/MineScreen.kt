@@ -30,9 +30,11 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.download.DownloadStatus
-import com.jm3.core.isSessionExpired
 import com.jm3.core.model.DailyCheckInStatus
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.AccountManager
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.sessionOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -96,7 +98,7 @@ fun MineScreen(
     fun expireCheckInSession() {
         checkInSessionExpired = true
         checkInError = null
-        scope.launch { Jm3Graph.account.markSessionExpired() }
+        scope.clearExpiredSession()
     }
 
     // 加载签到状态；失败保留 error 由卡片上的重试行兜底。
@@ -107,15 +109,15 @@ fun MineScreen(
             Jm3Graph.account.awaitRestored()
             checkInLoading = true
             checkInError = null
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.dailyCheckInStatus(uid) }
             }
             checkInLoading = false
-            result
-                .onSuccess { checkInStatus = it }
-                .onFailure {
-                    if (isSessionExpired(it.message)) expireCheckInSession() else checkInError = it.message ?: "签到状态加载失败"
-                }
+            when (outcome) {
+                is SessionOutcome.Ok -> checkInStatus = outcome.value
+                SessionOutcome.Expired -> expireCheckInSession()
+                is SessionOutcome.Failed -> checkInError = outcome.messageOr("签到状态加载失败")
+            }
         }
     }
 
@@ -127,22 +129,22 @@ fun MineScreen(
         checkInBusy = true
         checkInError = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.dailyCheckIn(uid, status.dailyId) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.dailyCheckIn(uid, status.dailyId) }
             }
             checkInBusy = false
-            result
-                .onSuccess {
+            when (outcome) {
+                is SessionOutcome.Ok -> {
                     // 接口只要返回的 msg 不含「已签到过」就算成功，服务端没落账时同样会走到这里。
                     // 因此以刷新后的日历为准确认这一天真的记上了，避免把没生效的签到显示成「今日已签到」。
                     var refreshed = withContext(Dispatchers.IO) {
-                        runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
+                        runCatchingSuspending { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
                     }
                     if (refreshed != null && !refreshed.isSignedOn(today.dayOfMonth)) {
                         // 服务端跨月或高峰写入可能有微小延迟，短延迟后重试一次确认，避免误报「未生效」
                         delay(400)
                         val retry = withContext(Dispatchers.IO) {
-                            runCatching { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
+                            runCatchingSuspending { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
                         }
                         if (retry != null) refreshed = retry
                     }
@@ -157,9 +159,11 @@ fun MineScreen(
                     }
                     snackbarHostState.showSnackbar(snackbarText)
                 }
-                .onFailure {
-                    if (isSessionExpired(it.message)) expireCheckInSession() else checkInError = it.message ?: "签到失败，请重试"
-                }
+
+                SessionOutcome.Expired -> expireCheckInSession()
+
+                is SessionOutcome.Failed -> checkInError = outcome.messageOr("签到失败，请重试")
+            }
         }
     }
 

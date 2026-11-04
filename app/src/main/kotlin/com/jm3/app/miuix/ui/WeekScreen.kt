@@ -24,9 +24,12 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicksDetail
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.sessionOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,15 +66,17 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
         if (showLoading) detailLoading = true
         detailError = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.weeklyPicksDetail(period.id) }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.weeklyPicksDetail(period.id) }
             }
             if (current != detailToken) return@launch
             detailLoading = false
             refreshing = false
-            result
-                .onSuccess { detail = it }
-                .onFailure { detailError = it.message ?: "加载失败" }
+            when (outcome) {
+                is SessionOutcome.Ok -> detail = outcome.value
+                SessionOutcome.Expired -> detailError = LOGIN_EXPIRED_MESSAGE
+                is SessionOutcome.Failed -> detailError = outcome.messageOr("加载失败")
+            }
         }
     }
 
@@ -80,13 +85,14 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
         periodsLoading = true
         periodsError = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.weeklyPicks() }
+            val outcome = withContext(Dispatchers.IO) {
+                sessionOutcome { Jm3Graph.gateway.weeklyPicks() }
             }
             periodsLoading = false
             refreshing = false
-            result
-                .onSuccess { picks ->
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    val picks = outcome.value
                     periods = picks.periods
                     val index = selected.coerceIn(0, (periods.size - 1).coerceAtLeast(0))
                     selected = index
@@ -97,7 +103,11 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                         loadDetail(period, showLoading = detail == null)
                     }
                 }
-                .onFailure { periodsError = it.message ?: "加载失败" }
+
+                SessionOutcome.Expired -> periodsError = LOGIN_EXPIRED_MESSAGE
+
+                is SessionOutcome.Failed -> periodsError = outcome.messageOr("加载失败")
+            }
         }
     }
 
