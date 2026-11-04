@@ -110,7 +110,10 @@ fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
                     state = ProfileUiState.Loaded
                 }
 
-                SessionOutcome.Expired -> state = ProfileUiState.Failed(LOGIN_EXPIRED_MESSAGE)
+                SessionOutcome.Expired -> {
+                    scope.clearExpiredSession()
+                    state = ProfileUiState.Failed(LOGIN_EXPIRED_MESSAGE)
+                }
 
                 is SessionOutcome.Failed -> state = ProfileUiState.Failed(outcome.messageOr("个人资料加载失败"))
             }

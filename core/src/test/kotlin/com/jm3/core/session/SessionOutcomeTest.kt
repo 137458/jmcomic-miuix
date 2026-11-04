@@ -63,4 +63,11 @@ class SessionOutcomeTest {
         assertTrue(classify(IllegalStateException("尚未登入")) is SessionOutcome.Expired)
         assertEquals("HTTP 502", (classify(IllegalStateException("HTTP 502")) as SessionOutcome.Failed).message)
     }
+
+    @Test
+    fun classify对取消异常原样抛出() {
+        assertFailsWith<CancellationException> {
+            classify(CancellationException("流已被取消"))
+        }
+    }
 }

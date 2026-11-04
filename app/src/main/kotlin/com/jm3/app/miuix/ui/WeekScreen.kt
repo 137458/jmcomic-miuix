@@ -74,7 +74,10 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> detail = outcome.value
-                SessionOutcome.Expired -> detailError = LOGIN_EXPIRED_MESSAGE
+                SessionOutcome.Expired -> {
+                    scope.clearExpiredSession()
+                    detailError = LOGIN_EXPIRED_MESSAGE
+                }
                 is SessionOutcome.Failed -> detailError = outcome.messageOr("加载失败")
             }
         }
@@ -104,7 +107,10 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     }
                 }
 
-                SessionOutcome.Expired -> periodsError = LOGIN_EXPIRED_MESSAGE
+                SessionOutcome.Expired -> {
+                    scope.clearExpiredSession()
+                    periodsError = LOGIN_EXPIRED_MESSAGE
+                }
 
                 is SessionOutcome.Failed -> periodsError = outcome.messageOr("加载失败")
             }

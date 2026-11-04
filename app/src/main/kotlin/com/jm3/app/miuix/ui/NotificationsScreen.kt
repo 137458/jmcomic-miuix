@@ -107,11 +107,14 @@ fun NotificationsScreen(
                     syncUnread(outcome.value.items)
                 }
 
-                SessionOutcome.Expired -> if (page == null) {
-                    error = LOGIN_EXPIRED_MESSAGE
-                    sessionExpired = true
-                } else {
-                    snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                SessionOutcome.Expired -> {
+                    scope.clearExpiredSession()
+                    if (page == null) {
+                        error = LOGIN_EXPIRED_MESSAGE
+                        sessionExpired = true
+                    } else {
+                        snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                    }
                 }
 
                 is SessionOutcome.Failed -> {

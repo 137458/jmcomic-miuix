@@ -95,11 +95,14 @@ fun WatchHistoryScreen(
                 }
 
                 // 会话失效不是「加载失败」：文案要说清原因，别让用户反复点重试
-                SessionOutcome.Expired -> if (replace) {
-                    state = WatchUiState.Failed(LOGIN_EXPIRED_MESSAGE)
-                } else {
-                    loadMoreFailed = true
-                    snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                SessionOutcome.Expired -> {
+                    scope.clearExpiredSession()
+                    if (replace) {
+                        state = WatchUiState.Failed(LOGIN_EXPIRED_MESSAGE)
+                    } else {
+                        loadMoreFailed = true
+                        snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                    }
                 }
 
                 is SessionOutcome.Failed -> {

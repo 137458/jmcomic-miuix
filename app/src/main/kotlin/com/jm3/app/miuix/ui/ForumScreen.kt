@@ -147,12 +147,15 @@ fun ForumScreen(
                 }
 
                 // 会话失效：同一张 401 不能再报成「论坛加载失败」，能做的只有去登录
-                SessionOutcome.Expired -> if (items.isEmpty()) {
-                    state = ForumUiState.Failed(LOGIN_EXPIRED_MESSAGE, sessionExpired = true)
-                } else {
-                    state = ForumUiState.Loaded
-                    loadMoreFailed = true
-                    snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                SessionOutcome.Expired -> {
+                    scope.clearExpiredSession()
+                    if (items.isEmpty()) {
+                        state = ForumUiState.Failed(LOGIN_EXPIRED_MESSAGE, sessionExpired = true)
+                    } else {
+                        state = ForumUiState.Loaded
+                        loadMoreFailed = true
+                        snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
+                    }
                 }
 
                 is SessionOutcome.Failed -> {

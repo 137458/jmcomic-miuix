@@ -31,9 +31,13 @@ fun <T> sessionOutcome(block: () -> T): SessionOutcome<T> =
     }
 
 /** 把已经发生的异常分类；取消原样抛出。 */
-fun classify(error: Throwable): SessionOutcome<Nothing> =
-    if (isSessionExpired(error.message)) {
+fun classify(error: Throwable): SessionOutcome<Nothing> {
+    if (error is CancellationException) {
+        throw error
+    }
+    return if (isSessionExpired(error.message)) {
         SessionOutcome.Expired
     } else {
         SessionOutcome.Failed(error.message)
     }
+}

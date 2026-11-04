@@ -360,7 +360,10 @@ fun CreatorWorksScreen(
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> data = outcome.value
-                SessionOutcome.Expired -> error = LOGIN_EXPIRED_MESSAGE
+                SessionOutcome.Expired -> {
+                    scope.clearExpiredSession()
+                    error = LOGIN_EXPIRED_MESSAGE
+                }
                 is SessionOutcome.Failed -> error = outcome.messageOr("加载失败")
             }
         }
@@ -539,7 +542,10 @@ fun CreatorWorkDetailScreen(
             loading = false
             when (outcome) {
                 is SessionOutcome.Ok -> work = outcome.value
-                SessionOutcome.Expired -> error = LOGIN_EXPIRED_MESSAGE
+                SessionOutcome.Expired -> {
+                    scope.clearExpiredSession()
+                    error = LOGIN_EXPIRED_MESSAGE
+                }
                 is SessionOutcome.Failed -> error = outcome.messageOr("加载失败")
             }
         }
