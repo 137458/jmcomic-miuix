@@ -28,13 +28,14 @@ import com.jm3.app.miuix.data.KeystoreCredentialCipher
 import com.jm3.app.miuix.data.SessionStore
 import com.jm3.app.miuix.data.SettingsStore
 import com.jm3.app.miuix.data.download.DownloadManager
-import com.jm3.app.miuix.data.download.DownloadRecordStore
+import com.jm3.core.download.DownloadLedger
+import com.jm3.core.download.DownloadLedgerStore
 import com.jm3.app.miuix.data.download.FileDownloadStore
 import com.jm3.app.miuix.data.download.GatewayPageFetcher
 import com.jm3.app.miuix.data.download.GatewayTaskResolver
 import com.jm3.app.miuix.data.history.HistoryDb
 import com.jm3.app.miuix.data.history.MIGRATION_1_2
-import com.jm3.app.miuix.data.history.RoomDownloadRepository
+import com.jm3.app.miuix.data.history.RoomDownloadLedgerStore
 import com.jm3.app.miuix.data.history.RoomHistoryRepository
 import com.jm3.app.miuix.ui.AlbumDetailScreen
 import com.jm3.app.miuix.ui.AlbumHeroHost
@@ -174,7 +175,7 @@ object Jm3Graph {
 
     val history: HistoryRepository by lazy { RoomHistoryRepository(db.historyDao()) }
 
-    val downloadStore: DownloadRecordStore by lazy { RoomDownloadRepository(db.downloadDao()) }
+    val downloadStore: DownloadLedgerStore by lazy { RoomDownloadLedgerStore(db.downloadDao()) }
 
     /** 下载页文件存储：filesDir/downloads/{photoId}/{index:05}.jpg。 */
     val downloadFiles: DownloadStore by lazy {
@@ -195,8 +196,7 @@ object Jm3Graph {
                 resolver = GatewayTaskResolver { gateway },
             ),
             fileStore = downloadFiles,
-            recordStore = downloadStore,
-            pageSource = pageSource,
+            ledger = DownloadLedger(store = downloadStore, pagesJsonOf = pageSource::pagesJsonOrNull),
             appScope = appScope,
         )
     }

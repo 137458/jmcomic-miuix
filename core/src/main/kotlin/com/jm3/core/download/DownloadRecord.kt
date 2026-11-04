@@ -11,16 +11,6 @@ data class DownloadRecord(
     val updatedAt: Long,
 )
 
-/** 下载元数据持久化：实现方负责落库。 */
-interface DownloadRepository {
-    suspend fun upsert(record: DownloadRecord)
-
-    /** 全量，按 updatedAt 倒序。 */
-    suspend fun all(): List<DownloadRecord>
-
-    suspend fun delete(photoId: String)
-}
-
 /**
  * 进程重启恢复：把上次进程被杀时遗留的 RUNNING/QUEUED 记录收敛为 PAUSED。
  * 这两类记录已无内存任务承载，保持原状态会让 UI 误以为仍在下载；
@@ -46,21 +36,3 @@ fun DownloadRecord.toResumeTask(): DownloadTask = DownloadTask(
     index = donePages,
     status = if (status == DownloadStatus.DONE) DownloadStatus.DONE else DownloadStatus.PAUSED,
 )
-
-/** 纯内存实现，供测试与替换。 */
-class InMemoryDownloadRepository(
-    private val clock: () -> Long = System::currentTimeMillis,
-) : DownloadRepository {
-
-    private val records = LinkedHashMap<String, DownloadRecord>()
-
-    override suspend fun upsert(record: DownloadRecord) {
-        records[record.photoId] = record.copy(updatedAt = clock())
-    }
-
-    override suspend fun all(): List<DownloadRecord> = records.values.sortedByDescending { it.updatedAt }
-
-    override suspend fun delete(photoId: String) {
-        records.remove(photoId)
-    }
-}

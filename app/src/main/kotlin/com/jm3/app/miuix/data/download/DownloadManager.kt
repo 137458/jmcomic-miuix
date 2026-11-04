@@ -1,128 +1,40 @@
 package com.jm3.app.miuix.data.download
 
-import android.util.Log
+import com.jm3.core.download.DownloadLedger
+import com.jm3.core.download.DownloadLedgerEntry
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.DownloadTask
-import com.jm3.core.download.recoverInterrupted
 import com.jm3.core.download.toResumeTask
-import com.jm3.core.model.PhotoPages
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
-
-private const val TAG = "DownloadManager"
-
-internal val downloadJson = Json { ignoreUnknownKeys = true }
-
-/** 页列表 <-> JSON（photoId 为 key，albumId/title 以记录表为准）。 */
-internal fun encodePhotoPages(photoId: String, images: List<com.jm3.core.model.PageImage>): String =
-    downloadJson.encodeToString(PhotoPages(photoId = photoId, albumId = "", title = "", images = images))
-
-/** 反序列化离线页列表；损坏时返回 null 走在线回退。 */
-internal fun decodePhotoPages(json: String): PhotoPages? = runCatching {
-    downloadJson.decodeFromString(PhotoPages.serializer(), json)
-}.getOrNull()
-
-/** 本地书架记录 + 离线页列表 JSON。 */
-data class DownloadRecordWithPages(
-    val record: DownloadRecord,
-    val pagesJson: String?,
-)
-
-/** 下载元数据存储：记录 + 离线阅读所需的页列表 JSON。 */
-interface DownloadRecordStore {
-    suspend fun upsert(record: DownloadRecord, pagesJson: String?)
-
-    /** 仅更新状态（进程重启恢复用），保留 pagesJson 等既有字段。 */
-    suspend fun updateStatus(photoId: String, status: DownloadStatus)
-
-    suspend fun all(): List<DownloadRecord>
-
-    suspend fun find(photoId: String): DownloadRecordWithPages?
-
-    suspend fun delete(photoId: String)
-}
 
 /**
- * 下载门面：启动队列、订阅进度落库、提供 UI 动作。
+ * 下载门面：启动队列、把队列接上台账、提供 UI 动作。
+ *
+ * 落盘策略与记录组装都在 [DownloadLedger]（:core，可测）；本类只剩"接线 + 文件删除 + 状态查询"。
  */
 class DownloadManager(
     val queue: DownloadQueue,
     private val fileStore: DownloadStore,
-    private val recordStore: DownloadRecordStore,
-    private val pageSource: GatewayPageFetcher,
+    private val ledger: DownloadLedger,
     private val appScope: CoroutineScope,
-    private val deltaTracker: DownloadRecordDeltaTracker = DownloadRecordDeltaTracker(),
 ) {
 
     private val started = AtomicBoolean(false)
 
-    /** 幂等启动：中断记录恢复 + worker 池 + 进度持久化订阅。 */
+    /** 幂等启动：中断记录恢复 + worker 池 + 台账订阅。 */
     fun ensureStarted() {
         if (!started.compareAndSet(false, true)) return
         appScope.launch {
             // 先收敛上次进程被杀遗留的中断记录，再启动 worker
-            recoverInterruptedRecords()
+            ledger.recoverInterruptedRecords()
             queue.start(appScope)
         }
-        appScope.launch {
-            queue.updates.collect { tasks ->
-                val now = System.currentTimeMillis()
-                val toPersist = deltaTracker.filterTasksToPersist(tasks.values, nowMs = now)
-                if (toPersist.isNotEmpty()) {
-                    val persisted = mutableListOf<DownloadTask>()
-                    toPersist.forEach { task ->
-                        // 单条落库失败不能打死整条订阅：订阅一死，此后所有进度都不再落盘，界面上毫无迹象。
-                        // 失败的这条不记快照，下一轮更新会重新尝试。
-                        try {
-                            recordStore.upsert(
-                                record = DownloadRecord(
-                                    photoId = task.photoId,
-                                    albumId = task.albumId,
-                                    title = task.title,
-                                    total = task.total,
-                                    donePages = task.index,
-                                    status = task.status,
-                                    updatedAt = 0L,
-                                ),
-                                pagesJson = pageSource.pagesJsonOrNull(task.photoId),
-                            )
-                            persisted.add(task)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            Log.w(TAG, "下载进度落库失败（photoId=" + task.photoId + "），本轮跳过", e)
-                        }
-                    }
-                    if (persisted.isNotEmpty()) deltaTracker.onPersisted(persisted, nowMs = now)
-                }
-                deltaTracker.pruneMissing(tasks.keys)
-            }
-        }
-    }
-
-    /**
-     * 把 RUNNING/QUEUED 记录收敛为 PAUSED：进程重启后它们已无内存任务承载，
-     * 保持原状态会让 UI 误以为仍在下载。恢复是尽力而为，落库失败不阻塞队列启动。
-     */
-    private suspend fun recoverInterruptedRecords() {
-        try {
-            val records = recordStore.all()
-            recoverInterrupted(records).forEachIndexed { i, recovered ->
-                if (recovered.status != records[i].status) {
-                    recordStore.updateStatus(recovered.photoId, recovered.status)
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // 恢复失败只影响展示态，worker 仍应启动
-        }
+        ledger.start(appScope, queue.updates)
     }
 
     /** 章节入队（total 未知，开跑前由 resolver 补齐）。 */
@@ -139,9 +51,9 @@ class DownloadManager(
         )
     }
 
-    suspend fun records(): List<DownloadRecord> = recordStore.all()
+    suspend fun records(): List<DownloadRecord> = ledger.all()
 
-    suspend fun find(photoId: String): DownloadRecordWithPages? = recordStore.find(photoId)
+    suspend fun find(photoId: String): DownloadLedgerEntry? = ledger.find(photoId)
 
     fun pause(photoId: String) = queue.pause(photoId)
 
@@ -158,16 +70,16 @@ class DownloadManager(
     fun remove(photoId: String) {
         queue.cancel(photoId)
         fileStore.delete(photoId)
-        appScope.launch { recordStore.delete(photoId) }
+        appScope.launch { ledger.delete(photoId) }
     }
 
     /** 清空全部下载：取消在途任务 + 删文件 + 删记录（文件与记录双清）。 */
     suspend fun clearAll() {
-        val all = recordStore.all()
+        val all = ledger.all()
         all.forEach { queue.cancel(it.photoId) }
         all.forEach { record ->
             fileStore.delete(record.photoId)
-            recordStore.delete(record.photoId)
+            ledger.delete(record.photoId)
         }
     }
 

@@ -3,14 +3,17 @@ package com.jm3.app.miuix.data.history
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.jm3.app.miuix.data.download.DownloadRecordStore
-import com.jm3.app.miuix.data.download.DownloadRecordWithPages
+import com.jm3.core.download.DownloadLedgerEntry
+import com.jm3.core.download.DownloadLedgerStore
+import com.jm3.core.download.DownloadLedgerWrite
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry
@@ -75,9 +78,29 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE photoId = :photoId")
     suspend fun find(photoId: String): DownloadEntity?
 
-    /** 只改状态，保留行内其它字段（进程重启恢复用）。 */
-    @Query("UPDATE downloads SET status = :status WHERE photoId = :photoId")
-    suspend fun updateStatus(photoId: String, status: String)
+    /**
+     * 进度写：只列元数据列，未列出的 pagesJson 由 SQL 语义原样保留。
+     *
+     * 这条语句是「进度写不得抹掉离线页列表」的唯一实现手段：把 pagesJson 从进度路径上
+     * 摘掉，而不是靠调用方记得传旧值。返回受影响行数，0 表示行不存在。
+     */
+    @Query(
+        "UPDATE downloads SET albumId=:albumId, title=:title, total=:total, " +
+            "donePages=:donePages, status=:status, updatedAt=:updatedAt WHERE photoId=:photoId",
+    )
+    suspend fun updateProgress(
+        photoId: String,
+        albumId: String,
+        title: String,
+        total: Int,
+        donePages: Int,
+        status: String,
+        updatedAt: Long,
+    ): Int
+
+    /** 首次出现的任务补插一行；已存在时不动（进度由 updateProgress 负责）。 */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(entry: DownloadEntity): Long
 
     @Query("DELETE FROM downloads WHERE photoId = :photoId")
     suspend fun delete(photoId: String)
@@ -142,27 +165,40 @@ class RoomHistoryRepository(
     }
 }
 
-/** 本地书架 Room 实现：实现 :core 的 DownloadRepository 与 app 的 DownloadRecordStore。 */
-class RoomDownloadRepository(
+/** 本地书架的 Room 存储：实现 :core 的 [DownloadLedgerStore]，两种写形状分别对应两条语句。 */
+class RoomDownloadLedgerStore(
     private val dao: DownloadDao,
-    private val clock: () -> Long = System::currentTimeMillis,
-) : com.jm3.core.download.DownloadRepository, DownloadRecordStore {
+) : DownloadLedgerStore {
 
-    override suspend fun upsert(record: DownloadRecord) = upsert(record, null)
+    override suspend fun put(write: DownloadLedgerWrite) {
+        val record = write.record
+        when (write) {
+            is DownloadLedgerWrite.Progress -> {
+                val updated = dao.updateProgress(
+                    photoId = record.photoId,
+                    albumId = record.albumId,
+                    title = record.title,
+                    total = record.total,
+                    donePages = record.donePages,
+                    status = record.status.name,
+                    updatedAt = record.updatedAt,
+                )
+                // 首见任务还没有行：补插一条无页列表的记录，后续完成写再补上页列表。
+                if (updated == 0) {
+                    dao.insertIfAbsent(record.toEntity(updatedAt = record.updatedAt, pagesJson = null))
+                }
+            }
 
-    override suspend fun upsert(record: DownloadRecord, pagesJson: String?) {
-        dao.upsert(record.toEntity(updatedAt = clock(), pagesJson = pagesJson))
-    }
-
-    override suspend fun updateStatus(photoId: String, status: DownloadStatus) {
-        dao.updateStatus(photoId = photoId, status = status.name)
+            is DownloadLedgerWrite.Completed ->
+                dao.upsert(record.toEntity(updatedAt = record.updatedAt, pagesJson = write.pagesJson))
+        }
     }
 
     override suspend fun all(): List<DownloadRecord> = dao.all().map { it.toRecord() }
 
-    override suspend fun find(photoId: String): DownloadRecordWithPages? =
+    override suspend fun find(photoId: String): DownloadLedgerEntry? =
         dao.find(photoId)?.let { entity ->
-            DownloadRecordWithPages(record = entity.toRecord(), pagesJson = entity.pagesJson)
+            DownloadLedgerEntry(record = entity.toRecord(), pagesJson = entity.pagesJson)
         }
 
     override suspend fun delete(photoId: String) {
