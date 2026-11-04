@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -85,7 +86,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     // 筛选口径与列表结果一起进缓存：切 tab 回来时按同一口径取回上次的结果，滚动位置才有内容可落
     val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
-    var state by remember { mutableStateOf(BrowseSessionCache.stateFor(pageKey)) }
+    val sessionCache = Jm3Graph.sessionCache
+    var state by remember { mutableStateOf(sessionCache.stateOf(SessionListKey.Browse(pageKey))) }
     var loadingMore by remember { mutableStateOf(false) }
     // 加载更多失败单独置位，供列表底部给出重试入口
     var loadMoreFailed by remember { mutableStateOf(false) }
@@ -128,9 +130,9 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
      *
      * 只改 state 的话，切走再回来缓存里还是上一份，页面会先闪一次旧列表再跳成新的。
      */
-    fun publish(key: BrowsePageKey, next: BrowseUiState) {
+    fun publish(key: BrowsePageKey, next: ListState) {
         state = next
-        BrowseSessionCache.remember(key, next)
+        sessionCache.remember(SessionListKey.Browse(key), next)
     }
 
     fun refresh(byPull: Boolean = false) {
@@ -139,11 +141,11 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         val token = requestToken
         val key = pageKey
         // 下拉刷新时保留当前列表，避免刷新指示器下方整屏空白
-        if (!byPull) publish(key, BrowseUiState.Loading)
+        if (!byPull) publish(key, ListState.Loading)
         scope.launch {
             val next = withContext(Dispatchers.IO) {
-                runCatching { BrowseUiState.Loaded(gateway.browse(filter(), 1)) }
-                    .getOrElse { BrowseUiState.Failed(it.message ?: "加载失败") }
+                runCatching { ListState.Loaded(gateway.browse(filter(), 1)) }
+                    .getOrElse { ListState.Failed(it.message ?: "加载失败") }
             }
             if (token != requestToken) return@launch
             publish(key, next)
@@ -152,7 +154,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     }
 
     fun loadMore() {
-        val loaded = state as? BrowseUiState.Loaded ?: return
+        val loaded = state as? ListState.Loaded ?: return
         if (loadingMore || loaded.page.currentPage >= loaded.page.totalPages) return
         loadingMore = true
         val token = requestToken
@@ -203,16 +205,16 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
 
     LaunchedEffect(mode, categoryValue, orderValue, timeValue) {
         // 同一口径的结果还在缓存里（切 tab 回来就是这个情况）：直接拿来用，别退回 Loading 把位置冲掉
-        if (BrowseSessionCache.hasPage(pageKey)) return@LaunchedEffect
+        if (sessionCache.hasPage(SessionListKey.Browse(pageKey))) return@LaunchedEffect
         refresh()
     }
 
-    val loadedNow = state as? BrowseUiState.Loaded
+    val loadedNow = state as? ListState.Loaded
     LaunchedEffect(loadedNow?.page) {
         if (loadedNow == null) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .collect { last ->
-                val page = (state as? BrowseUiState.Loaded)?.page ?: return@collect
+                val page = (state as? ListState.Loaded)?.page ?: return@collect
                 if (last != null && last >= page.items.size - 2) loadMore()
             }
     }
@@ -222,7 +224,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         if (mode != BrowseMode.RANK) return@LaunchedEffect
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.index } }
             .collect { last ->
-                val page = (state as? BrowseUiState.Loaded)?.page ?: return@collect
+                val page = (state as? ListState.Loaded)?.page ?: return@collect
                 if (last != null && last >= page.items.size - 2) loadMore()
             }
     }
@@ -416,7 +418,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                         }
                     }
                     when (val s = state) {
-                        is BrowseUiState.Loading -> if (!refreshing) {
+                        is ListState.Loading -> if (!refreshing) {
                             // 下拉刷新时顶部指示器已在转圈，列表内不再重复显示。
                             item(key = "loading") {
                                 Box(
@@ -427,14 +429,14 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                                 }
                             }
                         }
-                        is BrowseUiState.Failed -> item(key = "error") {
+                        is ListState.Failed -> item(key = "error") {
                             ErrorScreen(
                                 message = "加载失败：${s.message}",
                                 onRetry = ::refresh,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
-                        is BrowseUiState.Loaded -> searchResultItems(
+                        is ListState.Loaded -> searchResultItems(
                             page = s.page,
                             loadingMore = loadingMore,
                             loadMoreFailed = loadMoreFailed,
@@ -559,7 +561,7 @@ private fun TagResultSection(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
-    var state by remember(keyword, order) { mutableStateOf<BrowseUiState>(BrowseUiState.Loading) }
+    var state by remember(keyword, order) { mutableStateOf<ListState>(ListState.Loading) }
     var loadingMore by remember(keyword, order) { mutableStateOf(false) }
     // 加载更多失败单独置位，供列表底部给出重试入口
     var loadMoreFailed by remember(keyword, order) { mutableStateOf(false) }
@@ -571,11 +573,11 @@ private fun TagResultSection(
     fun load() {
         requestToken++
         val token = requestToken
-        state = BrowseUiState.Loading
+        state = ListState.Loading
         scope.launch {
             val next = withContext(Dispatchers.IO) {
-                runCatching { BrowseUiState.Loaded(gateway.search(keyword, 1, order, SearchScope.TAG)) }
-                    .getOrElse { BrowseUiState.Failed(it.message ?: "加载失败") }
+                runCatching { ListState.Loaded(gateway.search(keyword, 1, order, SearchScope.TAG)) }
+                    .getOrElse { ListState.Failed(it.message ?: "加载失败") }
             }
             if (token != requestToken) return@launch
             state = next
@@ -583,7 +585,7 @@ private fun TagResultSection(
     }
 
     fun loadMore() {
-        val loaded = state as? BrowseUiState.Loaded ?: return
+        val loaded = state as? ListState.Loaded ?: return
         if (loadingMore || loaded.page.currentPage >= loaded.page.totalPages) return
         loadingMore = true
         val token = requestToken
@@ -604,11 +606,11 @@ private fun TagResultSection(
 
     LaunchedEffect(keyword, order) { load() }
 
-    LaunchedEffect((state as? BrowseUiState.Loaded)?.page) {
-        if (state !is BrowseUiState.Loaded) return@LaunchedEffect
+    LaunchedEffect((state as? ListState.Loaded)?.page) {
+        if (state !is ListState.Loaded) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .collect { last ->
-                val page = (state as? BrowseUiState.Loaded)?.page ?: return@collect
+                val page = (state as? ListState.Loaded)?.page ?: return@collect
                 if (last != null && last >= page.items.size - 2) loadMore()
             }
     }
@@ -620,7 +622,7 @@ private fun TagResultSection(
             contentPadding = contentPadding,
         ) {
             when (val s = state) {
-                is BrowseUiState.Loading -> item(key = "tag-loading") {
+                is ListState.Loading -> item(key = "tag-loading") {
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(24.dp),
                         contentAlignment = Alignment.Center,
@@ -628,14 +630,14 @@ private fun TagResultSection(
                         InfiniteProgressIndicator()
                     }
                 }
-                is BrowseUiState.Failed -> item(key = "tag-error") {
+                is ListState.Failed -> item(key = "tag-error") {
                     ErrorScreen(
                         message = "加载失败：${s.message}",
                         onRetry = ::load,
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                     )
                 }
-                is BrowseUiState.Loaded -> searchResultItems(
+                is ListState.Loaded -> searchResultItems(
                     page = s.page,
                     loadingMore = loadingMore,
                     loadMoreFailed = loadMoreFailed,
@@ -676,7 +678,7 @@ private val FilterChipsPadding = PaddingValues(horizontal = 16.dp, vertical = 4.
  */
 @Composable
 private fun RankResultGrid(
-    state: BrowseUiState,
+    state: ListState,
     gridState: LazyStaggeredGridState,
     contentPadding: PaddingValues,
     refreshing: Boolean,
@@ -699,7 +701,7 @@ private fun RankResultGrid(
         verticalItemSpacing = RANK_GRID_VERTICAL_SPACING,
     ) {
         when (state) {
-            is BrowseUiState.Loading -> if (!refreshing) {
+            is ListState.Loading -> if (!refreshing) {
                 item(key = "rank-loading", span = StaggeredGridItemSpan.FullLine) {
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(24.dp),
@@ -709,14 +711,14 @@ private fun RankResultGrid(
                     }
                 }
             }
-            is BrowseUiState.Failed -> item(key = "rank-error", span = StaggeredGridItemSpan.FullLine) {
+            is ListState.Failed -> item(key = "rank-error", span = StaggeredGridItemSpan.FullLine) {
                 ErrorScreen(
                     message = "加载失败：${state.message}",
                     onRetry = onRetry,
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                 )
             }
-            is BrowseUiState.Loaded -> rankResultGrid(
+            is ListState.Loaded -> rankResultGrid(
                 page = state.page,
                 loadingMore = loadingMore,
                 loadMoreFailed = loadMoreFailed,

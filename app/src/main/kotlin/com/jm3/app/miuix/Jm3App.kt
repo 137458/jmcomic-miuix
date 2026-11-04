@@ -55,6 +55,7 @@ import com.jm3.app.miuix.ui.NovelReaderScreen
 import com.jm3.app.miuix.ui.ProfileScreen
 import com.jm3.app.miuix.ui.ReaderScreen
 import com.jm3.app.miuix.ui.SearchScreen
+import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.ui.SettingsScreen
 import com.jm3.app.miuix.ui.ShelfScreen
 import com.jm3.app.miuix.ui.TasksScreen
@@ -153,6 +154,9 @@ object Jm3Graph {
 
     /** 列表分页模式：设置页写入后各列表页立即生效（跨 tab 无需重建）。 */
     var paginationMode by mutableStateOf(PaginationMode.INFINITE)
+
+    /** 会话级列表缓存：首页发现流/搜索结果与浏览页结果跨路由保存，避免回来时列表被清空、滚动位置落不回去。 */
+    internal val sessionCache: SessionCache by lazy { SessionCache() }
 
     /** 重新统计未读通知；未登录归零，请求失败保留上次结果避免角标闪烁。 */
     fun refreshUnreadNotifications() {
