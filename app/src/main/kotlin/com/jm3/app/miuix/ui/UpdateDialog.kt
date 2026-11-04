@@ -25,6 +25,7 @@ import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
 import com.jm3.core.update.ReleaseInfo
+import com.jm3.core.update.UpdateProgress
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
@@ -329,7 +330,7 @@ internal fun updateDialogPrimaryText(hasApk: Boolean, downloadState: UpdateDownl
  * 总长未知时 [UpdateDownloadState.Downloading.progress] 恒为 0，显示"下载中 0%"而不是乱跳。
  */
 internal fun updateDialogProgressText(state: UpdateDownloadState.Downloading): String {
-    val percent = (state.progress.coerceIn(0f, 1f) * 100).toInt()
+    val percent = UpdateProgress.percent(state.progress)
     return "下载中 $percent%"
 }
 

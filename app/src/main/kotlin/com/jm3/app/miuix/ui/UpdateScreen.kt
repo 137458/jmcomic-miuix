@@ -54,10 +54,12 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.update.ApkInstaller
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.ReleaseInfo
-import com.jm3.core.update.UpdateCheckResult
+import com.jm3.core.update.UpdateCenter
 import com.jm3.core.update.UpdateChecker
+import com.jm3.core.update.UpdateOutcome
+import com.jm3.core.update.UpdateProgress
 import com.jm3.core.update.UpdatePrompt
-import com.jm3.core.update.VersionRelation
+import com.jm3.core.update.UpdatePromptState
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -75,22 +77,6 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 检查更新页的四态：检查中 / 已是最新 / 发现新版本 / 失败可重试。 */
-private sealed interface UpdateUiState {
-    data object Checking : UpdateUiState
-
-    /** 远端不高于本地。仍带 [release]，用于显示当前版本的发布说明。 */
-    data class UpToDate(
-        val currentVersion: String,
-        val release: ReleaseInfo,
-        val localAhead: Boolean,
-    ) : UpdateUiState
-
-    data class Available(val release: ReleaseInfo, val currentVersion: String) : UpdateUiState
-
-    data class Failed(val message: String) : UpdateUiState
-}
-
 /**
  * 检查更新页：视差头部 + 更新日志卡 + 更新设置卡 + 版本与操作卡。
  *
@@ -105,12 +91,13 @@ fun UpdateScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val checker = remember { UpdateChecker() }
+    val center = remember { UpdateCenter() }
     val applicationName = remember(context) { loadApplicationName(context) }
     val currentVersion = remember(context) { loadCurrentVersion(context) }
 
     var attempt by remember { mutableIntStateOf(0) }
-    var state by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Checking) }
+    // null 表示正在检查：检查结论由 core 的 [UpdateOutcome] 承载，页面不再另立一套状态机
+    var state by remember { mutableStateOf<UpdateOutcome?>(null) }
     var showDialog by remember { mutableStateOf(false) }
     var autoCheckUpdate by remember { mutableStateOf(true) }
     var ignoredVersion by remember { mutableStateOf<String?>(null) }
@@ -133,24 +120,21 @@ fun UpdateScreen(onBack: () -> Unit) {
     LaunchedEffect(attempt) {
         autoCheckUpdate = Jm3Graph.settings.autoCheckUpdate()
         ignoredVersion = Jm3Graph.settings.ignoredUpdateVersion()
-        state = UpdateUiState.Checking
+        state = null
         showDialog = false
-        state = when (val result = checker.check(currentVersion)) {
-            is UpdateCheckResult.Success -> when (result.relation) {
-                VersionRelation.NEWER -> UpdateUiState.Available(result.release, currentVersion)
-                VersionRelation.SAME -> UpdateUiState.UpToDate(currentVersion, result.release, localAhead = false)
-                VersionRelation.OLDER -> UpdateUiState.UpToDate(currentVersion, result.release, localAhead = true)
-            }
-
-            is UpdateCheckResult.Failed -> UpdateUiState.Failed(result.message)
-        }
-        (state as? UpdateUiState.Available)?.let { available ->
-            val latest = available.release.version
-            if (!UpdatePrompt.isIgnored(ignoredVersion, latest)) {
-                showDialog = true
-                // 记下已弹过：同一版本在本进程内不重复打扰，冷启动时由启动期检查决定
-                Jm3Graph.settings.setPromptedUpdateVersion(latest)
-            }
+        val outcome = center.evaluate(
+            localVersion = currentVersion,
+            prompt = UpdatePromptState(
+                ignoredVersion = ignoredVersion,
+                promptedVersion = Jm3Graph.settings.promptedUpdateVersion(),
+            ),
+        )
+        state = outcome
+        // 只有"该提醒"时才弹窗并记下已提示：与启动期检查共用同一条规则，
+        // 免得启动期弹过的版本进页面又被弹一次
+        if (outcome is UpdateOutcome.Available && outcome.notify) {
+            showDialog = true
+            Jm3Graph.settings.setPromptedUpdateVersion(outcome.release.version)
         }
     }
 
@@ -189,24 +173,24 @@ fun UpdateScreen(onBack: () -> Unit) {
 
     val snapshot = state
     val latestRelease = when (snapshot) {
-        is UpdateUiState.Available -> snapshot.release
-        is UpdateUiState.UpToDate -> snapshot.release
+        is UpdateOutcome.Available -> snapshot.release
+        is UpdateOutcome.UpToDate -> snapshot.release
         else -> null
     }
     val latestVersion = latestRelease?.version
-    val hasNewVersion = snapshot is UpdateUiState.Available
-    val checking = snapshot is UpdateUiState.Checking
+    val hasNewVersion = snapshot is UpdateOutcome.Available
+    val checking = snapshot == null
     val statusText = when (snapshot) {
-        UpdateUiState.Checking -> "正在检查更新…"
-        is UpdateUiState.Available -> "发现新版本 ${snapshot.release.version}（当前 $currentVersion）"
-        is UpdateUiState.UpToDate ->
+        null -> "正在检查更新…"
+        is UpdateOutcome.Available -> "发现新版本 ${snapshot.release.version}（当前 $currentVersion）"
+        is UpdateOutcome.UpToDate ->
             if (snapshot.localAhead) "本地版本更高（远端 ${snapshot.release.version}）" else "已是最新版本（v$currentVersion）"
 
-        is UpdateUiState.Failed -> "检查更新失败"
+        is UpdateOutcome.Failed -> "检查更新失败"
     }
     val statusColor = when (snapshot) {
-        is UpdateUiState.Available -> MiuixTheme.colorScheme.primary
-        is UpdateUiState.Failed -> MiuixTheme.colorScheme.error
+        is UpdateOutcome.Available -> MiuixTheme.colorScheme.primary
+        is UpdateOutcome.Failed -> MiuixTheme.colorScheme.error
         else -> MiuixTheme.colorScheme.onSurfaceVariantSummary
     }
 
@@ -274,7 +258,7 @@ fun UpdateScreen(onBack: () -> Unit) {
         }
     }
 
-    val dialogRelease = (snapshot as? UpdateUiState.Available)?.release
+    val dialogRelease = (snapshot as? UpdateOutcome.Available)?.release
     // 下载落定（完成或失败）就收起弹窗：安装与重试都在页面的下载卡上，弹窗只负责把进度显示完。
     // key 用布尔而不是整个 state，否则每个进度 tick 都会重启一次 effect。
     val downloadSettled =
@@ -380,7 +364,7 @@ private fun AppIcon(progress: State<Float>) {
 /** 更新日志卡：按状态渲染说明、下载进度与主操作。 */
 @Composable
 private fun UpdateChangelogSection(
-    state: UpdateUiState,
+    state: UpdateOutcome?,
     downloadState: UpdateDownloadState,
     onStartDownload: (ReleaseInfo) -> Unit,
     onCancelDownload: () -> Unit,
@@ -397,7 +381,7 @@ private fun UpdateChangelogSection(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 when (state) {
-                    UpdateUiState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    null -> Row(verticalAlignment = Alignment.CenterVertically) {
                         InfiniteProgressIndicator(modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -407,7 +391,7 @@ private fun UpdateChangelogSection(
                         )
                     }
 
-                    is UpdateUiState.Failed -> {
+                    is UpdateOutcome.Failed -> {
                         Text(
                             text = state.message,
                             style = MiuixTheme.textStyles.body2,
@@ -422,11 +406,11 @@ private fun UpdateChangelogSection(
                         }
                     }
 
-                    is UpdateUiState.UpToDate -> {
+                    is UpdateOutcome.UpToDate -> {
                         ReleaseNotes(state.release)
                     }
 
-                    is UpdateUiState.Available -> {
+                    is UpdateOutcome.Available -> {
                         ReleaseNotes(state.release)
                         DownloadArea(
                             release = state.release,
@@ -502,7 +486,7 @@ private fun DownloadArea(
                 style = MiuixTheme.textStyles.body2,
             )
             LinearProgressIndicator(
-                progress = downloadState.progress.coerceIn(0f, 1f),
+                progress = downloadState.progress,
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
@@ -633,15 +617,15 @@ private fun UpdateActionsSection(
 }
 
 /** 说明卡标题：有新版本时带上目标版本，已是最新时退回当前版本说明。 */
-private fun changelogTitle(state: UpdateUiState): String = when (state) {
-    is UpdateUiState.Available -> "更新说明（${state.release.version}）"
-    is UpdateUiState.UpToDate -> "当前版本说明（${state.release.version}）"
+private fun changelogTitle(state: UpdateOutcome?): String = when (state) {
+    is UpdateOutcome.Available -> "更新说明（${state.release.version}）"
+    is UpdateOutcome.UpToDate -> "当前版本说明（${state.release.version}）"
     else -> "更新说明"
 }
 
 /** 下载进度文案：总长未知时只报已下字节，避免出现一直 0% 的观感。 */
 private fun downloadProgressText(state: UpdateDownloadState.Downloading): String {
-    val percent = (state.progress.coerceIn(0f, 1f) * 100).toInt()
+    val percent = UpdateProgress.percent(state.progress)
     return if (state.total > 0L) {
         "${formatUpdateSize(state.total)}（$percent）"
     } else {

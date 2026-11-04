@@ -3,6 +3,7 @@ package com.jm3.app.miuix.update
 import android.content.Context
 import android.os.SystemClock
 import com.jm3.core.update.ReleaseAsset
+import com.jm3.core.update.UpdateProgress
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -46,7 +47,7 @@ sealed interface UpdateDownloadState {
         val speedBytesPerSec: Long,
     ) : UpdateDownloadState {
         val progress: Float
-            get() = if (total > 0L) (downloaded.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
+            get() = UpdateProgress.fraction(downloaded, total)
     }
 
     /** 下载完成，[file] 可直接交给 [ApkInstaller.install] */
