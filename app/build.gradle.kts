@@ -49,6 +49,14 @@ android {
         }
     }
 
+    testOptions {
+        unitTests {
+            // 单测跑在 JVM 上，android.* 桩方法默认抛「not mocked」：下载落库这类失败分支要打日志，
+            // 日志不该成为被测逻辑的阻断点，让桩返回默认值。
+            isReturnDefaultValues = true
+        }
+    }
+
     buildFeatures {
         compose = true
     }

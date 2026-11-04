@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.data.download
 
+import android.util.Log
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
@@ -13,6 +14,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+
+private const val TAG = "DownloadManager"
 
 internal val downloadJson = Json { ignoreUnknownKeys = true }
 
@@ -72,21 +75,31 @@ class DownloadManager(
                 val now = System.currentTimeMillis()
                 val toPersist = deltaTracker.filterTasksToPersist(tasks.values, nowMs = now)
                 if (toPersist.isNotEmpty()) {
+                    val persisted = mutableListOf<DownloadTask>()
                     toPersist.forEach { task ->
-                        recordStore.upsert(
-                            record = DownloadRecord(
-                                photoId = task.photoId,
-                                albumId = task.albumId,
-                                title = task.title,
-                                total = task.total,
-                                donePages = task.index,
-                                status = task.status,
-                                updatedAt = 0L,
-                            ),
-                            pagesJson = pageSource.pagesJsonOrNull(task.photoId),
-                        )
+                        // 单条落库失败不能打死整条订阅：订阅一死，此后所有进度都不再落盘，界面上毫无迹象。
+                        // 失败的这条不记快照，下一轮更新会重新尝试。
+                        try {
+                            recordStore.upsert(
+                                record = DownloadRecord(
+                                    photoId = task.photoId,
+                                    albumId = task.albumId,
+                                    title = task.title,
+                                    total = task.total,
+                                    donePages = task.index,
+                                    status = task.status,
+                                    updatedAt = 0L,
+                                ),
+                                pagesJson = pageSource.pagesJsonOrNull(task.photoId),
+                            )
+                            persisted.add(task)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w(TAG, "下载进度落库失败（photoId=" + task.photoId + "），本轮跳过", e)
+                        }
                     }
-                    deltaTracker.onPersisted(toPersist, nowMs = now)
+                    if (persisted.isNotEmpty()) deltaTracker.onPersisted(persisted, nowMs = now)
                 }
                 deltaTracker.pruneMissing(tasks.keys)
             }
