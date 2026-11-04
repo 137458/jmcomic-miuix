@@ -1,7 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import com.jm3.core.history.HistoryRepository
-import com.jm3.core.Jm3Gateway
+import com.jm3.core.AlbumDetailPort
 import com.jm3.core.appendedBy
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.CommentItem
@@ -61,7 +61,7 @@ data class AlbumDetailViewState(
  */
 class AlbumDetailStateHolder(
     val albumId: String,
-    private val gateway: Jm3Gateway,
+    private val gateway: AlbumDetailPort,
     private val history: HistoryRepository,
     private val scope: CoroutineScope,
     private val showMessage: (String) -> Unit,

@@ -55,6 +55,7 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.ChapterLabels
+import com.jm3.core.asAlbumDetailPort
 import com.jm3.core.mergedWith
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
@@ -129,7 +130,7 @@ fun AlbumDetailScreen(
     val stateHolder = remember(albumId) {
         AlbumDetailStateHolder(
             albumId = albumId,
-            gateway = Jm3Graph.gateway,
+            gateway = Jm3Graph.gateway.asAlbumDetailPort(),
             history = Jm3Graph.history,
             scope = scope,
             showMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },

@@ -1,6 +1,6 @@
 package com.jm3.app.miuix.ui
 
-import com.jm3.core.Jm3Gateway
+import com.jm3.core.AlbumDetailPort
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.history.InMemoryHistoryRepository
 import com.jm3.core.model.AlbumDetail
@@ -16,7 +16,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -37,32 +36,22 @@ class AlbumDetailStateHolderTest {
         onToggleLike: (String) -> Unit = {},
         onIsTracking: (String) -> Boolean = { false },
         onSetTracking: (String) -> Unit = {},
-        onUsedDomain: () -> String? = { "18comic.vip" },
-    ): Jm3Gateway {
-        return Proxy.newProxyInstance(
-            Jm3Gateway::class.java.classLoader,
-            arrayOf(Jm3Gateway::class.java),
-        ) { _, method, args ->
-            when (method.name) {
-                "album" -> onAlbum(args[0] as String)
-                "comments" -> onComments(args[0] as String, (args?.getOrNull(1) as? Int) ?: 1)
-                "postComment" -> onPostComment(args[0] as String, args[1] as String)
-                "replyComment" -> onReplyComment(args[0] as String, args[1] as String, args[2] as String)
-                "favorites" -> onFavorites((args?.getOrNull(0) as? Int) ?: 1)
-                "toggleFavorite" -> onToggleFavorite(args[0] as String, (args?.getOrNull(1) as? String) ?: "")
-                "manageFavoriteFolder" -> onManageFolder(
-                    args[0] as FavoriteFolderAction,
-                    (args.getOrNull(1) as? String) ?: "",
-                    (args.getOrNull(2) as? String) ?: "",
-                    (args.getOrNull(3) as? String) ?: "",
-                )
-                "toggleLike" -> onToggleLike(args[0] as String)
-                "isTracking" -> onIsTracking(args[0] as String)
-                "setTracking" -> onSetTracking(args[0] as String)
-                "usedDomain" -> onUsedDomain()
-                else -> null
-            }
-        } as Jm3Gateway
+    ): AlbumDetailPort = object : AlbumDetailPort {
+        override fun album(albumId: String): AlbumDetail = onAlbum(albumId)
+        override fun comments(albumId: String, page: Int): CommentPage = onComments(albumId, page)
+        override fun postComment(albumId: String, text: String) = onPostComment(albumId, text)
+        override fun replyComment(albumId: String, text: String, parentCommentId: String) = onReplyComment(albumId, text, parentCommentId)
+        override fun toggleLike(albumId: String) = onToggleLike(albumId)
+        override fun isTracking(albumId: String): Boolean = onIsTracking(albumId)
+        override fun setTracking(albumId: String) = onSetTracking(albumId)
+        override fun favorites(page: Int): FavoritePage = onFavorites(page)
+        override fun manageFavoriteFolder(
+            action: FavoriteFolderAction,
+            folderId: String,
+            name: String,
+            albumId: String,
+        ): FolderOperation = onManageFolder(action, folderId, name, albumId)
+        override fun toggleFavorite(albumId: String, folderId: String) = onToggleFavorite(albumId, folderId)
     }
 
     private fun sampleAlbum(id: String = "123", favorited: Boolean = false, liked: Boolean = false) = AlbumDetail(
