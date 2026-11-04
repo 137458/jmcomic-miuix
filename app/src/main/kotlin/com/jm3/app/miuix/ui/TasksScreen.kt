@@ -43,7 +43,7 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.imageUrl
+import com.jm3.core.CoverLocator
 import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
 import com.jm3.core.model.TaskPage
@@ -278,7 +278,7 @@ private fun TaskCell(type: TaskType, item: TaskItem, imageHost: String, equipped
     ) {
         if (type == TaskType.BADGE) {
             // 图片地址由内容与域名拼成：两者不变就不该跟着重组反复重算
-            val url = remember(item.content, imageHost) { imageUrl(item.content, imageHost) }
+            val url = remember(item.content, imageHost) { CoverLocator.of(imageHost).image(item.content) }
             if (url != null) {
                 AsyncImage(
                     model = url,

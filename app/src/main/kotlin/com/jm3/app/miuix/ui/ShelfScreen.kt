@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.CoverUrls
+import com.jm3.core.CoverLocator
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +50,7 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
     }
 
     // 图片域名整个屏幕只取一次：网关取域名是阻塞方法，必须放到 IO 线程；
-    // 取不到时留空串，封面由 CoverUrls.build 返回 null 退化为占位，不影响行内容与按钮
+    // 取不到时留空串，封面由 CoverLocator.cover 返回 null 退化为占位，不影响行内容与按钮
     LaunchedEffect(Unit) {
         imageHost = withContext(Dispatchers.IO) {
             runCatching { Jm3Graph.gateway.imageHost() }.getOrDefault("")
@@ -84,7 +84,7 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
                     // 3:4 封面地址由车号与图片域名纯拼：域名未就绪或车号缺失时为 null，
                     // WorkThumbnail 用同尺寸占位撑住行高，行不会塌陷
                     val coverUrl = remember(albumId, imageHost) {
-                        albumId?.let { CoverUrls.build(it, imageHost, "_3x4") }
+                        albumId?.let { CoverLocator.of(imageHost).cover(it, "_3x4") }
                     }
                     BasicComponent(
                         title = record.title.ifBlank { record.photoId },

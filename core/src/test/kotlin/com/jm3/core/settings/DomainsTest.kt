@@ -27,6 +27,14 @@ class DomainsTest {
     }
 
     @Test
+    fun 域名后跟路径时只留域名() {
+        assertEquals(
+            listOf("cdn.example.com"),
+            Domains.normalize(listOf("https://cdn.example.com/media/albums/1.jpg")),
+        )
+    }
+
+    @Test
     fun 全部非法输入返回空表() {
         assertEquals(emptyList(), Domains.normalize(listOf("  ", "https://", "")))
     }

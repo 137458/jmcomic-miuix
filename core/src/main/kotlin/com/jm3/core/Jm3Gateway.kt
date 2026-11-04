@@ -361,8 +361,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun randomRecommend(): List<SearchResult> {
         val metas = client.getRandomRecommend()
-        val domain = imageDomain(metas.firstOrNull()?.id().orEmpty())
-        return metas.map { it.toSearchResult(coverUrl = CoverUrls.build(it.id(), domain, "_3x4")) }
+        val locator = imageDomain(metas.firstOrNull()?.id().orEmpty())
+        return metas.map { it.toSearchResult(coverUrl = locator.cover(it.id(), "_3x4")) }
     }
 
     override fun browse(filter: BrowseFilter, page: Int): SearchPage =
@@ -374,12 +374,12 @@ class Jm3GatewayImpl internal constructor(
 
     override fun album(albumId: String): AlbumDetail {
         val album = client.getAlbum(albumId)
-        val domain = imageDomain(albumId)
+        val locator = imageDomain(albumId)
         // 详情页与列表保持完全一致的 _3x4 规格，保证封面显示内容一致且 100% 命中图片缓存
-        val cover = CoverUrls.build(albumId, domain, "_3x4")
+        val cover = locator.cover(albumId, "_3x4")
         return album.toAlbumDetail(
             coverUrl = cover,
-            relatedCoverUrl = { meta -> CoverUrls.build(meta.id(), domain, "_3x4") },
+            relatedCoverUrl = { meta -> locator.cover(meta.id(), "_3x4") },
         )
     }
 
@@ -520,8 +520,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun weeklyPicksDetail(categoryId: String): WeeklyPicksDetail {
         val detail = client.getWeeklyPicksDetail(categoryId)
-        val domain = imageDomain(detail.list().orEmpty().firstOrNull()?.id().orEmpty())
-        return detail.toWeeklyPicksDetail { meta -> CoverUrls.build(meta.id(), domain, "_3x4") }
+        val locator = imageDomain(detail.list().orEmpty().firstOrNull()?.id().orEmpty())
+        return detail.toWeeklyPicksDetail { meta -> locator.cover(meta.id(), "_3x4") }
     }
 
     override fun notifications(): NotificationPage = client.getNotifications().toNotificationPage()
@@ -543,8 +543,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun watchHistory(page: Int): List<SearchResult> {
         val metas = client.getWatchHistory(page).orEmpty()
-        val domain = imageDomain(metas.firstOrNull()?.id().orEmpty())
-        return metas.map { it.toSearchResult(coverUrl = CoverUrls.build(it.id(), domain, "_3x4")) }
+        val locator = imageDomain(metas.firstOrNull()?.id().orEmpty())
+        return metas.map { it.toSearchResult(coverUrl = locator.cover(it.id(), "_3x4")) }
     }
 
     override fun deleteWatchHistory(id: String) = client.deleteWatchHistory(id)
@@ -640,28 +640,25 @@ class Jm3GatewayImpl internal constructor(
     /** 域名解析只做一次：借库的域名裁决取首个封面地址，解析出图片域名后全部走纯构造器，消除逐项调用。 */
     private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(): SearchPage {
         val metas = content().orEmpty()
-        val domain = imageDomain(metas.firstOrNull()?.id().orEmpty())
+        val locator = imageDomain(metas.firstOrNull()?.id().orEmpty())
         return SearchPage(
             currentPage = currentPage(),
             totalPages = totalPages(),
             totalItems = totalItems(),
-            items = metas.map { it.toSearchResult(coverUrl = CoverUrls.build(it.id(), domain, "_3x4")) },
+            items = metas.map { it.toSearchResult(coverUrl = locator.cover(it.id(), "_3x4")) },
         )
     }
 
-    /** 图片域名裁决：借首项封面地址取 host，失败返回空串（封面降级为 null）。 */
-    private fun imageDomain(albumId: String): String {
-        if (albumId.isBlank()) return ""
-        return runCatching { client.getAlbumCoverUrl(albumId, "_3x4") }.getOrNull()
-            ?.removePrefix("https://")
-            ?.substringBefore("/")
-            .orEmpty()
+    /** 图片域名裁决：借首项封面地址取 host，取不到时给未就绪的定位器（封面降级为 null）。 */
+    private fun imageDomain(albumId: String): CoverLocator {
+        if (albumId.isBlank()) return CoverLocator.Unready
+        return CoverLocator.of(runCatching { client.getAlbumCoverUrl(albumId, "_3x4") }.getOrNull())
     }
 
     /** 图片域名每页只解析一次，随后全部走纯构造器，避免逐项请求封面。 */
     private fun JmFavoritePage.toFavoritePageWithCovers(): FavoritePage {
-        val imageDomain = imageDomain(content.orEmpty().firstOrNull()?.id().orEmpty())
-        return toFavoritePage { meta -> CoverUrls.build(meta.id(), imageDomain, "_3x4") }
+        val locator = imageDomain(content.orEmpty().firstOrNull()?.id().orEmpty())
+        return toFavoritePage { meta -> locator.cover(meta.id(), "_3x4") }
     }
 
     private fun okhttp3.Cookie.toSnapshot(): CookieSnapshot =
@@ -703,11 +700,8 @@ private class LibraryDomainControls(private val client: AbstractJmClient) : Doma
 
     override fun coverHost(): String? = runCatching {
         // 封面地址是纯字符串拼接，不发请求；本子号只作占位，只为取库的域名裁决结果。
-        client.getAlbumCoverUrl(COVER_PROBE_ALBUM_ID, "_3x4")
-    }.getOrNull()
-        ?.removePrefix("https://")
-        ?.substringBefore("/")
-        ?.takeIf { it.isNotBlank() }
+        CoverLocator.of(client.getAlbumCoverUrl(COVER_PROBE_ALBUM_ID, "_3x4")).host
+    }.getOrNull()?.takeIf { it.isNotBlank() }
 
     override fun domainLatency(): Map<String, Int> = client.domainLatency.orEmpty()
 

@@ -283,9 +283,8 @@ fun JmComment.toCommentItem(imageHost: String = ""): CommentItem = CommentItem(
         .mapNotNull { imageUrl(it, imageHost) },
     albumName = name()?.takeIf { it.isNotBlank() },
     // 关联作品封面与详情页同规格：3:4 缩略图由图片域名纯拼接，域名未知时留空
-    albumCoverUrl = CoverUrls.build(
-        albumId = aid()?.takeIf { it.isNotBlank() && it != "0" }.orEmpty(),
-        imageDomain = imageHost,
+    albumCoverUrl = CoverLocator.of(imageHost).cover(
+        albumId = aid()?.takeIf { it.isNotBlank() && it != "0" },
         size = "_3x4",
     ),
     body = commentSegments(content(), contentHtml()),
@@ -514,12 +513,7 @@ fun JmTagFavorite.toTagFavorite(): TagFavorite = TagFavorite(
 )
 
 /** 相对图片路径拼接图片域名；绝对地址原样返回，域名未就绪时返回 null。 */
-fun imageUrl(image: String?, imageHost: String): String? {
-    val path = image?.takeIf { it.isNotBlank() } ?: return null
-    if (path.startsWith("http://") || path.startsWith("https://")) return path
-    if (imageHost.isBlank()) return null
-    return "https://" + imageHost.removePrefix("https://").trimEnd('/') + path
-}
+fun imageUrl(image: String?, imageHost: String): String? = CoverLocator.of(imageHost).image(image)
 
 /** 小说封面：接口的 image 可能是绝对地址或相对路径，相对时拼接图片域名（与 API 同域）。 */
 fun novelCoverUrl(image: String?, imageHost: String): String? = imageUrl(image, imageHost)
