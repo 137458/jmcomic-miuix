@@ -103,19 +103,3 @@ class DownloadManager(
 /** 空标题兜底文案：:core 层无 Context，取不到 string 资源，只能在此固定。 */
 private const val UNTITLED_CHAPTER_TITLE = "未命名章节"
 
-/** 活动任务数（QUEUED + RUNNING）：前台服务生命周期的唯一驱动量。 */
-internal fun Map<String, DownloadTask>.activeDownloadCount(): Int =
-    values.count { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.RUNNING }
-
-/**
- * 是否有任务从在途变为 DONE/FAILED。
- *
- * 这类终态转换要让通知立即刷新（不受进度节流限制），否则最后一条进度会一直停在
- * N-1 页、用户以为下载卡住。
- */
-internal fun Map<String, DownloadTask>.hasTerminalTransitionFrom(
-    previous: Map<String, DownloadTask>,
-): Boolean = values.any { task ->
-    val terminal = task.status == DownloadStatus.DONE || task.status == DownloadStatus.FAILED
-    terminal && previous[task.photoId]?.status != task.status
-}

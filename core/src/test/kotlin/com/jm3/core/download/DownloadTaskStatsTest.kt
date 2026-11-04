@@ -1,18 +1,16 @@
-package com.jm3.app.miuix.data.download
+package com.jm3.core.download
 
-import com.jm3.core.download.DownloadStatus
-import com.jm3.core.download.DownloadTask
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * 队列快照上的两个纯函数单测：
- * - [activeDownloadCount]（DownloadManager.kt:161）：前台服务生命周期的唯一驱动量；
- * - [hasTerminalTransitionFrom]（DownloadManager.kt:170）：决定通知是否绕过节流立即刷新。
+ * 队列快照上的两个纯函数单测（[DownloadTaskStats.kt]）：
+ * - [activeDownloadCount]：前台服务生命周期的唯一驱动量；
+ * - [hasTerminalTransitionFrom]：决定通知是否绕过节流立即刷新。
  */
-class DownloadTaskMapsTest {
+class DownloadTaskStatsTest {
 
     private fun task(photoId: String, status: DownloadStatus): DownloadTask = DownloadTask(
         photoId = photoId,

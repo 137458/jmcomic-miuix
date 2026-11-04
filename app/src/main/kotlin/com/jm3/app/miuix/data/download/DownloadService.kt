@@ -13,6 +13,8 @@ import androidx.core.app.ServiceCompat
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.R
 import com.jm3.core.download.DownloadTask
+import com.jm3.core.download.ForegroundAction
+import com.jm3.core.download.ForegroundPolicy
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,12 +26,12 @@ import kotlinx.coroutines.launch
  * 设计要点：
  * - 不对外暴露 Binder：队列本身是进程内单例（[Jm3Graph.downloadManager]），服务只负责
  *   「持有前台状态 + 展示通知」，不承担调度，因此进程被杀后任务状态由
- *   [DownloadManager.recoverInterruptedRecords] 兜底，而不是靠服务重启。
+ *   [DownloadManager.ensureStarted] 的台账恢复兜底，而不是靠服务重启。
  * - 服务实例不做观察：观察者挂在进程级作用域（[attach]），这样界面退到后台、
  *   Activity 被回收之后，服务仍能随队列状态自动开关，也不会因为多个 Activity
  *   重复注册而重复 startForegroundService。
- * - 生命周期唯一驱动量是「活动任务数」（QUEUED + RUNNING），由
- *   [Map.activeDownloadCount] 计算，PAUSED/DONE/FAILED 一律不占前台。
+ * - 该做什么由 :core 的 [ForegroundPolicy] 决定（活动任务数 → 拉起/停止/发进度/补发），
+ *   这里只执行动作，并把「服务是否真的在前台」回写给它。
  */
 class DownloadService : Service() {
 
@@ -39,11 +41,11 @@ class DownloadService : Service() {
         val notification = DownloadNotifier.build(this, currentTasks())
         if (notification == null) {
             // 竞态：startForegroundService 之后任务已清空/已完成，避免超时 ANR 直接退出。
-            running = false
+            policy.onServiceStopped()
             stopSelf()
             return START_NOT_STICKY
         }
-        running = true
+        policy.onServiceForeground()
         startForegroundSafely(notification)
         // 新下载已经开跑，上一次超时留下的「已暂停」提示已经过期，撤掉避免误导。
         DownloadNotifier.cancelPaused(this)
@@ -52,7 +54,7 @@ class DownloadService : Service() {
     }
 
     override fun onDestroy() {
-        running = false
+        policy.onServiceStopped()
         flushJob?.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
@@ -77,7 +79,7 @@ class DownloadService : Service() {
         DownloadNotifier.cancel(this)
         // 前台通知会随退场一起消失：不留一条可见提示，用户只会看到通知无声消失、以为下载完成。
         DownloadNotifier.notifyPaused(this, getString(R.string.notification_download_paused_text))
-        running = false
+        policy.onServiceStopped()
         stopSelf()
     }
 
@@ -93,7 +95,7 @@ class DownloadService : Service() {
         }.onFailure { e ->
             // 服务已 started 却没进入前台，5 秒后系统会抛 RemoteServiceException，必须主动结束。
             Log.w(TAG, "startForeground 失败", e)
-            running = false
+            policy.onServiceStopped()
             stopSelf()
         }
     }
@@ -104,22 +106,10 @@ class DownloadService : Service() {
 
         private const val ACTION_START = "com.jm3.app.miuix.download.action.START"
 
-        /** 同一批任务内两次拉起尝试的最小间隔：只压抖动，不构成保活。 */
-        private const val START_RETRY_INTERVAL_MS = 5_000L
-
         private val attached = AtomicBoolean(false)
-        private val throttle = DownloadThrottle(DownloadNotifier.MIN_PROGRESS_INTERVAL_MS)
 
-        /** 服务是否真的在前台运行（由服务实例回写）。 */
-        @Volatile
-        private var running = false
-
-        /** 上次已知的活动任务数，用于去重：静止状态不重复 start/stop。 */
-        @Volatile
-        private var lastActiveCount = -1
-
-        /** 上次拉起尝试的时间戳：与 [START_RETRY_INTERVAL_MS] 配对，只用于压同一次任务数变化内的抖动。 */
-        private var lastStartAttemptAt = 0L
+        /** 前台服务的全部决策状态：进程内一份，随 Activity 重建而保持。 */
+        private val policy = ForegroundPolicy()
 
         /** 节流窗口末尾的补发任务：保证进度条最终能停在真实值上。 */
         private var flushJob: Job? = null
@@ -133,30 +123,8 @@ class DownloadService : Service() {
             val app = context.applicationContext
             // 全应用只允许一处长期协程作用域：appScope 随进程存活，attach 的幂等由 attached 保证。
             Jm3Graph.appScope.launch {
-                var previous: Map<String, DownloadTask> = emptyMap()
                 Jm3Graph.downloadManager.queue.updates.collect { tasks ->
-                    val active = tasks.activeDownloadCount()
-                    // 首次 attach 时 lastActiveCount 为 -1，本身就算一次变化。
-                    val countChanged = active != lastActiveCount
-                    lastActiveCount = active
-
-                    if (active > 0) {
-                        // 只在活动任务数变化时尝试拉起：集合不变还周期性重试就成了保活，
-                        // 违背「生命周期唯一驱动量是活动任务数」。
-                        // canAttemptStart 的间隔只用于压住同一次变化内的抖动（后台启动可能被拒）。
-                        if (!running && countChanged && canAttemptStart()) start(app)
-                        if (running) {
-                            val immediate = countChanged || tasks.hasTerminalTransitionFrom(previous)
-                            if (throttle.shouldEmit(System.currentTimeMillis(), immediate)) {
-                                publish(app, tasks)
-                            } else {
-                                scheduleFlush(app)
-                            }
-                        }
-                    } else if (running) {
-                        stop(app)
-                    }
-                    previous = tasks
+                    policy.onTasks(tasks).forEach { action -> perform(app, action) }
                 }
             }
         }
@@ -179,20 +147,21 @@ class DownloadService : Service() {
         internal fun currentTasks(): Map<String, DownloadTask> =
             Jm3Graph.downloadManager.queue.updates.value
 
-        private fun canAttemptStart(): Boolean {
-            val now = System.currentTimeMillis()
-            if (lastStartAttemptAt != 0L && now - lastStartAttemptAt < START_RETRY_INTERVAL_MS) {
-                return false
+        private fun perform(app: Context, action: ForegroundAction) {
+            when (action) {
+                ForegroundAction.Start -> start(app)
+                ForegroundAction.Stop -> stop(app)
+                is ForegroundAction.Publish -> publish(app, action.tasks)
+                is ForegroundAction.ScheduleFlush -> scheduleFlush(app, action.delayMs)
             }
-            lastStartAttemptAt = now
-            return true
         }
 
-        private fun scheduleFlush(app: Context) {
+        private fun scheduleFlush(app: Context, delayMs: Long) {
             if (flushJob?.isActive == true) return
             flushJob = Jm3Graph.appScope.launch {
-                delay(DownloadNotifier.MIN_PROGRESS_INTERVAL_MS)
-                if (running) publish(app, currentTasks())
+                delay(delayMs)
+                val due = policy.onFlushDue(currentTasks())
+                if (due is ForegroundAction.Publish) publish(app, due.tasks)
             }
         }
 

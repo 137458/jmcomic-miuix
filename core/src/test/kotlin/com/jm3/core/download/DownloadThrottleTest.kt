@@ -1,4 +1,4 @@
-package com.jm3.app.miuix.data.download
+package com.jm3.core.download
 
 import kotlin.test.Test
 import kotlin.test.assertFalse
