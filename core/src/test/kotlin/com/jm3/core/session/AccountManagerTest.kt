@@ -6,9 +6,12 @@ import com.jm3.core.SessionAuth
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.Jm3User
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
@@ -80,8 +83,12 @@ class AccountManagerTest {
         override fun currentCookies(): List<CookieSnapshot> = onCurrentCookies()
     }
 
-    private class FakeCredentialStorage(var stored: SavedCredentials? = null) : CredentialStorage {
+    /** 计数器跨线程读写（并发用例在 IO 线程里断言），所以都标 @Volatile。 */
+    private class FakeCredentialStorage(@Volatile var stored: SavedCredentials? = null) : CredentialStorage {
+        @Volatile
         var clearCount = 0
+
+        @Volatile
         var saveCount = 0
         override suspend fun load(): SavedCredentials? = stored
         override suspend fun save(credentials: SavedCredentials) {
@@ -117,6 +124,46 @@ class AccountManagerTest {
             clearCount++
         }
         override suspend fun renewFailureCount(): Int = renewFailures
+        override suspend fun setRenewFailureCount(count: Int) {
+            renewFailures = count
+        }
+    }
+
+    /**
+     * 第一次读失败计数时停住，精确复现「读到旧值之后被调走」的时序。
+     *
+     * 计数只读一次（续期失败那一次），之后归零/补齐都走 set，用例不必再关心后续读取。
+     */
+    private class GatedRenewFailureStore(
+        var stored: Jm3Session?,
+        var renewFailures: Int = 0,
+    ) : SessionStorage {
+        /** 进入第一次读计数；用 CompletableDeferred 而不是闸门，免得把 runBlocking 的事件循环一起堵死。 */
+        val readStarted = CompletableDeferred<Unit>()
+
+        /** 放行那次被卡住的读取，模拟「用户正好在这时登录成功」。 */
+        val releaseRead = CompletableDeferred<Unit>()
+        private var reads = 0
+
+        override suspend fun load(): Jm3Session? = stored
+
+        override suspend fun save(session: Jm3Session) {
+            stored = session
+        }
+
+        override suspend fun clear() {
+            stored = null
+        }
+
+        override suspend fun renewFailureCount(): Int {
+            val value = renewFailures
+            if (reads++ == 0) {
+                readStarted.complete(Unit)
+                releaseRead.await()
+            }
+            return value
+        }
+
         override suspend fun setRenewFailureCount(count: Int) {
             renewFailures = count
         }
@@ -609,6 +656,68 @@ class AccountManagerTest {
         assertEquals(1, loginCount)
         assertEquals(fresh.user, account.user.value)
         assertEquals(0, store.clearCount)
+    }
+
+    /**
+     * 续期失败与手工登录撞在一起：续期分支读到旧计数后，用户正好把正确的密码输了进来。
+     *
+     * 计数与凭据必须当成一份数据一起改。分两次改的话，续期分支会拿旧计数补齐到 3 次，
+     * 把用户刚输对的密码当成失效凭据清掉——登录看着成功，下次冷启动又要重输。
+     */
+    @Test
+    fun `续期失败正在读计数时用户登录成功，新凭据不会被旧计数清掉`() = runBlocking {
+        val stale = Jm3Session(user = testUser(), cookies = emptyList())
+        val store = GatedRenewFailureStore(stored = stale, renewFailures = 2)
+        val credentials = FakeCredentialStorage(SavedCredentials("isczjk", "old"))
+        val fresh = Jm3Session(user = testUser().copy(username = "newbie"), cookies = emptyList())
+        val gateway = fakeGateway(
+            onLogin = { username, _ ->
+                // 续期拿的是旧密码，注定失败；用户手输的新账号登录成功
+                if (username == "isczjk") throw RuntimeException("帳號或密碼錯誤") else fresh
+            },
+        )
+        val account = account(store = store, credentials = credentials, gateway = { gateway })
+        account.restore()
+
+        val renewing = launch { account.markSessionExpired() }
+        // 等续期分支真的读到计数（挂起等待，不能阻塞事件循环，否则同线程的 launch 永远排不上）
+        withTimeout(5_000) { store.readStarted.await() }
+        val loggingIn = launch { account.login("newbie", "newpass") }
+        // 登录态已落地，此时它还停在凭据锁上，凭据尚未写入
+        account.user.first { it?.username == "newbie" }
+
+        // 续期分支卡在计数里的这段时间，登录的凭据写不进去：两者改的是同一份数据
+        val savedWhileRenewing = withTimeoutOrNull(500) {
+            while (credentials.saveCount == 0) delay(10)
+            true
+        }
+        assertNull(savedWhileRenewing)
+
+        store.releaseRead.complete(Unit)
+        renewing.join()
+        loggingIn.join()
+
+        // 旧凭据该清就清，之后写入的新凭据必须活下来，计数跟着归零
+        assertEquals(SavedCredentials("newbie", "newpass"), credentials.stored)
+        assertEquals(0, store.renewFailures)
+        // 续期失败撞上的那次恢复不能把已经登录成功的会话再判成失效
+        assertEquals(fresh.user, account.user.value)
+        // 手工登录拿到的新会话照旧落盘，不被那次续期失败清掉
+        assertEquals(fresh, store.stored)
+    }
+
+    @Test
+    fun `登录异常没有消息时也要给用户一句能看的失败原因`() = runBlocking {
+        // 空 message 的异常很常见（空指针、类型不符）：交回 null 等于告诉界面「登录成功」
+        val account = account(
+            store = FakeSessionStore(),
+            gateway = { fakeGateway(onLogin = { _, _ -> throw IllegalStateException() }) },
+        )
+
+        val failure = account.login("isczjk", "secret")
+
+        assertEquals("登录失败，请稍后重试", failure)
+        assertNull(account.user.value)
     }
 
     @Test

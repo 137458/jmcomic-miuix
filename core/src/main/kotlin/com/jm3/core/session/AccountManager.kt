@@ -63,6 +63,15 @@ class AccountManager(
     private val renewLock = Mutex()
 
     /**
+     * 凭据与静默重登失败计数的读改写锁。
+     *
+     * 这两个值必须一起看：计数只对「当前存着的那份密码」有意义。续期失败里「读计数、加一、可能清凭据」
+     * 若与登录成功的「写凭据、计数归零」交叉，续期分支会把用户刚输对的密码当成失效凭据清掉。
+     * 不与 [storeLock] 嵌套：[storeLock] 只管会话快照，各持各的才不用考虑锁序。
+     */
+    private val credentialLock = Mutex()
+
+    /**
      * 恢复本地会话并注入当前网关；本地存在会话时立即恢复登录状态，不因瞬时网络或探活异常删除凭据。
      *
      * 冷启动调一次；线路切换换了网关实例后再调一次，Cookie 才会跟着迁到新客户端。
@@ -145,7 +154,12 @@ class AccountManager(
     private fun sameCookies(left: List<CookieSnapshot>, right: List<CookieSnapshot>): Boolean =
         left.size == right.size && left.toSet() == right.toSet()
 
-    /** 登录成功返回 null、持久化会话与凭据；失败返回错误消息。 */
+    /**
+     * 登录成功返回 null、持久化会话与凭据；失败返回一句能直接展示的提示，绝不会是 null。
+     *
+     * null 是「成功」的唯一标记，所以没有 message 的异常（空指针、类型不符之类）也必须落成一句提示：
+     * 直接把 null 交出去，界面会当成登录成功而退出。
+     */
     suspend fun login(username: String, password: String): String? =
         withContext(Dispatchers.IO) {
             val gateway = gatewayProvider()
@@ -153,9 +167,11 @@ class AccountManager(
                 .onSuccess { session ->
                     adopt(session, gateway)
                     // 留着密码才能在上面的内存加密失效后静默重登；加密交给 Keystore，落盘只有密文
-                    runCatchingSuspending { credentials.save(SavedCredentials(username, password)) }
+                    rememberCredentials(SavedCredentials(username, password))
                 }
-                .exceptionOrNull()?.message
+                .exceptionOrNull()?.let { failure ->
+                    failure.message?.takeIf { it.isNotBlank() } ?: "登录失败，请稍后重试"
+                }
         }
 
     suspend fun logout() {
@@ -163,7 +179,11 @@ class AccountManager(
         withContext(Dispatchers.IO) {
             runCatchingSuspending { gateway.logout() }
             // 用户主动登出就是不想再自动登录：凭据与网关内存里的密码一起清掉
-            runCatchingSuspending { credentials.clear() }
+            credentialLock.withLock {
+                runCatchingSuspending { credentials.clear() }
+                // 计数跟着凭据一起清：已经没有密码可续期，攒着的失败次数不该算到下次登录头上
+                runCatchingSuspending { store.setRenewFailureCount(0) }
+            }
             gateway.forgetCredentials()
             storeLock.withLock { runCatchingSuspending { store.clear() } }
         }
@@ -212,7 +232,8 @@ class AccountManager(
             }
                 .onSuccess { session -> adopt(session, gateway) }
                 .onFailure { recordRenewFailure() }
-                .isSuccess
+                // 失败的是这一次续期：期间用户可能已经手工登录成功，那这次失败就不能再被当成「会话作废」
+                .isSuccess || sessionEpoch != epochBefore
         }
     }
 
@@ -225,20 +246,40 @@ class AccountManager(
      */
     private suspend fun recordRenewFailure() {
         withContext(Dispatchers.IO) {
-            val failures = runCatchingSuspending { store.renewFailureCount() }.getOrDefault(0) + 1
-            if (failures >= RENEW_FAILURE_LIMIT) {
-                runCatchingSuspending { credentials.clear() }
-                runCatchingSuspending { store.setRenewFailureCount(0) }
-            } else {
-                runCatchingSuspending { store.setRenewFailureCount(failures) }
+            credentialLock.withLock {
+                // 读不出来就别猜：按 0 起算会把已有的失败次数抹平，让该清的凭据多活几轮，放弃这次计数更保守
+                val current = runCatchingSuspending { store.renewFailureCount() }.getOrNull()
+                    ?: return@withLock
+                val failures = current + 1
+                if (failures >= RENEW_FAILURE_LIMIT) {
+                    runCatchingSuspending { credentials.clear() }
+                    runCatchingSuspending { store.setRenewFailureCount(0) }
+                } else {
+                    runCatchingSuspending { store.setRenewFailureCount(failures) }
+                }
             }
         }
     }
 
     /** 重登成功说明凭据还能用，把连续失败计数清掉。 */
     private suspend fun resetRenewFailures() {
-        runCatchingSuspending {
-            if (store.renewFailureCount() != 0) store.setRenewFailureCount(0)
+        credentialLock.withLock {
+            runCatchingSuspending {
+                if (store.renewFailureCount() != 0) store.setRenewFailureCount(0)
+            }
+        }
+    }
+
+    /**
+     * 记下一份刚验证通过的凭据，并把静默重登失败计数归零。
+     *
+     * 归零不能省：用户刚用这份密码登录成功，之前攒的失败次数说的已经不是它了，
+     * 留着会让下一次续期失败直接凑够阈值、把这份好用的密码清掉。
+     */
+    private suspend fun rememberCredentials(saved: SavedCredentials) {
+        credentialLock.withLock {
+            runCatchingSuspending { credentials.save(saved) }
+            runCatchingSuspending { store.setRenewFailureCount(0) }
         }
     }
 
