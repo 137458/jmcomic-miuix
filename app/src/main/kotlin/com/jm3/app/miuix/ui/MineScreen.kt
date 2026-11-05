@@ -28,17 +28,14 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
-import com.jm3.core.LOGIN_EXPIRED_MESSAGE
-import com.jm3.core.download.DownloadStatus
+import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.AccountManager
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
-import com.jm3.core.session.sessionOutcome
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.Badge
@@ -61,6 +58,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun MineScreen(
     account: AccountManager,
+    authCall: AuthCall,
     snackbarHostState: SnackbarHostState,
     onOpenLogin: () -> Unit,
     onOpenFavorites: () -> Unit,
@@ -79,45 +77,68 @@ fun MineScreen(
     val user by account.user.collectAsState()
     val unread by Jm3Graph.unreadNotifications.collectAsState()
     val downloads by Jm3Graph.downloadManager.queue.updates.collectAsState()
-    val activeDownloads = downloads.values.count {
-        it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.QUEUED
-    }
+    val activeDownloads = downloads.activeDownloadCount()
     val scope = rememberCoroutineScope()
 
     var checkInStatus by remember { mutableStateOf<DailyCheckInStatus?>(null) }
     var checkInLoading by remember { mutableStateOf(false) }
     var checkInError by remember { mutableStateOf<String?>(null) }
     // 会话失效时用户会被置空，卡片本来整块消失；用独立标记把它留在原位解释原因并给出登录入口
-    var checkInSessionExpired by remember { mutableStateOf(false) }
+    var checkInExpiredMessage by remember { mutableStateOf<String?>(null) }
     var checkInBusy by remember { mutableStateOf(false) }
     // 记录"哪一天签到成功"而不是一个布尔值：应用跨过午夜后不会继续显示昨天的「今日已签到」。
     var checkedInOn by remember { mutableStateOf<LocalDate?>(null) }
     var confirmLogout by remember { mutableStateOf(false) }
 
-    /** 会话失效：清掉本地会话，不请求网关登出（会话已作废，只会再吃一次 401）。 */
-    fun expireCheckInSession() {
-        checkInSessionExpired = true
-        checkInError = null
-        scope.clearExpiredSession()
+    /** 失效与失败共用一条落点：卡片的失效态只解释原因并给出登录入口。 */
+    fun applyCheckInPlan(plan: ScreenLoadPlan) {
+        when (plan.phase) {
+            ScreenLoadPhase.Expired -> {
+                checkInExpiredMessage = plan.message
+                checkInError = null
+            }
+
+            ScreenLoadPhase.Failed -> checkInError = plan.message
+            ScreenLoadPhase.Content -> Unit
+        }
     }
 
     // 加载签到状态；失败保留 error 由卡片上的重试行兜底。
     fun loadCheckInStatus() {
         val uid = user?.uid ?: return
         scope.launch {
-            // 启动恢复会先置登录态再注入 Cookie，注入完成前的请求会被服务端当成未登录
-            Jm3Graph.account.awaitRestored()
+            // 启动恢复会先置登录态再注入 Cookie：AuthCall 的闸门保证注入完成前不发出请求
             checkInLoading = true
             checkInError = null
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.dailyCheckInStatus(uid) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.dailyCheckInStatus(uid) }
             checkInLoading = false
             when (outcome) {
                 is SessionOutcome.Ok -> checkInStatus = outcome.value
-                SessionOutcome.Expired -> expireCheckInSession()
-                is SessionOutcome.Failed -> checkInError = outcome.messageOr("签到状态加载失败")
+                SessionOutcome.Expired -> applyCheckInPlan(
+                    planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败"),
+                )
+
+                is SessionOutcome.Failed -> applyCheckInPlan(
+                    planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败"),
+                )
             }
+        }
+    }
+
+    /** 签到后的回读：失效时仍只解释原因并留登录入口，不把「未生效」误报给用户。 */
+    suspend fun refreshCheckInStatus(uid: String): DailyCheckInStatus? {
+        val outcome = authCall.call {
+            runCatchingSuspending { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
+        }
+        return when (outcome) {
+            is SessionOutcome.Ok -> outcome.value
+
+            SessionOutcome.Expired -> {
+                applyCheckInPlan(planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败"))
+                null
+            }
+
+            is SessionOutcome.Failed -> null
         }
     }
 
@@ -129,23 +150,17 @@ fun MineScreen(
         checkInBusy = true
         checkInError = null
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.dailyCheckIn(uid, status.dailyId) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.dailyCheckIn(uid, status.dailyId) }
             checkInBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     // 接口只要返回的 msg 不含「已签到过」就算成功，服务端没落账时同样会走到这里。
                     // 因此以刷新后的日历为准确认这一天真的记上了，避免把没生效的签到显示成「今日已签到」。
-                    var refreshed = withContext(Dispatchers.IO) {
-                        runCatchingSuspending { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
-                    }
+                    var refreshed = refreshCheckInStatus(uid)
                     if (refreshed != null && !refreshed.isSignedOn(today.dayOfMonth)) {
                         // 服务端跨月或高峰写入可能有微小延迟，短延迟后重试一次确认，避免误报「未生效」
                         delay(400)
-                        val retry = withContext(Dispatchers.IO) {
-                            runCatchingSuspending { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
-                        }
+                        val retry = refreshCheckInStatus(uid)
                         if (retry != null) refreshed = retry
                     }
                     refreshed?.let { checkInStatus = it }
@@ -160,13 +175,16 @@ fun MineScreen(
                     snackbarHostState.showSnackbar(snackbarText)
                 }
 
-                SessionOutcome.Expired -> expireCheckInSession()
+                SessionOutcome.Expired -> applyCheckInPlan(
+                    planLoad(outcome, hasContent = false, failureMessage = "签到失败，请重试"),
+                )
 
-                is SessionOutcome.Failed -> checkInError = outcome.messageOr("签到失败，请重试")
+                is SessionOutcome.Failed -> applyCheckInPlan(
+                    planLoad(outcome, hasContent = false, failureMessage = "签到失败，请重试"),
+                )
             }
         }
     }
-
     // 切换账号时清掉上一个账号的签到状态，避免串号。
     LaunchedEffect(user?.uid) {
         checkInStatus = null
@@ -174,7 +192,7 @@ fun MineScreen(
         checkedInOn = null
         // 清会话也会把 user 置空，此时不能顺手抹掉失效提示，否则用户看不到「为什么突然要重新登录」
         if (user == null) return@LaunchedEffect
-        checkInSessionExpired = false
+        checkInExpiredMessage = null
         loadCheckInStatus()
     }
 
@@ -206,15 +224,15 @@ fun MineScreen(
                     )
                 }
             }
-            if (user != null || checkInSessionExpired) {
+            if (user != null || checkInExpiredMessage != null) {
                 SmallTitle(text = "每日签到")
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     val status = checkInStatus
                     when {
                         // 会话失效：文案与其它页面一致，动作只能是去登录
-                        checkInSessionExpired -> Column(modifier = Modifier.fillMaxWidth()) {
+                        checkInExpiredMessage != null -> Column(modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                text = LOGIN_EXPIRED_MESSAGE,
+                                text = checkInExpiredMessage.orEmpty(),
                                 style = MiuixTheme.textStyles.footnote1,
                                 color = MiuixTheme.colorScheme.error,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),

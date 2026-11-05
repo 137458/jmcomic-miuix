@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // 液态玻璃操作胶囊：一枚胶囊内并排若干图标按钮，用于首页右下角的快捷动作。
 //
-// 三态降级与悬浮底栏保持同一套判定与光学参数：LiquidGlass 走 backdrop 折射 + 透镜，
-// Blur 只采样模糊，None 退回实色加细边框；没有采样源时不会出现无法阅读的透明浮层。
+// 三态降级交给 glassSurface 的 FloatingActionBar 角色：LiquidGlass 走 backdrop 折射 + 透镜，
+// Blur 只采样模糊，实色退回不透明底衬加细边框；没有采样源时不会出现无法阅读的透明浮层。
 
 package com.jm3.app.miuix.ui.glass
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
@@ -27,9 +25,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.blur.blur
-import top.yukonga.miuix.kmp.blur.drawBackdrop
-import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -94,12 +89,8 @@ fun GlassFloatingActionBar(
     if (items.isEmpty()) return
 
     val backdrop = LocalGlassBackdrop.current
-    val tier = resolveGlassTier(
-        hasBackdrop = backdrop != null,
-        shaderSupported = isRuntimeShaderSupported(),
-    )
     val colorScheme = MiuixTheme.colorScheme
-    // 与底栏同款容器色：液态玻璃压到 40% 让折射显影，模糊降到 65% 保证可读，实色兜底完全不透明。
+    // 与底栏同款容器色；不透明度由 FloatingActionBar 角色表决定（液态 40%、模糊 65%、实色不透明）。
     val containerColor = colorScheme.surfaceContainer
     val isDark = colorScheme.surface.luminance() < 0.5f
     val itemSize = glassFabItemSizeDp(
@@ -113,32 +104,13 @@ fun GlassFloatingActionBar(
         horizontalPaddingDp = GlassFabHorizontalPadding.value,
     ).dp
 
-    val surfaceModifier = when {
-        backdrop != null && tier == GlassTier.LiquidGlass -> Modifier.drawBackdrop(
-            backdrop = backdrop,
-            shape = { CircleShape },
-            effects = {
-                // 透镜采样在形状边界外留 padding，少于 40dp 会采到未录制的边缘。
-                padding = maxOf(padding, 40.dp.toPx())
-                vibrancy()
-                blur(4.dp.toPx(), 4.dp.toPx())
-                lens(refractionHeight = 12.dp.toPx(), refractionAmount = 12.dp.toPx())
-            },
-            highlight = { glassEdgeHighlight },
-            onDrawSurface = { drawRect(containerColor.copy(alpha = 0.4f)) },
-        )
-        backdrop != null && tier == GlassTier.Blur -> Modifier.drawBackdrop(
-            backdrop = backdrop,
-            shape = { CircleShape },
-            effects = {
-                blur(25.dp.toPx(), 25.dp.toPx())
-            },
-            onDrawSurface = { drawRect(containerColor.copy(alpha = 0.65f)) },
-        )
-        else -> Modifier
-            .background(containerColor, CircleShape)
-            .border(1.dp, colorScheme.onSurface.copy(alpha = 0.08f), CircleShape)
-    }
+    val surfaceModifier = glassSurface(
+        backdrop = backdrop,
+        role = GlassRole.FloatingActionBar,
+        tint = containerColor,
+        shape = CircleShape,
+        borderColor = colorScheme.onSurface.copy(alpha = 0.08f),
+    )
 
     Row(
         modifier = modifier

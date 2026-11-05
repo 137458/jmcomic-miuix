@@ -26,13 +26,12 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
-import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.TrackingItem
+import com.jm3.core.paging.PageSlice
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
-import com.jm3.core.session.sessionOutcome
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
@@ -63,16 +62,12 @@ fun TrackingScreen(
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
-    var items by remember { mutableStateOf<List<TrackingItem>>(emptyList()) }
-    var total by remember { mutableIntStateOf(0) }
+    // 在途、失败、是否还有下一页、累计总数都由 PagedFeed 记，页面不再各存一份布尔
+    var feed by remember { mutableStateOf(PagedFeed<TrackingItem>()) }
     var state by remember { mutableStateOf<TrackingUiState>(TrackingUiState.Loading) }
-    var nextPage by remember { mutableIntStateOf(2) }
-    var endReached by remember { mutableStateOf(false) }
-    var loadingMore by remember { mutableStateOf(false) }
-    // 加载更多失败单独置位，供列表底部给出重试入口
-    var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var removingId by remember { mutableStateOf<String?>(null) }
@@ -80,36 +75,35 @@ fun TrackingScreen(
     val scope = rememberCoroutineScope()
 
     /**
-     * 会话失效：清掉本地会话并把整屏切成「去登录」。
+     * 会话失效：清本地会话已由 [AuthCall] 在返回结局前做完，这里只把整屏切成「去登录」。
      *
      * 重试同一个请求只会再吃一次 401，所以这里不给重试，只留登录入口。
      */
-    fun expireSession() {
-        state = TrackingUiState.Failed(LOGIN_EXPIRED_MESSAGE, sessionExpired = true)
-        scope.clearExpiredSession()
+    fun applyExpired() {
+        state = TrackingUiState.Failed(SessionOutcome.Expired.message, sessionExpired = true)
     }
 
     fun loadFirstPage(showLoading: Boolean = true) {
         if (showLoading) state = TrackingUiState.Loading
-        nextPage = 2
-        endReached = false
         scope.launch {
-            // 启动恢复会先置登录态再注入 Cookie，注入完成前的请求会被服务端当成未登录
-            Jm3Graph.account.awaitRestored()
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.trackingList(1) }
-            }
+            // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
+            val outcome = authCall.call { Jm3Graph.gateway.trackingList(1) }
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val page = outcome.value
-                    items = page.items
-                    total = page.total
-                    endReached = page.items.isEmpty() || page.items.size >= page.total
+                    feed = PagedFeed<TrackingItem>().replace(
+                        PageSlice(
+                            items = page.items,
+                            hasMore = page.items.isNotEmpty() && page.items.size < page.total,
+                            total = page.total,
+                            page = 1,
+                        ),
+                    ) { it.id }
                     state = TrackingUiState.Loaded
                 }
 
-                SessionOutcome.Expired -> expireSession()
+                SessionOutcome.Expired -> applyExpired()
 
                 is SessionOutcome.Failed -> {
                     state = TrackingUiState.Failed(outcome.messageOr("追踪列表加载失败"))
@@ -121,28 +115,31 @@ fun TrackingScreen(
     LaunchedEffect(Unit) { loadFirstPage() }
 
     fun loadMore() {
-        if (loadingMore || endReached || state != TrackingUiState.Loaded) return
-        loadingMore = true
-        val page = nextPage
+        if (state != TrackingUiState.Loaded) return
+        val requested = feed.beginLoadMore()
+        if (requested === feed) return
+        val page = requested.page + 1
+        feed = requested
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.trackingList(page) }
-            }
-            loadingMore = false
+            val outcome = authCall.call { Jm3Graph.gateway.trackingList(page) }
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val next = outcome.value
-                    loadMoreFailed = false
                     // 接口按页返回且无总页数，按累计条数对比总数收敛；空页直接视为到底
-                    items = (items + next.items).distinctBy { it.id }
-                    total = next.total.coerceAtLeast(total)
-                    nextPage = page + 1
-                    if (next.items.isEmpty() || items.size >= total) endReached = true
+                    val merged = (requested.items + next.items).distinctBy { it.id }
+                    feed = requested.append(
+                        PageSlice(
+                            items = next.items,
+                            hasMore = next.items.isNotEmpty() && merged.size < next.total,
+                            total = next.total.coerceAtLeast(requested.total ?: 0),
+                            page = page,
+                        ),
+                    ) { it.id }
                 }
 
-                SessionOutcome.Expired -> expireSession()
+                SessionOutcome.Expired -> applyExpired()
 
-                is SessionOutcome.Failed -> loadMoreFailed = true
+                is SessionOutcome.Failed -> feed = requested.failLoadMore()
             }
         }
     }
@@ -151,18 +148,19 @@ fun TrackingScreen(
         if (removingId != null) return
         removingId = item.id
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.setTracking(item.id) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.setTracking(item.id) }
             removingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    items = items.filterNot { it.id == item.id }
-                    total = (total - 1).coerceAtLeast(items.size)
+                    val remaining = feed.items.filterNot { it.id == item.id }
+                    feed = feed.copy(
+                        items = remaining,
+                        total = feed.total?.minus(1)?.coerceAtLeast(remaining.size),
+                    )
                     snackbarHostState.showSnackbar("已取消追踪")
                 }
 
-                SessionOutcome.Expired -> expireSession()
+                SessionOutcome.Expired -> applyExpired()
 
                 is SessionOutcome.Failed -> {
                     snackbarHostState.showSnackbar("操作失败：" + outcome.messageOr("请稍后重试"))
@@ -175,7 +173,7 @@ fun TrackingScreen(
         topBar = {
             GlassTopAppBar(
                 title = "连载追踪",
-                subtitle = if (items.isEmpty()) "" else "共 $total 部",
+                subtitle = if (feed.items.isEmpty()) "" else "共 ${feed.total ?: feed.items.size} 部",
                 // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                 color = Color.Transparent,
                 navigationIcon = { BackButton(onBack = onBack) },
@@ -197,7 +195,7 @@ fun TrackingScreen(
                     modifier = Modifier.padding(innerPadding),
                 )
             }
-            TrackingUiState.Loaded -> if (items.isEmpty()) {
+            TrackingUiState.Loaded -> if (feed.items.isEmpty()) {
                 CenteredEmptyState(
                     title = "暂无追踪",
                     hint = "在详情页开启追更后会出现在这里",
@@ -219,7 +217,7 @@ fun TrackingScreen(
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                         contentPadding = innerPadding,
                     ) {
-                        items(items, key = { it.id }) { item ->
+                        items(feed.items, key = { it.id }) { item ->
                             Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                                 BasicComponent(
                                     title = item.name,
@@ -240,14 +238,9 @@ fun TrackingScreen(
                                 )
                             }
                         }
-                        if (items.isNotEmpty()) {
+                        if (feed.items.isNotEmpty()) {
                             item(key = "load-more") {
-                                LoadMoreFooter(
-                                    loadingMore = loadingMore,
-                                    hasMore = !endReached,
-                                    loadMoreFailed = loadMoreFailed,
-                                    onLoadMore = ::loadMore,
-                                )
+                                LoadMoreFooter(feed = feed, onLoadMore = ::loadMore)
                             }
                         }
                     }
@@ -283,7 +276,8 @@ internal fun LoginExpiredScreen(onOpenLogin: () -> Unit, modifier: Modifier = Mo
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = LOGIN_EXPIRED_MESSAGE,
+            // 失效文案只有一份，存在结局类型上：屏幕不再各自 import 文案常量
+            text = SessionOutcome.Expired.message,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
         )

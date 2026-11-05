@@ -29,15 +29,15 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.app.miuix.update.UpdateDownloadState
-import com.jm3.core.settings.Domains
+import com.jm3.core.Jm3Gateway
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.ReleaseInfo
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -117,6 +117,8 @@ fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     dynamicColor: Boolean,
     onDynamicColorChange: (Boolean) -> Unit,
+    gateway: Jm3Gateway,
+    authCall: AuthCall,
     onBack: () -> Unit,
     onOpenUpdate: () -> Unit,
     snackbarHostState: SnackbarHostState,
@@ -180,20 +182,24 @@ fun SettingsScreen(
     fun loadDomainsDiagnostics() {
         scope.launch {
             diagError = null
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    Jm3Graph.gateway.usedDomain() to
-                        Jm3Graph.gateway.domainLatency().entries
-                            .sortedBy { it.value }
-                            .map { it.key to it.value }
-                }
+            // 两个网关查询合成一次结局：等待会话恢复、切 IO、判失效都在 AuthCall 内完成。
+            val result = authCall.call {
+                gateway.usedDomain() to
+                    gateway.domainLatency().entries
+                        .sortedBy { it.value }
+                        .map { it.key to it.value }
             }
-            result
-                .onSuccess { (domain, latency) ->
-                    usedDomain = domain
-                    domainLatency = latency
+            when (result) {
+                is SessionOutcome.Ok -> {
+                    usedDomain = result.value.first
+                    domainLatency = result.value.second
                 }
-                .onFailure { diagError = it.message ?: "线路诊断失败" }
+                else -> diagError = planLoad(
+                    result,
+                    hasContent = false,
+                    failureMessage = "线路诊断失败",
+                ).message
+            }
         }
     }
 
@@ -201,13 +207,14 @@ fun SettingsScreen(
         if (reprobeBusy) return
         reprobeBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.reprobeDomains() }
-            }
+            val result = authCall.call { gateway.reprobeDomains() }
             reprobeBusy = false
-            result
-                .onSuccess { snackbarHostState.showSnackbar("线路探活完成") }
-                .onFailure { snackbarHostState.showSnackbar("探活失败：" + (it.message ?: "未知错误")) }
+            when (result) {
+                is SessionOutcome.Ok -> snackbarHostState.showSnackbar("线路探活完成")
+                else -> snackbarHostState.showSnackbar(
+                    "探活失败：" + planLoad(result, hasContent = false, failureMessage = "未知错误").message,
+                )
+            }
             // 无论成败都重读一次：失败时也保留上一次可用的探活结果。
             loadDomainsDiagnostics()
         }
@@ -353,15 +360,16 @@ fun SettingsScreen(
                         if (applying.value) return@BasicComponent
                         applying.value = true
                         scope.launch {
-                            val domains = Domains.normalize(domainsInput.value.split("\n"))
-                            Jm3Graph.settings.setApiDomains(domains)
-                            Jm3Graph.applyDomains(domains)
-                            activeDomains.value = domains.joinToString("、")
+                            // 写入即归一（去协议头/路径/空白项并去重），读回的就是真正生效的线路表。
+                            Jm3Graph.settings.setApiDomains(domainsInput.value.split("\n"))
+                            val applied = Jm3Graph.settings.apiDomains()
+                            Jm3Graph.applyDomains(applied)
+                            activeDomains.value = applied.joinToString("、")
                             applying.value = false
                             // 网关已重建，诊断数据属于旧实例，重新读取。
                             loadDomainsDiagnostics()
                             snackbarHostState.showSnackbar(
-                                if (domains.isEmpty()) "已恢复默认线路" else "已应用 ${domains.size} 个线路域名",
+                                if (applied.isEmpty()) "已恢复默认线路" else "已应用 ${applied.size} 个线路域名",
                             )
                         }
                     },

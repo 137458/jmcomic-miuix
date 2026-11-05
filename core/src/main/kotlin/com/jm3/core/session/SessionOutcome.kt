@@ -1,5 +1,6 @@
 package com.jm3.core.session
 
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.isSessionExpired
 import kotlinx.coroutines.CancellationException
 
@@ -12,7 +13,15 @@ import kotlinx.coroutines.CancellationException
 sealed interface SessionOutcome<out T> {
     data class Ok<T>(val value: T) : SessionOutcome<T>
 
-    data object Expired : SessionOutcome<Nothing>
+    data object Expired : SessionOutcome<Nothing> {
+        // 必须是单例：AuthCall 用引用相等判失效（core/src/main/kotlin/com/jm3/core/session/AuthCall.kt:54），
+        // 改成 data class 会让失效判定静默失效。
+        /**
+         * 失效时给用户看的唯一一份文案：屏幕与加载计划都从这里取，
+         * 不再各自 import [LOGIN_EXPIRED_MESSAGE]，也就不可能出现两套失效话术。
+         */
+        val message: String = LOGIN_EXPIRED_MESSAGE
+    }
 
     data class Failed(val message: String?) : SessionOutcome<Nothing> {
         /** 失败原文可能为空（异常没带 message），这里给调用方一处统一兜底。 */

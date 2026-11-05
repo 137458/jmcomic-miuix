@@ -140,6 +140,49 @@ internal fun isBoxLimited(
     decodedHeightPx: Float,
 ): Boolean = decodedWidthPx >= requestedWidthPx - 1 || decodedHeightPx >= requestedHeightPx - 1
 
+/**
+ * 首帧解码出真实比例后要写回的三件事。
+ *
+ * [layoutRatio] 必写：布局按真实比例重排；[chapterSeed] 与 [decodeRatio] 为 null 表示保持原值。
+ */
+internal data class PageRatioBackfill(
+    val layoutRatio: Float,
+    val chapterSeed: Float?,
+    val decodeRatio: Float?,
+)
+
+/**
+ * 首帧比例的回填判定：布局比例、章节种子、要不要重算解码尺寸。
+ *
+ * - 布局比例无条件跟随真实比例；
+ * - 章节种子只收 [MIN_SEED_ASPECT_RATIO] 及以上的比例，条幅会把整章后续页的占位框带偏；
+ * - 只有画面被请求框顶满（[isBoxLimited]）时才把真实比例写进解码比例：没顶满说明源本身小于请求框，
+ *   重算只会再解一次同一张位图。
+ *
+ * [detectedRatio]、[decodedWidthPx]、[decodedHeightPx] 任一不是有限正数时返回 null，三份状态都保持
+ * 原值——夹取与容差都在这里收口，调用方不必各自补一遍。
+ */
+internal fun readerPageBackfill(
+    frame: PageFrame,
+    detectedRatio: Float,
+    decodedWidthPx: Float,
+    decodedHeightPx: Float,
+): PageRatioBackfill? {
+    if (!detectedRatio.isUsableAspect()) return null
+    if (!decodedWidthPx.isUsableAspect() || !decodedHeightPx.isUsableAspect()) return null
+    val boxLimited = isBoxLimited(
+        requestedWidthPx = frame.decodeSize.width,
+        requestedHeightPx = frame.decodeSize.height,
+        decodedWidthPx = decodedWidthPx,
+        decodedHeightPx = decodedHeightPx,
+    )
+    return PageRatioBackfill(
+        layoutRatio = detectedRatio,
+        chapterSeed = chapterSeedCandidate(detectedRatio),
+        decodeRatio = detectedRatio.takeIf { boxLimited },
+    )
+}
+
 /** 只有有限的正数才是可用比例：0、负数、NaN、Infinity 都会让页框或解码尺寸失真。 */
 private fun Float.isUsableAspect(): Boolean = isFinite() && this > 0f
 

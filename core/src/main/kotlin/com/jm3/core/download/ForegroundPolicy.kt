@@ -110,7 +110,7 @@ class ForegroundPolicy(
         /** 同一批任务内两次拉起尝试的最小间隔：只压抖动，不构成保活。 */
         const val DEFAULT_START_RETRY_INTERVAL_MS = 5_000L
 
-        /** 通知进度节流窗口，与 DownloadNotifier.MIN_PROGRESS_INTERVAL_MS 对齐。 */
+        /** 通知进度节流窗口：展示侧不再自带同名常量，全应用只有这一个值。 */
         const val DEFAULT_PROGRESS_INTERVAL_MS = 300L
     }
 }

@@ -4,8 +4,10 @@ import com.jm3.core.history.HistoryRepository
 import com.jm3.core.AlbumDetailPort
 import com.jm3.core.appendedBy
 import com.jm3.core.model.AlbumDetail
+import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.reader.ChapterGroups
 import com.jm3.core.replacedBy
 import com.jm3.core.model.FavoriteFolderAction
 import kotlinx.coroutines.CoroutineDispatcher
@@ -17,8 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-private const val CHAPTER_GROUP_SIZE = 10
 
 sealed interface AlbumUiState {
     data object Loading : AlbumUiState
@@ -47,7 +47,7 @@ data class AlbumDetailViewState(
     val latestPhotoId: String? = null,
     val readPhotoIds: Set<String> = emptySet(),
     val descriptionExpanded: Boolean = false,
-    val expandedGroups: Set<Int> = setOf(0),
+    val expandedGroups: Set<String> = emptySet(),
     val commentText: String = "",
     val commentBusy: Boolean = false,
     val replyTarget: CommentItem? = null,
@@ -86,12 +86,14 @@ class AlbumDetailStateHolder(
         }
         _uiState.update { current ->
             if (result is AlbumUiState.Loaded) {
-                // 计算续读章节默认展开组
-                val nextGroups = if (current.latestPhotoId != null) {
-                    val index = result.detail.chapters.indexOfFirst { it.id == current.latestPhotoId }
-                    if (index >= 0) current.expandedGroups + (index / CHAPTER_GROUP_SIZE) else current.expandedGroups
+                // 组身份随章节走：刷新后仍存在的组保持展开，全都不存在时回落到首组
+                val groups = ChapterGroups.of(result.detail.chapters, Chapter::id)
+                val knownIds = groups.mapTo(HashSet()) { it.id }
+                val retained = current.expandedGroups.filterTo(LinkedHashSet()) { it in knownIds }
+                val nextGroups = if (retained.isEmpty()) {
+                    groups.firstOrNull()?.let { setOf(it.id) } ?: emptySet()
                 } else {
-                    current.expandedGroups
+                    retained
                 }
                 current.copy(
                     albumState = result,
@@ -117,16 +119,20 @@ class AlbumDetailStateHolder(
         val latest = runCatching { history.latestForAlbum(albumId) }.getOrNull()?.photoId
         val readIds = runCatching { history.readPhotoIds(albumId) }.getOrDefault(emptySet())
         _uiState.update { current ->
-            val nextGroups = if (latest != null && current.albumState is AlbumUiState.Loaded) {
-                val index = current.albumState.detail.chapters.indexOfFirst { it.id == latest }
-                if (index >= 0) current.expandedGroups + (index / CHAPTER_GROUP_SIZE) else current.expandedGroups
+            val detail = (current.albumState as? AlbumUiState.Loaded)?.detail
+            val resumeGroup = if (detail != null && latest != null) {
+                ChapterGroups.groupIdOf(detail.chapters, Chapter::id, latest)
             } else {
-                current.expandedGroups
+                null
             }
             current.copy(
                 latestPhotoId = latest,
                 readPhotoIds = readIds,
-                expandedGroups = nextGroups,
+                expandedGroups = if (resumeGroup == null) {
+                    current.expandedGroups
+                } else {
+                    current.expandedGroups + resumeGroup
+                },
             )
         }
     }
@@ -364,12 +370,12 @@ class AlbumDetailStateHolder(
         }
     }
 
-    fun toggleGroup(groupIndex: Int) {
+    fun toggleGroup(groupId: String) {
         _uiState.update { current ->
-            val next = if (groupIndex in current.expandedGroups) {
-                current.expandedGroups - groupIndex
+            val next = if (groupId in current.expandedGroups) {
+                current.expandedGroups - groupId
             } else {
-                current.expandedGroups + groupIndex
+                current.expandedGroups + groupId
             }
             current.copy(expandedGroups = next)
         }

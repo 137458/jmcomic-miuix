@@ -15,6 +15,7 @@ import com.jm3.app.miuix.R
 import com.jm3.core.download.DownloadTask
 import com.jm3.core.download.ForegroundAction
 import com.jm3.core.download.ForegroundPolicy
+import com.jm3.core.download.present
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,7 +25,7 @@ import kotlinx.coroutines.launch
  * 下载前台服务（dataSync）。
  *
  * 设计要点：
- * - 不对外暴露 Binder：队列本身是进程内单例（[Jm3Graph.downloadManager]），服务只负责
+ * - 不对外暴露 Binder：队列本身是进程内单例（[Jm3Graph.downloads]），服务只负责
  *   「持有前台状态 + 展示通知」，不承担调度，因此进程被杀后任务状态由
  *   [DownloadManager.ensureStarted] 的台账恢复兜底，而不是靠服务重启。
  * - 服务实例不做观察：观察者挂在进程级作用域（[attach]），这样界面退到后台、
@@ -32,21 +33,22 @@ import kotlinx.coroutines.launch
  *   重复注册而重复 startForegroundService。
  * - 该做什么由 :core 的 [ForegroundPolicy] 决定（活动任务数 → 拉起/停止/发进度/补发），
  *   这里只执行动作，并把「服务是否真的在前台」回写给它。
+ * - 画什么由 :core 的 [present] 决定，[DownloadNotifier] 只把选型翻成通知内容。
  */
 class DownloadService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = DownloadNotifier.build(this, currentTasks())
-        if (notification == null) {
+        val presentation = present(currentTasks())
+        if (presentation == null) {
             // 竞态：startForegroundService 之后任务已清空/已完成，避免超时 ANR 直接退出。
             policy.onServiceStopped()
             stopSelf()
             return START_NOT_STICKY
         }
         policy.onServiceForeground()
-        startForegroundSafely(notification)
+        startForegroundSafely(DownloadNotifier.build(this, presentation))
         // 新下载已经开跑，上一次超时留下的「已暂停」提示已经过期，撤掉避免误导。
         DownloadNotifier.cancelPaused(this)
         // 进程被杀后不自动重建：任务由落库记录恢复，避免死循环拉起空服务。
@@ -75,7 +77,7 @@ class DownloadService : Service() {
     }
 
     private fun handleTimeout() {
-        runCatching { Jm3Graph.downloadManager.pauseActive() }
+        runCatching { Jm3Graph.downloads.manager.pauseActive() }
         DownloadNotifier.cancel(this)
         // 前台通知会随退场一起消失：不留一条可见提示，用户只会看到通知无声消失、以为下载完成。
         DownloadNotifier.notifyPaused(this, getString(R.string.notification_download_paused_text))
@@ -123,7 +125,7 @@ class DownloadService : Service() {
             val app = context.applicationContext
             // 全应用只允许一处长期协程作用域：appScope 随进程存活，attach 的幂等由 attached 保证。
             Jm3Graph.appScope.launch {
-                Jm3Graph.downloadManager.queue.updates.collect { tasks ->
+                Jm3Graph.downloads.manager.queue.updates.collect { tasks ->
                     policy.onTasks(tasks).forEach { action -> perform(app, action) }
                 }
             }
@@ -145,7 +147,7 @@ class DownloadService : Service() {
 
         /** 活动任务快照：直接读 StateFlow，不引入 Binder。 */
         internal fun currentTasks(): Map<String, DownloadTask> =
-            Jm3Graph.downloadManager.queue.updates.value
+            Jm3Graph.downloads.manager.queue.updates.value
 
         private fun perform(app: Context, action: ForegroundAction) {
             when (action) {
@@ -168,9 +170,9 @@ class DownloadService : Service() {
         private fun publish(app: Context, tasks: Map<String, DownloadTask>) {
             // 通知被关闭时服务照常运行，只是不再发可见进度。
             if (!DownloadNotifier.canPostNotifications(app)) return
-            val notification = DownloadNotifier.build(app, tasks) ?: return
+            val presentation = present(tasks) ?: return
             NotificationManagerCompat.from(app)
-                .notify(DownloadNotifier.NOTIFICATION_ID, notification)
+                .notify(DownloadNotifier.NOTIFICATION_ID, DownloadNotifier.build(app, presentation))
         }
     }
 }

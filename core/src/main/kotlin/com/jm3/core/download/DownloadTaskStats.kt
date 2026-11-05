@@ -1,8 +1,7 @@
 package com.jm3.core.download
 
 /** 活动任务数（QUEUED + RUNNING）：前台服务生命周期的唯一驱动量。 */
-fun Map<String, DownloadTask>.activeDownloadCount(): Int =
-    values.count { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.RUNNING }
+fun Map<String, DownloadTask>.activeDownloadCount(): Int = values.count { it.status.isActive }
 
 /**
  * 是否有任务从在途变为 DONE/FAILED。
@@ -13,6 +12,6 @@ fun Map<String, DownloadTask>.activeDownloadCount(): Int =
 fun Map<String, DownloadTask>.hasTerminalTransitionFrom(
     previous: Map<String, DownloadTask>,
 ): Boolean = values.any { task ->
-    val terminal = task.status == DownloadStatus.DONE || task.status == DownloadStatus.FAILED
+    val terminal = task.status.isFinished
     terminal && previous[task.photoId]?.status != task.status
 }

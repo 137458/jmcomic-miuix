@@ -58,4 +58,27 @@ class SearchPagesTest {
         val withoutTotal = SearchPage(currentPage = 2, totalPages = 3, items = listOf(result("2")))
         assertEquals(120, first.mergedWith(withoutTotal).totalItems)
     }
+
+    @Test
+    fun 首屏装入一整页_带上来页码总页数与是否还有下一页() {
+        val page = SearchPage(currentPage = 1, totalPages = 3, items = listOf(result("1"), result("2")), totalItems = 120)
+
+        val feed = page.toFeed()
+
+        assertEquals(listOf("1", "2"), feed.items.map { it.id })
+        assertEquals(1, feed.page)
+        assertEquals(3, feed.pageCount)
+        assertEquals(120, feed.total)
+        assertEquals(true, feed.hasMore)
+        assertEquals(false, feed.loadingMore)
+    }
+
+    @Test
+    fun 只有一页的结果装入后不再请求下一页() {
+        val page = SearchPage(currentPage = 1, totalPages = 1, items = listOf(result("1")))
+
+        val feed = page.toFeed()
+
+        assertEquals(false, feed.canLoadMore)
+    }
 }

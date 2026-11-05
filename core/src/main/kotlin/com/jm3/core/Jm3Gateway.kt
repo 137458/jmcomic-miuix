@@ -1,5 +1,6 @@
 package com.jm3.core
 
+import com.jm3.core.download.PhotoSource
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
@@ -42,7 +43,7 @@ import io.github.jukomu.jmcomic.core.client.AbstractJmClient
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
 
-interface Jm3Gateway : SessionAuth {
+interface Jm3Gateway : SessionAuth, PhotoSource {
     /** 搜索。scope 对应原版搜索类型（站内/作品/作者/标签/登场人物），time 由服务端过滤时间范围。阻塞调用。 */
     fun search(
         text: String,
@@ -93,12 +94,6 @@ interface Jm3Gateway : SessionAuth {
 
     /** 切换连载追踪。阻塞调用。 */
     fun setTracking(albumId: String)
-
-    /** 章节图片清单。阻塞调用。 */
-    fun photo(photoId: String): PhotoPages
-
-    /** 章节图片二进制（已还原分割）。阻塞调用。 */
-    fun imageBytes(image: PageImage): ByteArray
 
     /** 封面地址；域名未就绪等场景返回 null。 */
     fun coverUrl(albumId: String, size: String = "_3x4"): String?
@@ -241,6 +236,7 @@ interface Jm3Gateway : SessionAuth {
 class Jm3GatewayImpl internal constructor(
     private val clientProvider: () -> JmApiClient,
     private val domainControlsProvider: () -> DomainControls,
+    private val bridge: LibraryBridge = ReflectiveLibraryBridge,
 ) : Jm3Gateway {
 
     private val client: JmApiClient by lazy(clientProvider)
@@ -256,11 +252,6 @@ class Jm3GatewayImpl internal constructor(
          * 降级不报错是对的，但必须留一条事实日志：库升级改了成员名时，界面只表现为「恢复会话没生效」，
          * 没有日志就完全无从查起。只报成员名与异常类型，不打印成员值。
          */
-        private fun <T> reflectiveMember(member: String, block: () -> T): T? =
-            runCatching(block).getOrElse { failure ->
-                Jm3Log.warn(TAG, "库内反射成员 $member 取不到（" + failure.javaClass.name + "），相关能力降级")
-                null
-            }
 
         /**
          * 反射写库内状态这类「失败也能继续跑」的动作：出错记一条事实日志再吞掉。
@@ -294,57 +285,7 @@ class Jm3GatewayImpl internal constructor(
             )
         }
 
-        private val cookieManagerField: java.lang.reflect.Field? by lazy {
-            reflectiveMember("cookieManager") {
-                AbstractJmClient::class.java.getDeclaredField("cookieManager").apply { isAccessible = true }
-            }
-        }
 
-        internal fun cookieStoreOf(client: Any): java.net.CookieStore? =
-            runCatching {
-                val cm = cookieManagerField?.get(client) as? java.net.CookieManager
-                cm?.cookieStore
-            }.getOrElse { failure ->
-                Jm3Log.warn(TAG, "读库内 CookieStore 失败（" + failure.javaClass.name + "），会话回写只剩客户端直读")
-                null
-            }
-
-        /**
-         * 库把登录身份与密码都收在 AbstractJmClient 的私有字段里，恢复会话时只能反射写入。
-         * 成员名按 v1.1.12 字节码固定；取不到就当该能力不可用（null 而非抛异常）。
-         */
-        private val cacheUsernameMethod: java.lang.reflect.Method? by lazy {
-            reflectiveMember("cacheUsername") {
-                AbstractJmClient::class.java.getDeclaredMethod("cacheUsername", String::class.java)
-                    .apply { isAccessible = true }
-            }
-        }
-
-        private val autoLoginRefreshAllowedField: java.lang.reflect.Field? by lazy {
-            reflectiveMember("autoLoginRefreshAllowed") {
-                AbstractJmClient::class.java.getDeclaredField("autoLoginRefreshAllowed").apply { isAccessible = true }
-            }
-        }
-
-        private val loginHostField: java.lang.reflect.Field? by lazy {
-            reflectiveMember("loginHost") {
-                AbstractJmClient::class.java.getDeclaredField("loginHost").apply { isAccessible = true }
-            }
-        }
-
-        /** 库的 protected 方法：用本客户端的内存密钥把明文密码加密后写进 encryptedPassword。 */
-        private val encryptPasswordInMemoryMethod: java.lang.reflect.Method? by lazy {
-            reflectiveMember("encryptPasswordInMemory") {
-                AbstractJmClient::class.java.getDeclaredMethod("encryptPasswordInMemory", String::class.java)
-                    .apply { isAccessible = true }
-            }
-        }
-
-        private val encryptedPasswordField: java.lang.reflect.Field? by lazy {
-            reflectiveMember("encryptedPassword") {
-                AbstractJmClient::class.java.getDeclaredField("encryptedPassword").apply { isAccessible = true }
-            }
-        }
     }
 
     override fun search(
@@ -353,39 +294,29 @@ class Jm3GatewayImpl internal constructor(
         order: BrowseOrder,
         scope: SearchScope,
         time: BrowseTime,
-    ): SearchPage = client.search(searchQuery(text, page, scope.toMainTag(), order, time)).toPage()
+    ): SearchPage = client.search(searchQuery(text, page, scope.toMainTag(), order, time)).toPage(covers())
 
-    override fun latest(page: Int): SearchPage = client.getLatest(page).toPage()
+    override fun latest(page: Int): SearchPage = client.getLatest(page).toPage(covers())
 
     override fun hotTags(): List<String> = runCatching { client.getHotTags() }.getOrDefault(emptyList())
 
     override fun randomRecommend(): List<SearchResult> {
-        val metas = client.getRandomRecommend()
-        val locator = imageDomain(metas.firstOrNull()?.id().orEmpty())
-        return metas.map { it.toSearchResult(coverUrl = locator.cover(it.id(), "_3x4")) }
+        val covers = covers()
+        return client.getRandomRecommend().map { it.toSearchResult(covers) }
     }
 
     override fun browse(filter: BrowseFilter, page: Int): SearchPage =
-        client.getCategories(filter.toSearchQuery(page)).toPage()
+        client.getCategories(filter.toSearchQuery(page)).toPage(covers())
 
-    override fun serialization(page: Int): SearchPage = client.getSerialization(page).toPage()
+    override fun serialization(page: Int): SearchPage = client.getSerialization(page).toPage(covers())
 
     override fun categoriesList(): CategoryTree = client.getCategoriesList().toCategoryTree()
 
-    override fun album(albumId: String): AlbumDetail {
-        val album = client.getAlbum(albumId)
-        val locator = imageDomain(albumId)
-        // 详情页与列表保持完全一致的 _3x4 规格，保证封面显示内容一致且 100% 命中图片缓存
-        val cover = locator.cover(albumId, "_3x4")
-        return album.toAlbumDetail(
-            coverUrl = cover,
-            relatedCoverUrl = { meta -> locator.cover(meta.id(), "_3x4") },
-        )
-    }
+    override fun album(albumId: String): AlbumDetail = client.getAlbum(albumId).toAlbumDetail(covers())
 
     override fun comments(albumId: String, page: Int): CommentPage {
         val query = ForumQuery.album(albumId).mode(ForumMode.ALL).page(page).build()
-        return client.getComments(query).toCommentPage(novelImageHost())
+        return client.getComments(query).toCommentPage(covers())
     }
 
     override fun postComment(albumId: String, text: String) {
@@ -405,7 +336,7 @@ class Jm3GatewayImpl internal constructor(
         // 库的 ForumQuery 强制要求实体 ID（entityId 为空直接抛异常），而原版全站论坛请求不带 aid。
         // 以 "0" 作为无实体占位，服务端按 mode 返回；若接口不支持则表现为空列表，由页面空态兜底。
         val query = ForumQuery.album("0").mode(mode).page(page).build()
-        return client.getComments(query).toCommentPage(novelImageHost())
+        return client.getComments(query).toCommentPage(covers())
     }
 
     override fun toggleLike(albumId: String) = client.toggleAlbumLike(albumId)
@@ -433,28 +364,21 @@ class Jm3GatewayImpl internal constructor(
      * 优先读当前请求域的 Cookie，库返回空表时退回整个 CookieStore（与登录时同一套兜底）。
      */
     override fun currentCookies(): List<CookieSnapshot> {
+        // 两条来源（客户端直读 / CookieStore 兜底）在这里合成一份，统一清洗域名与空路径。
         val direct = client.cookies.map { it.toSnapshot() }
-        val cookies = if (direct.isNotEmpty()) {
-            direct
-        } else {
-            // 这里不再规范域名：两条来源（客户端直读 / CookieStore 兜底）统一由下面那次处理，
-            // 重复规范化只是白算一遍。
-            cookieStoreOf(client)?.cookies?.map {
-                CookieSnapshot(
-                    name = it.name,
-                    value = it.value,
-                    domain = it.domain.orEmpty(),
-                    path = it.path.orEmpty().ifBlank { "/" },
-                )
-            }.orEmpty()
+        val cookies = direct.ifEmpty { bridge.cookieStoreCookies(client) }
+        return cookies.map {
+            it.copy(
+                domain = sanitizeDomain(it.domain),
+                path = it.path.ifBlank { "/" },
+            )
         }
-        return cookies.map { it.copy(domain = sanitizeDomain(it.domain)) }
     }
 
     override fun logout() = client.logout()
 
     override fun restoreSession(session: Jm3Session) {
-        // 线路由库在每次启动后重新裁决，登录域未必再被选中：会话 Cookie 需覆盖当前全部候选域名与常用镜像。
+        // 线路由库在每次启动后重新裁决，登录域未必再被选中：Cookie 需铺满当前全部候选域名与常用镜像。
         val targetDomains = linkedSetOf<String>()
         // 域名能力取不到就没法把 Cookie 铺满全部候选域名，首批请求可能漏带会话
         quietly("读取候选域名") { targetDomains.addAll(domainControls.candidateDomains()) }
@@ -465,51 +389,26 @@ class Jm3GatewayImpl internal constructor(
         targetDomains.add("18comic.vip")
         targetDomains.add("18comic.org")
 
-        val okhttpCookies = session.cookies.broadcastTo(targetDomains).mapNotNull { it.toOkhttpCookie() }
-        if (okhttpCookies.isNotEmpty()) {
-            client.setCookies(okhttpCookies)
-        }
-
-        // 同步 AbstractJmClient 内部登录状态，避免依赖用户名或校验登录状态的接口因未登录态拦截
-        val clientInstance = client as? AbstractJmClient ?: return
-        applyLoginState(clientInstance, session.user.username)
-        quietly("写入库内登录域") {
-            val bestHost = targetDomains.map { sanitizeDomain(it) }.firstOrNull { it.isNotBlank() } ?: "18comic.vip"
-            loginHostField?.set(clientInstance, bestHost)
-        }
-    }
-
-    override fun primeCredentials(credentials: SavedCredentials) {
-        val clientInstance = client as? AbstractJmClient ?: return
-        applyLoginState(clientInstance, credentials.username, credentials.password)
-    }
-
-    override fun forgetCredentials() {
-        val clientInstance = client as? AbstractJmClient ?: return
-        quietly("关闭库内自动重登") { autoLoginRefreshAllowedField?.set(clientInstance, false) }
-        quietly("清掉库内内存密码") { encryptedPasswordField?.set(clientInstance, null) }
+        // 广播、okhttp Cookie 构造与库内登录态写入都是 bridge 的私事，网关只交线路清单。
+        bridge.restoreSession(client, session, targetDomains)
     }
 
     /**
-     * 把登录态写进库客户端内存：用户名、允许自动重登，以及拿得到时加密后的密码。
-     *
-     * 密码缺省表示只恢复身份（会话 Cookie 仍在），此时库不会自动重登；
-     * 拿到本地凭据后再由 [primeCredentials] 补上，库内「失效 → 重登 → 重放」才会生效。
+     * 只恢复身份：会话 Cookie 已在，库不会自动重登；拿到本地凭据后再由 [primeCredentials] 补上，
+     * 库内「失效 → 重登 → 重放」才会生效。
      */
-    private fun applyLoginState(client: AbstractJmClient, username: String, password: String? = null) {
-        quietly("写入库内用户名") { cacheUsernameMethod?.invoke(client, username) }
-        quietly("打开库内自动重登") { autoLoginRefreshAllowedField?.set(client, true) }
-        if (password == null) return
-        quietly("写入库内内存密码") {
-            val encrypted = encryptPasswordInMemoryMethod?.invoke(client, password) as? ByteArray ?: return@quietly
-            encryptedPasswordField?.set(client, encrypted)
-        }
+    override fun primeCredentials(credentials: SavedCredentials) {
+        bridge.primeCredentials(client, credentials.username, credentials.password)
+    }
+
+    override fun forgetCredentials() {
+        bridge.forgetCredentials(client)
     }
 
     override fun favorites(page: Int): FavoritePage = favorites(0, page)
 
     override fun favorites(folderId: Int, page: Int): FavoritePage =
-        client.getFavorites(favoritesQuery(folderId, page)).toFavoritePageWithCovers()
+        client.getFavorites(favoritesQuery(folderId, page)).toFavoritePage(covers())
 
     override fun dailyCheckInStatus(userId: String): DailyCheckInStatus =
         client.getDailyCheckInStatus(userId).toDailyCheckInStatus()
@@ -518,11 +417,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun weeklyPicks(): WeeklyPicks = client.getWeeklyPicksList().toWeeklyPicks()
 
-    override fun weeklyPicksDetail(categoryId: String): WeeklyPicksDetail {
-        val detail = client.getWeeklyPicksDetail(categoryId)
-        val locator = imageDomain(detail.list().orEmpty().firstOrNull()?.id().orEmpty())
-        return detail.toWeeklyPicksDetail { meta -> locator.cover(meta.id(), "_3x4") }
-    }
+    override fun weeklyPicksDetail(categoryId: String): WeeklyPicksDetail =
+        client.getWeeklyPicksDetail(categoryId).toWeeklyPicksDetail(covers())
 
     override fun notifications(): NotificationPage = client.getNotifications().toNotificationPage()
 
@@ -534,7 +430,7 @@ class Jm3GatewayImpl internal constructor(
     override fun tasks(type: TaskType, filter: TaskFilter): TaskPage =
         client.getTasks(type.apiValue, filter.apiValue).toTaskPage()
 
-    override fun imageHost(): String = novelImageHost()
+    override fun imageHost(): String = domainControls.coverHost().orEmpty()
 
     override fun userProfile(uid: String): UserProfile = client.getUserProfile(uid).toUserProfile()
 
@@ -542,9 +438,8 @@ class Jm3GatewayImpl internal constructor(
         client.editUserProfile(uid, fields).toUserProfile()
 
     override fun watchHistory(page: Int): List<SearchResult> {
-        val metas = client.getWatchHistory(page).orEmpty()
-        val locator = imageDomain(metas.firstOrNull()?.id().orEmpty())
-        return metas.map { it.toSearchResult(coverUrl = locator.cover(it.id(), "_3x4")) }
+        val covers = covers()
+        return client.getWatchHistory(page).orEmpty().map { it.toSearchResult(covers) }
     }
 
     override fun deleteWatchHistory(id: String) = client.deleteWatchHistory(id)
@@ -580,13 +475,13 @@ class Jm3GatewayImpl internal constructor(
         client.toggleAlbumFavorite(albumId, folderId)
 
     override fun novelList(order: String, page: Int): NovelPage =
-        client.getNovelList(order, page).toNovelPage(novelImageHost())
+        client.getNovelList(order, page).toNovelPage(covers())
 
     override fun searchNovels(query: String): NovelPage =
-        client.searchNovels(query).toNovelPage(novelImageHost())
+        client.searchNovels(query).toNovelPage(covers())
 
     override fun novelDetail(novelId: String): NovelDetail =
-        client.getNovelDetail(novelId).toNovelDetail(novelImageHost())
+        client.getNovelDetail(novelId).toNovelDetail(covers())
 
     override fun novelChapter(chapterId: String, lang: String): NovelChapter =
         client.getNovelChapter(chapterId, lang).toNovelChapter()
@@ -597,7 +492,7 @@ class Jm3GatewayImpl internal constructor(
 
     override fun novelComments(novelId: String, page: Int): CommentPage {
         val query = ForumQuery.novel(novelId).mode(ForumMode.ALL).page(page).build()
-        return client.getComments(query).toCommentPage(novelImageHost())
+        return client.getComments(query).toCommentPage(covers())
     }
 
     override fun postNovelComment(novelId: String, text: String, chapterId: String) {
@@ -614,10 +509,10 @@ class Jm3GatewayImpl internal constructor(
     }
 
     override fun creatorAuthors(page: Int, query: String): CreatorPage =
-        client.getCreatorAuthors(page, query).toCreatorPage(novelImageHost())
+        client.getCreatorAuthors(page, query).toCreatorPage(covers())
 
     override fun creatorWorks(page: Int, query: String, lang: String, source: String): CreatorWorkPage =
-        client.getCreatorWorks(page, query, lang, source).toCreatorWorkPage(novelImageHost())
+        client.getCreatorWorks(page, query, lang, source).toCreatorWorkPage(covers())
 
     override fun creatorAuthorWorks(
         creatorId: String,
@@ -626,40 +521,27 @@ class Jm3GatewayImpl internal constructor(
         page: Int,
     ): CreatorAuthorWorks =
         client.getCreatorAuthorWorks(creatorId, lang, source, page)
-            .toCreatorAuthorWorks(novelImageHost())
+            .toCreatorAuthorWorks(covers())
 
     override fun creatorWork(workId: String): CreatorWork {
         // 弹窗信息（标题/作者/相关作品）失败不阻塞整页正文
         val info = runCatching { client.getCreatorWorkInfo(workId) }.getOrNull()
-        return toCreatorWork(info, client.getCreatorWorkDetail(workId), novelImageHost())
+        return toCreatorWork(info, client.getCreatorWorkDetail(workId), covers())
     }
 
-    /** 封面域名取库的线路裁决（库把封面挂到 bestDomain）：登录域在自动线路下恒为空，不能作域名来源。 */
-    private fun novelImageHost(): String = domainControls.coverHost().orEmpty()
+    /**
+     * 封面与图片地址的唯一入口：域名取库的线路裁决（库把封面挂到 bestDomain；登录域在自动线路下恒为空，
+     * 不能作域名来源）。每次调用只裁决一次，页内所有封面走纯拼接，不再借首项封面地址猜域名。
+     */
+    private fun covers(): CoverResolver = CoverResolver.of(domainControls.coverHost())
 
-    /** 域名解析只做一次：借库的域名裁决取首个封面地址，解析出图片域名后全部走纯构造器，消除逐项调用。 */
-    private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(): SearchPage {
-        val metas = content().orEmpty()
-        val locator = imageDomain(metas.firstOrNull()?.id().orEmpty())
-        return SearchPage(
+    private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(covers: CoverResolver): SearchPage =
+        SearchPage(
             currentPage = currentPage(),
             totalPages = totalPages(),
             totalItems = totalItems(),
-            items = metas.map { it.toSearchResult(coverUrl = locator.cover(it.id(), "_3x4")) },
+            items = content().orEmpty().map { it.toSearchResult(covers) },
         )
-    }
-
-    /** 图片域名裁决：借首项封面地址取 host，取不到时给未就绪的定位器（封面降级为 null）。 */
-    private fun imageDomain(albumId: String): CoverLocator {
-        if (albumId.isBlank()) return CoverLocator.Unready
-        return CoverLocator.of(runCatching { client.getAlbumCoverUrl(albumId, "_3x4") }.getOrNull())
-    }
-
-    /** 图片域名每页只解析一次，随后全部走纯构造器，避免逐项请求封面。 */
-    private fun JmFavoritePage.toFavoritePageWithCovers(): FavoritePage {
-        val locator = imageDomain(content.orEmpty().firstOrNull()?.id().orEmpty())
-        return toFavoritePage { meta -> locator.cover(meta.id(), "_3x4") }
-    }
 
     private fun okhttp3.Cookie.toSnapshot(): CookieSnapshot =
         CookieSnapshot(name = name, value = value, domain = domain, path = path)

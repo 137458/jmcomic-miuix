@@ -36,15 +36,15 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.CommentItem
+import com.jm3.core.appendedBy
 import com.jm3.core.model.ForumScope
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.replacedBy
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
-import com.jm3.core.session.sessionOutcome
 import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -70,7 +70,7 @@ private sealed interface ForumUiState {
     data object Loading : ForumUiState
     data object Loaded : ForumUiState
     // sessionExpired 区分「重试可能好」和「会话没了」：后者只能去登录，给重试按钮是骗人的
-    data class Failed(val message: String, val sessionExpired: Boolean = false) : ForumUiState
+    data class Failed(val plan: ScreenLoadPlan) : ForumUiState
 }
 
 /**
@@ -83,6 +83,7 @@ fun ForumScreen(
     onBack: () -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
     onOpenAlbum: (albumId: String) -> Unit = {},
 ) {
     val user by Jm3Graph.account.user.collectAsState()
@@ -90,13 +91,8 @@ fun ForumScreen(
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
     val forumScope = ForumScope.entries[scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)]
-    var items by remember { mutableStateOf<List<CommentItem>>(emptyList()) }
-    var total by remember { mutableIntStateOf(0) }
-    var page by remember { mutableIntStateOf(1) }
-    var hasNext by remember { mutableStateOf(false) }
+    var feed by remember { mutableStateOf(PagedFeed<CommentItem>()) }
     var state by remember { mutableStateOf<ForumUiState>(ForumUiState.Loading) }
-    var loadingMore by remember { mutableStateOf(false) }
-    var loadMoreFailed by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     // 记录最近一次失败的页码：重试要回到失败的那一页，而不是一律回到第一页
     var failedPage by remember { mutableIntStateOf(1) }
@@ -112,66 +108,57 @@ fun ForumScreen(
     val scope = rememberCoroutineScope()
 
     /** 总页数：接口 total 可用时按每页 10 条折算，否则退化为当前页。 */
-    val totalPages = if (total > 0) (total + FORUM_PAGE_SIZE - 1) / FORUM_PAGE_SIZE else page
+    val totalPages = feed.pageCount ?: feed.page
+
+    /** 失效与失败共用一条落点：有内容就保留列表、只标记页脚与提示，没内容才整屏。 */
+    fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
+        val plan = planLoad(
+            outcome = outcome,
+            hasContent = inFlight.items.isNotEmpty(),
+            failureMessage = "论坛加载失败",
+            stalePrefix = "加载失败：",
+        )
+        // 保留内容时只把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈
+        feed = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
+        if (plan.phase == ScreenLoadPhase.Content) {
+            state = ForumUiState.Loaded
+            plan.notice?.let { notice -> scope.launch { snackbarHostState.showSnackbar(notice) } }
+        } else {
+            state = ForumUiState.Failed(plan)
+        }
+    }
 
     fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
         // 翻页请求在途时不再发起新的翻页：连点会并发打同一页，返回顺序错乱后列表会重复
-        if (!replace && loadingMore) return
+        val requested = if (replace) feed else feed.beginLoadMore()
+        if (!replace && requested === feed) return
         if (showLoading) state = ForumUiState.Loading
         // 追加请求要立刻进入加载态，页脚才能显示进度；置位同时充当在途守卫
-        if (!replace) loadingMore = true
+        feed = requested
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.forum(forumScope, targetPage) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.forum(forumScope, targetPage) }
             refreshing = false
-            loadingMore = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val resultPage = outcome.value
-                    items = if (replace) {
-                        resultPage.items
+                    // 评论页没有页码字段：页码与总页数由请求页和 total 补上，点击分页条才有得显示
+                    val pageCount = if (resultPage.total > 0) {
+                        (resultPage.total + FORUM_PAGE_SIZE - 1) / FORUM_PAGE_SIZE
                     } else {
-                        (items + resultPage.items).distinctBy { it.id }
+                        null
                     }
-                    total = resultPage.total
-                    page = targetPage
-                    // total 可用时按已加载到的页与总页数比较；接口没给 total 才回落到单页条数
-                    hasNext = if (resultPage.total > 0) {
-                        targetPage * FORUM_PAGE_SIZE < resultPage.total
+                    feed = if (replace) {
+                        PagedFeed<CommentItem>().replacedBy(resultPage)
                     } else {
-                        resultPage.items.size >= FORUM_PAGE_SIZE
-                    }
-                    loadMoreFailed = false
+                        requested.appendedBy(resultPage)
+                    }.copy(page = targetPage, pageCount = pageCount)
                     state = ForumUiState.Loaded
                 }
 
                 // 会话失效：同一张 401 不能再报成「论坛加载失败」，能做的只有去登录
-                SessionOutcome.Expired -> {
-                    scope.clearExpiredSession()
-                    if (items.isEmpty()) {
-                        state = ForumUiState.Failed(LOGIN_EXPIRED_MESSAGE, sessionExpired = true)
-                    } else {
-                        state = ForumUiState.Loaded
-                        loadMoreFailed = true
-                        snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
-                    }
-                }
+                SessionOutcome.Expired -> applyFailure(outcome, requested)
 
-                is SessionOutcome.Failed -> {
-                    failedPage = targetPage
-                    val message = outcome.messageOr("论坛加载失败")
-                    if (items.isEmpty()) {
-                        // 列表为空时没有可回退的内容，才进整屏错误态
-                        state = ForumUiState.Failed(message)
-                    } else {
-                        // 已有内容时失败不回退成错误页：否则整块内容会被错误页顶掉，
-                        // 翻页失败只标记页脚可重试，刷新失败靠 snackbar 告知并保留旧内容
-                        state = ForumUiState.Loaded
-                        loadMoreFailed = true
-                        snackbarHostState.showSnackbar("加载失败：" + message)
-                    }
-                }
+                is SessionOutcome.Failed -> applyFailure(outcome, requested)
             }
         }
     }
@@ -193,19 +180,19 @@ fun ForumScreen(
         if (text.isBlank() || replyBusy) return
         replyBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.replyComment(albumId, text, target.id) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.replyComment(albumId, text, target.id) }
             replyBusy = false
-            result
-                .onSuccess {
+            when (outcome) {
+                is SessionOutcome.Ok -> {
                     replyTarget = null
                     snackbarHostState.showSnackbar("回复已发送")
-                    fetch(page, replace = true, showLoading = false)
+                    fetch(feed.page, replace = true, showLoading = false)
                 }
-                .onFailure {
-                    snackbarHostState.showSnackbar("回复失败：" + (it.message ?: "请稍后重试"))
-                }
+
+                SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty())
+
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("回复失败：" + outcome.messageOr("请稍后重试"))
+            }
         }
     }
 
@@ -214,21 +201,21 @@ fun ForumScreen(
         if (text.isBlank() || composeBusy) return
         composeBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.postComment("", text) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.postComment("", text) }
             composeBusy = false
-            result
-                .onSuccess {
+            when (outcome) {
+                is SessionOutcome.Ok -> {
                     composing = false
                     snackbarHostState.showSnackbar("发布成功")
                     // 新帖落在第一页首位，回到顶部才能看到刚发的内容
                     scope.launch { listState.scrollToItem(0) }
                     fetch(targetPage = 1, replace = true, showLoading = false)
                 }
-                .onFailure {
-                    snackbarHostState.showSnackbar("发布失败：" + (it.message ?: "请稍后重试"))
-                }
+
+                SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty())
+
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("发布失败：" + outcome.messageOr("请稍后重试"))
+            }
         }
     }
 
@@ -277,11 +264,11 @@ fun ForumScreen(
     ) { innerPadding ->
         when (val s = state) {
             ForumUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            is ForumUiState.Failed -> if (s.sessionExpired) {
+            is ForumUiState.Failed -> if (s.plan.phase == ScreenLoadPhase.Expired) {
                 LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
             } else {
                 ErrorScreen(
-                    message = s.message,
+                    message = s.plan.message.orEmpty(),
                     onRetry = { fetch(targetPage = failedPage, replace = true, showLoading = true) },
                     modifier = Modifier.padding(innerPadding),
                 )
@@ -314,15 +301,16 @@ fun ForumScreen(
                                 )
                             }
                         }
-                        if (items.isEmpty()) {
+                        val topicTotal = feed.total ?: 0
+                        if (feed.items.isEmpty()) {
                             item(key = "empty") {
                                 ForumEmptyState(forumScope = forumScope, onCompose = ::openCompose)
                             }
                         } else {
-                            if (total > 0) {
+                            if (topicTotal > 0) {
                                 item(key = "count") {
                                     Text(
-                                        text = "共 $total 条话题",
+                                        text = "共 $topicTotal 条话题",
                                         style = MiuixTheme.textStyles.footnote2,
                                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                         modifier = Modifier
@@ -331,7 +319,7 @@ fun ForumScreen(
                                     )
                                 }
                             }
-                            items(items, key = { it.id }) { item ->
+                            items(feed.items, key = { it.id }) { item ->
                                 ForumTopicCard(
                                     item = item,
                                     onReply = ::startReply,
@@ -343,12 +331,11 @@ fun ForumScreen(
                                     // 只有一页时翻页条没有信息量，不占位
                                     if (totalPages > 1) {
                                         PagerBar(
-                                            page = page,
+                                            page = feed.page,
                                             totalPages = totalPages,
-                                            // 翻页期间用 loadingMore 挡住重复点击并给出进度
+                                            // 目标页就是当前页时不重发；在途判定由 feed 自己持有
                                             onPageChange = { target ->
-                                                if (!loadingMore) {
-                                                    loadingMore = true
+                                                if (target != feed.page) {
                                                     scope.launch { listState.scrollToItem(0) }
                                                     fetch(target, replace = true, showLoading = false)
                                                 }
@@ -357,11 +344,8 @@ fun ForumScreen(
                                     }
                                 } else {
                                     LoadMoreFooter(
-                                        loadingMore = loadingMore,
-                                        hasMore = hasNext,
-                                        loadMoreFailed = loadMoreFailed,
-                                        // 加载态与在途守卫由 fetch 统一处理，这里只发起请求
-                                        onLoadMore = { fetch(page + 1, replace = false, showLoading = false) },
+                                        feed = feed,
+                                        onLoadMore = { fetch(feed.page + 1, replace = false, showLoading = false) },
                                     )
                                 }
                             }

@@ -73,4 +73,25 @@ class UpdatePromptTest {
     fun 无可忽略版本时开关保持关闭() {
         assertNull(UpdatePrompt.toggleIgnored(currentIgnored = null, latestVersion = "  "))
     }
+
+    @Test
+    fun 忽略记录的写法差异不影响命中判定() {
+        assertTrue(UpdatePrompt.isIgnored(ignoredVersion = "v1.2.0", latestVersion = "1.2.0"))
+        assertTrue(UpdatePrompt.isIgnored(ignoredVersion = "1.2", latestVersion = "1.2.0"))
+        assertTrue(UpdatePrompt.isIgnored(ignoredVersion = "1.2.0+build.7", latestVersion = "1.2.0"))
+        assertFalse(UpdatePrompt.isIgnored(ignoredVersion = "1.2.0-beta.1", latestVersion = "1.2.0"))
+    }
+
+    @Test
+    fun 提示记录按版本等价而不是字面相等() {
+        assertFalse(UpdatePrompt.shouldNotify(latestVersion = "1.2.0", ignoredVersion = null, promptedVersion = "v1.2.0"))
+        assertTrue(UpdatePrompt.shouldNotify(latestVersion = "1.3.0", ignoredVersion = null, promptedVersion = "1.2.0"))
+    }
+
+    @Test
+    fun 记录写入规范文本() {
+        assertEquals("1.2.0", UpdatePrompt.toggleIgnored(currentIgnored = null, latestVersion = "v1.2.0"))
+        assertEquals("1.2.0", UpdatePrompt.toggleIgnored(currentIgnored = null, latestVersion = "1.2.0+build.7"))
+        assertNull(UpdatePrompt.toggleIgnored(currentIgnored = "v1.2.0", latestVersion = "1.2.0"))
+    }
 }

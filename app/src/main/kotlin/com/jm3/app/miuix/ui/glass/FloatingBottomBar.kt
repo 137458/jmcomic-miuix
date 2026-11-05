@@ -232,7 +232,6 @@ fun FloatingBottomBar(
         requested = mode,
     )
     val isLiquidGlassMode = tier == GlassTier.LiquidGlass
-    val isBlurMode = tier == GlassTier.Blur
     val containerColor = if (isLiquidGlassMode) colors.containerColor.copy(alpha = 0.4f) else colors.containerColor
 
     val tabsBackdrop = rememberLayerBackdrop()
@@ -371,7 +370,7 @@ fun FloatingBottomBar(
             panelOffsetState = panelOffsetState,
             isDark = isDark,
             isLiquidGlassMode = isLiquidGlassMode,
-            isBlurMode = isBlurMode,
+            mode = mode,
             containerColor = containerColor,
             backdrop = backdrop,
             dampedDragAnimation = dampedDragAnimation,

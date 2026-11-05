@@ -14,15 +14,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.data.download.contentDescriptionRes
+import com.jm3.app.miuix.data.download.textRes
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.CoverLocator
+import com.jm3.core.Jm3Gateway
+import com.jm3.core.download.DownloadAction
 import com.jm3.core.download.DownloadRecord
-import com.jm3.core.download.DownloadStatus
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.jm3.core.download.DownloadRow
+import com.jm3.core.download.presentRow
+import com.jm3.core.session.AuthCall
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -36,7 +41,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 本地书架：下载进度、暂停/继续/重试、删除与离线阅读入口。 */
 @Composable
-fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
+fun ShelfScreen(
+    gateway: Jm3Gateway,
+    authCall: AuthCall,
+    onBack: () -> Unit,
+    onOpenReader: (String) -> Unit,
+) {
     var records by remember { mutableStateOf<List<DownloadRecord>>(emptyList()) }
     var imageHost by remember { mutableStateOf("") }
 
@@ -49,12 +59,10 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
         }
     }
 
-    // 图片域名整个屏幕只取一次：网关取域名是阻塞方法，必须放到 IO 线程；
-    // 取不到时留空串，封面由 CoverLocator.cover 返回 null 退化为占位，不影响行内容与按钮
-    LaunchedEffect(Unit) {
-        imageHost = withContext(Dispatchers.IO) {
-            runCatching { Jm3Graph.gateway.imageHost() }.getOrDefault("")
-        }
+    // 图片域名整个屏幕只取一次：网关取域名是阻塞方法，AuthCall 负责等待会话恢复并切到 IO；
+    // 取不到或会话失效时留空串，封面由 CoverLocator.cover 返回 null 退化为占位，不影响行内容与按钮
+    LaunchedEffect(gateway, authCall) {
+        imageHost = authCall.call { gateway.imageHost() }.orDegrade("")
     }
 
     GlassScaffold(
@@ -86,9 +94,12 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
                     val coverUrl = remember(albumId, imageHost) {
                         albumId?.let { CoverLocator.of(imageHost).cover(it, "_3x4") }
                     }
+                    // 标签、进度条口径与主操作全部由 :core 的 presentRow 判定，本行只做渲染
+                    val row = presentRow(record)
+                    val label = stringResource(row.label.textRes())
                     BasicComponent(
                         title = record.title.ifBlank { record.photoId },
-                        summary = shelfSummary(record),
+                        summary = shelfSummary(record, row, label),
                         // 左侧 3:4 缩略封面：与追踪、历史、收藏行同一套尺寸与圆角
                         startAction = {
                             WorkThumbnail(
@@ -98,10 +109,10 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
                             )
                         },
                         // 未完成任务用进度条替代纯文本比例，进度一眼可见
-                        bottomAction = if (record.status != DownloadStatus.DONE && record.total > 0) {
+                        bottomAction = if (row.showsProgressBar) {
                             {
                                 LinearProgressIndicator(
-                                    progress = record.donePages.toFloat() / record.total,
+                                    progress = row.donePages.toFloat() / row.total,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                                 )
                             }
@@ -109,28 +120,26 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
                             null
                         },
                         onClick = {
-                            if (record.status == DownloadStatus.DONE) onOpenReader(record.photoId)
+                            if (row.action == DownloadAction.Open) onOpenReader(record.photoId)
                         },
                         endActions = {
                             // 状态主操作与删除收敛为图标按钮，避免双 TextButton 挤压标题区
-                            when (record.status) {
-                                DownloadStatus.DONE -> IconButton(
+                            val actionLabel = stringResource(row.action.contentDescriptionRes())
+                            when (row.action) {
+                                DownloadAction.Open -> IconButton(
                                     onClick = { onOpenReader(record.photoId) },
                                 ) {
-                                    Icon(MiuixIcons.Play, contentDescription = "阅读")
+                                    Icon(MiuixIcons.Play, contentDescription = actionLabel)
                                 }
-                                DownloadStatus.RUNNING, DownloadStatus.QUEUED -> IconButton(
+                                DownloadAction.Pause -> IconButton(
                                     onClick = { Jm3Graph.downloadManager.pause(record.photoId) },
                                 ) {
-                                    Icon(MiuixIcons.Pause, contentDescription = "暂停")
+                                    Icon(MiuixIcons.Pause, contentDescription = actionLabel)
                                 }
-                                DownloadStatus.PAUSED, DownloadStatus.FAILED -> IconButton(
+                                DownloadAction.Resume, DownloadAction.Retry -> IconButton(
                                     onClick = { Jm3Graph.downloadManager.resumeRecord(record) },
                                 ) {
-                                    Icon(
-                                        MiuixIcons.Refresh,
-                                        contentDescription = if (record.status == DownloadStatus.FAILED) "重试" else "继续",
-                                    )
+                                    Icon(MiuixIcons.Refresh, contentDescription = actionLabel)
                                 }
                             }
                             IconButton(
@@ -154,15 +163,8 @@ fun ShelfScreen(onBack: () -> Unit, onOpenReader: (String) -> Unit) {
 }
 
 /** 行摘要：状态与进度，前面带禁漫车号；车号缺失时只显示状态，不输出孤立的 “#”。 */
-private fun shelfSummary(record: DownloadRecord): String {
-    val progress = when (record.status) {
-        DownloadStatus.DONE ->
-            "已完成 " + record.donePages + "/" + record.total
-        DownloadStatus.FAILED ->
-            "失败 " + record.donePages + "/" + record.total
-        else ->
-            shelfStatusLabel(record.status) + " " + record.donePages + "/" + record.total
-    }
+private fun shelfSummary(record: DownloadRecord, row: DownloadRow, label: String): String {
+    val progress = label + " " + row.donePages + "/" + row.total
     val albumId = shelfAlbumId(record) ?: return progress
     return "#" + albumId + " · " + progress
 }
@@ -170,11 +172,3 @@ private fun shelfSummary(record: DownloadRecord): String {
 /** 车号口径与详情页一致（AlbumDetailScreen 把空 id 与 “-1” 都视为无车号），避免拼出无效封面地址。 */
 private fun shelfAlbumId(record: DownloadRecord): String? =
     record.albumId.trim().takeIf { it.isNotEmpty() && it != "-1" }
-
-private fun shelfStatusLabel(status: DownloadStatus): String = when (status) {
-    DownloadStatus.QUEUED -> "排队中"
-    DownloadStatus.RUNNING -> "下载中"
-    DownloadStatus.PAUSED -> "已暂停"
-    DownloadStatus.DONE -> "已完成"
-    DownloadStatus.FAILED -> "失败"
-}

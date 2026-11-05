@@ -18,7 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -27,6 +26,7 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.Jm3Gateway
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
@@ -35,10 +35,10 @@ import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.replacedBy
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 
@@ -51,11 +51,22 @@ private sealed interface SearchUiState {
 /** 空列表起手：第一页由 [replacedBy] 落进来。 */
 private fun emptyFeed() = PagedFeed<SearchResult>()
 
+/** 结局 → 页面状态：成功整页替换，失败与会话失效都落错误文案（文案统一由 [planLoad] 给出）。 */
+private fun searchStateOf(outcome: SessionOutcome<SearchPage>, failureMessage: String): SearchUiState =
+    when (outcome) {
+        is SessionOutcome.Ok -> SearchUiState.Loaded(emptyFeed().replacedBy(outcome.value))
+        else -> SearchUiState.Failed(
+            planLoad(outcome, hasContent = false, failureMessage = failureMessage).message.orEmpty(),
+        )
+    }
+
 /** 独立搜索结果页：标签/作者/作品/人物点击与外部入口共用，支持排序与分页。 */
 @Composable
 fun SearchScreen(
     query: String,
     scope: SearchScope,
+    gateway: Jm3Gateway,
+    authCall: AuthCall,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
@@ -76,7 +87,7 @@ fun SearchScreen(
     val clickPaging = Jm3Graph.paginationMode == PaginationMode.CLICK
 
     fun fetch(page: Int, sort: BrowseOrder): SearchPage =
-        Jm3Graph.gateway.search(query, page, sort, scope, time)
+        gateway.search(query, page, sort, scope, time)
 
     fun loadFirstPage(byPull: Boolean = false) {
         if (byPull) refreshing = true
@@ -85,12 +96,9 @@ fun SearchScreen(
         // 下拉刷新时保留当前结果，避免列表在刷新指示器下方整屏消失
         if (!byPull) state = SearchUiState.Loading
         coroutineScope.launch {
-            val next = withContext(Dispatchers.IO) { runCatching { fetch(1, order) } }
+            val next = authCall.call { fetch(1, order) }
             if (token != requestToken) return@launch
-            state = next.fold(
-                onSuccess = { SearchUiState.Loaded(emptyFeed().replacedBy(it)) },
-                onFailure = { SearchUiState.Failed(it.message ?: "搜索失败") },
-            )
+            state = searchStateOf(next, "搜索失败")
             refreshing = false
         }
     }
@@ -102,14 +110,14 @@ fun SearchScreen(
         val requested = loaded.feed.beginLoadMore()
         state = SearchUiState.Loaded(requested)
         coroutineScope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { fetch(requested.page + 1, order) }.getOrNull()
-            }
+            val next = authCall.call { fetch(requested.page + 1, order) }
             if (token != requestToken) return@launch
             val current = state as? SearchUiState.Loaded ?: return@launch
-            state = SearchUiState.Loaded(
-                if (next != null) current.feed.appendedBy(next) else current.feed.failLoadMore(),
-            )
+            val updated = when (next) {
+                is SessionOutcome.Ok -> current.feed.appendedBy(next.value)
+                else -> current.feed.failLoadMore()
+            }
+            state = SearchUiState.Loaded(updated)
         }
     }
 
@@ -121,30 +129,15 @@ fun SearchScreen(
         val token = requestToken
         state = SearchUiState.Loading
         coroutineScope.launch {
-            val next = withContext(Dispatchers.IO) { runCatching { fetch(target, order) } }
+            val next = authCall.call { fetch(target, order) }
             if (token != requestToken) return@launch
-            next.fold(
-                onSuccess = {
-                    state = SearchUiState.Loaded(emptyFeed().replacedBy(it))
-                    listState.scrollToItem(0)
-                },
-                onFailure = { state = SearchUiState.Failed(it.message ?: "搜索失败") },
-            )
+            state = searchStateOf(next, "搜索失败")
+            if (state is SearchUiState.Loaded) listState.scrollToItem(0)
         }
     }
 
     LaunchedEffect(query, scope, orderValue, timeValue) {
         loadFirstPage()
-    }
-
-    LaunchedEffect((state as? SearchUiState.Loaded)?.feed?.let { it.page to it.hasMore }, clickPaging) {
-        if (clickPaging || state !is SearchUiState.Loaded) return@LaunchedEffect
-        snapshotFlow {
-            val info = listState.layoutInfo
-            (info.visibleItemsInfo.lastOrNull()?.index ?: -1) to info.totalItemsCount
-        }.collect { (last, total) ->
-            if (last >= 0 && total > 0 && last >= total - 3) loadMore()
-        }
     }
 
     GlassScaffold(
@@ -188,6 +181,17 @@ fun SearchScreen(
             // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
             contentPadding = innerPadding,
         ) {
+            // 触底判定全在 PagedFeed.shouldLoadMore 里；点击翻页模式不订阅滚动
+            if (!clickPaging) {
+                val paging = state as? SearchUiState.Loaded
+                if (paging != null) {
+                    LoadMoreOnScroll(
+                        listState = listState,
+                        feed = paging.feed,
+                        onLoadMore = ::loadMore,
+                    )
+                }
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),

@@ -12,12 +12,17 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.jm3.app.miuix.MainActivity
 import com.jm3.app.miuix.R
-import com.jm3.core.download.DownloadStatus
-import com.jm3.core.download.DownloadTask
-import com.jm3.core.download.activeDownloadCount
+import com.jm3.core.download.DownloadMeter
+import com.jm3.core.download.DownloadPresentation
+import com.jm3.core.download.DownloadShortText
+import com.jm3.core.download.DownloadText
+import com.jm3.core.download.DownloadTitle
 
 /**
  * 下载通知：单渠道（IMPORTANCE_LOW，无声，不出横幅）。
+ *
+ * 「显示什么」由 :core 的 [com.jm3.core.download.present] 决定（[DownloadPresentation]），
+ * 本对象只做两件事：选型 -> 字符串资源，选型 -> Android 通知构造器。
  *
  * Android 16.1+ 才走提升型持续通知（状态栏胶囊，[Notification.Builder.setRequestPromotedOngoing] +
  * [Notification.Builder.setShortCriticalText]）；16.0 及更低版本走 NotificationCompat 进度条形态。
@@ -31,9 +36,6 @@ internal object DownloadNotifier {
 
     /** 暂停提示的独立 ID：前台通知被服务退出移除后，这条提示仍要留在通知栏。 */
     const val NOTIFICATION_ID_PAUSED = 1002
-
-    /** 进度刷新最小间隔（毫秒）。完成/失败/活动任务数变化不受此限制。 */
-    const val MIN_PROGRESS_INTERVAL_MS = 300L
 
     /** 渠道是否已在本进程内创建：进度刷新时 build 每秒可被调多次，重复建渠道要走 Binder。 */
     @Volatile
@@ -97,31 +99,43 @@ internal object DownloadNotifier {
     }
 
     /**
-     * 前台服务通知内容：优先展示 RUNNING 任务，没有则展示队首 QUEUED 任务
-     * （并发上限为 2，聚合展示会让进度条来回跳，因此只跟一个任务）。
-     * 没有可展示任务时返回 null，调用方据此退出服务。
+     * 前台服务通知：内容全部来自 [presentation]，本方法不再参与「展示哪条任务」的判定。
      */
-    fun build(context: Context, tasks: Map<String, DownloadTask>): Notification? {
-        val task = pickForegroundTask(tasks) ?: return null
+    fun build(context: Context, presentation: DownloadPresentation): Notification {
         ensureChannel(context)
-
-        val active = tasks.activeDownloadCount()
-        val title = if (active > 1) {
-            context.getString(R.string.notification_download_title_multi, active)
-        } else {
-            context.getString(R.string.notification_download_title)
-        }
-        val text = if (task.total > 0) {
-            context.getString(R.string.notification_download_text, task.title, task.index, task.total)
-        } else {
-            context.getString(R.string.notification_download_text_pending, task.title)
-        }
-
+        val content = content(context, presentation)
+        val intent = contentIntent(context)
         return if (Build.VERSION.SDK_INT >= 36) {
-            buildPromoted(context, task, title, text, contentIntent(context))
+            buildPromoted(context, content, intent)
         } else {
-            buildCompat(context, task, title, text, contentIntent(context))
+            buildCompat(context, content, intent)
         }
+    }
+
+    /** 选型 -> 字符串资源。两条渲染分支共用这一份文案。 */
+    private fun content(context: Context, presentation: DownloadPresentation): NotificationContent {
+        val title = when (val spec = presentation.title) {
+            DownloadTitle.Single -> context.getString(R.string.notification_download_title)
+            is DownloadTitle.Multi -> context.getString(R.string.notification_download_title_multi, spec.count)
+        }
+        val text = when (val spec = presentation.text) {
+            is DownloadText.Progress -> context.getString(
+                R.string.notification_download_text,
+                spec.chapter,
+                spec.donePages,
+                spec.total,
+            )
+            is DownloadText.Pending -> context.getString(R.string.notification_download_text_pending, spec.chapter)
+        }
+        val shortText = when (val spec = presentation.shortText) {
+            is DownloadShortText.Progress -> context.getString(
+                R.string.notification_download_short,
+                spec.donePages,
+                spec.total,
+            )
+            DownloadShortText.Pending -> context.getString(R.string.notification_download_short_pending)
+        }
+        return NotificationContent(title, text, shortText, presentation.meter)
     }
 
     /** 幂等：同 ID 覆盖更新，点击回到主界面。 */
@@ -139,36 +153,29 @@ internal object DownloadNotifier {
         )
     }
 
+    /** 一次通知渲染所需的全部内容：两个 Android 构造器都从这里取，避免两条分支各写一遍。 */
+    private data class NotificationContent(
+        val title: String,
+        val text: String,
+        val shortText: String,
+        val meter: DownloadMeter,
+    )
+
     /** Android 16+：提升型持续通知，手机上折叠成状态栏胶囊。 */
     @RequiresApi(36)
     private fun buildPromoted(
         context: Context,
-        task: DownloadTask,
-        title: String,
-        text: String,
+        content: NotificationContent,
         contentIntent: PendingIntent,
     ): Notification {
         val builder = Notification.Builder(context, CHANNEL_DOWNLOADS)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(false)
-            .setCategory(Notification.CATEGORY_PROGRESS)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setContentIntent(contentIntent)
-            .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-            .setShortCriticalText(shortText(context, task))
+            .applyCommon(content, contentIntent)
+            .applyMeter(content.meter)
+            .setShortCriticalText(content.shortText)
         // 只有 16.1 及以上才有 setRequestPromotedOngoing：16.0 设备上直接调用会 NoSuchMethodError，
         // 而本方法由 onStartCommand 直调、异常没人接，会把前台服务整体带崩。
         if (supportsPromotedOngoing()) {
             builder.setRequestPromotedOngoing(true)
-        }
-        if (task.total > 0) {
-            builder.setProgress(task.total, task.index, false)
-        } else {
-            builder.setProgress(0, 0, true)
         }
         return builder.build()
     }
@@ -185,48 +192,64 @@ internal object DownloadNotifier {
     /** Android 8~15：NotificationCompat 进度形态（indeterminate 表示 total 尚未解析出来）。 */
     private fun buildCompat(
         context: Context,
-        task: DownloadTask,
-        title: String,
-        text: String,
+        content: NotificationContent,
         contentIntent: PendingIntent,
-    ): Notification {
-        val indeterminate = task.total <= 0
-        return NotificationCompat.Builder(context, CHANNEL_DOWNLOADS)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setOngoing(true)
-            .setSilent(true)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(false)
-            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setContentIntent(contentIntent)
-            // 不给 IMMEDIATE 时 Android 12+ 会把首条前台通知压后约 10 秒，进度一开始是空白。
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setProgress(
-                if (indeterminate) 0 else task.total,
-                if (indeterminate) 0 else task.index,
-                indeterminate,
-            )
-            .build()
-    }
+    ): Notification = NotificationCompat.Builder(context, CHANNEL_DOWNLOADS)
+        .applyCommon(content, contentIntent)
+        .applyMeter(content.meter)
+        .build()
 
     /**
-     * 胶囊上的极短文本：只放「3/12」这类数字，进度未知时用固定的「下载中」。
-     * 胶囊宽度只够几个字符，塞章节标题会被系统拦腰截断。
+     * 两个构造器共有的字段，只写一次（两处差异只有 silent/priority 与提升型专属字段）。
      */
     @RequiresApi(36)
-    private fun shortText(context: Context, task: DownloadTask): String =
-        if (task.total > 0) {
-            context.getString(R.string.notification_download_short, task.index, task.total)
-        } else {
-            context.getString(R.string.notification_download_short_pending)
-        }
+    private fun Notification.Builder.applyCommon(
+        content: NotificationContent,
+        contentIntent: PendingIntent,
+    ): Notification.Builder = apply {
+        setSmallIcon(android.R.drawable.stat_sys_download)
+        setContentTitle(content.title)
+        setContentText(content.text)
+        setOngoing(true)
+        setOnlyAlertOnce(true)
+        setShowWhen(false)
+        setCategory(Notification.CATEGORY_PROGRESS)
+        setVisibility(Notification.VISIBILITY_PUBLIC)
+        setContentIntent(contentIntent)
+        setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+    }
 
-    /** 优先 RUNNING，其次队首 QUEUED。 */
-    internal fun pickForegroundTask(tasks: Map<String, DownloadTask>): DownloadTask? =
-        tasks.values.firstOrNull { it.status == DownloadStatus.RUNNING }
-            ?: tasks.values.firstOrNull { it.status == DownloadStatus.QUEUED }
+    private fun NotificationCompat.Builder.applyCommon(
+        content: NotificationContent,
+        contentIntent: PendingIntent,
+    ): NotificationCompat.Builder = apply {
+        setSmallIcon(android.R.drawable.stat_sys_download)
+        setContentTitle(content.title)
+        setContentText(content.text)
+        setOngoing(true)
+        setSilent(true)
+        setOnlyAlertOnce(true)
+        setShowWhen(false)
+        setCategory(NotificationCompat.CATEGORY_PROGRESS)
+        setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        setPriority(NotificationCompat.PRIORITY_LOW)
+        setContentIntent(contentIntent)
+        // 不给 IMMEDIATE 时 Android 12+ 会把首条前台通知压后约 10 秒，进度一开始是空白。
+        setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+    }
+
+    @RequiresApi(36)
+    private fun Notification.Builder.applyMeter(meter: DownloadMeter): Notification.Builder = apply {
+        when (meter) {
+            is DownloadMeter.Determinate -> setProgress(meter.total, meter.donePages, false)
+            DownloadMeter.Indeterminate -> setProgress(0, 0, true)
+        }
+    }
+
+    private fun NotificationCompat.Builder.applyMeter(meter: DownloadMeter): NotificationCompat.Builder = apply {
+        when (meter) {
+            is DownloadMeter.Determinate -> setProgress(meter.total, meter.donePages, false)
+            DownloadMeter.Indeterminate -> setProgress(0, 0, true)
+        }
+    }
 }

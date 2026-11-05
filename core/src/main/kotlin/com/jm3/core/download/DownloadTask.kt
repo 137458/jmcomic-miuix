@@ -9,6 +9,18 @@ enum class DownloadStatus {
     FAILED,
     ;
 
+    /** 占用前台并且会自动推进：活动任务数、暂停条件、启动恢复都只看这一个判定。 */
+    val isActive: Boolean get() = this == QUEUED || this == RUNNING
+
+    /** 已落定：不再自动推进，且要让通知绕过节流立刻刷新（PAUSED 可续传，不算落定）。 */
+    val isFinished: Boolean get() = this == DONE || this == FAILED
+
+    /** 可交回队列重新排队（用户续传 / 失败重试）；等价于「能合法转到 QUEUED」。 */
+    val canRequeue: Boolean get() = canTransitionTo(QUEUED)
+
+    /** 进程重启后交给队列的恢复状态：DONE 原样交回（队列按转移表拒绝复活），其余压成 PAUSED。 */
+    val resumeSnapshot: DownloadStatus get() = if (this == DONE) DONE else PAUSED
+
     /** 合法状态转移表；非法组合返回 false。 */
     fun canTransitionTo(next: DownloadStatus): Boolean = when (this) {
         QUEUED -> next == RUNNING || next == PAUSED

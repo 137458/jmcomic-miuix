@@ -64,3 +64,20 @@ data class PagedFeed<T>(
         )
     }
 }
+/** 触底判据的默认提前量：最后一个可见项距末尾这么多项时开始取下一页。 */
+const val PREFETCH_DISTANCE: Int = 3
+
+/**
+ * 触底判据：列表滚到接近末尾、还有下一页、且没有在途请求时返回 true。
+ *
+ * 屏幕只提供「最后一个可见项下标」与「列表总项数」，不再各自写一遍比较与两个布尔的与运算。
+ */
+fun PagedFeed<*>.shouldLoadMore(
+    lastVisibleIndex: Int,
+    totalItemCount: Int,
+    distance: Int = PREFETCH_DISTANCE,
+): Boolean = canLoadMore &&
+    !loadMoreFailed &&
+    lastVisibleIndex >= 0 &&
+    totalItemCount > 0 &&
+    lastVisibleIndex >= totalItemCount - distance

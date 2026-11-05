@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -45,6 +46,7 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.core.appendedBy
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.NovelChapter
 import com.jm3.core.model.NovelChapterMeta
@@ -52,10 +54,13 @@ import com.jm3.core.model.NovelDetail
 import com.jm3.core.model.NovelMeta
 import com.jm3.core.model.NovelOrder
 import com.jm3.core.model.SearchScope
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.reader.ChapterGroups
+import com.jm3.core.replacedBy
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.SettingsRepository
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -82,6 +87,25 @@ import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** 动作类调用（点赞/收藏/发评）的结局提示：会话失效要给登录引导，其余沿用各动作原有文案。 */
+internal data class NovelActionNotice(val message: String, val openLogin: Boolean)
+
+/**
+ * 结局 → 动作提示的唯一翻译点：失效给登录引导（文案与其它屏同一份），普通失败沿用动作自己的前缀。
+ *
+ * 为什么单列一个纯函数：失效与失败的差别只是「要不要引导重新登录」，六个动作各写一遍
+ * 迟早会有一处漏掉登录入口，也就没地方能验证这个差别。
+ */
+internal fun novelActionNotice(
+    outcome: SessionOutcome<*>,
+    failurePrefix: String,
+    fallback: String = "请稍后重试",
+): NovelActionNotice? = when (outcome) {
+    is SessionOutcome.Ok -> null
+    SessionOutcome.Expired -> NovelActionNotice(SessionOutcome.Expired.message, openLogin = true)
+    is SessionOutcome.Failed -> NovelActionNotice(failurePrefix + outcome.messageOr(fallback), openLogin = false)
+}
+
 /** 小说列表页：排序 + 关键词搜索 + 点赞/收藏。 */
 @Composable
 fun NovelListScreen(
@@ -89,6 +113,7 @@ fun NovelListScreen(
     onOpenNovel: (String) -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
 ) {
     val user by Jm3Graph.account.user.collectAsState()
     var orderName by rememberSaveable { mutableStateOf(NovelOrder.DEFAULT.name) }
@@ -99,7 +124,7 @@ fun NovelListScreen(
     var items by remember { mutableStateOf<List<NovelMeta>>(emptyList()) }
     var total by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     // 快速切换排序/搜索时旧响应不能覆盖新结果
     var loadToken by remember { mutableIntStateOf(0) }
@@ -111,26 +136,34 @@ fun NovelListScreen(
         loadToken++
         val token = loadToken
         if (showLoading) loading = true
-        error = null
+        failure = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (keyword.isBlank()) {
-                        Jm3Graph.gateway.novelList(orderValue, 1)
-                    } else {
-                        Jm3Graph.gateway.searchNovels(keyword)
-                    }
+            val outcome = authCall.call {
+                if (keyword.isBlank()) {
+                    Jm3Graph.gateway.novelList(orderValue, 1)
+                } else {
+                    Jm3Graph.gateway.searchNovels(keyword)
                 }
             }
             if (token != loadToken) return@launch
             loading = false
             refreshing = false
-            result
-                .onSuccess {
-                    items = it.items
-                    total = it.total
+            if (outcome is SessionOutcome.Ok) {
+                items = outcome.value.items
+                total = outcome.value.total
+            } else {
+                // 已有列表就只提示并保留内容；没有内容才换整屏（失效换成「去登录」）
+                val plan = planLoad(
+                    outcome = outcome,
+                    hasContent = items.isNotEmpty(),
+                    failureMessage = "加载失败",
+                )
+                if (plan.keepContent) {
+                    snackbarHostState.showSnackbar(plan.notice.orEmpty())
+                } else {
+                    failure = plan
                 }
-                .onFailure { error = it.message ?: "加载失败" }
+            }
         }
     }
 
@@ -147,18 +180,16 @@ fun NovelListScreen(
         if (busyId != null) return
         busyId = item.id
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleNovelLike(item.id) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelLike(item.id) }
             busyId = null
-            result
-                .onSuccess {
-                    items = items.map { if (it.id == item.id) it.copy(liked = true) else it }
-                    snackbarHostState.showSnackbar("点赞成功")
-                }
-                .onFailure {
-                    snackbarHostState.showSnackbar("点赞失败：" + (it.message ?: "请稍后重试"))
-                }
+            val notice = novelActionNotice(outcome, failurePrefix = "点赞失败：")
+            if (notice == null) {
+                items = items.map { if (it.id == item.id) it.copy(liked = true) else it }
+                snackbarHostState.showSnackbar("点赞成功")
+            } else {
+                snackbarHostState.showSnackbar(notice.message)
+                if (notice.openLogin) onOpenLogin()
+            }
         }
     }
 
@@ -171,18 +202,16 @@ fun NovelListScreen(
         if (busyId != null) return
         busyId = item.id
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleNovelFavorite(item.id) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelFavorite(item.id) }
             busyId = null
-            result
-                .onSuccess {
-                    items = items.map { if (it.id == item.id) it.copy(favorite = !it.favorite) else it }
-                    snackbarHostState.showSnackbar(if (item.favorite) "已取消收藏" else "已加入收藏")
-                }
-                .onFailure {
-                    snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试"))
-                }
+            val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
+            if (notice == null) {
+                items = items.map { if (it.id == item.id) it.copy(favorite = !it.favorite) else it }
+                snackbarHostState.showSnackbar(if (item.favorite) "已取消收藏" else "已加入收藏")
+            } else {
+                snackbarHostState.showSnackbar(notice.message)
+                if (notice.openLogin) onOpenLogin()
+            }
         }
     }
 
@@ -236,8 +265,12 @@ fun NovelListScreen(
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            error != null -> ErrorScreen(
-                message = "加载失败：$error",
+            failure?.phase == ScreenLoadPhase.Expired -> LoginExpiredScreen(
+                onOpenLogin = onOpenLogin,
+                modifier = Modifier.padding(innerPadding),
+            )
+            failure != null -> ErrorScreen(
+                message = "加载失败：" + failure?.message.orEmpty(),
                 onRetry = { load(order.apiValue, appliedQuery, showLoading = true) },
                 modifier = Modifier.padding(innerPadding),
             )
@@ -379,32 +412,36 @@ fun NovelDetailScreen(
     onOpenSearch: (String, SearchScope) -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
 ) {
     val user by Jm3Graph.account.user.collectAsState()
     var detail by remember { mutableStateOf<NovelDetail?>(null) }
     var savedChapter by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
     var ascending by rememberSaveable { mutableStateOf(true) }
-    // 目录按十章一组折叠，-1 表示全部收起；默认展开首组（最新或最旧十章的入口）
-    var expandedGroup by rememberSaveable { mutableIntStateOf(0) }
+    // 目录按十章一组折叠：组身份用章节 id，切正序/倒序后展开的仍是同一批章节
+    var selectedGroupId by rememberSaveable { mutableStateOf<String?>(null) }
+    // 未选择时默认展开首组；用户收起后记下「全部收起」，否则会被默认值重新展开
+    var allGroupsCollapsed by rememberSaveable { mutableStateOf(false) }
     var descriptionExpanded by rememberSaveable { mutableStateOf(false) }
     var actionBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun load() {
         loading = true
-        error = null
+        failure = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.novelDetail(novelId) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.novelDetail(novelId) }
             loading = false
-            result
-                .onSuccess { detail = it }
-                .onFailure { error = it.message ?: "加载失败" }
+            if (outcome is SessionOutcome.Ok) {
+                detail = outcome.value
+            } else {
+                // 整屏加载：没有可保留的内容，失效与失败都由计划决定整屏形态
+                failure = planLoad(outcome = outcome, hasContent = false, failureMessage = "加载失败")
+            }
         }
     }
 
@@ -442,16 +479,16 @@ fun NovelDetailScreen(
         if (actionBusy) return
         actionBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleNovelLike(novelId) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelLike(novelId) }
             actionBusy = false
-            result
-                .onSuccess {
-                    detail = current.copy(liked = true)
-                    snackbarHostState.showSnackbar("点赞成功")
-                }
-                .onFailure { snackbarHostState.showSnackbar("点赞失败：" + (it.message ?: "请稍后重试")) }
+            val notice = novelActionNotice(outcome, failurePrefix = "点赞失败：")
+            if (notice == null) {
+                detail = current.copy(liked = true)
+                snackbarHostState.showSnackbar("点赞成功")
+            } else {
+                snackbarHostState.showSnackbar(notice.message)
+                if (notice.openLogin) onOpenLogin()
+            }
         }
     }
 
@@ -463,16 +500,16 @@ fun NovelDetailScreen(
         if (actionBusy) return
         actionBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleNovelFavorite(novelId) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelFavorite(novelId) }
             actionBusy = false
-            result
-                .onSuccess {
-                    detail = current.copy(favorite = !current.favorite)
-                    snackbarHostState.showSnackbar(if (current.favorite) "已取消收藏" else "已加入收藏")
-                }
-                .onFailure { snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试")) }
+            val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
+            if (notice == null) {
+                detail = current.copy(favorite = !current.favorite)
+                snackbarHostState.showSnackbar(if (current.favorite) "已取消收藏" else "已加入收藏")
+            } else {
+                snackbarHostState.showSnackbar(notice.message)
+                if (notice.openLogin) onOpenLogin()
+            }
         }
     }
 
@@ -500,8 +537,12 @@ fun NovelDetailScreen(
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            error != null -> ErrorScreen(
-                message = "加载失败：$error",
+            failure?.phase == ScreenLoadPhase.Expired -> LoginExpiredScreen(
+                onOpenLogin = onOpenLogin,
+                modifier = Modifier.padding(innerPadding),
+            )
+            failure != null -> ErrorScreen(
+                message = "加载失败：" + failure?.message.orEmpty(),
                 onRetry = ::load,
                 modifier = Modifier.padding(innerPadding),
             )
@@ -554,14 +595,26 @@ fun NovelDetailScreen(
                                         )
                                     }
                                 }
-                                val groups = novelChapterGroups(current.chapters, ascending)
-                                items(count = groups.size, key = { it }) { index ->
+                                val groups = ChapterGroups.of(
+                                    items = current.chapters,
+                                    keyOf = NovelChapterMeta::ncid,
+                                    descending = !ascending,
+                                )
+                                val expandedGroupId = if (allGroupsCollapsed) {
+                                    null
+                                } else {
+                                    selectedGroupId ?: groups.firstOrNull()?.id
+                                }
+                                items(count = groups.size, key = { groups[it].id }) { index ->
+                                    val group = groups[index]
                                     NovelChapterGroupCard(
-                                        group = groups[index],
-                                        expanded = expandedGroup == index,
+                                        group = group.items,
+                                        expanded = expandedGroupId == group.id,
                                         savedChapter = savedChapter,
                                         onToggle = {
-                                            expandedGroup = if (expandedGroup == index) -1 else index
+                                            val collapsing = expandedGroupId == group.id
+                                            allGroupsCollapsed = collapsing
+                                            selectedGroupId = if (collapsing) null else group.id
                                         },
                                         onOpen = { chapter -> openChapter(chapter) },
                                     )
@@ -587,6 +640,7 @@ fun NovelDetailScreen(
                                     novelId = novelId,
                                     onOpenLogin = onOpenLogin,
                                     snackbarHostState = snackbarHostState,
+                                    authCall = authCall,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 )
                             }
@@ -770,6 +824,7 @@ fun NovelReaderScreen(
     onBack: () -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
 ) {
     val user by Jm3Graph.account.user.collectAsState()
     var detail by remember { mutableStateOf<NovelDetail?>(null) }
@@ -778,7 +833,7 @@ fun NovelReaderScreen(
     var fontSize by remember { mutableIntStateOf(SettingsRepository.DEFAULT_NOVEL_FONT_SIZE) }
     var lang by rememberSaveable { mutableStateOf(SettingsRepository.DEFAULT_NOVEL_LANG) }
     var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var favorited by remember { mutableStateOf(false) }
     var commentsOpen by remember { mutableStateOf(false) }
     var fontSheetOpen by remember { mutableStateOf(false) }
@@ -789,33 +844,45 @@ fun NovelReaderScreen(
         loadToken++
         val token = loadToken
         if (showLoading) loading = true
-        error = null
+        failure = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.novelChapter(chapterId, language) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.novelChapter(chapterId, language) }
             if (token != loadToken) return@launch
             loading = false
-            result
-                .onSuccess {
-                    chapter = it
-                    currentId = chapterId
-                    favorited = it.favorite
-                    scope.launch { Jm3Graph.settings.setNovelLastChapter(novelId, chapterId) }
+            if (outcome is SessionOutcome.Ok) {
+                chapter = outcome.value
+                currentId = chapterId
+                favorited = outcome.value.favorite
+                scope.launch { Jm3Graph.settings.setNovelLastChapter(novelId, chapterId) }
+            } else {
+                // 翻到下一章失败时旧正文还在：保留正文只提示，不把正在读的章节顶掉
+                val plan = planLoad(
+                    outcome = outcome,
+                    hasContent = chapter != null && !showLoading,
+                    failureMessage = "章节加载失败",
+                )
+                if (plan.keepContent) {
+                    snackbarHostState.showSnackbar(plan.notice.orEmpty())
+                } else {
+                    failure = plan
                 }
-                .onFailure { error = it.message ?: "章节加载失败" }
+            }
         }
     }
 
     LaunchedEffect(novelId) {
         fontSize = Jm3Graph.settings.novelFontSize()
         lang = Jm3Graph.settings.novelLang()
-        val detailResult = withContext(Dispatchers.IO) {
-            runCatching { Jm3Graph.gateway.novelDetail(novelId) }
-        }
-        detailResult.onSuccess {
-            detail = it
-            favorited = it.favorite
+        // 目录只是辅助数据：普通失败保持静默（正文该能读就读），只有会话失效才提示去登录
+        when (val detailOutcome = authCall.call { Jm3Graph.gateway.novelDetail(novelId) }) {
+            is SessionOutcome.Ok -> {
+                detail = detailOutcome.value
+                favorited = detailOutcome.value.favorite
+            }
+
+            SessionOutcome.Expired -> snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
+
+            is SessionOutcome.Failed -> Unit
         }
         loadChapter(currentId, lang, showLoading = true)
     }
@@ -843,15 +910,15 @@ fun NovelReaderScreen(
             return
         }
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleNovelFavorite(novelId) }
+            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelFavorite(novelId) }
+            val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
+            if (notice == null) {
+                favorited = !favorited
+                snackbarHostState.showSnackbar(if (favorited) "已加入收藏" else "已取消收藏")
+            } else {
+                snackbarHostState.showSnackbar(notice.message)
+                if (notice.openLogin) onOpenLogin()
             }
-            result
-                .onSuccess {
-                    favorited = !favorited
-                    snackbarHostState.showSnackbar(if (favorited) "已加入收藏" else "已取消收藏")
-                }
-                .onFailure { snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试")) }
         }
     }
 
@@ -892,8 +959,12 @@ fun NovelReaderScreen(
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            error != null -> ErrorScreen(
-                message = "加载失败：$error",
+            failure?.phase == ScreenLoadPhase.Expired -> LoginExpiredScreen(
+                onOpenLogin = onOpenLogin,
+                modifier = Modifier.padding(innerPadding),
+            )
+            failure != null -> ErrorScreen(
+                message = "加载失败：" + failure?.message.orEmpty(),
                 onRetry = { loadChapter(currentId, lang, showLoading = true) },
                 modifier = Modifier.padding(innerPadding),
             )
@@ -997,6 +1068,7 @@ fun NovelReaderScreen(
                     novelId = novelId,
                     onOpenLogin = onOpenLogin,
                     snackbarHostState = snackbarHostState,
+                    authCall = authCall,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -1057,15 +1129,13 @@ private fun NovelCommentsPanel(
     novelId: String,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
     modifier: Modifier = Modifier,
 ) {
     val user by Jm3Graph.account.user.collectAsState()
-    var items by remember { mutableStateOf<List<CommentItem>>(emptyList()) }
-    var total by remember { mutableIntStateOf(0) }
-    var page by remember { mutableIntStateOf(1) }
+    var feed by remember { mutableStateOf(PagedFeed<CommentItem>()) }
     var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var loadingMore by remember { mutableStateOf(false) }
+    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var draft by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
@@ -1073,22 +1143,36 @@ private fun NovelCommentsPanel(
     val scope = rememberCoroutineScope()
 
     fun load(targetPage: Int, replace: Boolean, showLoading: Boolean) {
+        // 还能不能拉、在不在拉全由 feed 判定：重复点「加载更多」不会再并发打同一页
+        val requested = if (replace) feed else feed.beginLoadMore()
+        if (!replace && requested === feed) return
         if (showLoading) loading = true
-        error = null
-        if (!replace) loadingMore = true
+        failure = null
+        feed = requested
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.novelComments(novelId, targetPage) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.novelComments(novelId, targetPage) }
             loading = false
-            loadingMore = false
-            result
-                .onSuccess {
-                    items = if (replace) it.items else (items + it.items).distinctBy { comment -> comment.id }
-                    total = it.total
-                    page = targetPage
+            if (outcome is SessionOutcome.Ok) {
+                feed = if (replace) {
+                    PagedFeed<CommentItem>().replacedBy(outcome.value)
+                } else {
+                    requested.appendedBy(outcome.value)
                 }
-                .onFailure { error = it.message ?: "评论加载失败" }
+            } else {
+                // 翻页失败保留已加载评论并让页脚可重试；首屏失败才整块换掉
+                val plan = planLoad(
+                    outcome = outcome,
+                    hasContent = !replace && requested.items.isNotEmpty(),
+                    failureMessage = "评论加载失败",
+                )
+                if (plan.keepContent) {
+                    feed = requested.failLoadMore()
+                    snackbarHostState.showSnackbar(plan.notice.orEmpty())
+                } else {
+                    feed = requested.copy(loadingMore = false)
+                    failure = plan
+                }
+            }
         }
     }
 
@@ -1103,17 +1187,17 @@ private fun NovelCommentsPanel(
         }
         sending = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.postNovelComment(novelId, text, "") }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.postNovelComment(novelId, text, "") }
             sending = false
-            result
-                .onSuccess {
-                    draft = ""
-                    snackbarHostState.showSnackbar("评论已发布")
-                    load(1, replace = true, showLoading = false)
-                }
-                .onFailure { snackbarHostState.showSnackbar("发布失败：" + (it.message ?: "请稍后重试")) }
+            val notice = novelActionNotice(outcome, failurePrefix = "发布失败：")
+            if (notice == null) {
+                draft = ""
+                snackbarHostState.showSnackbar("评论已发布")
+                load(1, replace = true, showLoading = false)
+            } else {
+                snackbarHostState.showSnackbar(notice.message)
+                if (notice.openLogin) onOpenLogin()
+            }
         }
     }
 
@@ -1122,43 +1206,56 @@ private fun NovelCommentsPanel(
         if (text.isBlank() || replyBusy) return
         replyBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.replyNovelComment(novelId, text, target.id, "") }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.replyNovelComment(novelId, text, target.id, "") }
             replyBusy = false
-            result
-                .onSuccess {
-                    replyTarget = null
-                    snackbarHostState.showSnackbar("回复已发送")
-                    load(1, replace = true, showLoading = false)
-                }
-                .onFailure { snackbarHostState.showSnackbar("回复失败：" + (it.message ?: "请稍后重试")) }
+            val notice = novelActionNotice(outcome, failurePrefix = "回复失败：")
+            if (notice == null) {
+                replyTarget = null
+                snackbarHostState.showSnackbar("回复已发送")
+                load(1, replace = true, showLoading = false)
+            } else {
+                snackbarHostState.showSnackbar(notice.message)
+                if (notice.openLogin) onOpenLogin()
+            }
         }
     }
 
     Column(modifier = modifier) {
         when {
             loading -> LoadingScreen(modifier = Modifier.fillMaxWidth().padding(24.dp))
-            error != null -> ErrorScreen(
-                message = "评论加载失败：$error",
+            failure?.phase == ScreenLoadPhase.Expired -> Column(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // 面板不是整屏：用内联文案 + 去登录入口，不把整屏态塞进列表项
+                Text(
+                    text = failure?.message.orEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                    style = MiuixTheme.textStyles.footnote1,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(text = "去登录", onClick = onOpenLogin)
+            }
+            failure != null -> ErrorScreen(
+                message = "评论加载失败：" + failure?.message.orEmpty(),
                 onRetry = { load(1, replace = true, showLoading = true) },
                 modifier = Modifier.fillMaxWidth().padding(8.dp),
             )
-            items.isEmpty() -> EmptyState(title = "暂无评论", hint = "来说点什么吧")
+            feed.items.isEmpty() -> EmptyState(title = "暂无评论", hint = "来说点什么吧")
             else -> {
-                items.forEach { item ->
+                feed.items.forEach { item ->
                     CommentRow(item = item, onReply = { replyTarget = it })
                 }
-                val hasMore = items.size < total
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     when {
-                        loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                        hasMore -> TextButton(
+                        feed.loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
+                        feed.hasMore -> TextButton(
                             text = "加载更多",
-                            onClick = { load(page + 1, replace = false, showLoading = false) },
+                            onClick = { load(feed.page + 1, replace = false, showLoading = false) },
                         )
                         else -> Text(
                             text = "已经到底了",

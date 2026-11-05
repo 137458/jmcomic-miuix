@@ -112,8 +112,8 @@ class AlbumDetailStateHolderTest {
         assertTrue(state.tracking == true)
         assertEquals("p15", state.latestPhotoId)
         assertTrue(state.readPhotoIds.contains("p15"))
-        // 验证章节组展开：第 0 组默认展开，第 1 组（包含 p15）应被自动加入展开集
-        assertTrue(state.expandedGroups.contains(1))
+        // 组身份是组内首章 id：冷启动默认展开首组 p1，读完历史后追加 p15 所在的 p11 组
+        assertEquals(setOf("p1", "p11"), state.expandedGroups)
 
         testScope.cancel()
     }

@@ -3,6 +3,7 @@
 package com.jm3.app.miuix.ui
 
 import com.jm3.core.model.NovelChapterMeta
+import com.jm3.core.reader.ChapterGroups
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -18,30 +19,21 @@ class NovelChapterLogicTest {
     )
 
     @Test
-    fun 正序分组每十章一组且尾组不补齐() {
-        val chapters = (1..25).map { chapter(it.toString()) }
-
-        val groups = novelChapterGroups(chapters, ascending = true)
-
-        assertEquals(3, groups.size)
-        assertEquals(listOf("1", "10"), listOf(groups[0].first().sort, groups[0].last().sort))
-        assertEquals(listOf("21", "25"), listOf(groups[2].first().sort, groups[2].last().sort))
-    }
-
-    @Test
-    fun 倒序分组从末章开始往前切() {
+    fun 切排序后同一批章节仍归同一组() {
         val chapters = (1..12).map { chapter(it.toString()) }
 
-        val groups = novelChapterGroups(chapters, ascending = false)
+        val ascending = ChapterGroups.of(chapters, NovelChapterMeta::ncid)
+        val descending = ChapterGroups.of(chapters, NovelChapterMeta::ncid, descending = true)
 
-        assertEquals(2, groups.size)
-        assertEquals(listOf("12", "3"), listOf(groups[0].first().sort, groups[0].last().sort))
-        assertEquals(listOf("2", "1"), listOf(groups[1].first().sort, groups[1].last().sort))
-    }
-
-    @Test
-    fun 空目录不产生分组() {
-        assertEquals(0, novelChapterGroups(emptyList(), ascending = true).size)
+        // 组序列随展示方向整体反转，但每组承载的仍是同一批章节
+        assertEquals(ascending.map { it.id }.reversed(), descending.map { it.id })
+        assertEquals(
+            ascending.associate { it.id to it.items.map { item -> item.ncid }.toSet() },
+            descending.associate { it.id to it.items.map { item -> item.ncid }.toSet() },
+        )
+        // 旧实现先整体反转再按十切，倒序会把 nc-3..nc-12 切成一组，与正序分区不一致
+        assertEquals(listOf("nc-11", "nc-12"), ascending.last().items.map { it.ncid })
+        assertEquals(listOf("nc-12", "nc-11"), descending.first().items.map { it.ncid })
     }
 
     @Test

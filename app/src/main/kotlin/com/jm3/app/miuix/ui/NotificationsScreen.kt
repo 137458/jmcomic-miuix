@@ -30,18 +30,15 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.NOTIFICATION_TYPE_FOLLOW
 import com.jm3.core.model.NotificationBody
 import com.jm3.core.model.NotificationItem
 import com.jm3.core.model.NotificationPage
 import com.jm3.core.notificationBody
 import com.jm3.core.notificationDisplayTitle
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
-import com.jm3.core.session.sessionOutcome
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -64,6 +61,7 @@ private const val NOTIFICATION_PREVIEW_UPDATES = 2
 fun NotificationsScreen(
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
     onOpenAlbum: (albumId: String) -> Unit = {},
     onOpenLogin: () -> Unit = {},
 ) {
@@ -88,15 +86,24 @@ fun NotificationsScreen(
     val scope = rememberCoroutineScope()
 
     fun syncUnread(items: List<NotificationItem>) {
-        Jm3Graph.unreadNotifications.value = items.count { !it.read }
+        Jm3Graph.session.unread.sync(items.count { !it.read })
+    }
+
+    /** 失效与失败共用一条落点：有数据就保留列表、只弹提示，没有数据才整屏。 */
+    fun applyPlan(outcome: SessionOutcome<*>) {
+        val plan = planLoad(outcome, hasContent = page != null, failureMessage = "信箱加载失败")
+        if (plan.phase == ScreenLoadPhase.Content) {
+            plan.notice?.let { notice -> scope.launch { snackbarHostState.showSnackbar(notice) } }
+        } else {
+            sessionExpired = plan.phase == ScreenLoadPhase.Expired
+            error = plan.message
+        }
     }
 
     fun load(showLoading: Boolean = true) {
         if (showLoading) loading = true
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.notifications() }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.notifications() }
             loading = false
             refreshing = false
             when (outcome) {
@@ -107,24 +114,10 @@ fun NotificationsScreen(
                     syncUnread(outcome.value.items)
                 }
 
-                SessionOutcome.Expired -> {
-                    scope.clearExpiredSession()
-                    if (page == null) {
-                        error = LOGIN_EXPIRED_MESSAGE
-                        sessionExpired = true
-                    } else {
-                        snackbarHostState.showSnackbar(LOGIN_EXPIRED_MESSAGE)
-                    }
-                }
+                SessionOutcome.Expired -> applyPlan(outcome)
 
-                is SessionOutcome.Failed -> {
-                    // 已有数据时保留列表，只用 Snackbar 提示刷新失败，避免整屏被错误态替换
-                    if (page == null) {
-                        error = outcome.messageOr("信箱加载失败")
-                    } else {
-                        snackbarHostState.showSnackbar("刷新失败：" + outcome.messageOr("请稍后重试"))
-                    }
-                }
+                // 已有数据时保留列表，只用 Snackbar 提示刷新失败，避免整屏被错误态替换
+                is SessionOutcome.Failed -> applyPlan(outcome)
             }
         }
     }
@@ -135,19 +128,23 @@ fun NotificationsScreen(
         markingId = item.id
         scope.launch {
             val target = !item.read
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.markNotification(item.id, target) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.markNotification(item.id, target) }
             markingId = null
-            result
-                .onSuccess {
+            when (outcome) {
+                is SessionOutcome.Ok -> {
                     val updated = page?.items
                         ?.map { if (it.id == item.id) it.copy(read = target) else it }
                         .orEmpty()
                     page = page?.copy(items = updated)
                     syncUnread(updated)
                 }
-                .onFailure { snackbarHostState.showSnackbar("标记失败：" + (it.message ?: "请稍后重试")) }
+
+                SessionOutcome.Expired -> snackbarHostState.showSnackbar(
+                    planLoad(outcome, hasContent = false, failureMessage = "标记失败").message.orEmpty(),
+                )
+
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("标记失败：" + outcome.messageOr("请稍后重试"))
+            }
         }
     }
 

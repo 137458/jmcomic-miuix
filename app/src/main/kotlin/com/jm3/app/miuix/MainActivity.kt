@@ -48,11 +48,11 @@ class MainActivity : ComponentActivity() {
         if (granted) return
         // lifecycleScope 默认在主线程派发：读标记是挂起调用不阻塞界面，弹窗 launch 也必须在主线程。
         lifecycleScope.launch {
-            if (Jm3Graph.settings.notificationPermissionAsked()) return@launch
+            if (Jm3Graph.preferences.repository.notificationPermissionAsked()) return@launch
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             // 先弹窗再写标记：弹窗期间进程被杀时标记不落地，下次进入还会询问；
             // 反之先写标记会让用户永远失去补授权的一次引导。
-            Jm3Graph.settings.markNotificationPermissionAsked()
+            Jm3Graph.preferences.repository.markNotificationPermissionAsked()
         }
     }
 
@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
      */
     override fun onStop() {
         super.onStop()
-        Jm3Graph.appScope.launch { Jm3Graph.account.persistSession() }
+        Jm3Graph.appScope.launch { Jm3Graph.session.account.persistSession() }
     }
 
     /** 阅读器挂载时把音量键交给翻页，其余场景保持系统音量行为。 */

@@ -32,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,20 +43,22 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.core.Jm3Gateway
-import com.jm3.core.mergedWith
+import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseCategory
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.CategoryBlock
 import com.jm3.core.model.CategoryTree
-import com.jm3.core.model.SearchPage
+import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
-import kotlinx.coroutines.Dispatchers
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.toFeed
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
@@ -80,7 +81,12 @@ enum class BrowseMode(val title: String) {
 }
 
 @Composable
-fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) -> Unit) {
+fun BrowseScreen(
+    mode: BrowseMode,
+    gateway: Jm3Gateway,
+    authCall: AuthCall,
+    onOpenAlbum: (String) -> Unit,
+) {
     var categoryValue by rememberSaveable { mutableStateOf(BrowseCategory.ALL.apiValue) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
@@ -88,9 +94,6 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
     val sessionCache = Jm3Graph.sessionCache
     var state by remember { mutableStateOf(sessionCache.stateOf(SessionListKey.Browse(pageKey))) }
-    var loadingMore by remember { mutableStateOf(false) }
-    // 加载更多失败单独置位，供列表底部给出重试入口
-    var loadMoreFailed by remember { mutableStateOf(false) }
     // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
@@ -106,8 +109,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     // 三者都是可选数据，任一加载失败即隐藏对应区域，不影响主列表。
     var categoryTree by remember { mutableStateOf<CategoryTree?>(null) }
     var hotTags by remember { mutableStateOf<List<String>>(emptyList()) }
-    var weeklyPage by remember { mutableStateOf<SearchPage?>(null) }
-    var weeklyLoadingMore by remember { mutableStateOf(false) }
+    var weeklyFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
     // 子分类/标签点击后的检索词；非空时页面切换为标签结果，返回即恢复分类浏览。
     var tagKeyword by remember { mutableStateOf<String?>(null) }
     var showMoreSheet by remember { mutableStateOf(false) }
@@ -143,10 +145,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         // 下拉刷新时保留当前列表，避免刷新指示器下方整屏空白
         if (!byPull) publish(key, ListState.Loading)
         scope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { ListState.Loaded(gateway.browse(filter(), 1)) }
-                    .getOrElse { ListState.Failed(it.message ?: "加载失败") }
-            }
+            val next = authCall.call { gateway.browse(filter(), 1) }.asListState("加载失败")
             if (token != requestToken) return@launch
             publish(key, next)
             refreshing = false
@@ -155,21 +154,19 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
 
     fun loadMore() {
         val loaded = state as? ListState.Loaded ?: return
-        if (loadingMore || loaded.page.currentPage >= loaded.page.totalPages) return
-        loadingMore = true
+        val requested = loaded.feed.beginLoadMore()
+        if (requested === loaded.feed) return
         val token = requestToken
+        state = ListState.Loaded(requested)
         scope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { gateway.browse(filter(), loaded.page.currentPage + 1) }.getOrNull()
-            }
-            loadingMore = false
+            val next = authCall.call { gateway.browse(filter(), requested.page + 1) }
             // 加载期间切换了筛选：这批结果属于旧条件，丢弃以免串页
-            if (next != null && token == requestToken) {
-                loadMoreFailed = false
-                publish(pageKey, loaded.copy(page = loaded.page.mergedWith(next)))
-            } else if (token == requestToken) {
-                loadMoreFailed = true
+            if (token != requestToken) return@launch
+            val updated = when (next) {
+                is SessionOutcome.Ok -> requested.appendedBy(next.value)
+                else -> requested.failLoadMore()
             }
+            publish(pageKey, ListState.Loaded(updated))
         }
     }
 
@@ -179,27 +176,25 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
     }
 
     fun loadMoreWeekly() {
-        val loaded = weeklyPage ?: return
-        if (weeklyLoadingMore || loaded.currentPage >= loaded.totalPages) return
-        weeklyLoadingMore = true
+        val requested = weeklyFeed.beginLoadMore()
+        if (requested === weeklyFeed) return
+        weeklyFeed = requested
         scope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { gateway.serialization(loaded.currentPage + 1) }.getOrNull()
-            }
-            weeklyLoadingMore = false
-            if (next != null) weeklyPage = loaded.mergedWith(next)
+            val next = authCall.call { gateway.serialization(requested.page + 1) }
+                .orDegrade<com.jm3.core.model.SearchPage?>(null)
+            weeklyFeed = if (next != null) requested.appendedBy(next) else requested.failLoadMore()
         }
     }
 
-    // 三个增强区块并行加载；失败只隐藏自身。
-    LaunchedEffect(gateway) {
+    // 三个增强区块并行加载；失败或会话失效只隐藏自身，不影响主列表与整屏错误态。
+    LaunchedEffect(gateway, authCall) {
         coroutineScope {
-            val treeRequest = async(Dispatchers.IO) { runCatching { gateway.categoriesList() }.getOrNull() }
-            val tagsRequest = async(Dispatchers.IO) { runCatching { gateway.hotTags() }.getOrDefault(emptyList()) }
-            val weeklyRequest = async(Dispatchers.IO) { runCatching { gateway.serialization(1) }.getOrNull() }
-            categoryTree = treeRequest.await()
-            hotTags = tagsRequest.await()
-            weeklyPage = weeklyRequest.await()
+            val treeRequest = async { authCall.call { gateway.categoriesList() } }
+            val tagsRequest = async { authCall.call { gateway.hotTags() } }
+            val weeklyRequest = async { authCall.call { gateway.serialization(1) } }
+            categoryTree = treeRequest.await().orDegrade<CategoryTree?>(null)
+            hotTags = tagsRequest.await().orDegrade(emptyList())
+            weeklyFeed = weeklyRequest.await().orDegrade<com.jm3.core.model.SearchPage?>(null)?.toFeed() ?: PagedFeed()
         }
     }
 
@@ -209,24 +204,14 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         refresh()
     }
 
-    val loadedNow = state as? ListState.Loaded
-    LaunchedEffect(loadedNow?.page) {
-        if (loadedNow == null) return@LaunchedEffect
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .collect { last ->
-                val page = (state as? ListState.Loaded)?.page ?: return@collect
-                if (last != null && last >= page.items.size - 2) loadMore()
-            }
-    }
-
-    // 榜单瀑布流的触底判定：取两列可见项的最大索引，保留与列表相同的提前两行触发
-    LaunchedEffect(loadedNow?.page, mode) {
-        if (mode != BrowseMode.RANK) return@LaunchedEffect
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.maxOfOrNull { it.index } }
-            .collect { last ->
-                val page = (state as? ListState.Loaded)?.page ?: return@collect
-                if (last != null && last >= page.items.size - 2) loadMore()
-            }
+    // 触底加载：分类页跟逐行列表，榜单页跟两列瀑布流，判据由 PagedFeed 统一给出
+    val browsing = state as? ListState.Loaded
+    if (browsing != null) {
+        if (mode == BrowseMode.RANK) {
+            LoadMoreOnScroll(gridState = gridState, feed = browsing.feed, onLoadMore = ::loadMore)
+        } else {
+            LoadMoreOnScroll(listState = listState, feed = browsing.feed, onLoadMore = ::loadMore)
+        }
     }
 
     GlassScaffold(
@@ -247,7 +232,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                         )
                     }
                     // 连载更新无数据（接口失败或为空）时不展示入口
-                    if (weeklyPage?.items?.isNotEmpty() == true) {
+                    if (weeklyFeed.items.isNotEmpty()) {
                         IconButton(onClick = { showWeeklySheet = true }) {
                             Icon(
                                 imageVector = MiuixIcons.Weeks,
@@ -327,6 +312,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
         if (activeTag != null) {
             TagResultSection(
                 gateway = gateway,
+                authCall = authCall,
                 keyword = activeTag,
                 order = order,
                 onOpenAlbum = onOpenAlbum,
@@ -347,8 +333,6 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                     gridState = gridState,
                     contentPadding = innerPadding,
                     refreshing = refreshing,
-                    loadingMore = loadingMore,
-                    loadMoreFailed = loadMoreFailed,
                     onRetry = ::refresh,
                     onLoadMore = ::loadMore,
                     onOpenAlbum = onOpenAlbum,
@@ -437,9 +421,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                             )
                         }
                         is ListState.Loaded -> searchResultItems(
-                            page = s.page,
-                            loadingMore = loadingMore,
-                            loadMoreFailed = loadMoreFailed,
+                            feed = s.feed,
                             onLoadMore = ::loadMore,
                             onOpenAlbum = onOpenAlbum,
                         )
@@ -469,8 +451,8 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
             title = "每周连载更新",
             onDismissRequest = { showWeeklySheet = false },
         ) {
-            val page = weeklyPage
-            if (page == null || page.items.isEmpty()) {
+            val feed = weeklyFeed
+            if (feed.items.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                     contentAlignment = Alignment.Center,
@@ -479,7 +461,7 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
-                    items(page.items, key = { it.id }) { result ->
+                    items(feed.items, key = { it.id }) { result ->
                         Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                             BasicComponent(
                                 title = result.title,
@@ -496,18 +478,9 @@ fun BrowseScreen(mode: BrowseMode, gateway: Jm3Gateway, onOpenAlbum: (String) ->
                             )
                         }
                     }
-                    if (page.currentPage < page.totalPages) {
+                    if (feed.hasMore) {
                         item(key = "weekly-more") {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (weeklyLoadingMore) {
-                                    InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                                } else {
-                                    TextButton(text = "加载更多", onClick = ::loadMoreWeekly)
-                                }
-                            }
+                            LoadMoreFooter(feed = feed, onLoadMore = ::loadMoreWeekly)
                         }
                     }
                     item(key = "weekly-gap") { Spacer(modifier = Modifier.height(12.dp)) }
@@ -555,6 +528,7 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
 @Composable
 private fun TagResultSection(
     gateway: Jm3Gateway,
+    authCall: AuthCall,
     keyword: String,
     order: BrowseOrder,
     onOpenAlbum: (String) -> Unit,
@@ -562,9 +536,6 @@ private fun TagResultSection(
     contentPadding: PaddingValues = PaddingValues(),
 ) {
     var state by remember(keyword, order) { mutableStateOf<ListState>(ListState.Loading) }
-    var loadingMore by remember(keyword, order) { mutableStateOf(false) }
-    // 加载更多失败单独置位，供列表底部给出重试入口
-    var loadMoreFailed by remember(keyword, order) { mutableStateOf(false) }
     var requestToken by remember(keyword, order) { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -575,10 +546,8 @@ private fun TagResultSection(
         val token = requestToken
         state = ListState.Loading
         scope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { ListState.Loaded(gateway.search(keyword, 1, order, SearchScope.TAG)) }
-                    .getOrElse { ListState.Failed(it.message ?: "加载失败") }
-            }
+            val next = authCall.call { gateway.search(keyword, 1, order, SearchScope.TAG) }
+                .asListState("加载失败")
             if (token != requestToken) return@launch
             state = next
         }
@@ -586,33 +555,26 @@ private fun TagResultSection(
 
     fun loadMore() {
         val loaded = state as? ListState.Loaded ?: return
-        if (loadingMore || loaded.page.currentPage >= loaded.page.totalPages) return
-        loadingMore = true
+        val requested = loaded.feed.beginLoadMore()
+        if (requested === loaded.feed) return
         val token = requestToken
+        state = ListState.Loaded(requested)
         scope.launch {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { gateway.search(keyword, loaded.page.currentPage + 1, order, SearchScope.TAG) }
-                    .getOrNull()
+            val next = authCall.call { gateway.search(keyword, requested.page + 1, order, SearchScope.TAG) }
+            if (token != requestToken) return@launch
+            val updated = when (next) {
+                is SessionOutcome.Ok -> requested.appendedBy(next.value)
+                else -> requested.failLoadMore()
             }
-            loadingMore = false
-            if (next != null && token == requestToken) {
-                loadMoreFailed = false
-                state = loaded.copy(page = loaded.page.mergedWith(next))
-            } else if (token == requestToken) {
-                loadMoreFailed = true
-            }
+            state = ListState.Loaded(updated)
         }
     }
 
     LaunchedEffect(keyword, order) { load() }
 
-    LaunchedEffect((state as? ListState.Loaded)?.page) {
-        if (state !is ListState.Loaded) return@LaunchedEffect
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .collect { last ->
-                val page = (state as? ListState.Loaded)?.page ?: return@collect
-                if (last != null && last >= page.items.size - 2) loadMore()
-            }
+    val loaded = state as? ListState.Loaded
+    if (loaded != null) {
+        LoadMoreOnScroll(listState = listState, feed = loaded.feed, onLoadMore = ::loadMore)
     }
 
     Column(modifier = modifier) {
@@ -638,9 +600,7 @@ private fun TagResultSection(
                     )
                 }
                 is ListState.Loaded -> searchResultItems(
-                    page = s.page,
-                    loadingMore = loadingMore,
-                    loadMoreFailed = loadMoreFailed,
+                    feed = s.feed,
                     onLoadMore = ::loadMore,
                     onOpenAlbum = onOpenAlbum,
                 )
@@ -682,8 +642,6 @@ private fun RankResultGrid(
     gridState: LazyStaggeredGridState,
     contentPadding: PaddingValues,
     refreshing: Boolean,
-    loadingMore: Boolean,
-    loadMoreFailed: Boolean,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
@@ -719,9 +677,7 @@ private fun RankResultGrid(
                 )
             }
             is ListState.Loaded -> rankResultGrid(
-                page = state.page,
-                loadingMore = loadingMore,
-                loadMoreFailed = loadMoreFailed,
+                feed = state.feed,
                 onLoadMore = onLoadMore,
                 onOpenAlbum = onOpenAlbum,
             )

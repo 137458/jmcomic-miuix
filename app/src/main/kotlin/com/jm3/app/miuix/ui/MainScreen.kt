@@ -34,14 +34,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.glass.IosLiquidGlassNavigationBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.core.Jm3Gateway
-import com.jm3.core.download.DownloadStatus
+import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.session.AccountManager
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.UnreadBadge
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -87,6 +89,9 @@ private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
 fun MainScreen(
     gateway: Jm3Gateway,
     account: AccountManager,
+    downloadManager: DownloadManager,
+    unreadBadge: UnreadBadge,
+    authCall: AuthCall,
     snackbarHostState: SnackbarHostState,
     onOpenAlbum: (String) -> Unit,
     onOpenLogin: () -> Unit,
@@ -106,16 +111,14 @@ fun MainScreen(
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     // 启动即恢复下载队列（中断任务收敛为暂停态），底栏角标才能反映在途任务
-    LaunchedEffect(Unit) { Jm3Graph.downloadManager.ensureStarted() }
-    // 下载队列进度在“我的”页可见，底栏用角标提示在途任务
-    val downloads by Jm3Graph.downloadManager.queue.updates.collectAsState()
-    val activeDownloads = downloads.values.count {
-        it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.QUEUED
-    }
+    LaunchedEffect(Unit) { downloadManager.ensureStarted() }
+    // 下载队列进度在“我的”页可见，底栏用角标提示在途任务；在途判定只由 :core 的状态语义给出
+    val downloads by downloadManager.queue.updates.collectAsState()
+    val activeDownloads = downloads.activeDownloadCount()
     val user by account.user.collectAsState()
-    val unread by Jm3Graph.unreadNotifications.collectAsState()
+    val unread by unreadBadge.count.collectAsState()
     // 登录态变化后重算未读；登出时 refresh 内部会归零
-    LaunchedEffect(user?.uid) { Jm3Graph.refreshUnreadNotifications() }
+    LaunchedEffect(user?.uid) { unreadBadge.refresh(user != null) }
 
     // 未读优先显示数字；无未读时用圆点提示在途下载
     fun badgeFor(item: MainTab): (@Composable () -> Unit)? = when {
@@ -220,21 +223,25 @@ fun MainScreen(
                                         when (currentTab) {
                                             0 -> HomeScreen(
                                                 gateway = gateway,
+                                                authCall = authCall,
                                                 onOpenAlbum = onOpenAlbum,
                                                 onOpenWeek = onOpenWeek,
                                             )
                                             1 -> BrowseScreen(
                                                 mode = BrowseMode.CATEGORY,
                                                 gateway = gateway,
+                                                authCall = authCall,
                                                 onOpenAlbum = onOpenAlbum,
                                             )
                                             2 -> BrowseScreen(
                                                 mode = BrowseMode.RANK,
                                                 gateway = gateway,
+                                                authCall = authCall,
                                                 onOpenAlbum = onOpenAlbum,
                                             )
                                             else -> MineScreen(
                                                 account = account,
+                                                authCall = authCall,
                                                 snackbarHostState = snackbarHostState,
                                                 onOpenLogin = onOpenLogin,
                                                 onOpenFavorites = onOpenFavorites,

@@ -47,7 +47,8 @@ import top.yukonga.miuix.kmp.blur.highlight.Highlight
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 
 /**
- * Layer 1：底层外壳。记录尺寸、按压缩放、拖拽面板位移、阴影，以及三态底衬降级。
+ * Layer 1：底层外壳。记录尺寸、按压缩放、拖拽面板位移、阴影；
+ * 底衬本身交给 [glassSurface] 的角色表与降级矩阵，这里不再自写三态。
  */
 @Composable
 internal fun BottomBarBaseLayer(
@@ -56,7 +57,7 @@ internal fun BottomBarBaseLayer(
     panelOffsetState: State<Float>,
     isDark: Boolean,
     isLiquidGlassMode: Boolean,
-    isBlurMode: Boolean,
+    mode: FloatingBottomBarMode,
     containerColor: Color,
     backdrop: Backdrop?,
     dampedDragAnimation: DampedDragAnimation,
@@ -85,42 +86,20 @@ internal fun BottomBarBaseLayer(
                     onClick = {},
                 )
                 .then(
-                    if (backdrop != null && isLiquidGlassMode) {
-                        Modifier.drawBackdrop(
-                            backdrop = backdrop,
-                            shape = { pillShape },
-                            effects = {
-                                padding = maxOf(padding, 40.dp.toPx())
-                                vibrancy()
-                                blur(4.dp.toPx(), 4.dp.toPx())
-                                lens(
-                                    refractionHeight = 24.dp.toPx(),
-                                    refractionAmount = 24.dp.toPx(),
-                                )
-                            },
-                            highlight = { baseHighlight.value.copy(alpha = 0.75f) },
-                            layerBlock = {
-                                val width = size.width.coerceAtLeast(1f)
-                                val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDragAnimation.pressProgress)
-                                scaleX = s
-                                scaleY = s
-                            },
-                            onDrawSurface = { drawRect(containerColor) },
-                        )
-                    } else if (backdrop != null && isBlurMode) {
-                        Modifier.drawBackdrop(
-                            backdrop = backdrop,
-                            shape = { pillShape },
-                            effects = {
-                                blur(25.dp.toPx(), 25.dp.toPx())
-                            },
-                            onDrawSurface = {
-                                drawRect(containerColor.copy(alpha = 0.65f))
-                            },
-                        )
-                    } else {
-                        Modifier.background(containerColor, pillShape)
-                    },
+                    glassSurface(
+                        backdrop = backdrop,
+                        role = GlassRole.BottomBar,
+                        tint = containerColor,
+                        shape = pillShape,
+                        requested = mode,
+                        highlight = { baseHighlight.value },
+                        layerBlock = {
+                            val width = size.width.coerceAtLeast(1f)
+                            val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDragAnimation.pressProgress)
+                            scaleX = s
+                            scaleY = s
+                        },
+                    ),
                 )
                 .then(if (isLiquidGlassMode && interactiveHighlight != null) interactiveHighlight.modifier else Modifier)
                 .height(64.dp)

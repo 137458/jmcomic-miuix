@@ -2,6 +2,8 @@ package com.jm3.app.miuix.data.download
 
 import com.jm3.core.download.DownloadStore
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * 文件落盘实现：{root}/{photoId}/{index:05}.jpg，页号从 1 起。
@@ -19,7 +21,11 @@ class FileDownloadStore(private val root: File) : DownloadStore {
         val target = file(photoId, index)
         val tmp = File(target.parentFile, target.name + ".tmp")
         tmp.outputStream().use { it.write(bytes) }
-        if (!tmp.renameTo(target)) {
+        // 覆盖写必须真替换：File.renameTo 在 Windows 上遇到已存在目标会返回 false。
+        val replaced = runCatching {
+            Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }.isSuccess
+        if (!replaced) {
             tmp.delete()
             error("下载页落盘失败：${target.path}")
         }

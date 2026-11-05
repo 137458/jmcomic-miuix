@@ -54,9 +54,9 @@ data class ReleaseInfo(
     /** Release 挂载的文件列表；接口未返回 assets 或返回的不是数组时为空列表 */
     val assets: List<ReleaseAsset> = emptyList(),
 ) {
-    /** 去掉 v 前缀的展示版本号：v1.1.0 → 1.1.0 */
+    /** 展示版本号，归一规则见 [VersionText]：v1.1.0 → 1.1.0，构建元数据不进展示 */
     val version: String
-        get() = tagName.trim().removePrefix("v").removePrefix("V")
+        get() = VersionText.normalized(tagName)
 
     /** 发布时间只取日期部分：2026-10-31T06:12:34Z → 2026-10-31；非 ISO 形态原样返回 */
     val publishedDate: String

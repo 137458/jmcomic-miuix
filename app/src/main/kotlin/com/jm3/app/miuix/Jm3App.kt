@@ -19,24 +19,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-import androidx.room.Room
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.request.crossfade
-import com.jm3.app.miuix.data.FileDomainPoolCache
-import com.jm3.app.miuix.data.KeystoreCredentialCipher
-import com.jm3.app.miuix.data.SessionStore
-import com.jm3.app.miuix.data.SettingsStore
+import com.jm3.app.miuix.data.ApiDomain
+import com.jm3.app.miuix.data.DownloadDomain
+import com.jm3.app.miuix.data.LibraryDomain
+import com.jm3.app.miuix.data.SessionDomain
+import com.jm3.app.miuix.data.SettingsDomain
+import com.jm3.app.miuix.data.UpdateDomain
 import com.jm3.app.miuix.data.download.DownloadManager
-import com.jm3.core.download.DownloadLedger
-import com.jm3.core.download.DownloadLedgerStore
-import com.jm3.app.miuix.data.download.FileDownloadStore
-import com.jm3.app.miuix.data.download.GatewayPageFetcher
-import com.jm3.app.miuix.data.download.GatewayTaskResolver
-import com.jm3.app.miuix.data.history.HistoryDb
-import com.jm3.app.miuix.data.history.MIGRATION_1_2
-import com.jm3.app.miuix.data.history.RoomDownloadLedgerStore
-import com.jm3.app.miuix.data.history.RoomHistoryRepository
 import com.jm3.app.miuix.ui.AlbumDetailScreen
 import com.jm3.app.miuix.ui.AlbumHeroHost
 import com.jm3.app.miuix.ui.AlbumHeroOverlay
@@ -66,29 +58,21 @@ import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
 import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.update.UpdateDownloader
-import com.jm3.core.CredentialStorage
-import com.jm3.core.EncryptedCredentialStore
-import com.jm3.core.GatewayFactory
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.Jm3Log
-import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
 import com.jm3.core.session.AccountManager
-import com.jm3.core.settings.Domains
+import com.jm3.core.session.AuthCall
 import com.jm3.core.settings.SettingsRepository
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.model.SearchScope
-import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
@@ -102,151 +86,134 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 
-/** 轻量依赖图：协议网关/账号/设置/阅读历史/本地书架全应用单例。 */
+/**
+ * 应用组合根：只做装配与进程级作用域，业务依赖按域收在 holder 里。
+ *
+ * 深化之前这里是 14 个成员各写一遍构造的上帝对象：改一条依赖要在大文件里找对位置，
+ * 读一个概念要在一屏内的十几处构造之间跳。现在新增一个依赖只改它所属 domain 的一行，
+ * 新增一个域只在 [init] 里多一行装配；组合根自己只剩「谁先于谁装配」这一条不变量。
+ */
 object Jm3Graph {
 
-    @Volatile
-    private var contextRef: Context? = null
+    /** 进程级作用域：随进程存活，界面与服务都往这里挂长期协程。 */
+    val appScope: CoroutineScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
 
-    /** 线路切换后的网关实例；组合内读取可感知切换并重组。 */
-    private var gatewayOverride by mutableStateOf<Jm3Gateway?>(null)
+    /** 线路域：当前网关与线路切换。 */
+    lateinit var api: ApiDomain
+        private set
 
-    /** 当前生效网关：线路覆盖优先，否则库默认解析。 */
-    val gateway: Jm3Gateway
-        get() = gatewayOverride ?: defaultGateway
+    /** 设置域：设置仓库与界面态。 */
+    lateinit var preferences: SettingsDomain
+        private set
 
-    /** 上次刷新落盘的线路池：网关装配在首屏请求之前同步执行，所以启动时先读一次。 */
-    @Volatile
-    private var cachedDomainPool: List<String> = emptyList()
+    /** 会话域：账号、带闸门调用入口、未读角标。 */
+    lateinit var session: SessionDomain
+        private set
 
-    private val domainPoolCache: FileDomainPoolCache by lazy {
-        FileDomainPoolCache(File(appContext().filesDir, "api_domain_pool.txt"))
-    }
+    /** 本地库域：阅读历史与下载台账共用的 Room 库。 */
+    lateinit var library: LibraryDomain
+        private set
 
-    private val defaultGateway: Jm3Gateway by lazy {
-        GatewayFactory.create(emptyList(), cachedDomainPool, ::rememberDomainPool)
-    }
+    /** 下载域：页文件存储、队列与台账门面。 */
+    lateinit var downloads: DownloadDomain
+        private set
 
-    /** 刷新出的线路池落盘，下次冷启动直接预置；写盘失败只影响下次启动的预热。 */
-    private fun rememberDomainPool(pool: List<String>) {
-        if (pool.isEmpty()) return
-        cachedDomainPool = pool
-        appScope.launch { runCatching { domainPoolCache.write(pool) } }
-    }
-
-    val sessionStore: SessionStore by lazy { SessionStore(appContext()) }
-
-    /** 设置存储的具体类型要露给凭据密文用：两者同库（jm3_settings），不另开 SharedPreferences。 */
-    private val settingsStore: SettingsStore by lazy { SettingsStore(appContext()) }
-
-    val settings: SettingsRepository
-        get() = settingsStore
-
-    /** 登录凭据：加密交给 Keystore，密文与设置同库落盘。 */
-    val credentialStore: CredentialStorage by lazy {
-        EncryptedCredentialStore(settingsStore, KeystoreCredentialCipher())
-    }
-
-    val account: AccountManager by lazy { AccountManager({ gateway }, sessionStore, credentialStore) }
-
-    /** 信箱未读数：登录后刷新，供底栏「我的」角标与我的页入口共用。 */
-    val unreadNotifications = MutableStateFlow(0)
-
-    /** 列表分页模式：设置页写入后各列表页立即生效（跨 tab 无需重建）。 */
-    var paginationMode by mutableStateOf(PaginationMode.INFINITE)
+    /** 更新域：应用内更新的下载器与安装动作（状态跟随进程，离开更新页后下载继续）。 */
+    lateinit var updates: UpdateDomain
+        private set
 
     /** 会话级列表缓存：首页发现流/搜索结果与浏览页结果跨路由保存，避免回来时列表被清空、滚动位置落不回去。 */
     internal val sessionCache: SessionCache by lazy { SessionCache() }
 
-    /** 重新统计未读通知；未登录归零，请求失败保留上次结果避免角标闪烁。 */
-    fun refreshUnreadNotifications() {
-        if (account.user.value == null) {
-            unreadNotifications.value = 0
-            return
-        }
-        appScope.launch {
-            runCatching { gateway.notifications().items.count { !it.read } }
-                .onSuccess { unreadNotifications.value = it }
-        }
-    }
-
-    /** 历史与下载共用一个 Room 库（jm3.db），v2 起含 downloads 表。 */
-    private val db: HistoryDb by lazy {
-        Room.databaseBuilder(appContext(), HistoryDb::class.java, "jm3.db")
-            .addMigrations(MIGRATION_1_2)
-            .build()
-    }
-
-    val history: HistoryRepository by lazy { RoomHistoryRepository(db.historyDao()) }
-
-    val downloadStore: DownloadLedgerStore by lazy { RoomDownloadLedgerStore(db.downloadDao()) }
-
-    /** 下载页文件存储：filesDir/downloads/{photoId}/{index:05}.jpg。 */
-    val downloadFiles: DownloadStore by lazy {
-        FileDownloadStore(File(appContext().filesDir, "downloads"))
-    }
-
-    val appScope: CoroutineScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
-
-    /** 应用内更新下载器：状态跟随进程，离开更新页后下载继续（协程跑在 [appScope] 上）。 */
-    val updateDownloader: UpdateDownloader by lazy { UpdateDownloader(appScope) }
-
-    val downloadManager: DownloadManager by lazy {
-        val pageSource = GatewayPageFetcher { gateway }
-        DownloadManager(
-            queue = DownloadQueue(
-                fetcher = pageSource,
-                store = downloadFiles,
-                resolver = GatewayTaskResolver { gateway },
-            ),
-            fileStore = downloadFiles,
-            ledger = DownloadLedger(store = downloadStore, pagesJsonOf = pageSource::pagesJsonOrNull),
-            appScope = appScope,
-        )
-    }
-
-    /** 已生效的自定义线路（空表 = 库默认解析）。重建网关等于让库重跑一遍初始化，线路没变就必须跳过。 */
     @Volatile
-    private var appliedDomains: List<String> = emptyList()
+    private var initialized = false
 
-    /** 线路切换串行化：启动恢复与设置页保存可能并发调用，重建网关不能交叉执行。 */
-    private val domainSwitchLock = Mutex()
-
-    /** 应用自定义 API 线路：重建网关并把已持久化会话迁移过去；空表回库默认解析。 */
-    suspend fun applyDomains(apiDomains: List<String>) {
-        var previous: Jm3Gateway? = null
-        val switched = domainSwitchLock.withLock {
-            val requested = Domains.normalize(apiDomains)
-            // 启动时默认就是空表且未切过线路：直接沿用 defaultGateway，不再多建一个网关。
-            if (requested == appliedDomains) return@withLock false
-            // 旧网关的 HTTP 客户端持有连接池，切线路后不再可达：迁移完会话即主动释放。
-            previous = gatewayOverride
-            appliedDomains = requested
-            gatewayOverride =
-                if (requested.isEmpty()) null
-                else GatewayFactory.create(requested, cachedDomainPool, ::rememberDomainPool)
-            true
-        }
-        if (!switched) return
-        // 会话注入要走网络与写盘，放到锁外：锁只保护网关实例本身的重建，
-        // 否则一次线路切换会把并发的其它切换全堵在网络超时上。
-        // 会话注入只由 AccountManager 负责：切到哪个网关（含切回默认线路）它都会把 Cookie 补进去。
-        account.restore()
-        previous?.let { old -> runCatching { old.close() } }
-    }
-
-    private fun appContext(): Context =
-        contextRef ?: error("Jm3Graph.init(context) 未初始化")
-
+    /**
+     * 装配顺序即启动顺序：线路池先落进 [ApiDomain]（网关构造时读它），
+     * 会话域拿设置存储当凭据密文库，下载域拿线路域当页源、拿本地库当台账。
+     *
+     * 幂等：Activity 重建会再调一次，重复装配会换掉正在被 collect 的实例。
+     */
     fun init(context: Context) {
-        contextRef = context.applicationContext
+        if (initialized) return
+        initialized = true
+        val app = context.applicationContext
         // :core 不依赖 Android，事实日志出口只能由这里接上平台日志；没接时 :core 侧静默丢弃。
         Jm3Log.sink = { tag, message, error ->
             if (error == null) Log.w(tag, message) else Log.w(tag, message, error)
         }
+        api = ApiDomain(app, appScope)
         // 网关装配是同步的且早于启动协程，线路池必须在这里就读出来（纯文本，一次几十字节）。
-        cachedDomainPool = domainPoolCache.read()
+        api.warmUp()
+        preferences = SettingsDomain(app)
+        session = SessionDomain(app, preferences.store, api, appScope)
+        library = LibraryDomain(app)
+        downloads = DownloadDomain(app, api, library, appScope)
+        updates = UpdateDomain(app, appScope)
     }
+
+    // ---- 迁移期转接：屏幕/服务还按旧名字读，迁到 holder 后整块删除（task-8 / task-9）。----
+
+    /** 转接：[ApiDomain.gateway]。 */
+    @Deprecated("改用 api.gateway")
+    val gateway: Jm3Gateway
+        get() = api.gateway
+
+    /** 转接：[SettingsDomain.repository]。 */
+    @Deprecated("改用 preferences.repository")
+    val settings: SettingsRepository
+        get() = preferences.repository
+
+    /** 转接：[SessionDomain.account]。 */
+    @Deprecated("改用 session.account")
+    val account: AccountManager
+        get() = session.account
+
+    /** 转接：[SessionDomain.authCall]。 */
+    @Deprecated("改用 session.authCall")
+    val authCall: AuthCall
+        get() = session.authCall
+
+    /** 转接：[SessionDomain.unread]。 */
+    @Deprecated("改用 session.unread.count")
+    val unreadNotifications: StateFlow<Int>
+        get() = session.unread.count
+
+    /** 转接：[SettingsDomain.paginationMode]。 */
+    @Deprecated("改用 preferences.paginationMode")
+    var paginationMode: PaginationMode
+        get() = preferences.paginationMode
+        set(value) {
+            preferences.paginationMode = value
+        }
+
+    /** 转接：[LibraryDomain.history]。 */
+    @Deprecated("改用 library.history")
+    val history: HistoryRepository
+        get() = library.history
+
+    /** 转接：[DownloadDomain.files]。 */
+    @Deprecated("改用 downloads.files")
+    val downloadFiles: DownloadStore
+        get() = downloads.files
+
+    /** 转接：[DownloadDomain.manager]。 */
+    @Deprecated("改用 downloads.manager")
+    val downloadManager: DownloadManager
+        get() = downloads.manager
+
+    /** 转接：[UpdateDomain.downloader]。 */
+    @Deprecated("改用 updates.downloader")
+    val updateDownloader: UpdateDownloader
+        get() = updates.downloader
+
+    /** 转接：[SessionDomain.applyDomains]。 */
+    @Deprecated("改用 session.applyDomains")
+    suspend fun applyDomains(apiDomains: List<String>) = session.applyDomains(apiDomains)
+
+    /** 转接：[SessionDomain.scheduleRefreshUnread]。 */
+    @Deprecated("改用 session.scheduleRefreshUnread")
+    fun refreshUnreadNotifications() = session.scheduleRefreshUnread()
 }
 
 @Serializable
@@ -444,8 +411,11 @@ fun Jm3App() {
                 ) {
                     entry<Route.Main> {
                         MainScreen(
-                            gateway = Jm3Graph.gateway,
-                            account = Jm3Graph.account,
+                            gateway = Jm3Graph.api.gateway,
+                            account = Jm3Graph.session.account,
+                            downloadManager = Jm3Graph.downloads.manager,
+                            unreadBadge = Jm3Graph.session.unread,
+                            authCall = Jm3Graph.session.authCall,
                             snackbarHostState = snackbarHostState,
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             onOpenLogin = { backStack.add(Route.Login) },
@@ -471,6 +441,7 @@ fun Jm3App() {
                         FavoritesScreen(
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -483,6 +454,8 @@ fun Jm3App() {
                     }
                     entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         ShelfScreen(
+                            gateway = Jm3Graph.gateway,
+                            authCall = Jm3Graph.session.authCall,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
                         )
@@ -499,6 +472,8 @@ fun Jm3App() {
                                 dynamicColor = enabled
                                 scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
                             },
+                            gateway = Jm3Graph.gateway,
+                            authCall = Jm3Graph.session.authCall,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenUpdate = { backStack.add(Route.Update) },
                             snackbarHostState = snackbarHostState,
@@ -511,6 +486,8 @@ fun Jm3App() {
                         WeekScreen(
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            authCall = Jm3Graph.session.authCall,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.Notifications>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -518,6 +495,7 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -526,6 +504,7 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -533,12 +512,14 @@ fun Jm3App() {
                         TasksScreen(
                             onBack = { backStack.removeLastOrNull() },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.Profile>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         ProfileScreen(
                             onBack = { backStack.removeLastOrNull() },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.WatchHistory>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -546,6 +527,8 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.Forum>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -554,6 +537,7 @@ fun Jm3App() {
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.AlbumDetail>(
@@ -590,6 +574,7 @@ fun Jm3App() {
                             onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.NovelDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
@@ -603,6 +588,7 @@ fun Jm3App() {
                             onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.NovelReader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
@@ -612,6 +598,7 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.Library>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -620,6 +607,8 @@ fun Jm3App() {
                             onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
                             onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.Creator>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
@@ -629,6 +618,8 @@ fun Jm3App() {
                             onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
                             onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.CreatorWork>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
@@ -637,12 +628,16 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
                             snackbarHostState = snackbarHostState,
+                            authCall = Jm3Graph.session.authCall,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.Search>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                         SearchScreen(
                             query = route.query,
                             scope = route.scope,
+                            gateway = Jm3Graph.gateway,
+                            authCall = Jm3Graph.session.authCall,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                         )

@@ -9,231 +9,67 @@ enum class PaginationMode(val label: String) {
     CLICK("点击切换分页"),
 }
 
-/** 应用设置持久化：主题模式与自定义 API 线路。缺省值：主题 SYSTEM、线路空表（库默认解析）。 */
-interface SettingsRepository {
-    suspend fun themeMode(): ThemeMode
-
-    suspend fun setThemeMode(mode: ThemeMode)
-
-    /** 已归一化的自定义 API 线路域名；空表 = 库默认自动解析。 */
-    suspend fun apiDomains(): List<String>
-
-    suspend fun setApiDomains(domains: List<String>)
-
-    /**
-     * 动态取色（Material You）开关。默认实现返回 false，
-     * 保证既有实现（app 的 SettingsStore）在 UI 接线前仍可编译；接线后由实现覆盖。
-     */
-    suspend fun dynamicColor(): Boolean = false
-
-    /** 默认空实现，理由同 [dynamicColor]。 */
-    suspend fun setDynamicColor(enabled: Boolean) {}
-
-    /**
-     * 通知权限是否已询问过（Android 13+ 首次进入时请求一次，拒绝后不再打扰）。
-     * 默认返回 false：未覆盖的实现按「还没问过」处理，宁可多问一次也不漏掉首次引导。
-     */
-    suspend fun notificationPermissionAsked(): Boolean = false
-
-    /** 默认空实现，理由同 [notificationPermissionAsked]。 */
-    suspend fun markNotificationPermissionAsked() {}
-
-    /** 列表分页模式，默认无限滚动。 */
-    suspend fun paginationMode(): PaginationMode = PaginationMode.INFINITE
-
-    suspend fun setPaginationMode(mode: PaginationMode) {}
-
-    /** 搜索历史，最近一次在前，上限 [SEARCH_HISTORY_LIMIT]。 */
-    suspend fun searchHistory(): List<String> = emptyList()
-
-    /** 记录一次搜索；空词忽略，重复词前移并截断。 */
-    suspend fun addSearchHistory(query: String) {}
-
-    suspend fun removeSearchHistory(query: String) {}
-
-    suspend fun clearSearchHistory() {}
-
-    /** 阅读器左右翻页模式（原版「左右阅读/直向阅读」），默认直向。 */
-    suspend fun readerHorizontal(): Boolean = false
-
-    suspend fun setReaderHorizontal(enabled: Boolean) {}
-
-    /** 音量键翻页提示是否已展示过（原版只提示一次）。 */
-    suspend fun volumeKeyHintShown(): Boolean = false
-
-    suspend fun markVolumeKeyHintShown() {}
-
-    /** 末页追更引导的静默截止时间（epoch 毫秒，0 表示未静默）。 */
-    suspend fun trackPromptMuteUntil(): Long = 0L
-
-    suspend fun setTrackPromptMuteUntil(epochMillis: Long) {}
-
-    /** 小说阅读字号（sp），默认 [DEFAULT_NOVEL_FONT_SIZE]。 */
-    suspend fun novelFontSize(): Int = DEFAULT_NOVEL_FONT_SIZE
-
-    suspend fun setNovelFontSize(sizeSp: Int) {}
-
-    /** 小说正文语言：tw（繁体）/ cn（简体）。 */
-    suspend fun novelLang(): String = DEFAULT_NOVEL_LANG
-
-    suspend fun setNovelLang(lang: String) {}
-
-    /** 某部小说最后阅读的章节 id（原版 novelRead 进度）；未读过为 null。 */
-    suspend fun novelLastChapter(novelId: String): String? = null
-
-    suspend fun setNovelLastChapter(novelId: String, chapterId: String) {}
-
-    /** 启动时是否自动检查更新，默认开启。 */
-    suspend fun autoCheckUpdate(): Boolean = true
-
-    suspend fun setAutoCheckUpdate(enabled: Boolean) {}
-
-    /** 用户主动忽略的版本号（不含 v 前缀）；null 表示未忽略任何版本。 */
-    suspend fun ignoredUpdateVersion(): String? = null
-
-    suspend fun setIgnoredUpdateVersion(version: String?) {}
-
-    /** 启动期已弹过提示的版本号；用于同一版本在新会话内不重复打扰。 */
-    suspend fun promptedUpdateVersion(): String? = null
-
-    suspend fun setPromptedUpdateVersion(version: String?) {}
+/**
+ * 应用设置的完整能力面。
+ *
+ * 这是一个组合接口，本身不承载任何行为：默认值、归一与约束都在各能力接口的默认实现里。
+ * 调用方只依赖自己需要的那一块（在 function 参数上标注 [NovelSettings] 之类），
+ * 装配处才需要完整的 [SettingsRepository]。
+ */
+interface SettingsRepository :
+    AppearanceSettings,
+    PaginationSettings,
+    DomainSettings,
+    SearchHistorySettings,
+    ReaderSettings,
+    NovelSettings,
+    UpdateSettings,
+    NotificationPermissionSettings {
 
     companion object {
-        const val SEARCH_HISTORY_LIMIT = 10
+        const val SEARCH_HISTORY_LIMIT = SearchHistory.LIMIT
 
-        const val NOVEL_FONT_SIZE_MIN = 14
-        const val NOVEL_FONT_SIZE_MAX = 26
-        const val DEFAULT_NOVEL_FONT_SIZE = 18
-        const val DEFAULT_NOVEL_LANG = "tw"
+        const val NOVEL_FONT_SIZE_MIN = NovelPreferences.MIN_FONT_SIZE
+        const val NOVEL_FONT_SIZE_MAX = NovelPreferences.MAX_FONT_SIZE
+        const val DEFAULT_NOVEL_FONT_SIZE = NovelPreferences.DEFAULT_FONT_SIZE
+        const val DEFAULT_NOVEL_LANG = NovelPreferences.DEFAULT_LANG
     }
 }
 
-/** 纯内存实现，供测试与缺省装配。 */
+/**
+ * 纯内存实现，供测试与缺省装配。
+ *
+ * 只实现键值原语：所有设置语义都来自能力接口的默认方法，因此它与 DataStore Adapter
+ * 走的是同一份判定 —— 测试里验证过的行为在真机上同样成立。
+ */
 class InMemorySettingsRepository : SettingsRepository {
 
-    private var mode: ThemeMode = ThemeMode.SYSTEM
-    private var domains: List<String> = emptyList()
-    private var dynamic = false
-    private var notificationAsked = false
-    private var pagination = PaginationMode.INFINITE
-    private val searchHistory = mutableListOf<String>()
-    private var readerHorizontal = false
-    private var volumeHintShown = false
-    private var trackPromptMuteUntil = 0L
-    private var novelFontSize = SettingsRepository.DEFAULT_NOVEL_FONT_SIZE
-    private var novelLang = SettingsRepository.DEFAULT_NOVEL_LANG
-    private val novelProgress = mutableMapOf<String, String>()
-    private var autoCheckUpdate = true
-    private var ignoredUpdateVersion: String? = null
-    private var promptedUpdateVersion: String? = null
+    private val values = mutableMapOf<String, Any>()
 
-    override suspend fun themeMode(): ThemeMode = mode
+    override suspend fun readString(key: String): String? = synchronized(values) { values[key] as? String }
 
-    override suspend fun setThemeMode(mode: ThemeMode) {
-        this.mode = mode
+    override suspend fun readBoolean(key: String): Boolean? = synchronized(values) { values[key] as? Boolean }
+
+    override suspend fun readInt(key: String): Int? = synchronized(values) { values[key] as? Int }
+
+    override suspend fun readLong(key: String): Long? = synchronized(values) { values[key] as? Long }
+
+    override suspend fun writeBoolean(key: String, value: Boolean) {
+        synchronized(values) { values[key] = value }
     }
 
-    override suspend fun apiDomains(): List<String> = domains
-
-    override suspend fun setApiDomains(domains: List<String>) {
-        this.domains = domains
+    override suspend fun writeInt(key: String, value: Int) {
+        synchronized(values) { values[key] = value }
     }
 
-    override suspend fun dynamicColor(): Boolean = dynamic
-
-    override suspend fun setDynamicColor(enabled: Boolean) {
-        this.dynamic = enabled
+    override suspend fun writeLong(key: String, value: Long) {
+        synchronized(values) { values[key] = value }
     }
 
-    override suspend fun notificationPermissionAsked(): Boolean = notificationAsked
-
-    override suspend fun markNotificationPermissionAsked() {
-        notificationAsked = true
-    }
-
-    override suspend fun paginationMode(): PaginationMode = pagination
-
-    override suspend fun setPaginationMode(mode: PaginationMode) {
-        pagination = mode
-    }
-
-    override suspend fun searchHistory(): List<String> = searchHistory.toList()
-
-    override suspend fun addSearchHistory(query: String) {
-        val normalized = query.trim()
-        if (normalized.isEmpty()) return
-        searchHistory.remove(normalized)
-        searchHistory.add(0, normalized)
-        while (searchHistory.size > SettingsRepository.SEARCH_HISTORY_LIMIT) {
-            searchHistory.removeAt(searchHistory.lastIndex)
+    override suspend fun updateString(key: String, transform: (String?) -> String?) {
+        synchronized(values) {
+            val next = transform(values[key] as? String)
+            if (next == null) values.remove(key) else values[key] = next
         }
     }
-
-    override suspend fun removeSearchHistory(query: String) {
-        searchHistory.remove(query)
-    }
-
-    override suspend fun clearSearchHistory() {
-        searchHistory.clear()
-    }
-
-    override suspend fun readerHorizontal(): Boolean = readerHorizontal
-
-    override suspend fun setReaderHorizontal(enabled: Boolean) {
-        readerHorizontal = enabled
-    }
-
-    override suspend fun volumeKeyHintShown(): Boolean = volumeHintShown
-
-    override suspend fun markVolumeKeyHintShown() {
-        volumeHintShown = true
-    }
-
-    override suspend fun trackPromptMuteUntil(): Long = trackPromptMuteUntil
-
-    override suspend fun setTrackPromptMuteUntil(epochMillis: Long) {
-        trackPromptMuteUntil = epochMillis
-    }
-
-    override suspend fun novelFontSize(): Int = novelFontSize
-
-    override suspend fun setNovelFontSize(sizeSp: Int) {
-        novelFontSize = sizeSp.coerceIn(
-            SettingsRepository.NOVEL_FONT_SIZE_MIN,
-            SettingsRepository.NOVEL_FONT_SIZE_MAX,
-        )
-    }
-
-    override suspend fun novelLang(): String = novelLang
-
-    override suspend fun setNovelLang(lang: String) {
-        novelLang = if (lang == "cn") "cn" else "tw"
-    }
-
-    override suspend fun novelLastChapter(novelId: String): String? = novelProgress[novelId]
-
-    override suspend fun setNovelLastChapter(novelId: String, chapterId: String) {
-        novelProgress[novelId] = chapterId
-    }
-
-    override suspend fun autoCheckUpdate(): Boolean = autoCheckUpdate
-
-    override suspend fun setAutoCheckUpdate(enabled: Boolean) {
-        autoCheckUpdate = enabled
-    }
-
-    override suspend fun ignoredUpdateVersion(): String? = ignoredUpdateVersion
-
-    override suspend fun setIgnoredUpdateVersion(version: String?) {
-        ignoredUpdateVersion = version.normalizedVersionOrNull()
-    }
-
-    override suspend fun promptedUpdateVersion(): String? = promptedUpdateVersion
-
-    override suspend fun setPromptedUpdateVersion(version: String?) {
-        promptedUpdateVersion = version.normalizedVersionOrNull()
-    }
 }
-
-/** 空白版本串按"未设置"处理，与 [com.jm3.core.update.UpdatePrompt] 的判定保持一致。 */
-private fun String?.normalizedVersionOrNull(): String? = this?.trim()?.takeIf { it.isNotEmpty() }

@@ -2,7 +2,6 @@
 
 package com.jm3.app.miuix.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,9 +30,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jm3.app.miuix.ui.glass.GlassRole
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.LocalGlassBackdrop
-import com.jm3.app.miuix.ui.glass.vibrancy
+import com.jm3.app.miuix.ui.glass.glassSurface
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.SnackbarData
@@ -42,21 +42,10 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import top.yukonga.miuix.kmp.blur.blur
-import top.yukonga.miuix.kmp.blur.drawBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 胶囊圆角：与 Miuix Card / Snackbar 的 16dp 同一族，取 22dp 让单行文案接近胶囊。 */
 private val GlassSnackbarShape: Shape = RoundedCornerShape(22.dp)
-
-/** 玻璃底衬不透明度：模糊把背景压平后仍需盖住高频细节，低于 0.6 会出现文字发灰。 */
-private const val GLASS_SNACKBAR_SURFACE_ALPHA = 0.68f
-
-/** 设备不支持 RuntimeShader 时的实色兜底不透明度。 */
-private const val GLASS_SNACKBAR_OPAQUE_ALPHA = 0.95f
-
-/** 模糊半径：提示条尺寸小，半径再大只会把背景糊成均匀色，反而失去玻璃层次。 */
-private val GlassSnackbarBlurRadius = 20.dp
 
 /** Miuix SnackbarHost 内部已留的底边距（HostBottomPadding，私有常量），补净空时需要扣掉。 */
 private val SnackbarHostBottomPadding: Dp = 12.dp
@@ -120,24 +109,15 @@ private fun GlassSnackbar(
                     alpha = 0.1f,
                 ),
             )
+            // 磨砂、采样余量与三态底衬都由 Snackbar 角色表决定；提示条没有边缘高光
             .then(
-                if (backdrop != null) {
-                    Modifier.drawBackdrop(
-                        backdrop = backdrop,
-                        shape = { GlassSnackbarShape },
-                        effects = {
-                            // 采样区域要比胶囊大一圈，边缘才不会取到自身而糊成灰边
-                            padding = maxOf(padding, 40.dp.toPx())
-                            vibrancy()
-                            blur(GlassSnackbarBlurRadius.toPx(), GlassSnackbarBlurRadius.toPx())
-                        },
-                        onDrawSurface = {
-                            drawRect(surface.copy(alpha = GLASS_SNACKBAR_SURFACE_ALPHA))
-                        },
-                    )
-                } else {
-                    Modifier.background(surface.copy(alpha = GLASS_SNACKBAR_OPAQUE_ALPHA), GlassSnackbarShape)
-                },
+                glassSurface(
+                    backdrop = backdrop,
+                    role = GlassRole.Snackbar,
+                    tint = surface,
+                    shape = GlassSnackbarShape,
+                    highlight = null,
+                ),
             )
             // 吃掉点击，避免提示条把点击传给下层内容
             .pointerInput(Unit) { detectTapGestures { } },

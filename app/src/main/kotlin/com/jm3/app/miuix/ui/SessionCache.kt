@@ -1,7 +1,7 @@
 package com.jm3.app.miuix.ui
 
-import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
+import com.jm3.core.paging.PagedFeed
 
 /**
  * 一份列表的加载状态：首页发现流、首页搜索结果、浏览页结果共用同一套三态。
@@ -11,7 +11,7 @@ import com.jm3.core.model.SearchResult
  */
 internal sealed interface ListState {
     data object Loading : ListState
-    data class Loaded(val page: SearchPage) : ListState
+    data class Loaded(val feed: PagedFeed<SearchResult>) : ListState
     data class Failed(val message: String) : ListState
 }
 
@@ -80,10 +80,14 @@ internal class SessionCache {
     /** 该身份下是否已有可用结果。 */
     fun hasPage(key: SessionListKey): Boolean = entries[key] is ListState.Loaded
 
-    /** 只记加载成功的结果：其余状态落进来，下次回来只会先闪一下旧加载态或旧错误。 */
+    /**
+     * 只记加载成功的结果：其余状态落进来，下次回来只会先闪一下旧加载态或旧错误。
+     *
+     * 记的是稳定快照：在途/失败标记描述的是页面这一次请求，缓存下来只会在下次回来时永远转圈。
+     */
     fun remember(key: SessionListKey, state: ListState) {
         if (state is ListState.Loaded) {
-            entries[key] = state
+            entries[key] = ListState.Loaded(state.feed.copy(loadingMore = false, loadMoreFailed = false))
         } else {
             entries.remove(key)
         }

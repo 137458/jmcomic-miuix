@@ -24,15 +24,12 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.LOGIN_EXPIRED_MESSAGE
-import com.jm3.core.model.SearchPage
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicksDetail
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
-import com.jm3.core.session.sessionOutcome
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -46,14 +43,20 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 不支持类型与页码参数，因此这里只做期数切换，不伪造类型筛选。
  */
 @Composable
-fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
+fun WeekScreen(
+    onBack: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+    authCall: AuthCall,
+    onOpenLogin: () -> Unit = {},
+) {
     var periods by remember { mutableStateOf<List<WeeklyPeriod>>(emptyList()) }
     var selected by rememberSaveable { mutableIntStateOf(0) }
     var detail by remember { mutableStateOf<WeeklyPicksDetail?>(null) }
     var periodsLoading by remember { mutableStateOf(true) }
-    var periodsError by remember { mutableStateOf<String?>(null) }
+    // 失败与失效的落点用同一份计划：失效要换成「去登录」，普通失败才给重试
+    var periodsFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var detailLoading by remember { mutableStateOf(false) }
-    var detailError by remember { mutableStateOf<String?>(null) }
+    var detailFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 快速切期时旧响应不能覆盖当前期的结果
@@ -64,21 +67,16 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
         detailToken++
         val current = detailToken
         if (showLoading) detailLoading = true
-        detailError = null
+        detailFailure = null
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.weeklyPicksDetail(period.id) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.weeklyPicksDetail(period.id) }
             if (current != detailToken) return@launch
             detailLoading = false
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> detail = outcome.value
-                SessionOutcome.Expired -> {
-                    scope.clearExpiredSession()
-                    detailError = LOGIN_EXPIRED_MESSAGE
-                }
-                is SessionOutcome.Failed -> detailError = outcome.messageOr("加载失败")
+                SessionOutcome.Expired -> detailFailure = planLoad(outcome, hasContent = false, failureMessage = "")
+                is SessionOutcome.Failed -> detailFailure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
             }
         }
     }
@@ -86,11 +84,9 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     // 期数列表只在进入页面/下拉刷新时取一次；切期只重取当期，避免每次切期都请求列表
     fun loadPeriods() {
         periodsLoading = true
-        periodsError = null
+        periodsFailure = null
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.weeklyPicks() }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.weeklyPicks() }
             periodsLoading = false
             refreshing = false
             when (outcome) {
@@ -107,12 +103,9 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                     }
                 }
 
-                SessionOutcome.Expired -> {
-                    scope.clearExpiredSession()
-                    periodsError = LOGIN_EXPIRED_MESSAGE
-                }
+                SessionOutcome.Expired -> periodsFailure = planLoad(outcome, hasContent = false, failureMessage = "")
 
-                is SessionOutcome.Failed -> periodsError = outcome.messageOr("加载失败")
+                is SessionOutcome.Failed -> periodsFailure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
             }
         }
     }
@@ -163,11 +156,22 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
     ) { innerPadding ->
         when {
             periodsLoading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            periodsError != null -> ErrorScreen(
-                message = "加载失败：$periodsError",
-                onRetry = ::loadPeriods,
-                modifier = Modifier.padding(innerPadding),
-            )
+            // 期数列表都没有时：失效只能去登录，普通失败才给重试
+            periodsFailure != null -> {
+                val failure = periodsFailure
+                if (failure?.phase == ScreenLoadPhase.Expired) {
+                    LoginExpiredScreen(
+                        onOpenLogin = onOpenLogin,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                } else {
+                    ErrorScreen(
+                        message = "加载失败：${failure?.message.orEmpty()}",
+                        onRetry = ::loadPeriods,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                }
+            }
             periods.isEmpty() -> CenteredEmptyState(
                 title = "暂无每周必看",
                 hint = "稍后再来看看",
@@ -194,28 +198,30 @@ fun WeekScreen(onBack: () -> Unit, onOpenAlbum: (String) -> Unit) {
                             detailLoading -> item(key = "loading") {
                                 LoadingScreen(modifier = Modifier.fillMaxWidth().padding(24.dp))
                             }
-                            detailError != null -> item(key = "error") {
-                                // 期数列表已成功，只有当期失败：保留下拉选择器重试
-                                ErrorScreen(
-                                    message = "加载失败：$detailError",
-                                    onRetry = {
-                                        loadDetail(periods[selected.coerceIn(0, periods.lastIndex)])
-                                    },
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                )
+                            detailFailure != null -> item(key = "error") {
+                                val failure = detailFailure
+                                if (failure?.phase == ScreenLoadPhase.Expired) {
+                                    LoginExpiredScreen(
+                                        onOpenLogin = onOpenLogin,
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    )
+                                } else {
+                                    // 期数列表已成功，只有当期失败：保留下拉选择器重试
+                                    ErrorScreen(
+                                        message = "加载失败：${failure?.message.orEmpty()}",
+                                        onRetry = {
+                                            loadDetail(periods[selected.coerceIn(0, periods.lastIndex)])
+                                        },
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    )
+                                }
                             }
                             loaded == null || loaded.items.isEmpty() -> item(key = "empty") {
                                 EmptyState(title = "本期暂无内容")
                             }
                             else -> searchResultItems(
-                                page = SearchPage(
-                                    currentPage = 1,
-                                    totalPages = 1,
-                                    items = loaded.items,
-                                    totalItems = loaded.total,
-                                ),
-                                loadingMore = false,
-                                loadMoreFailed = false,
+                                // 期数详情只有一页：不伪造页码，交给 PagedFeed 的空页，页脚自然不显示
+                                feed = PagedFeed(items = loaded.items),
                                 onLoadMore = {},
                                 onOpenAlbum = onOpenAlbum,
                             )

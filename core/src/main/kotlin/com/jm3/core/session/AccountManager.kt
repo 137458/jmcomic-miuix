@@ -34,7 +34,13 @@ class AccountManager(
     private val gatewayProvider: () -> SessionAuth,
     private val store: SessionStorage,
     private val credentials: CredentialStorage,
-) {
+) : StartupGate {
+
+    /** 启动闸门：等本次恢复尝试结束，成功失败都放行，见 [AuthCall]。 */
+    override suspend fun awaitReady() = awaitRestored()
+
+    /** 闸门作用域把「会话失效」交回来：走静默重登，重登不上才真清会话，见 [markSessionExpired]。 */
+    override suspend fun onSessionExpired() = markSessionExpired()
 
     private val _user = MutableStateFlow<Jm3User?>(null)
 

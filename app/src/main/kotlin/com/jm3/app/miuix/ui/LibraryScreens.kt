@@ -47,7 +47,6 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
@@ -56,12 +55,12 @@ import com.jm3.core.model.CreatorRelatedWork
 import com.jm3.core.model.CreatorWork
 import com.jm3.core.model.CreatorWorkMeta
 import com.jm3.core.model.CreatorWorkPage
+import com.jm3.core.paging.PageSlice
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
-import com.jm3.core.session.sessionOutcome
 import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.BreadcrumbBar
@@ -97,6 +96,8 @@ fun LibraryScreen(
     onOpenCreator: (String) -> Unit,
     onOpenWork: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
+    onOpenLogin: () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
@@ -105,16 +106,14 @@ fun LibraryScreen(
     var appliedQuery by rememberSaveable { mutableStateOf("") }
     var lang by rememberSaveable { mutableStateOf("") }
     var source by rememberSaveable { mutableStateOf("") }
-    var creators by remember { mutableStateOf<List<CreatorMeta>>(emptyList()) }
-    var works by remember { mutableStateOf<List<CreatorWorkMeta>>(emptyList()) }
-    var creatorTotal by remember { mutableIntStateOf(0) }
-    var workTotal by remember { mutableIntStateOf(0) }
+    // 两个 Tab 各有一份分页状态：作者列表与作品列表的条目类型不同，不能共用一份 feed
+    var creatorFeed by remember { mutableStateOf(PagedFeed<CreatorMeta>()) }
+    var workFeed by remember { mutableStateOf(PagedFeed<CreatorWorkMeta>()) }
     var filters by remember { mutableStateOf(CreatorFilters()) }
-    var page by remember { mutableIntStateOf(1) }
     var loading by remember { mutableStateOf(true) }
-    var loadingMore by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    // 失效与失败共用一个落点：计划自己决定「整屏去登录」还是「给重试按钮」
+    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     // 切换 Tab/筛选/搜索时旧响应不能覆盖新结果
     var loadToken by remember { mutableIntStateOf(0) }
     val paginationMode = Jm3Graph.paginationMode
@@ -127,44 +126,58 @@ fun LibraryScreen(
         val token = loadToken
         val tabIndex = tab
         val keyword = appliedQuery
-        if (append) {
-            loadingMore = true
-        } else if (!refreshing) {
-            loading = true
-        }
-        error = null
+        // 在不在拉、还能不能拉都交给 feed：重复触底不会再并发打同一页
+        val creatorRequest = if (append && tabIndex == 0) creatorFeed.beginLoadMore() else null
+        val workRequest = if (append && tabIndex != 0) workFeed.beginLoadMore() else null
+        if (creatorRequest === creatorFeed || workRequest === workFeed) return
+        if (creatorRequest != null) creatorFeed = creatorRequest
+        if (workRequest != null) workFeed = workRequest
+        if (!append && !refreshing) loading = true
+        failure = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (tabIndex == 0) {
-                        Jm3Graph.gateway.creatorAuthors(targetPage, keyword)
-                    } else {
-                        Jm3Graph.gateway.creatorWorks(targetPage, keyword, lang, source)
-                    }
+            // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
+            val outcome = authCall.call {
+                if (tabIndex == 0) {
+                    Jm3Graph.gateway.creatorAuthors(targetPage, keyword)
+                } else {
+                    Jm3Graph.gateway.creatorWorks(targetPage, keyword, lang, source)
                 }
             }
             if (token != loadToken) return@launch
             loading = false
-            loadingMore = false
             refreshing = false
-            result
-                .onSuccess { value ->
-                    when (value) {
-                        is CreatorPage -> {
-                            creators = if (append) creators + value.items else value.items
-                            creatorTotal = value.total
-                            page = targetPage
+            when (outcome) {
+                is SessionOutcome.Ok -> when (val value = outcome.value) {
+                    is CreatorPage -> {
+                        val slice = librarySlice(value.items, value.total, targetPage)
+                        creatorFeed = if (append) {
+                            creatorRequest!!.append(slice) { it.id }
+                        } else {
+                            PagedFeed<CreatorMeta>().replace(slice) { it.id }
                         }
-                        is CreatorWorkPage -> {
-                            works = if (append) works + value.items else value.items
-                            workTotal = value.total
-                            filters = value.filters
-                            page = targetPage
-                        }
-                        else -> Unit
                     }
+
+                    is CreatorWorkPage -> {
+                        filters = value.filters
+                        val slice = librarySlice(value.items, value.total, targetPage)
+                        workFeed = if (append) {
+                            workRequest!!.append(slice) { it.id }
+                        } else {
+                            PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
+                        }
+                    }
+
+                    else -> Unit
                 }
-                .onFailure { error = it.message ?: "加载失败" }
+
+                SessionOutcome.Expired -> failure = planLoad(outcome, hasContent = false, failureMessage = "")
+
+                is SessionOutcome.Failed -> {
+                    failure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
+                    creatorRequest?.let { creatorFeed = it.failLoadMore() }
+                    workRequest?.let { workFeed = it.failLoadMore() }
+                }
+            }
         }
     }
 
@@ -172,8 +185,9 @@ fun LibraryScreen(
         load(1, append = false)
     }
 
-    val itemCount = if (tab == 0) creators.size else works.size
-    val total = if (tab == 0) creatorTotal else workTotal
+    val activeFeed: PagedFeed<*> = if (tab == 0) creatorFeed else workFeed
+    val itemCount = activeFeed.items.size
+    val total = activeFeed.total ?: 0
     val totalPages = ((total + LIBRARY_PAGE_SIZE - 1) / LIBRARY_PAGE_SIZE).coerceAtLeast(1)
 
     GlassScaffold(
@@ -246,11 +260,22 @@ fun LibraryScreen(
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            error != null -> ErrorScreen(
-                message = "加载失败：$error",
-                onRetry = { load(page.coerceAtLeast(1), append = false) },
-                modifier = Modifier.padding(innerPadding),
-            )
+            // 失效只能去登录，普通失败才给重试
+            failure != null -> {
+                val planned = failure
+                if (planned?.phase == ScreenLoadPhase.Expired) {
+                    LoginExpiredScreen(
+                        onOpenLogin = onOpenLogin,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                } else {
+                    ErrorScreen(
+                        message = "加载失败：${planned?.message.orEmpty()}",
+                        onRetry = { load(activeFeed.page.coerceAtLeast(1), append = false) },
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                }
+            }
             itemCount == 0 -> EmptyState(
                 title = if (appliedQuery.isBlank()) {
                     if (tab == 0) "暂无创作者" else "暂无作品"
@@ -277,12 +302,12 @@ fun LibraryScreen(
                     contentPadding = innerPadding,
                 ) {
                     if (tab == 0) {
-                        items(creators, key = { it.id }) { creator ->
+                        items(creatorFeed.items, key = { it.id }) { creator ->
                             CreatorRow(creator = creator, onClick = { onOpenCreator(creator.id) })
                         }
                     } else {
                         items(
-                            items = works.chunked(2),
+                            items = workFeed.items.chunked(2),
                             key = { row -> row.joinToString(",") { it.id } },
                         ) { row ->
                             Row(
@@ -310,13 +335,11 @@ fun LibraryScreen(
                     }
                     item(key = "footer") {
                         LibraryFooter(
-                            itemCount = itemCount,
+                            feed = activeFeed,
                             total = total,
                             mode = paginationMode,
-                            page = page,
                             totalPages = totalPages,
-                            loadingMore = loadingMore,
-                            onLoadMore = { load(page + 1, append = true) },
+                            onLoadMore = { load(activeFeed.page + 1, append = true) },
                             onPageChange = { target -> load(target, append = false) },
                         )
                     }
@@ -334,11 +357,14 @@ fun CreatorWorksScreen(
     onOpenCreator: (String) -> Unit,
     onOpenWork: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
+    onOpenLogin: () -> Unit = {},
 ) {
     var data by remember { mutableStateOf<CreatorAuthorWorks?>(null) }
     var loading by remember { mutableStateOf(true) }
     var refreshing by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    // 失效与失败共用一个落点：计划自己决定「整屏去登录」还是「给重试按钮」
+    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var lang by rememberSaveable { mutableStateOf("") }
     var source by rememberSaveable { mutableStateOf("") }
     var loadToken by remember { mutableIntStateOf(0) }
@@ -350,21 +376,16 @@ fun CreatorWorksScreen(
         loadToken++
         val token = loadToken
         if (showLoading) loading = true
-        error = null
+        failure = null
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
             if (token != loadToken) return@launch
             loading = false
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> data = outcome.value
-                SessionOutcome.Expired -> {
-                    scope.clearExpiredSession()
-                    error = LOGIN_EXPIRED_MESSAGE
-                }
-                is SessionOutcome.Failed -> error = outcome.messageOr("加载失败")
+                SessionOutcome.Expired -> failure = planLoad(outcome, hasContent = false, failureMessage = "")
+                is SessionOutcome.Failed -> failure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
             }
         }
     }
@@ -412,11 +433,22 @@ fun CreatorWorksScreen(
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            error != null && data == null -> ErrorScreen(
-                message = "加载失败：$error",
-                onRetry = { load(showLoading = true) },
-                modifier = Modifier.padding(innerPadding),
-            )
+            // 已有作者页内容时刷新失败不清屏；没有内容才整屏处置
+            failure != null && data == null -> {
+                val planned = failure
+                if (planned?.phase == ScreenLoadPhase.Expired) {
+                    LoginExpiredScreen(
+                        onOpenLogin = onOpenLogin,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                } else {
+                    ErrorScreen(
+                        message = "加载失败：${planned?.message.orEmpty()}",
+                        onRetry = { load(showLoading = true) },
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                }
+            }
             else -> GlassPullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = {
@@ -521,10 +553,13 @@ fun CreatorWorkDetailScreen(
     onBack: () -> Unit,
     onOpenWork: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
+    onOpenLogin: () -> Unit = {},
 ) {
     var work by remember { mutableStateOf<CreatorWork?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    // 失效与失败共用一个落点：计划自己决定「整屏去登录」还是「给重试按钮」
+    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var relatedOpen by remember { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -533,20 +568,15 @@ fun CreatorWorkDetailScreen(
         loadToken++
         val token = loadToken
         loading = true
-        error = null
+        failure = null
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.creatorWork(workId) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.creatorWork(workId) }
             if (token != loadToken) return@launch
             loading = false
             when (outcome) {
                 is SessionOutcome.Ok -> work = outcome.value
-                SessionOutcome.Expired -> {
-                    scope.clearExpiredSession()
-                    error = LOGIN_EXPIRED_MESSAGE
-                }
-                is SessionOutcome.Failed -> error = outcome.messageOr("加载失败")
+                SessionOutcome.Expired -> failure = planLoad(outcome, hasContent = false, failureMessage = "")
+                is SessionOutcome.Failed -> failure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
             }
         }
     }
@@ -583,11 +613,22 @@ fun CreatorWorkDetailScreen(
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            error != null -> ErrorScreen(
-                message = "加载失败：$error",
-                onRetry = ::load,
-                modifier = Modifier.padding(innerPadding),
-            )
+            // 失效只能去登录，普通失败才给重试
+            failure != null -> {
+                val planned = failure
+                if (planned?.phase == ScreenLoadPhase.Expired) {
+                    LoginExpiredScreen(
+                        onOpenLogin = onOpenLogin,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                } else {
+                    ErrorScreen(
+                        message = "加载失败：${planned?.message.orEmpty()}",
+                        onRetry = ::load,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                }
+            }
             work == null -> CenteredEmptyState(
                 title = "作品不存在",
                 hint = "可能已下架",
@@ -900,39 +941,38 @@ private fun FilterSpinner(
 /** 列表底部：加载更多/没有更多/点击翻页。 */
 @Composable
 private fun LibraryFooter(
-    itemCount: Int,
+    feed: PagedFeed<*>,
     total: Int,
     mode: PaginationMode,
-    page: Int,
     totalPages: Int,
-    loadingMore: Boolean,
     onLoadMore: () -> Unit,
     onPageChange: (Int) -> Unit,
 ) {
+    val itemCount = feed.items.size
     if (itemCount == 0) return
     Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
         when {
-            loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
+            feed.loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
             mode == PaginationMode.CLICK -> Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TextButton(
                     text = "上一页",
-                    onClick = { onPageChange(page - 1) },
-                    enabled = page > 1,
+                    onClick = { onPageChange(feed.page - 1) },
+                    enabled = feed.page > 1,
                     minWidth = 0.dp,
                     minHeight = 36.dp,
                 )
                 Text(
-                    text = "$page / $totalPages",
+                    text = "${feed.page} / $totalPages",
                     style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 TextButton(
                     text = "下一页",
-                    onClick = { onPageChange(page + 1) },
-                    enabled = page < totalPages,
+                    onClick = { onPageChange(feed.page + 1) },
+                    enabled = feed.page < totalPages,
                     minWidth = 0.dp,
                     minHeight = 36.dp,
                 )
@@ -945,6 +985,12 @@ private fun LibraryFooter(
             )
         }
     }
+}
+
+/** 把书库接口的一页折算成 PagedFeed 切片：末页判据用页码，条目数不参与。 */
+private fun <T> librarySlice(items: List<T>, total: Int, page: Int): PageSlice<T> {
+    val pageCount = ((total + LIBRARY_PAGE_SIZE - 1) / LIBRARY_PAGE_SIZE).coerceAtLeast(1)
+    return PageSlice(items = items, hasMore = page < pageCount, total = total, page = page)
 }
 
 /** 统一封面占位：缺失时保留同尺寸色块，避免网格跳动。 */

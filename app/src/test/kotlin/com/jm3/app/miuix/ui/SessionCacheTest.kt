@@ -2,6 +2,7 @@ package com.jm3.app.miuix.ui
 
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
+import com.jm3.core.toFeed
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -25,6 +26,9 @@ class SessionCacheTest {
         totalItems = 1,
     )
 
+    /** 缓存里存的是整份分页状态：页面按 [fakePage] 的第一页装成 feed，刷成 remember 后的快照形态。 */
+    private val fakeFeed = fakePage.toFeed()
+
     private fun browseKey(
         mode: BrowseMode = BrowseMode.CATEGORY,
         category: String = "all",
@@ -36,16 +40,16 @@ class SessionCacheTest {
     fun 加载成功的结果能按身份取回() {
         val cache = SessionCache()
 
-        cache.remember(browseKey(), ListState.Loaded(fakePage))
+        cache.remember(browseKey(), ListState.Loaded(fakeFeed))
 
-        assertEquals(ListState.Loaded(fakePage), cache.stateOf(browseKey()))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOf(browseKey()))
         assertTrue(cache.hasPage(browseKey()))
     }
 
     @Test
     fun 筛选条件变了就不认旧结果页面要重新请求() {
         val cache = SessionCache()
-        cache.remember(browseKey(category = "all"), ListState.Loaded(fakePage))
+        cache.remember(browseKey(category = "all"), ListState.Loaded(fakeFeed))
 
         assertFalse(cache.hasPage(browseKey(category = "doujin")))
         assertEquals(ListState.Loading, cache.stateOf(browseKey(category = "doujin")))
@@ -54,18 +58,18 @@ class SessionCacheTest {
     @Test
     fun 分类与榜单两种模式各存各的互不覆盖() {
         val cache = SessionCache()
-        val rankPage = fakePage.copy(currentPage = 2)
-        cache.remember(browseKey(), ListState.Loaded(fakePage))
-        cache.remember(browseKey(mode = BrowseMode.RANK), ListState.Loaded(rankPage))
+        val rankFeed = fakePage.copy(currentPage = 2).toFeed()
+        cache.remember(browseKey(), ListState.Loaded(fakeFeed))
+        cache.remember(browseKey(mode = BrowseMode.RANK), ListState.Loaded(rankFeed))
 
-        assertEquals(ListState.Loaded(fakePage), cache.stateOf(browseKey()))
-        assertEquals(ListState.Loaded(rankPage), cache.stateOf(browseKey(mode = BrowseMode.RANK)))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOf(browseKey()))
+        assertEquals(ListState.Loaded(rankFeed), cache.stateOf(browseKey(mode = BrowseMode.RANK)))
     }
 
     @Test
     fun 加载失败不进缓存回来时按未加载处理() {
         val cache = SessionCache()
-        cache.remember(browseKey(), ListState.Loaded(fakePage))
+        cache.remember(browseKey(), ListState.Loaded(fakeFeed))
         cache.remember(browseKey(), ListState.Failed("网络不可用"))
 
         assertFalse(cache.hasPage(browseKey()))
@@ -75,24 +79,24 @@ class SessionCacheTest {
     @Test
     fun 清空搜索结果不影响发现流那一格() {
         val cache = SessionCache()
-        cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakePage))
-        cache.remember(SessionListKey.HomeSearch, ListState.Loaded(fakePage))
+        cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakeFeed))
+        cache.remember(SessionListKey.HomeSearch, ListState.Loaded(fakeFeed))
 
         cache.forget(SessionListKey.HomeSearch)
 
         assertNull(cache.stateOrNull(SessionListKey.HomeSearch))
-        assertEquals(ListState.Loaded(fakePage), cache.stateOf(SessionListKey.HomeFeed))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOf(SessionListKey.HomeFeed))
     }
 
     @Test
     fun 首页与浏览页的缓存互不串格() {
         val cache = SessionCache()
-        val rankPage = fakePage.copy(currentPage = 3)
-        cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakePage))
-        cache.remember(browseKey(), ListState.Loaded(rankPage))
+        val rankFeed = fakePage.copy(currentPage = 3).toFeed()
+        cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakeFeed))
+        cache.remember(browseKey(), ListState.Loaded(rankFeed))
 
-        assertEquals(ListState.Loaded(fakePage), cache.stateOf(SessionListKey.HomeFeed))
-        assertEquals(ListState.Loaded(rankPage), cache.stateOf(browseKey()))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOf(SessionListKey.HomeFeed))
+        assertEquals(ListState.Loaded(rankFeed), cache.stateOf(browseKey()))
     }
 
     @Test

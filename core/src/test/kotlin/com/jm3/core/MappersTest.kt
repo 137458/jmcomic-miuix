@@ -72,8 +72,8 @@ class MappersTest {
     )
 
     @Test
-    fun 相册元数据_映射_无封面时为null() {
-        val got: SearchResult = albumMeta().toSearchResult(coverUrl = null)
+    fun 相册元数据_映射_域名未就绪时封面为null() {
+        val got: SearchResult = albumMeta().toSearchResult(CoverResolver.Unready)
         assertEquals("1", got.id)
         assertEquals("标题", got.title)
         assertEquals(listOf("作者A"), got.authors)
@@ -113,11 +113,11 @@ class MappersTest {
 
     @Test
     fun 相册详情_映射_含章节列表() {
-        val got = album().toAlbumDetail(coverUrl = "http://x/c.jpg")
+        val got = album().toAlbumDetail(CoverResolver.of("img.example"))
         assertEquals("9", got.id)
         assertEquals("1.2K", got.likes)
         assertEquals("3.4K", got.views)
-        assertEquals("http://x/c.jpg", got.coverUrl)
+        assertEquals("https://img.example/media/albums/9_3x4.jpg", got.coverUrl)
         assertEquals(listOf("p1", "p2"), got.chapters.map { it.id })
         assertEquals(listOf("c1", "c2"), got.chapters.map { it.title })
     }
@@ -142,7 +142,7 @@ class MappersTest {
             commentCount = 5,
             liked = true,
             related = listOf(related),
-        ).toAlbumDetail(relatedCoverUrl = { meta -> "https://img.example/media/albums/${meta.id()}_3x4.jpg" })
+        ).toAlbumDetail(CoverResolver.of("img.example"))
 
         assertEquals(24, got.pageCount)
         assertEquals(5, got.commentCount)
@@ -300,15 +300,15 @@ class MappersTest {
     @Test
     fun 评论_映射_关联作品封面按图片域名构造() {
         val got = comment(id = "c3", aid = "123456", name = "JM123456")
-            .toCommentItem(imageHost = "18comic.vip")
+            .toCommentItem(CoverResolver.of("18comic.vip"))
         assertEquals("123456", got.albumId)
         assertEquals("https://18comic.vip/media/albums/123456_3x4.jpg", got.albumCoverUrl)
     }
 
     @Test
     fun 评论_映射_无关联作品或域名未知时封面为null() {
-        assertNull(comment(id = "c4", aid = "0").toCommentItem(imageHost = "18comic.vip").albumCoverUrl)
-        assertNull(comment(id = "c5", aid = "").toCommentItem(imageHost = "18comic.vip").albumCoverUrl)
+        assertNull(comment(id = "c4", aid = "0").toCommentItem(CoverResolver.of("18comic.vip")).albumCoverUrl)
+        assertNull(comment(id = "c5", aid = "").toCommentItem(CoverResolver.of("18comic.vip")).albumCoverUrl)
         assertNull(comment(id = "c6", aid = "123456").toCommentItem().albumCoverUrl)
     }
 

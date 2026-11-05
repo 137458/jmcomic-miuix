@@ -18,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AccountManagerTest {
 
@@ -735,5 +736,42 @@ class AccountManagerTest {
         // 用户主动登出后，客户端实例里不能再留着能自动重登的密码
         assertEquals(1, forgotten)
         assertNull(account.user.value)
+    }
+
+    @Test
+    fun `账号层作为启动闸门时在恢复完成后才放行等待者`() = runBlocking {
+        val store = FakeSessionStore(stored = Jm3Session(user = testUser(), cookies = emptyList()))
+        val gateway = fakeGateway()
+        val account = account(store = store, gateway = { gateway })
+        val gate: StartupGate = account
+        var released = false
+        val waiter = launch {
+            gate.awaitReady()
+            released = true
+        }
+
+        // 恢复还没开始时等待者必须挂着：放行太早，冷启动第一波鉴权请求会带着空 Cookie 出去
+        delay(50)
+        assertFalse(released, "恢复尚未开始，闸门就已经放行")
+
+        account.restore()
+        withTimeout(2_000) { waiter.join() }
+        assertTrue(released, "恢复结束后闸门仍未放行")
+    }
+
+    @Test
+    fun `闸门收到的失效通知走账号层的重登与清会话`() = runBlocking {
+        val store = FakeSessionStore(stored = Jm3Session(user = testUser(), cookies = emptyList()))
+        val gateway = fakeGateway()
+        val account = account(store = store, gateway = { gateway })
+        account.restore()
+        assertEquals(testUser(), account.user.value)
+
+        val gate: StartupGate = account
+        gate.onSessionExpired()
+
+        // 没有保存凭据 → 静默重登不可能成功 → 会话必须被清掉，界面才不会继续按已登录渲染
+        assertNull(account.user.value)
+        assertEquals(1, store.clearCount)
     }
 }

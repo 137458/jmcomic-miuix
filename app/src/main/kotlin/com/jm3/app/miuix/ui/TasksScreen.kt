@@ -48,9 +48,9 @@ import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
 import com.jm3.core.model.TaskPage
 import com.jm3.core.model.TaskType
-import kotlinx.coroutines.Dispatchers
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
@@ -86,7 +86,7 @@ private sealed interface TasksUiState {
 
 /** 成就/任务：称号与勋章两个维度，支持「我的/全部」筛选。 */
 @Composable
-fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
+fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, authCall: AuthCall) {
     val types = TaskType.entries
     val filters = TaskFilter.entries
     var typeIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -111,19 +111,25 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
         val requestType = type
         val requestFilter = filter
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    // 勋章图与 API 同域，域名解析失败时退化为不展示图片
-                    val host = runCatching { Jm3Graph.gateway.imageHost() }.getOrDefault("")
-                    TasksUiState.Loaded(Jm3Graph.gateway.tasks(requestType, requestFilter), host)
-                }
+            val outcome = authCall.call {
+                // 勋章图与 API 同域，域名解析失败时退化为不展示图片
+                val host = runCatching { Jm3Graph.gateway.imageHost() }.getOrDefault("")
+                TasksUiState.Loaded(Jm3Graph.gateway.tasks(requestType, requestFilter), host)
             }
             // 令牌已被更新的请求替换：这次响应属于旧条件，整体丢弃（含刷新态复位）
             if (token != requestToken) return@launch
             refreshing = false
-            result
-                .onSuccess { state = it }
-                .onFailure { state = TasksUiState.Failed(it.message ?: "成就列表加载失败") }
+            when (outcome) {
+                is SessionOutcome.Ok -> state = outcome.value
+
+                SessionOutcome.Expired -> state = TasksUiState.Failed(
+                    planLoad(outcome, hasContent = false, failureMessage = "成就列表加载失败").message.orEmpty(),
+                )
+
+                is SessionOutcome.Failed -> state = TasksUiState.Failed(
+                    planLoad(outcome, hasContent = false, failureMessage = "成就列表加载失败").message.orEmpty(),
+                )
+            }
         }
     }
 

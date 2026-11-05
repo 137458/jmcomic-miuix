@@ -50,7 +50,6 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.IntSize
@@ -72,13 +71,13 @@ import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.reader.ReaderPagePlan
+import com.jm3.core.reader.advancePrefetch
 import com.jm3.core.reader.jumpTo
-import com.jm3.core.reader.prefetchAhead
 import com.jm3.core.reader.settleJump
 import com.jm3.core.reader.stepPages
-import com.jm3.core.reader.visiblePage
+import com.jm3.app.miuix.ui.glass.GlassRole
 import com.jm3.app.miuix.ui.glass.GlassScaffold
-import com.jm3.app.miuix.ui.glass.glassEdgeHighlight
+import com.jm3.app.miuix.ui.glass.glassSurface
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -88,8 +87,6 @@ import kotlinx.coroutines.withContext
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import top.yukonga.miuix.kmp.blur.blur
-import top.yukonga.miuix.kmp.blur.drawBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
@@ -328,10 +325,9 @@ private fun ReaderPages(
     var trackMuteChecked by remember { mutableStateOf(false) }
     var trackBusy by remember { mutableStateOf(false) }
 
-    // 悬浮工具栏毛玻璃：内容层录屏作为 backdrop，工具栏按胶囊形状采样并模糊；
-    // 采样源先垫主题底色，避免页面留白区透明参与模糊产生黑边；不支持 RuntimeShader 时返回 null 退回实色
+    // 悬浮工具栏毛玻璃：内容层录屏作为 backdrop，三态降级（液态/模糊/实色）交给 glassSurface；
+    // 采样源先垫主题底色，避免页面留白区透明参与模糊产生黑边
     val toolbarBackdrop = rememberBlurBackdrop()
-    val toolbarBlurRadius = with(LocalDensity.current) { 22.dp.toPx() }
 
     val prevChapter = chapters.getOrNull(chapterIndex - 1)?.takeIf { chapterIndex > 0 }
     val nextChapter = chapters.getOrNull(chapterIndex + 1)
@@ -661,21 +657,18 @@ private fun ReaderPages(
                             aspectRatio = frame.layoutRatio,
                             modifier = Modifier.fillMaxWidth(),
                             // 解码出真实比例后回填：布局立刻重排，请求尺寸只在受框限制时重算
+                            // 判定收在 readerPageBackfill：布局比例、章节种子、要不要重算解码尺寸
                             onIntrinsicRatio = { detected, decodedWidth, decodedHeight ->
-                                if (pageRatios[image.index] != detected) {
-                                    pageRatios[image.index] = detected
-                                }
-                                // 条幅不进种子池，否则同章后续页的占位框与解码尺寸一起被带偏
-                                chapterSeedCandidate(detected)?.let { chapterRatioSeed = it }
-                                // 顶满请求框说明画面被框限制住；没顶满时重算只会再解一次同一张位图
-                                val boxLimited = isBoxLimited(
-                                    requestedWidthPx = frame.decodeSize.width,
-                                    requestedHeightPx = frame.decodeSize.height,
-                                    decodedWidthPx = decodedWidth,
-                                    decodedHeightPx = decodedHeight,
-                                )
-                                if (boxLimited && decodeRatios[image.index] != detected) {
-                                    decodeRatios[image.index] = detected
+                                readerPageBackfill(frame, detected, decodedWidth, decodedHeight)?.let { backfill ->
+                                    if (pageRatios[image.index] != backfill.layoutRatio) {
+                                        pageRatios[image.index] = backfill.layoutRatio
+                                    }
+                                    backfill.chapterSeed?.let { chapterRatioSeed = it }
+                                    backfill.decodeRatio?.let { decodeRatio ->
+                                        if (decodeRatios[image.index] != decodeRatio) {
+                                            decodeRatios[image.index] = decodeRatio
+                                        }
+                                    }
                                 }
                             },
                             // 长图模式按图片真实比例自适应展开无缝拼接，双击打开整屏缩放层
@@ -703,7 +696,6 @@ private fun ReaderPages(
                     favorited = favorited,
                     liked = liked,
                     backdrop = toolbarBackdrop,
-                    blurRadius = toolbarBlurRadius,
                     onToggleMode = { switchMode(!horizontal) },
                     onChapters = { showChapterSheet = true },
                     onComments = ::openComments,
@@ -889,51 +881,35 @@ private fun ReaderPages(
         }
     }
 
-    // 顶栏页码与预取共用一次订阅：同一次 collect 内完成，collectLatest 让快速滚动只处理最新页
-    LaunchedEffect(listState, photo.images, imageLoader, pageWidthPx, horizontal) {
-        if (horizontal) return@LaunchedEffect
-        snapshotFlow { listState.firstVisibleItemIndex }
+    // 页码与预取共用一次订阅：纵向跟 LazyColumn、横向跟 Pager，只差请求尺寸；
+    // 该发哪几页由 advancePrefetch 统一判定（页码收敛与去重都在那里），collectLatest 让快速滚动只处理最新页
+    LaunchedEffect(listState, pagerState, photo.images, imageLoader, pageWidthPx, screenSize, horizontal) {
+        snapshotFlow { if (horizontal) pagerState.currentPage else listState.firstVisibleItemIndex }
             .collectLatest { first ->
-                // 末尾补了工具栏留白项，页码需按图片数收敛，避免显示 N+1/N
-                pagePlan = visiblePage(pagePlan, first)
-                // 预加载可见页之后的 1..3 页；尺寸与展示走同一处换算，否则内存缓存键不同，预取等于白解
-                for (index in prefetchAhead(pagePlan)) {
-                    if (prefetched.add(index)) {
-                        val page = photo.images[index]
-                        val size = readerPageFrame(
+                val next = advancePrefetch(pagePlan, first, prefetched)
+                pagePlan = next.plan
+                for (index in next.pages) {
+                    prefetched += index
+                    val page = photo.images[index]
+                    val size = if (horizontal) {
+                        // 左右模式整屏展示，请求尺寸与展示一致
+                        screenSize
+                    } else {
+                        // 纵向按容器宽推算页框；尺寸与展示走同一处换算，否则内存缓存键不同，预取等于白解
+                        readerPageFrame(
                             pageWidthPx = pageWidthPx,
                             knownRatio = pageRatios[page.index],
                             chapterSeed = chapterRatioSeed,
                             decodeRatio = decodeRatios[page.index],
                         ).decodeSize.toCoilSize()
-                        imageLoader.enqueue(
-                            ImageRequest.Builder(context)
-                                .data(page)
-                                .size(size)
-                                .configureReaderDefaults()
-                                .build(),
-                        )
                     }
-                }
-            }
-    }
-
-    // 左右模式：页码跟随 Pager，并预取后 3 页（整屏尺寸，与展示一致）
-    LaunchedEffect(pagerState, photo.images, imageLoader, screenSize, horizontal) {
-        if (!horizontal) return@LaunchedEffect
-        snapshotFlow { pagerState.currentPage }
-            .collectLatest { page ->
-                pagePlan = visiblePage(pagePlan, page)
-                for (index in prefetchAhead(pagePlan)) {
-                    if (prefetched.add(index)) {
-                        imageLoader.enqueue(
-                            ImageRequest.Builder(context)
-                                .data(photo.images[index])
-                                .size(screenSize)
-                                .configureReaderDefaults()
-                                .build(),
-                        )
-                    }
+                    imageLoader.enqueue(
+                        ImageRequest.Builder(context)
+                            .data(page)
+                            .size(size)
+                            .configureReaderDefaults()
+                            .build(),
+                    )
                 }
             }
     }
@@ -946,34 +922,29 @@ private fun ReaderToolbar(
     favorited: Boolean,
     liked: Boolean,
     backdrop: LayerBackdrop?,
-    blurRadius: Float,
     onToggleMode: () -> Unit,
     onChapters: () -> Unit,
     onComments: () -> Unit,
     onFavorite: () -> Unit,
     onLike: () -> Unit,
 ) {
-    // 外层承载模糊形状，内层 FloatingToolbar 只留半透明底色，避免不透明背景盖住模糊
+    // 三态降级交给 glassSurface 的 Toolbar 角色：液态档是 22dp 透镜 + 0.78 底衬，
+    // 无着色器退 22dp 模糊，再无采样源退实色；形状与 FloatingToolbar 的胶囊保持一致
     Box(
         modifier = Modifier
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .then(
-                if (backdrop != null) {
-                    // SDF 边缘高光与主底栏同源：胶囊外缘描出细高光带
-                    Modifier.drawBackdrop(
-                        backdrop = backdrop,
-                        shape = { RoundedCornerShape(50.dp) },
-                        effects = { blur(blurRadius) },
-                        highlight = { glassEdgeHighlight },
-                    )
-                } else {
-                    Modifier
-                },
+                glassSurface(
+                    backdrop = backdrop,
+                    role = GlassRole.Toolbar,
+                    tint = MiuixTheme.colorScheme.surfaceContainer,
+                    shape = remember { RoundedCornerShape(50.dp) },
+                ),
             ),
     ) {
+        // 底衬与高光由 glassSurface 画在内容之下，这里不能再盖一层半透明底色
         FloatingToolbar(
-            color = MiuixTheme.colorScheme.surfaceContainer
-                .copy(alpha = if (backdrop != null) 0.78f else 1f),
+            color = Color.Transparent,
             outSidePadding = PaddingValues(0.dp),
         ) {
             Row(

@@ -1,7 +1,7 @@
 package com.jm3.app.miuix.data.download
 
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.PageFetcher
+import com.jm3.core.download.PhotoSource
 import com.jm3.core.download.PageNumbers
 import com.jm3.core.download.ResolvedChapter
 import com.jm3.core.download.TaskResolver
@@ -9,11 +9,11 @@ import com.jm3.core.model.PageImage
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 在线页取数：拉取 photo 页列表后按页号定位，逐页走 [Jm3Gateway.imageBytes]。
+ * 在线页取数：拉取 photo 页列表后按页号定位，逐页走 [PhotoSource.imageBytes]。
  * 会话内缓存 photoId -> 页列表，避免每次重试都重拉元数据。
  * 通过 provider 取网关：线路切换重建网关后自动跟随，不持旧实例。
  */
-class GatewayPageFetcher(private val gatewayProvider: () -> Jm3Gateway) : PageFetcher {
+class GatewayPageFetcher(private val gatewayProvider: () -> PhotoSource) : PageFetcher {
 
     private val pagesCache = ConcurrentHashMap<String, List<PageImage>>()
 
@@ -35,7 +35,7 @@ class GatewayPageFetcher(private val gatewayProvider: () -> Jm3Gateway) : PageFe
 }
 
 /** 补齐章节元数据：photoId -> albumId/title/总页数。 */
-class GatewayTaskResolver(private val gatewayProvider: () -> Jm3Gateway) : TaskResolver {
+class GatewayTaskResolver(private val gatewayProvider: () -> PhotoSource) : TaskResolver {
     override suspend fun resolve(photoId: String): ResolvedChapter {
         val photo = gatewayProvider().photo(photoId)
         return ResolvedChapter(albumId = photo.albumId, title = photo.title, total = photo.images.size)

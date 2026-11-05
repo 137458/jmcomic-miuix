@@ -174,4 +174,57 @@ class PagedFeedTest {
         assertFalse(feed.hasMore)
         assertNull(feed.pageCount)
     }
+
+    // 触底判据：屏幕只报「最后一个可见项下标」与「列表总项数」，其余判定全在 PagedFeed 里。
+
+    @Test
+    fun 距末尾三项内请求下一页() {
+        val feed = PagedFeed<SearchResult>().replacedBy(searchPage(page = 1, totalPages = 4, "1", "2"))
+
+        assertTrue(feed.shouldLoadMore(lastVisibleIndex = 2, totalItemCount = 5))
+        assertTrue(feed.shouldLoadMore(lastVisibleIndex = 4, totalItemCount = 5))
+    }
+
+    @Test
+    fun 离末尾还远时不请求下一页() {
+        val feed = PagedFeed<SearchResult>().replacedBy(searchPage(page = 1, totalPages = 4, "1", "2"))
+
+        assertFalse(feed.shouldLoadMore(lastVisibleIndex = 1, totalItemCount = 20))
+    }
+
+    @Test
+    fun 没有下一页时不请求下一页() {
+        val feed = PagedFeed<SearchResult>().replacedBy(searchPage(page = 4, totalPages = 4, "1", "2"))
+
+        assertFalse(feed.hasMore)
+        assertFalse(feed.shouldLoadMore(lastVisibleIndex = 4, totalItemCount = 5))
+    }
+
+    @Test
+    fun 已经在拉时不请求下一页() {
+        val feed = PagedFeed<SearchResult>()
+            .replacedBy(searchPage(page = 1, totalPages = 4, "1", "2"))
+            .beginLoadMore()
+
+        assertFalse(feed.shouldLoadMore(lastVisibleIndex = 4, totalItemCount = 5))
+    }
+
+    @Test
+    fun 加载更多失败后不自动重试下一页() {
+        // 失败后停在原地等用户点页脚重试：滚动信息仍停在末尾，不能借它反复重发
+        val feed = PagedFeed<SearchResult>()
+            .replacedBy(searchPage(page = 1, totalPages = 4, "1", "2"))
+            .beginLoadMore()
+            .failLoadMore()
+
+        assertTrue(feed.canLoadMore)
+        assertFalse(feed.shouldLoadMore(lastVisibleIndex = 4, totalItemCount = 5))
+    }
+
+    @Test
+    fun 列表还没铺满时不请求下一页() {
+        val feed = PagedFeed<SearchResult>().replacedBy(searchPage(page = 1, totalPages = 4, "1", "2"))
+
+        assertFalse(feed.shouldLoadMore(lastVisibleIndex = -1, totalItemCount = 0))
+    }
 }

@@ -51,9 +51,15 @@ class ParityBatchTest {
     @Test
     fun 每周必看_详情映射_封面按解析器构造() {
         val detail = JmWeeklyPicksDetail(2, listOf(albumMeta(id = "9"), albumMeta(id = "10", title = "另一本")))
-        val got = detail.toWeeklyPicksDetail { meta -> "https://img.example/${meta.id()}.jpg" }
+        val got = detail.toWeeklyPicksDetail(CoverResolver.of("img.example"))
         assertEquals(2, got.total)
-        assertEquals(listOf("https://img.example/9.jpg", "https://img.example/10.jpg"), got.items.map { it.coverUrl })
+        assertEquals(
+            listOf(
+                "https://img.example/media/albums/9_3x4.jpg",
+                "https://img.example/media/albums/10_3x4.jpg",
+            ),
+            got.items.map { it.coverUrl },
+        )
         assertEquals(listOf("标题", "另一本"), got.items.map { it.title })
     }
 

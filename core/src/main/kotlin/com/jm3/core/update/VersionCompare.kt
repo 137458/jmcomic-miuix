@@ -3,8 +3,8 @@ package com.jm3.core.update
 /**
  * 版本号比较（当前仅用于更新检测）。
  *
- * 按语义化版本的主意解析：去掉首尾空白与 v/V 前缀，丢掉构建元数据（+ 之后），
- * 核心段与预发布段分开比较。核心段逐段按数值比，缺段补 0；预发布段按 SemVer
+ * 文本归一（去空白、去 v/V 前缀、去构建元数据）只由 [VersionText] 做，这里只负责比较策略：
+ * 核心段逐段按数值比，缺段补 0；预发布段按 SemVer
  * 规则比：正式版大于同号预发布版，标识符逐段比，纯数字段按数值、其余按字典序，
  * 前缀相同则短者更小。
  *
@@ -15,8 +15,8 @@ object VersionCompare {
 
     /** 比较两个版本号：a 大于 b 返回正数，相等返回 0，小于返回负数。 */
     fun compare(a: String, b: String): Int {
-        val left = Parsed.of(a)
-        val right = Parsed.of(b)
+        val left = VersionText.parse(a)
+        val right = VersionText.parse(b)
 
         val coreSize = maxOf(left.core.size, right.core.size)
         for (index in 0 until coreSize) {
@@ -63,25 +63,4 @@ object VersionCompare {
         return 0
     }
 
-    private data class Parsed(
-        val core: List<Long>,
-        val preRelease: List<String>?,
-    ) {
-        companion object {
-            fun of(raw: String): Parsed {
-                val withoutPrefix = raw.trim().removePrefix("v").removePrefix("V")
-                val withoutBuild = withoutPrefix.substringBefore('+')
-                val coreText = withoutBuild.substringBefore('-')
-                val preText = withoutBuild.substringAfter('-', missingDelimiterValue = "")
-                val core = coreText.split('.')
-                    .filter { it.isNotEmpty() }
-                    .map { segment -> segment.takeWhile { it.isDigit() }.toLongOrNull() ?: 0L }
-                    .ifEmpty { listOf(0L) }
-                val preRelease = preText.split('.')
-                    .filter { it.isNotEmpty() }
-                    .takeIf { preText.isNotEmpty() }
-                return Parsed(core, preRelease)
-            }
-        }
-    }
 }

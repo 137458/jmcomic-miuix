@@ -13,4 +13,14 @@
     <!-- 前台服务超时/配额用尽后的一次性提示：服务退出前台，任务已转暂停 -->
     <string name="notification_download_paused_title">下载已暂停</string>
     <string name="notification_download_paused_text">后台下载时限已到，返回应用可继续下载</string>
+    <!-- 下载列表行（书架、详情）：标签与主操作文案，选型来自 :core 的 DownloadLabel / DownloadAction -->
+    <string name="download_status_queued">排队中</string>
+    <string name="download_status_running">下载中</string>
+    <string name="download_status_paused">已暂停</string>
+    <string name="download_status_done">已完成</string>
+    <string name="download_status_failed">失败</string>
+    <string name="download_action_open">阅读</string>
+    <string name="download_action_pause">暂停</string>
+    <string name="download_action_resume">继续</string>
+    <string name="download_action_retry">重试</string>
 </resources>

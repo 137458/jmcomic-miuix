@@ -68,7 +68,7 @@ class DownloadQueue(
     fun pause(photoId: String) {
         synchronized(stateLock) {
             val current = tasks[photoId] ?: return
-            if (current.status == DownloadStatus.QUEUED || current.status == DownloadStatus.RUNNING) {
+            if (current.status.isActive) {
                 tasks = tasks + (photoId to current.withStatus(DownloadStatus.PAUSED))
                 _updates.value = tasks
             }
@@ -97,7 +97,7 @@ class DownloadQueue(
      * 运行中/已完成返回 false，不打断在途任务。
      */
     fun restore(task: DownloadTask): Boolean {
-        if (!task.status.canTransitionTo(DownloadStatus.QUEUED)) return false
+        if (!task.status.canRequeue) return false
         val accepted = synchronized(stateLock) {
             val existing = tasks[task.photoId]
             val restored = when {

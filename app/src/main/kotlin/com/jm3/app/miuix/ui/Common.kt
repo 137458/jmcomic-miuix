@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +45,8 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,8 +62,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImagePainter
-import com.jm3.core.model.SearchPage
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.shouldLoadMore
 import com.jm3.core.model.SearchResult
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -313,25 +316,72 @@ private fun RankIndexBadge(rank: Int) {
     }
 }
 
-/** 列表加载更多三态：加载中 / 出错重试 / 没有更多了；与 HyperOS 加载反馈一致。 */
+/**
+ * 列表加载更多三态：加载中 / 出错重试 / 没有更多了；与 HyperOS 加载反馈一致。
+ *
+ * 三个开关都在 [PagedFeed] 里，调用方只交整份状态，不再各自摆三个布尔。
+ */
 @Composable
 fun LoadMoreFooter(
-    loadingMore: Boolean,
-    hasMore: Boolean,
-    loadMoreFailed: Boolean,
+    feed: PagedFeed<*>,
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
         when {
-            loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-            loadMoreFailed -> TextButton(text = "加载失败，点击重试", onClick = onLoadMore, minWidth = 0.dp)
-            !hasMore -> Text(
+            feed.loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
+            feed.loadMoreFailed -> TextButton(text = "加载失败，点击重试", onClick = onLoadMore, minWidth = 0.dp)
+            !feed.hasMore -> Text(
                 text = "没有更多了",
                 style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
             else -> TextButton(text = "加载更多", onClick = onLoadMore)
+        }
+    }
+}
+
+/**
+ * 触底加载下一页：列表只交出滚动信息，判定（还有没有下一页、在不在拉、距末尾几项、上次是否失败）
+ * 全在 [PagedFeed.shouldLoadMore] 里。
+ *
+ * 只在还能自动加载时订阅滚动；一旦拿到下一页或到底，[PagedFeed.canLoadMore] 变为假，订阅随之解除。
+ * 失败后会停在原地等用户点页脚重试，不会借「滚动信息还在末尾」反复重发。
+ */
+@Composable
+fun LoadMoreOnScroll(
+    listState: LazyListState,
+    feed: PagedFeed<*>,
+    onLoadMore: () -> Unit,
+) {
+    val canLoadMore = feed.canLoadMore
+    val latestFeed by rememberUpdatedState(feed)
+    val latestOnLoadMore by rememberUpdatedState(onLoadMore)
+    LaunchedEffect(listState, canLoadMore) {
+        if (!canLoadMore) return@LaunchedEffect
+        snapshotFlow { listState.layoutInfo }.collect { info ->
+            if (latestFeed.shouldLoadMore(info.visibleItemsInfo.lastOrNull()?.index ?: -1, info.totalItemsCount)) {
+                latestOnLoadMore()
+            }
+        }
+    }
+}
+
+/** 两列瀑布流的触底加载：取所有可见列里的最大下标，与列表共用同一判据。 */
+@Composable
+fun LoadMoreOnScroll(
+    gridState: LazyStaggeredGridState,
+    feed: PagedFeed<*>,
+    onLoadMore: () -> Unit,
+) {
+    val canLoadMore = feed.canLoadMore
+    val latestFeed by rememberUpdatedState(feed)
+    val latestOnLoadMore by rememberUpdatedState(onLoadMore)
+    LaunchedEffect(gridState, canLoadMore) {
+        if (!canLoadMore) return@LaunchedEffect
+        snapshotFlow { gridState.layoutInfo }.collect { info ->
+            val lastIndex = info.visibleItemsInfo.maxOfOrNull { it.index } ?: -1
+            if (latestFeed.shouldLoadMore(lastIndex, info.totalItemsCount)) latestOnLoadMore()
         }
     }
 }
@@ -415,7 +465,7 @@ private fun SearchResultCard(
 }
 
 /**
- * 搜索/浏览共用的结果列表与加载更多入口；hasMore 由 currentPage/totalPages 推断。
+ * 搜索/浏览共用的结果列表与加载更多入口；是否还有下一页、在不在拉、上次是否失败都由 [PagedFeed] 回答。
  *
  * @param ranked 榜单模式：在封面前补名次序号（跨页累加，合并多页后依然连续）。
  */
@@ -440,48 +490,9 @@ fun LazyListScope.searchResultItems(
     // 单页结果（如每周必看）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
     if (feed.items.isNotEmpty() && (feed.pageCount ?: 1) > 1) {
         item(key = "load-more") {
-            LoadMoreFooter(
-                loadingMore = feed.loadingMore,
-                hasMore = feed.hasMore,
-                loadMoreFailed = feed.loadMoreFailed,
-                onLoadMore = onLoadMore,
-            )
+            LoadMoreFooter(feed = feed, onLoadMore = onLoadMore)
         }
     }
-}
-
-/** 旧签名适配：把一页结果与两个布尔折成 [PagedFeed] 再转给上面那个入口，供尚未迁移的屏幕使用。 */
-fun LazyListScope.searchResultItems(
-    page: SearchPage,
-    loadingMore: Boolean,
-    loadMoreFailed: Boolean,
-    onLoadMore: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    ranked: Boolean = false,
-) {
-    searchResultItems(
-        feed = page.asFeed(loadingMore = loadingMore, loadMoreFailed = loadMoreFailed),
-        onLoadMore = onLoadMore,
-        onOpenAlbum = onOpenAlbum,
-        ranked = ranked,
-    )
-}
-
-/** 把服务端一页结果折成只有一页的 [PagedFeed]。 */
-private fun SearchPage.asFeed(loadingMore: Boolean = false, loadMoreFailed: Boolean = false): PagedFeed<SearchResult> =
-    PagedFeed(
-        items = items,
-        page = currentPage,
-        pageCount = totalPages,
-        hasMore = currentPage < totalPages,
-        loadingMore = loadingMore,
-        loadMoreFailed = loadMoreFailed,
-    )
-
-/** 点击分页条：上一页 / 页码 / 下一页，供任意结果列表在“点击切换分页”模式下复用。 */
-@Composable
-fun ResultPagerBar(page: SearchPage, onPageChange: (Int) -> Unit) {
-    PagerBar(page = page.currentPage, totalPages = page.totalPages, onPageChange = onPageChange)
 }
 
 /** 通用点击分页条；页码与总页数由调用方给出，避免各页自己拼一套翻页控件。 */
@@ -534,13 +545,23 @@ fun LazyListScope.pagedSearchResultItems(
     }
 }
 
-/** 旧签名适配：一页结果折成 [PagedFeed] 后转给新入口，供尚未迁移的屏幕使用。 */
-fun LazyListScope.pagedSearchResultItems(
-    page: SearchPage,
+/**
+ * 一屏结果列表：按分页模式分发到「无限滚动」与「点击翻页」两条渲染路径。
+ *
+ * 各屏只交出当前这一页与两个动作，不必各自写一遍 clickPaging 的 when。
+ */
+fun LazyListScope.resultItems(
+    feed: PagedFeed<SearchResult>,
+    clickPaging: Boolean,
+    onLoadMore: () -> Unit,
     onPageChange: (Int) -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
-    pagedSearchResultItems(feed = page.asFeed(), onPageChange = onPageChange, onOpenAlbum = onOpenAlbum)
+    if (clickPaging) {
+        pagedSearchResultItems(feed = feed, onPageChange = onPageChange, onOpenAlbum = onOpenAlbum)
+    } else {
+        searchResultItems(feed = feed, onLoadMore = onLoadMore, onOpenAlbum = onOpenAlbum)
+    }
 }
 
 /**
@@ -655,37 +676,31 @@ internal fun Modifier.coverSkeleton(state: CoverSkeletonState): Modifier =
  * 单页结果不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈。
  */
 fun LazyStaggeredGridScope.rankResultGrid(
-    page: SearchPage,
-    loadingMore: Boolean,
-    loadMoreFailed: Boolean,
+    feed: PagedFeed<SearchResult>,
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
-    if (page.items.isEmpty()) {
+    if (feed.items.isEmpty()) {
         item(key = "rank-empty", span = StaggeredGridItemSpan.FullLine) {
             EmptyState(title = "无结果", hint = "换个筛选条件再试试")
         }
     }
     items(
-        count = page.items.size,
-        key = { index -> page.items[index].id },
+        count = feed.items.size,
+        key = { index -> feed.items[index].id },
         contentType = { "rank_card" },
     ) { index ->
-        val result = page.items[index]
+        val result = feed.items[index]
         RankGridCard(
             result = result,
             rank = index + 1,
             onClick = { onOpenAlbum(result.id) },
         )
     }
-    if (page.items.isNotEmpty() && page.totalPages > 1) {
+    // 单页结果（筛选后只有一页）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
+    if (feed.items.isNotEmpty() && (feed.pageCount ?: 1) > 1) {
         item(key = "rank-load-more", span = StaggeredGridItemSpan.FullLine) {
-            LoadMoreFooter(
-                loadingMore = loadingMore,
-                hasMore = page.currentPage < page.totalPages,
-                loadMoreFailed = loadMoreFailed,
-                onLoadMore = onLoadMore,
-            )
+            LoadMoreFooter(feed = feed, onLoadMore = onLoadMore)
         }
     }
 }

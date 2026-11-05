@@ -35,6 +35,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.jm3.core.coverCacheKeyText
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.snapshotFlow
@@ -263,16 +264,10 @@ fun albumCoverMemoryKey(url: String?): MemoryCache.Key? {
  *
  * 卡片的封面地址用列表首条的图片域名拼，详情页用该作品自己的域名拼；线路漂移后两者不再相等，
  * 缓存命中不了就要重新解码，用户看到的正是"进详情页时封面闪一下"。非作品封面地址原样使用。
+ *
+ * 规则在 :core 的 coverCacheKeyText（）与拼地址的 CoverResolver 同文件互逆；这里只保留 app 层入口名。
  */
-internal fun albumCoverCacheKeyText(url: String?): String? {
-    val clean = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val albumId = ALBUM_COVER_PATH.find(clean)?.groupValues?.get(1).orEmpty()
-    return if (albumId.isNotEmpty()) ALBUM_COVER_KEY_PREFIX + albumId else clean
-}
-
-private val ALBUM_COVER_PATH = Regex("""/media/albums/(\d+)[^/]*$""")
-
-private const val ALBUM_COVER_KEY_PREFIX = "jm3-album-cover:"
+internal fun albumCoverCacheKeyText(url: String?): String? = coverCacheKeyText(url)
 
 /** 按屏幕密度换算封面解码尺寸（px）：固定 3:4，保证列表卡片、覆盖层、详情头图三端解码结果尺寸完全一致。 */
 internal fun heroCoverSizePx(density: Float): IntSize = IntSize(

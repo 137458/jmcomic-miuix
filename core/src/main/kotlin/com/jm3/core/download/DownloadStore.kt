@@ -9,6 +9,11 @@ fun interface PageFetcher {
 interface DownloadStore {
     fun exists(photoId: String, index: Int): Boolean
 
+    /**
+     * 写入单页字节；目标已存在时必须原子替换，且不许留下临时文件。
+     *
+     * 覆盖是被允许的语义，不许依赖平台 rename 行为（Windows 上改名到已存在目标会失败）。
+     */
     fun write(photoId: String, index: Int, bytes: ByteArray)
 
     fun delete(photoId: String)

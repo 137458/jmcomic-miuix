@@ -24,13 +24,10 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.UserProfile
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
-import com.jm3.core.session.sessionOutcome
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -77,7 +74,7 @@ private sealed interface ProfileUiState {
 
 /** 个人资料：只读账号信息 + 全量可编辑字段，保存后以服务端返回为准。 */
 @Composable
-fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
+fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, authCall: AuthCall) {
     val user by Jm3Graph.account.user.collectAsState()
     var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
     var profile by remember { mutableStateOf<UserProfile?>(null) }
@@ -101,21 +98,20 @@ fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
         }
         if (showLoading) state = ProfileUiState.Loading
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                sessionOutcome { Jm3Graph.gateway.userProfile(uid) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.userProfile(uid) }
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     applyProfile(outcome.value)
                     state = ProfileUiState.Loaded
                 }
 
-                SessionOutcome.Expired -> {
-                    scope.clearExpiredSession()
-                    state = ProfileUiState.Failed(LOGIN_EXPIRED_MESSAGE)
-                }
+                SessionOutcome.Expired -> state = ProfileUiState.Failed(
+                    planLoad(outcome, hasContent = false, failureMessage = "个人资料加载失败").message.orEmpty(),
+                )
 
-                is SessionOutcome.Failed -> state = ProfileUiState.Failed(outcome.messageOr("个人资料加载失败"))
+                is SessionOutcome.Failed -> state = ProfileUiState.Failed(
+                    planLoad(outcome, hasContent = false, failureMessage = "个人资料加载失败").message.orEmpty(),
+                )
             }
         }
     }
@@ -125,16 +121,20 @@ fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState) {
         if (saving) return
         saving = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.editUserProfile(uid, fields.toMap()) }
-            }
+            val outcome = authCall.call { Jm3Graph.gateway.editUserProfile(uid, fields.toMap()) }
             saving = false
-            result
-                .onSuccess {
-                    applyProfile(it)
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    applyProfile(outcome.value)
                     snackbarHostState.showSnackbar("资料已保存")
                 }
-                .onFailure { snackbarHostState.showSnackbar("保存失败：" + (it.message ?: "请稍后重试")) }
+
+                SessionOutcome.Expired -> snackbarHostState.showSnackbar(
+                    planLoad(outcome, hasContent = false, failureMessage = "保存失败").message.orEmpty(),
+                )
+
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("保存失败：" + outcome.messageOr("请稍后重试"))
+            }
         }
     }
 

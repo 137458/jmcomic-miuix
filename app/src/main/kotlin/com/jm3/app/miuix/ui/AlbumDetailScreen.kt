@@ -56,7 +56,6 @@ import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.ChapterLabels
 import com.jm3.core.asAlbumDetailPort
-import com.jm3.core.mergedWith
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
@@ -65,6 +64,7 @@ import com.jm3.core.model.CommentSegment
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.reader.ChapterGroups
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -96,7 +96,6 @@ import top.yukonga.miuix.kmp.icon.extended.Weeks
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private const val CHAPTER_GROUP_SIZE = 10
 private const val COMMENT_MAX_LENGTH = 200
 /** 折叠态默认展示的回复条数；超出部分由「展开 N 条回复」控制。 */
 private const val COMMENT_VISIBLE_REPLIES = 2
@@ -311,17 +310,17 @@ fun AlbumDetailScreen(
                                 if (detail.chapters.isEmpty()) {
                                     item(key = "chapters-empty") { EmptyState(title = "暂无章节") }
                                 }
-                                detail.chapters.chunked(CHAPTER_GROUP_SIZE).forEachIndexed { groupIndex, group ->
-                                    item(key = "chapter-group-$groupIndex") {
+                                ChapterGroups.of(detail.chapters, Chapter::id).forEach { group ->
+                                    item(key = "chapter-group-" + group.id) {
                                         ChapterGroupCard(
-                                            group = group,
-                                            startPosition = groupIndex * CHAPTER_GROUP_SIZE,
-                                            expanded = groupIndex in uiState.expandedGroups,
+                                            group = group.items,
+                                            startPosition = group.startPosition,
+                                            expanded = group.id in uiState.expandedGroups,
                                             resumeId = resumeId,
                                             readPhotoIds = uiState.readPhotoIds,
                                             onToggle = {
                                                 selectionHaptic()
-                                                stateHolder.toggleGroup(groupIndex)
+                                                stateHolder.toggleGroup(group.id)
                                             },
                                             onRead = { photoId -> onOpenReader(photoId) },
                                             onDownload = { chapter, title ->
@@ -437,9 +436,7 @@ fun AlbumDetailScreen(
                                                     }
                                                     if (cs.feed.items.isNotEmpty()) {
                                                         LoadMoreFooter(
-                                                            loadingMore = cs.feed.loadingMore,
-                                                            hasMore = cs.feed.hasMore,
-                                                            loadMoreFailed = cs.feed.loadMoreFailed,
+                                                            feed = cs.feed,
                                                             onLoadMore = stateHolder::loadMoreComments,
                                                             modifier = Modifier.padding(top = 8.dp),
                                                         )

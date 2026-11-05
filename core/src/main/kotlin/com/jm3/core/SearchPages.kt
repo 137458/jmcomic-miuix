@@ -37,6 +37,13 @@ fun SearchPage.toSlice(): PageSlice<SearchResult> = PageSlice(
 /** 用一页搜索结果整页替换（首页、下拉刷新、点击分页）。 */
 fun PagedFeed<SearchResult>.replacedBy(page: SearchPage): PagedFeed<SearchResult> = replace(page.toSlice()) { it.id }
 
+/**
+ * 一页结果直接装成只含这一页的 [PagedFeed]。
+ *
+ * 首屏、下拉刷新、点击分页都从这里起手：调用方不必知道要先造一个空 feed 再 replace。
+ */
+fun SearchPage.toFeed(): PagedFeed<SearchResult> = PagedFeed<SearchResult>().replacedBy(this)
+
 /** 把下一页搜索结果追加进来。 */
 fun PagedFeed<SearchResult>.appendedBy(page: SearchPage): PagedFeed<SearchResult> = append(page.toSlice()) { it.id }
 

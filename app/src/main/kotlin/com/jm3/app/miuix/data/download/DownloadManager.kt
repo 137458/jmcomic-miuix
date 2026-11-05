@@ -4,7 +4,6 @@ import com.jm3.core.download.DownloadLedger
 import com.jm3.core.download.DownloadLedgerEntry
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadRecord
-import com.jm3.core.download.DownloadStatus
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.DownloadTask
 import com.jm3.core.download.toResumeTask
@@ -95,7 +94,7 @@ class DownloadManager(
      */
     fun pauseActive() {
         queue.updates.value.values
-            .filter { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.RUNNING }
+            .filter { it.status.isActive }
             .forEach { queue.pause(it.photoId) }
     }
 }

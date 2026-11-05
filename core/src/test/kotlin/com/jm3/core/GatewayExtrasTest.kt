@@ -95,10 +95,9 @@ class GatewayExtrasTest {
 
     @Test
     fun 收藏页_映射_封面地址由解析器生成() {
-        val got = favoritePage(content = listOf(albumMeta(id = "9"))).toFavoritePage { meta ->
-            "https://img.example/media/albums/${meta.id()}.jpg"
-        }
-        assertEquals("https://img.example/media/albums/9.jpg", got.items.single().coverUrl)
+        val got = favoritePage(content = listOf(albumMeta(id = "9")))
+            .toFavoritePage(CoverResolver.of("img.example"))
+        assertEquals("https://img.example/media/albums/9_3x4.jpg", got.items.single().coverUrl)
     }
 
     @Test

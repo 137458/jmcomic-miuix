@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.history.HistoryEntry
+import com.jm3.core.paging.PageSlice
+import com.jm3.core.paging.PagedFeed
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -79,13 +81,9 @@ fun HistoryScreen(
     val repository = Jm3Graph.history
     val pageSize = 20
     val listState = rememberLazyListState()
-    var entries by remember { mutableStateOf<List<HistoryEntry>>(emptyList()) }
+    // 在途、失败、是否还有下一页都由 PagedFeed 记；仓库按 pageSize 分页，满页即代表还有下一页
+    var feed by remember { mutableStateOf(PagedFeed<HistoryEntry>()) }
     var state by remember { mutableStateOf<HistoryListState>(HistoryListState.Loading) }
-    var nextPage by remember { mutableStateOf(2) }
-    var endReached by remember { mutableStateOf(false) }
-    var loadingMore by remember { mutableStateOf(false) }
-    // 加载更多失败单独置位，供列表底部给出重试入口
-    var loadMoreFailed by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var clearing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -93,13 +91,12 @@ fun HistoryScreen(
     fun loadFirstPage() {
         scope.launch {
             state = HistoryListState.Loading
-            nextPage = 2
-            endReached = false
             runCatching { repository.page(1, pageSize) }
                 .onSuccess {
-                    entries = it
+                    feed = PagedFeed<HistoryEntry>().replace(
+                        PageSlice(items = it, hasMore = it.size >= pageSize, page = 1),
+                    ) { entry -> entry.photoId }
                     state = HistoryListState.Loaded
-                    if (it.size < pageSize) endReached = true
                 }
                 .onFailure { state = HistoryListState.Failed(it.message ?: "历史加载失败") }
         }
@@ -110,21 +107,19 @@ fun HistoryScreen(
     }
 
     fun loadMore() {
-        if (loadingMore || endReached || state != HistoryListState.Loaded) return
-        loadingMore = true
+        if (state != HistoryListState.Loaded) return
+        val requested = feed.beginLoadMore()
+        if (requested === feed) return
+        val page = requested.page + 1
+        feed = requested
         scope.launch {
-            val result = runCatching { repository.page(nextPage, pageSize) }
-            loadingMore = false
-            result.onSuccess { next ->
-                loadMoreFailed = false
-                if (next.isEmpty()) {
-                    endReached = true
-                } else {
-                    entries = entries + next
-                    nextPage += 1
-                    if (next.size < pageSize) endReached = true
+            runCatching { repository.page(page, pageSize) }
+                .onSuccess { next ->
+                    feed = requested.append(
+                        PageSlice(items = next, hasMore = next.size >= pageSize, page = page),
+                    ) { entry -> entry.photoId }
                 }
-            }.onFailure { loadMoreFailed = true }
+                .onFailure { feed = requested.failLoadMore() }
         }
     }
 
@@ -132,7 +127,7 @@ fun HistoryScreen(
     fun removeAlbum(albumId: String) {
         scope.launch {
             runCatching { repository.deleteAlbum(albumId) }
-            entries = entries.filterNot { it.albumId == albumId }
+            feed = feed.copy(items = feed.items.filterNot { it.albumId == albumId })
         }
     }
 
@@ -143,12 +138,12 @@ fun HistoryScreen(
             runCatching { repository.clear() }
             clearing = false
             showClearConfirm = false
-            entries = emptyList()
+            feed = PagedFeed()
             state = HistoryListState.Loaded
         }
     }
 
-    val albums = remember(entries) { entries.groupByAlbum() }
+    val albums = remember(feed.items) { feed.items.groupByAlbum() }
 
     GlassScaffold(
         topBar = {
@@ -201,12 +196,7 @@ fun HistoryScreen(
                         }
                         if (albums.isNotEmpty()) {
                             item(key = "load-more") {
-                                LoadMoreFooter(
-                                    loadingMore = loadingMore,
-                                    hasMore = !endReached,
-                                    loadMoreFailed = loadMoreFailed,
-                                    onLoadMore = ::loadMore,
-                                )
+                                LoadMoreFooter(feed = feed, onLoadMore = ::loadMore)
                             }
                         }
                     }

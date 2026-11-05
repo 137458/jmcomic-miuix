@@ -123,12 +123,16 @@ fun GlassScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val backdrop = rememberBlurBackdrop()
-    val glassTier = resolveGlassTier(
-        hasBackdrop = backdrop != null,
-        shaderSupported = isRuntimeShaderSupported(),
+    // 顶栏的磨砂由渐进模糊承担，这里只向角色表要「这一档要不要采样」与实色兜底不透明度。
+    val topBarGlass = resolveGlassSurface(
+        role = GlassRole.TopAppBar,
+        tier = resolveGlassTier(
+            hasBackdrop = backdrop != null,
+            shaderSupported = isRuntimeShaderSupported(),
+        ),
     )
     // 能画出玻璃才有模糊层；顺带把采样源收窄成非空，供模糊层直接用。
-    val blurBackdrop = backdrop?.takeIf { glassTier.drawsBackdrop }
+    val blurBackdrop = backdrop?.takeIf { topBarGlass.drawsBackdrop }
     val containerColor = MiuixTheme.colorScheme.surface
     val scrollBehavior = MiuixScrollBehavior()
     val density = LocalDensity.current
@@ -191,8 +195,9 @@ fun GlassScaffold(
                                 if (blurBackdrop != null) {
                                     Modifier
                                 } else {
-                                    // 不支持 RuntimeShader 时退化为实色，避免顶栏内容叠在正文上。
-                                    Modifier.background(containerColor)
+                                    // 不支持 RuntimeShader 时退化为实色，避免顶栏内容叠在正文上；
+                                    // 不透明度取自 TopAppBar 角色表，页面不再各自决定。
+                                    Modifier.background(containerColor.copy(alpha = topBarGlass.scrimAlpha))
                                 },
                             ),
                     ) {
