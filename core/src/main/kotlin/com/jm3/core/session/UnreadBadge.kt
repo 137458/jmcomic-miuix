@@ -1,5 +1,6 @@
 package com.jm3.core.session
 
+import com.jm3.core.runCatchingSuspending
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -9,8 +10,11 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * 「未登录归零、失败保留上次」原先写在应用层依赖图里，既测不到（要网关、要账号、要进程作用域），
  * 也让角标闪烁的判定散落在界面之外。计数与规则收在这里之后，调用方只剩 refresh(loggedIn)。
+ *
+ * [load] 返回 [SessionOutcome]：未读数请求同样要过启动闸门、要能判定会话失效，所以由调用方
+ * （装配处）注入走 AuthCall 的实现；本类只决定「哪种结局覆盖计数」。
  */
-class UnreadBadge(private val load: suspend () -> Int) {
+class UnreadBadge(private val load: suspend () -> SessionOutcome<Int>) {
 
     private val state = MutableStateFlow(0)
 
@@ -23,7 +27,10 @@ class UnreadBadge(private val load: suspend () -> Int) {
             state.value = 0
             return
         }
-        runCatching { load() }.onSuccess { state.value = it }
+        runCatchingSuspending { load() }.onSuccess { outcome ->
+            // 只有拿到值才覆盖：失效与失败都保留上次计数，否则底栏角标会闪一下又归零
+            if (outcome is SessionOutcome.Ok) state.value = outcome.value
+        }
     }
 
     /** 以刚拉到的列表为准覆盖计数：同一次请求里读到的已读状态比上一次的远端旧值可靠。 */

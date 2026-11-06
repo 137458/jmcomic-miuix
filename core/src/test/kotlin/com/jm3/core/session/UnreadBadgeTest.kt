@@ -1,8 +1,10 @@
 package com.jm3.core.session
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class UnreadBadgeTest {
 
@@ -12,10 +14,13 @@ class UnreadBadgeTest {
         var value = 0
         var failure: Exception? = null
 
-        suspend fun load(): Int {
+        var expired = false
+
+        suspend fun load(): SessionOutcome<Int> {
             calls++
             failure?.let { throw it }
-            return value
+            if (expired) return SessionOutcome.Expired
+            return SessionOutcome.Ok(value)
         }
     }
 
@@ -61,6 +66,29 @@ class UnreadBadgeTest {
         badge.refresh(loggedIn = true)
 
         assertEquals(0, badge.count.value)
+    }
+
+    @Test
+    fun 拉取被取消时原样抛出() {
+        val loader = Loader().apply { failure = CancellationException("屏幕已销毁") }
+        val badge = UnreadBadge(loader::load)
+
+        assertFailsWith<CancellationException> { runBlocking { badge.refresh(loggedIn = true) } }
+
+        assertEquals(0, badge.count.value, "取消不是业务失败，不许把计数当失败处理")
+    }
+
+    @Test
+    fun 会话失效时保留上次计数() = runBlocking {
+        val loader = Loader().apply { value = 4 }
+        val badge = UnreadBadge(loader::load)
+        badge.refresh(loggedIn = true)
+        assertEquals(4, badge.count.value)
+
+        loader.expired = true
+        badge.refresh(loggedIn = true)
+
+        assertEquals(4, badge.count.value, "失效不是拿到新值，角标应停在旧值上而不是清零")
     }
 
     @Test
