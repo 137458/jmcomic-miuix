@@ -553,11 +553,23 @@ fun Jm3App() {
                             onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
+                            gateway = Jm3Graph.api.gateway,
+                            authCall = Jm3Graph.session.authCall,
+                            history = Jm3Graph.library.history,
+                            downloadManager = Jm3Graph.downloads.manager,
+                            account = Jm3Graph.session.account,
                         )
                     }
                     entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                         ReaderScreen(
                             photoId = route.photoId,
+                            authCall = Jm3Graph.session.authCall,
+                            gateway = Jm3Graph.api.gateway,
+                            downloadManager = Jm3Graph.downloads.manager,
+                            settings = Jm3Graph.preferences.repository,
+                            history = Jm3Graph.library.history,
+                            downloadFiles = Jm3Graph.downloads.files,
+                            account = Jm3Graph.session.account,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenChapter = { photoId ->
                                 // 同层替换：返回键回到详情页，而不是逐章回退

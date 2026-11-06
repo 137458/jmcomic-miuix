@@ -49,12 +49,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.ChapterLabels
+import com.jm3.core.Jm3Gateway
+import com.jm3.core.history.HistoryRepository
+import com.jm3.core.session.AccountManager
+import com.jm3.core.session.AuthCall
 import com.jm3.core.asAlbumDetailPort
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
@@ -120,19 +124,26 @@ fun AlbumDetailScreen(
     onOpenSearch: (query: String, scope: SearchScope) -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    gateway: Jm3Gateway,
+    authCall: AuthCall,
+    history: HistoryRepository,
+    downloadManager: DownloadManager,
+    account: AccountManager,
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by account.user.collectAsState()
     val scope = rememberCoroutineScope()
 
     val stateHolder = remember(albumId) {
         AlbumDetailStateHolder(
             albumId = albumId,
-            gateway = Jm3Graph.gateway.asAlbumDetailPort(),
-            history = Jm3Graph.history,
+            gateway = gateway.asAlbumDetailPort(),
+            authCall = authCall,
+            history = history,
             scope = scope,
             showMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
+            onOpenLogin = onOpenLogin,
         )
     }
     val uiState by stateHolder.uiState.collectAsState()
@@ -148,7 +159,7 @@ fun AlbumDetailScreen(
     }
 
     fun share(detail: AlbumDetail) {
-        val host = Jm3Graph.gateway.usedDomain()
+        val host = gateway.usedDomain()
         val link = host?.takeIf { it.isNotBlank() }?.let { "https://" + it + "/album/" + detail.id }
         val text = buildString {
             append(detail.title)
@@ -205,7 +216,7 @@ fun AlbumDetailScreen(
                                         IconButton(
                                             onClick = {
                                                 loadedDetail.chapters.forEachIndexed { index, chapter ->
-                                                    Jm3Graph.downloadManager.enqueueChapter(
+                                                    downloadManager.enqueueChapter(
                                                         photoId = chapter.id,
                                                         albumId = loadedDetail.id,
                                                         title = ChapterLabels.chapterTitle(chapter.title, index),
@@ -261,7 +272,7 @@ fun AlbumDetailScreen(
                                 } else {
                                     // 与顶栏「下载全部」同一套标题兜底：空标题不能进书架
                                     { loadedDetail.chapters.forEachIndexed { index, chapter ->
-                                        Jm3Graph.downloadManager.enqueueChapter(
+                                        downloadManager.enqueueChapter(
                                             photoId = chapter.id,
                                             albumId = loadedDetail.id,
                                             title = ChapterLabels.chapterTitle(chapter.title, index),
@@ -286,13 +297,21 @@ fun AlbumDetailScreen(
                             }
                             is AlbumUiState.Failed -> {
                                 item(key = "detail-failed") {
-                                    ErrorScreen(
-                                        message = "详情加载失败：${s.message}",
-                                        onRetry = { stateHolder.refresh() },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                    )
+                                    // 失效不给重试：重试必然再吃一次 401，只能去登录
+                                    if (s.sessionExpired) {
+                                        LoginExpiredScreen(
+                                            onOpenLogin = onOpenLogin,
+                                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        )
+                                    } else {
+                                        ErrorScreen(
+                                            message = s.message,
+                                            onRetry = { stateHolder.refresh() },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                        )
+                                    }
                                 }
                             }
                             is AlbumUiState.Loaded -> {
@@ -324,7 +343,7 @@ fun AlbumDetailScreen(
                                             },
                                             onRead = { photoId -> onOpenReader(photoId) },
                                             onDownload = { chapter, title ->
-                                                Jm3Graph.downloadManager.enqueueChapter(
+                                                downloadManager.enqueueChapter(
                                                     photoId = chapter.id,
                                                     albumId = detail.id,
                                                     title = title,
@@ -408,11 +427,18 @@ fun AlbumDetailScreen(
                                         }
                                     }
                                     is CommentsUiState.Failed -> item(key = "comments-failed") {
-                                        ErrorScreen(
-                                            message = "评论加载失败",
-                                            onRetry = { stateHolder.reloadComments() },
-                                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                        )
+                                        if (cs.sessionExpired) {
+                                            LoginExpiredScreen(
+                                                onOpenLogin = onOpenLogin,
+                                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                            )
+                                        } else {
+                                            ErrorScreen(
+                                                message = cs.message,
+                                                onRetry = { stateHolder.reloadComments() },
+                                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                            )
+                                        }
                                     }
                                     is CommentsUiState.Loaded -> {
                                         item(key = "comments-card") {

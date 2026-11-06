@@ -59,12 +59,15 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadStatus
+import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryEntry
+import com.jm3.core.history.HistoryRepository
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
@@ -75,15 +78,17 @@ import com.jm3.core.reader.advancePrefetch
 import com.jm3.core.reader.jumpTo
 import com.jm3.core.reader.settleJump
 import com.jm3.core.reader.stepPages
+import com.jm3.core.settings.ReaderSettings
+import com.jm3.core.session.AccountManager
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
 import com.jm3.app.miuix.ui.glass.GlassRole
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.glassSurface
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
@@ -140,12 +145,31 @@ sealed interface ReaderUiState {
         val favorited: Boolean,
         val liked: Boolean,
     ) : ReaderUiState
-    data class Failed(val message: String) : ReaderUiState
+    /** [sessionExpired] 为真时整屏换成登录引导：重试必然再吃一次 401。 */
+    data class Failed(val message: String, val sessionExpired: Boolean = false) : ReaderUiState
+}
+
+/**
+ * 首载结局 → 阅读器失败态；成功返回 null，由调用方继续走内容分支。
+ *
+ * 失效与失败必须分开：前者只能去登录，后者才值得重试。
+ */
+internal fun readerLoadFailure(outcome: SessionOutcome<*>): ReaderUiState.Failed? = when (outcome) {
+    is SessionOutcome.Ok -> null
+    SessionOutcome.Expired -> ReaderUiState.Failed(SessionOutcome.Expired.message, sessionExpired = true)
+    is SessionOutcome.Failed -> ReaderUiState.Failed(outcome.messageOr("章节加载失败"))
 }
 
 @Composable
 fun ReaderScreen(
     photoId: String,
+    authCall: AuthCall,
+    gateway: Jm3Gateway,
+    downloadManager: DownloadManager,
+    settings: ReaderSettings,
+    history: HistoryRepository,
+    downloadFiles: DownloadStore,
+    account: AccountManager,
     onBack: () -> Unit,
     onOpenChapter: (String) -> Unit,
     onOpenLogin: () -> Unit,
@@ -156,38 +180,37 @@ fun ReaderScreen(
 
     // 优先读已下载落盘数据，缺失时回退网关；供首载与失败重试复用
     fun load() {
+        state = ReaderUiState.Loading
         scope.launch {
-            state = withContext(Dispatchers.IO) {
-                val saved = runCatching { Jm3Graph.downloadManager.find(photoId) }.getOrNull()
-                val local = saved
-                    ?.takeIf { it.record.status == DownloadStatus.DONE }
-                    ?.pagesJson
-                    ?.let { decodePhotoPages(it) }
-                    ?.takeIf { it.images.isNotEmpty() }
-                if (local != null) {
+            // 落盘页是本地文件，不经网关
+            val saved = runCatching { downloadManager.find(photoId) }.getOrNull()
+            val local = saved
+                ?.takeIf { it.record.status == DownloadStatus.DONE }
+                ?.pagesJson
+                ?.let { decodePhotoPages(it) }
+                ?.takeIf { it.images.isNotEmpty() }
+            val outcome: SessionOutcome<PhotoPages> = if (local != null) {
+                SessionOutcome.Ok(local)
+            } else {
+                authCall.call { gateway.photo(photoId) }
+            }
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    val photo = outcome.value
                     // 离线页的 albumId 未落盘，用下载记录的 albumId 补章节列表与收藏/点赞状态
-                    val detail = runCatching { Jm3Graph.gateway.album(saved.record.albumId) }.getOrNull()
-                    ReaderUiState.Loaded(
-                        photo = local,
+                    val albumId = saved?.record?.albumId ?: photo.albumId
+                    // 详情仅用于章节列表与收藏/点赞状态；失败不阻塞阅读
+                    val detail = (authCall.call { gateway.album(albumId) } as? SessionOutcome.Ok)?.value
+                    state = ReaderUiState.Loaded(
+                        photo = photo,
                         chapters = detail?.chapters.orEmpty(),
-                        chapterIndex = detail?.chapters?.indexOfFirst { it.id == photoId } ?: -1,
+                        chapterIndex = detail?.chapters?.indexOfFirst { it.id == photo.photoId } ?: -1,
                         favorited = detail?.favorited == true,
                         liked = detail?.liked == true,
                     )
-                } else {
-                    runCatching {
-                        val photo = Jm3Graph.gateway.photo(photoId)
-                        // 详情仅用于章节列表与收藏/点赞状态；失败不阻塞阅读
-                        val detail = runCatching { Jm3Graph.gateway.album(photo.albumId) }.getOrNull()
-                        ReaderUiState.Loaded(
-                            photo = photo,
-                            chapters = detail?.chapters.orEmpty(),
-                            chapterIndex = detail?.chapters?.indexOfFirst { it.id == photo.photoId } ?: -1,
-                            favorited = detail?.favorited == true,
-                            liked = detail?.liked == true,
-                        )
-                    }.getOrElse { ReaderUiState.Failed(it.message ?: "章节加载失败") }
                 }
+
+                else -> readerLoadFailure(outcome)?.let { state = it }
             }
         }
     }
@@ -219,19 +242,22 @@ fun ReaderScreen(
                 )
             },
         ) { innerPadding ->
-            ErrorScreen(
-                message = "章节加载失败：${s.message}",
-                onRetry = ::load,
-                modifier = Modifier.padding(innerPadding),
-            )
+            // 失效不给重试：重试必然再吃一次 401，只能去登录
+            if (s.sessionExpired) {
+                LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
+            } else {
+                ErrorScreen(
+                    message = s.message,
+                    onRetry = ::load,
+                    modifier = Modifier.padding(innerPadding),
+                )
+            }
         }
         is ReaderUiState.Loaded -> {
             LaunchedEffect(s.photo.photoId) {
-                val coverUrl = withContext(Dispatchers.IO) {
-                    runCatching { Jm3Graph.gateway.coverUrl(s.photo.albumId) }.getOrNull()
-                }
+                val coverUrl = (authCall.call { gateway.coverUrl(s.photo.albumId) } as? SessionOutcome.Ok)?.value
                 runCatching {
-                    Jm3Graph.history.upsert(
+                    history.upsert(
                         HistoryEntry(
                             photoId = s.photo.photoId,
                             albumId = s.photo.albumId,
@@ -248,6 +274,11 @@ fun ReaderScreen(
                 chapterIndex = s.chapterIndex,
                 favoritedInit = s.favorited,
                 likedInit = s.liked,
+                authCall = authCall,
+                gateway = gateway,
+                settings = settings,
+                downloadFiles = downloadFiles,
+                account = account,
                 onBack = onBack,
                 onOpenChapter = onOpenChapter,
                 onOpenLogin = onOpenLogin,
@@ -266,18 +297,23 @@ private fun ReaderPages(
     chapterIndex: Int,
     favoritedInit: Boolean,
     likedInit: Boolean,
+    authCall: AuthCall,
+    gateway: Jm3Gateway,
+    settings: ReaderSettings,
+    downloadFiles: DownloadStore,
+    account: AccountManager,
     onBack: () -> Unit,
     onOpenChapter: (String) -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
-    val imageLoader = rememberReaderImageLoader(Jm3Graph.gateway, Jm3Graph.downloadFiles)
+    val imageLoader = rememberReaderImageLoader(gateway, downloadFiles)
     val listState = rememberLazyListState()
     val pagerState = rememberPagerState { photo.images.size }
     val context = LocalPlatformContext.current
     val windowSize = LocalWindowInfo.current.containerSize
     val scope = rememberCoroutineScope()
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by account.user.collectAsState()
     // 页宽固定为容器宽；解码尺寸不再写死 3:4，而是按这一页的真实宽高比推算，
     // 否则 800x20000 的长条图会被解成 58x1440 再拉满整宽，放大十几倍必然发糊。
     val pageWidthPx = windowSize.width.coerceAtLeast(1)
@@ -336,11 +372,11 @@ private fun ReaderPages(
     val lastIndex = (photo.images.size - 1).coerceAtLeast(0)
 
     LaunchedEffect(Unit) {
-        horizontal = Jm3Graph.settings.readerHorizontal()
-        if (!Jm3Graph.settings.volumeKeyHintShown()) {
+        horizontal = settings.readerHorizontal()
+        if (!settings.volumeKeyHintShown()) {
             delay(1000)
             snackbarHostState.showSnackbar("可使用音量键＋翻页")
-            Jm3Graph.settings.markVolumeKeyHintShown()
+            settings.markVolumeKeyHintShown()
         }
     }
 
@@ -368,7 +404,7 @@ private fun ReaderPages(
         if (nextHorizontal == horizontal) return
         val page = pagePlan.currentPage.coerceIn(1, totalPages)
         horizontal = nextHorizontal
-        scope.launch { Jm3Graph.settings.setReaderHorizontal(nextHorizontal) }
+        scope.launch { settings.setReaderHorizontal(nextHorizontal) }
         if (nextHorizontal) {
             scope.launch { pagerState.scrollToPage((page - 1).coerceIn(0, lastIndex)) }
         } else {
@@ -382,20 +418,27 @@ private fun ReaderPages(
         return false
     }
 
+    // 动作型调用的统一落点：失效给登录入口，失败给「动作：原因」
+    suspend fun reportAction(outcome: SessionOutcome<*>, failurePrefix: String) {
+        outcome.notifyAction(
+            notify = { snackbarHostState.showSnackbar(it) },
+            failurePrefix = failurePrefix,
+            onExpired = onOpenLogin,
+        )
+    }
+
     fun toggleFavorite() {
         if (!requireLogin() || engagementBusy) return
         engagementBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleFavorite(photo.albumId) }
-            }
+            val outcome = authCall.call { gateway.toggleFavorite(photo.albumId) }
             engagementBusy = false
-            result
-                .onSuccess {
-                    favorited = !favorited
-                    snackbarHostState.showSnackbar(if (favorited) "已收藏" else "已取消收藏")
-                }
-                .onFailure { snackbarHostState.showSnackbar("收藏失败：" + (it.message ?: "请稍后重试")) }
+            if (outcome is SessionOutcome.Ok) {
+                favorited = !favorited
+                snackbarHostState.showSnackbar(if (favorited) "已收藏" else "已取消收藏")
+            } else {
+                reportAction(outcome, "收藏失败")
+            }
         }
     }
 
@@ -407,16 +450,14 @@ private fun ReaderPages(
         }
         engagementBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.toggleLike(photo.albumId) }
-            }
+            val outcome = authCall.call { gateway.toggleLike(photo.albumId) }
             engagementBusy = false
-            result
-                .onSuccess {
-                    liked = true
-                    snackbarHostState.showSnackbar("已喜欢")
-                }
-                .onFailure { snackbarHostState.showSnackbar("操作失败：" + (it.message ?: "请稍后重试")) }
+            if (outcome is SessionOutcome.Ok) {
+                liked = true
+                snackbarHostState.showSnackbar("已喜欢")
+            } else {
+                reportAction(outcome, "操作失败")
+            }
         }
     }
 
@@ -424,11 +465,14 @@ private fun ReaderPages(
         commentsLoading = true
         commentsFailed = false
         scope.launch {
-            val page = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.comments(photo.albumId) }.getOrNull()
-            }
+            val outcome = authCall.call { gateway.comments(photo.albumId) }
             commentsLoading = false
-            if (page == null) commentsFailed = true else comments = page
+            when (outcome) {
+                is SessionOutcome.Ok -> comments = outcome.value
+                // 内联「加载失败 + 重试」对失效是误导：重试必然再吃一次 401
+                SessionOutcome.Expired -> reportAction(outcome, "评论加载失败")
+                is SessionOutcome.Failed -> commentsFailed = true
+            }
         }
     }
 
@@ -442,17 +486,15 @@ private fun ReaderPages(
         commentBusy = true
         val text = commentText.trim()
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.postComment(photo.albumId, text) }
-            }
+            val outcome = authCall.call { gateway.postComment(photo.albumId, text) }
             commentBusy = false
-            result
-                .onSuccess {
-                    commentText = ""
-                    snackbarHostState.showSnackbar("评论已发表")
-                    loadComments()
-                }
-                .onFailure { snackbarHostState.showSnackbar("发表失败：" + (it.message ?: "请稍后重试")) }
+            if (outcome is SessionOutcome.Ok) {
+                commentText = ""
+                snackbarHostState.showSnackbar("评论已发表")
+                loadComments()
+            } else {
+                reportAction(outcome, "发表失败")
+            }
         }
     }
 
@@ -461,17 +503,15 @@ private fun ReaderPages(
         if (text.isBlank() || replyBusy) return
         replyBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.replyComment(photo.albumId, text, target.id) }
-            }
+            val outcome = authCall.call { gateway.replyComment(photo.albumId, text, target.id) }
             replyBusy = false
-            result
-                .onSuccess {
-                    replyTarget = null
-                    snackbarHostState.showSnackbar("回复已发送")
-                    loadComments()
-                }
-                .onFailure { snackbarHostState.showSnackbar("回复失败：" + (it.message ?: "请稍后重试")) }
+            if (outcome is SessionOutcome.Ok) {
+                replyTarget = null
+                snackbarHostState.showSnackbar("回复已发送")
+                loadComments()
+            } else {
+                reportAction(outcome, "回复失败")
+            }
         }
     }
 
@@ -480,7 +520,7 @@ private fun ReaderPages(
         showTrackPrompt = false
         if (trackMuteChecked) {
             scope.launch {
-                Jm3Graph.settings.setTrackPromptMuteUntil(System.currentTimeMillis() + TRACK_MUTE_DAYS_MS)
+                settings.setTrackPromptMuteUntil(System.currentTimeMillis() + TRACK_MUTE_DAYS_MS)
             }
         }
     }
@@ -489,13 +529,13 @@ private fun ReaderPages(
         if (!requireLogin() || trackBusy) return
         trackBusy = true
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.gateway.setTracking(photo.albumId) }
-            }
+            val outcome = authCall.call { gateway.setTracking(photo.albumId) }
             trackBusy = false
-            result
-                .onSuccess { snackbarHostState.showSnackbar("已追踪连载") }
-                .onFailure { snackbarHostState.showSnackbar("追踪失败：" + (it.message ?: "请稍后重试")) }
+            if (outcome is SessionOutcome.Ok) {
+                snackbarHostState.showSnackbar("已追踪连载")
+            } else {
+                reportAction(outcome, "追踪失败")
+            }
             closeTrackPrompt()
         }
     }
@@ -537,7 +577,7 @@ private fun ReaderPages(
         if (trackPromptShown || photo.images.isEmpty()) return@LaunchedEffect
         if (chapters.isEmpty() || chapterIndex != chapters.lastIndex) return@LaunchedEffect
         if (pagePlan.currentPage != photo.images.size) return@LaunchedEffect
-        if (System.currentTimeMillis() < Jm3Graph.settings.trackPromptMuteUntil()) return@LaunchedEffect
+        if (System.currentTimeMillis() < settings.trackPromptMuteUntil()) return@LaunchedEffect
         trackPromptShown = true
         showTrackPrompt = true
     }

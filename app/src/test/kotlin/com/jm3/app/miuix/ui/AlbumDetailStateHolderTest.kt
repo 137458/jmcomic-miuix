@@ -10,6 +10,9 @@ import com.jm3.core.model.CommentPage
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.FavoritePage
 import com.jm3.core.model.FolderOperation
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.StartupGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
@@ -22,8 +25,24 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/** 启动闸门在测试里只负责放行与记失效次数。 */
+private object NoopGate : StartupGate {
+    override suspend fun awaitReady() = Unit
+    override suspend fun onSessionExpired() = Unit
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class AlbumDetailStateHolderTest {
+
+    /** 记录失效通知次数的闸门：验证失效时账号层确实收到了通知。 */
+    private class CountingGate : StartupGate {
+        var expiredCalls = 0
+        override suspend fun awaitReady() = Unit
+        override suspend fun onSessionExpired() {
+            expiredCalls++
+        }
+    }
+
 
     private fun fakeGateway(
         onAlbum: (String) -> AlbumDetail = { error("album not implemented") },
@@ -98,7 +117,8 @@ class AlbumDetailStateHolderTest {
             history = history,
             scope = testScope,
             showMessage = { messages.add(it) },
-            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
         )
 
         holder.loadAll(userUid = "user_1")
@@ -131,7 +151,8 @@ class AlbumDetailStateHolderTest {
             history = InMemoryHistoryRepository(),
             scope = testScope,
             showMessage = {},
-            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
         )
 
         holder.loadAll(userUid = null)
@@ -154,7 +175,8 @@ class AlbumDetailStateHolderTest {
             history = InMemoryHistoryRepository(),
             scope = testScope,
             showMessage = {},
-            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
         )
 
         holder.onFavoriteClick(isLoggedIn = false, onOpenLogin = { loginOpened++ })
@@ -181,7 +203,8 @@ class AlbumDetailStateHolderTest {
             history = InMemoryHistoryRepository(),
             scope = testScope,
             showMessage = { messages.add(it) },
-            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
         )
 
         holder.like(isLoggedIn = true, onOpenLogin = {})
@@ -219,7 +242,8 @@ class AlbumDetailStateHolderTest {
             history = InMemoryHistoryRepository(),
             scope = testScope,
             showMessage = { messages.add(it) },
-            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
         )
 
         holder.setCommentText("精彩作品！")
@@ -263,7 +287,8 @@ class AlbumDetailStateHolderTest {
             history = InMemoryHistoryRepository(),
             scope = testScope,
             showMessage = {},
-            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
         )
 
         holder.loadAll(userUid = null)
@@ -304,7 +329,8 @@ class AlbumDetailStateHolderTest {
             history = InMemoryHistoryRepository(),
             scope = testScope,
             showMessage = {},
-            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
         )
 
         holder.loadAll(userUid = null)
@@ -317,6 +343,138 @@ class AlbumDetailStateHolderTest {
         assertTrue(feed.loadMoreFailed)
         assertFalse(feed.loadingMore)
         assertTrue(feed.canLoadMore, "失败后应允许用户重试")
+
+        testScope.cancel()
+    }
+
+    @Test
+    fun 详情加载失效时进入登录引导态并通知账号层() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val gate = CountingGate()
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = fakeGateway(onAlbum = { throw RuntimeException("401") }),
+            authCall = AuthCall(gate, UnconfinedTestDispatcher(testScheduler)),
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = {},
+            onOpenLogin = {},
+        )
+
+        holder.loadDetail()
+        advanceUntilIdle()
+
+        val failed = holder.uiState.value.albumState as AlbumUiState.Failed
+        assertTrue(failed.sessionExpired, "失效必须与普通失败分开，整屏要换成登录引导")
+        assertEquals(SessionOutcome.Expired.message, failed.message)
+        assertEquals(1, gate.expiredCalls, "失效结局要交给账号层处置一次")
+
+        testScope.cancel()
+    }
+
+    @Test
+    fun 评论加载失效时评论区进入登录引导态() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = fakeGateway(onComments = { _, _ -> throw RuntimeException("401") }),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = {},
+            onOpenLogin = {},
+        )
+
+        holder.loadComments()
+        advanceUntilIdle()
+
+        val failed = holder.uiState.value.commentsState as CommentsUiState.Failed
+        assertTrue(failed.sessionExpired)
+        assertEquals(SessionOutcome.Expired.message, failed.message)
+
+        testScope.cancel()
+    }
+
+    @Test
+    fun 点赞失效时提示失效文案并打开登录() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val messages = mutableListOf<String>()
+        var loginOpened = 0
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = fakeGateway(onToggleLike = { throw RuntimeException("401") }),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = { messages.add(it) },
+            onOpenLogin = { loginOpened++ },
+        )
+
+        holder.like(isLoggedIn = true, onOpenLogin = { loginOpened++ })
+        advanceUntilIdle()
+
+        assertEquals(SessionOutcome.Expired.message, messages.lastOrNull())
+        assertEquals(1, loginOpened, "失效时只给一次登录入口，不能重复弹")
+        assertFalse(holder.uiState.value.liked)
+
+        testScope.cancel()
+    }
+
+    @Test
+    fun 点赞普通失败给出动作前缀的原因() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val messages = mutableListOf<String>()
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = fakeGateway(onToggleLike = { throw RuntimeException("boom") }),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = { messages.add(it) },
+            onOpenLogin = {},
+        )
+
+        holder.like(isLoggedIn = true, onOpenLogin = {})
+        advanceUntilIdle()
+
+        assertEquals("操作失败：boom", messages.lastOrNull())
+
+        testScope.cancel()
+    }
+
+    @Test
+    fun 已加载详情后刷新失败保留内容只提示() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val messages = mutableListOf<String>()
+        var failNext = false
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = fakeGateway(
+                onAlbum = {
+                    if (failNext) throw RuntimeException("boom") else sampleAlbum(it)
+                },
+            ),
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = { messages.add(it) },
+            onOpenLogin = {},
+        )
+
+        holder.loadDetail()
+        advanceUntilIdle()
+        // 评论与追踪走默认桩，不参与本用例
+        assertTrue(holder.uiState.value.albumState is AlbumUiState.Loaded)
+
+        failNext = true
+        holder.loadDetail()
+        advanceUntilIdle()
+
+        assertTrue(
+            holder.uiState.value.albumState is AlbumUiState.Loaded,
+            "刷新失败不该把已加载的详情顶掉",
+        )
+        assertEquals("刷新失败：boom", messages.lastOrNull())
 
         testScope.cancel()
     }

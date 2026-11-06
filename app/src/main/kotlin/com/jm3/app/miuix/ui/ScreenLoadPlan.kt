@@ -55,3 +55,25 @@ internal fun planLoad(
         }
     }
 }
+
+/**
+ * 动作型调用的统一落点：成功不吭声，失效给登录文案并打开登录，普通失败给「动作：原因」。
+ *
+ * 与 [planLoad] 的分工：那是加载结局，可能保住已有内容；这里是一次性动作，不改屏级形态、
+ * 也没有重试按钮，只需要一条提示与（失效时的）登录入口。
+ */
+internal suspend fun SessionOutcome<*>.notifyAction(
+    notify: suspend (String) -> Unit,
+    failurePrefix: String,
+    fallback: String = "请稍后重试",
+    onExpired: () -> Unit = {},
+) {
+    when (this) {
+        is SessionOutcome.Ok -> Unit
+        SessionOutcome.Expired -> {
+            notify(SessionOutcome.Expired.message)
+            onExpired()
+        }
+        is SessionOutcome.Failed -> notify(failurePrefix + "：" + messageOr(fallback))
+    }
+}
