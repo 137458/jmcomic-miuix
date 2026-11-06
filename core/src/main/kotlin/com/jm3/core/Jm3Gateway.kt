@@ -35,6 +35,7 @@ import com.jm3.core.model.TrackingPage
 import com.jm3.core.model.UserProfile
 import com.jm3.core.model.WeeklyPicks
 import com.jm3.core.model.WeeklyPicksDetail
+import com.jm3.core.settings.Domains
 import io.github.jukomu.jmcomic.api.enums.ForumMode
 import io.github.jukomu.jmcomic.api.model.ForumQuery
 import io.github.jukomu.jmcomic.api.model.JmFavoritePage
@@ -247,25 +248,6 @@ class Jm3GatewayImpl internal constructor(
         private const val TAG = "Jm3Gateway"
 
         /**
-         * 取一个库内私有成员：取不到就返回 null，对应能力静默降级（老逻辑如此）。
-         *
-         * 降级不报错是对的，但必须留一条事实日志：库升级改了成员名时，界面只表现为「恢复会话没生效」，
-         * 没有日志就完全无从查起。只报成员名与异常类型，不打印成员值。
-         */
-
-        /**
-         * 反射写库内状态这类「失败也能继续跑」的动作：出错记一条事实日志再吞掉。
-         *
-         * 这类动作失败不抛给用户，界面上只表现为「自动重登没生效」「会话恢复不完整」，
-         * 不留日志就完全无从查起。只报动作名与异常类型，不打印成员值。
-         */
-        internal fun quietly(what: String, block: () -> Unit) {
-            runCatching(block).onFailure { failure ->
-                Jm3Log.warn(TAG, what + " 失败（" + failure.javaClass.name + "），相关能力降级")
-            }
-        }
-
-        /**
          * 生产装配：同一个库客户端既当请求入口又当域名能力来源。
          *
          * clientProvider 每次调用都会新建库客户端，而库客户端的首次使用要跑完整初始化
@@ -381,13 +363,12 @@ class Jm3GatewayImpl internal constructor(
         // 线路由库在每次启动后重新裁决，登录域未必再被选中：Cookie 需铺满当前全部候选域名与常用镜像。
         val targetDomains = linkedSetOf<String>()
         // 域名能力取不到就没法把 Cookie 铺满全部候选域名，首批请求可能漏带会话
-        quietly("读取候选域名") { targetDomains.addAll(domainControls.candidateDomains()) }
+        quietly(TAG, "读取候选域名") { targetDomains.addAll(domainControls.candidateDomains()) }
         for (c in session.cookies) {
             targetDomains.add(c.domain)
         }
         // 兜底官方镜像，确保冷启动在探活未完全就绪时发出的首批请求也能带上会话
-        targetDomains.add("18comic.vip")
-        targetDomains.add("18comic.org")
+        targetDomains.addAll(Domains.FALLBACK_MIRRORS)
 
         // 广播、okhttp Cookie 构造与库内登录态写入都是 bridge 的私事，网关只交线路清单。
         bridge.restoreSession(client, session, targetDomains)

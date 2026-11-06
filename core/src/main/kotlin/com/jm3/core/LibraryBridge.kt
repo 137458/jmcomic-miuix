@@ -2,6 +2,7 @@ package com.jm3.core
 
 import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
+import com.jm3.core.settings.Domains
 import io.github.jukomu.jmcomic.core.client.AbstractJmClient
 
 /**
@@ -32,12 +33,6 @@ internal interface LibraryBridge {
  * 取不到成员不抛异常：对应能力静默降级，只留一条事实日志（只报成员名与异常类型，不打印成员值）。
  */
 internal object ReflectiveLibraryBridge : LibraryBridge {
-
-    private fun quiet(what: String, block: () -> Unit) {
-        runCatching(block).onFailure { failure ->
-            Jm3Log.warn(TAG, what + " 失败（" + failure.javaClass.name + "），相关能力降级")
-        }
-    }
 
     private fun <T> member(member: String, block: () -> T): T? =
         runCatching(block).getOrElse { failure ->
@@ -104,12 +99,12 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
         val library = client as? AbstractJmClient ?: return
         val okhttpCookies = session.cookies.broadcastTo(targetDomains).mapNotNull { it.toOkhttpCookie() }
         if (okhttpCookies.isNotEmpty()) {
-            quiet("注入会话 Cookie") { library.setCookies(okhttpCookies) }
+            quietly(TAG, "注入会话 Cookie") { library.setCookies(okhttpCookies) }
         }
         applyLoginState(library, session.user.username)
-        quiet("写入库内登录域") {
+        quietly(TAG, "写入库内登录域") {
             val bestHost = targetDomains.map { sanitizeDomain(it) }.firstOrNull { it.isNotBlank() }
-                ?: "18comic.vip"
+                ?: Domains.FALLBACK_MIRRORS.first()
             loginHostField?.set(library, bestHost)
         }
     }
@@ -121,17 +116,17 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
 
     override fun forgetCredentials(client: Any) {
         val library = client as? AbstractJmClient ?: return
-        quiet("关闭库内自动重登") { autoLoginRefreshAllowedField?.set(library, false) }
-        quiet("清掉库内内存密码") { encryptedPasswordField?.set(library, null) }
+        quietly(TAG, "关闭库内自动重登") { autoLoginRefreshAllowedField?.set(library, false) }
+        quietly(TAG, "清掉库内内存密码") { encryptedPasswordField?.set(library, null) }
     }
 
     /** 用户名、允许自动重登，以及拿得到时加密后的密码；密码缺省表示只恢复身份。 */
     private fun applyLoginState(client: AbstractJmClient, username: String, password: String? = null) {
-        quiet("写入库内用户名") { cacheUsernameMethod?.invoke(client, username) }
-        quiet("打开库内自动重登") { autoLoginRefreshAllowedField?.set(client, true) }
+        quietly(TAG, "写入库内用户名") { cacheUsernameMethod?.invoke(client, username) }
+        quietly(TAG, "打开库内自动重登") { autoLoginRefreshAllowedField?.set(client, true) }
         if (password == null) return
-        quiet("写入库内内存密码") {
-            val encrypted = encryptPasswordInMemoryMethod?.invoke(client, password) as? ByteArray ?: return@quiet
+        quietly(TAG, "写入库内内存密码") {
+            val encrypted = encryptPasswordInMemoryMethod?.invoke(client, password) as? ByteArray ?: return@quietly
             encryptedPasswordField?.set(client, encrypted)
         }
     }
