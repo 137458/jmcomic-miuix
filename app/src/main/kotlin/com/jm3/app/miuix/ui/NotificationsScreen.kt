@@ -38,6 +38,7 @@ import com.jm3.core.notificationBody
 import com.jm3.core.notificationDisplayTitle
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.UnreadBadge
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
@@ -62,6 +63,8 @@ fun NotificationsScreen(
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
+    // 未读角标的唯一真源：与 MainScreen 注入同一个实例，避免这里写一份、底栏读另一份
+    unreadBadge: UnreadBadge,
     onOpenAlbum: (albumId: String) -> Unit = {},
     onOpenLogin: () -> Unit = {},
 ) {
@@ -86,7 +89,7 @@ fun NotificationsScreen(
     val scope = rememberCoroutineScope()
 
     fun syncUnread(items: List<NotificationItem>) {
-        Jm3Graph.session.unread.sync(items.count { !it.read })
+        unreadBadge.sync(items.count { !it.read })
     }
 
     /** 失效与失败共用一条落点：有数据就保留列表、只弹提示，没有数据才整屏。 */

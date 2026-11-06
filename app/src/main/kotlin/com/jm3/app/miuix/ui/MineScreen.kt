@@ -28,12 +28,14 @@ import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
+import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.UnreadBadge
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -59,6 +61,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun MineScreen(
     account: AccountManager,
     authCall: AuthCall,
+    unreadBadge: UnreadBadge,
+    downloadManager: DownloadManager,
     snackbarHostState: SnackbarHostState,
     onOpenLogin: () -> Unit,
     onOpenFavorites: () -> Unit,
@@ -75,8 +79,8 @@ fun MineScreen(
     onOpenLibrary: () -> Unit,
 ) {
     val user by account.user.collectAsState()
-    val unread by Jm3Graph.unreadNotifications.collectAsState()
-    val downloads by Jm3Graph.downloadManager.queue.updates.collectAsState()
+    val unread by unreadBadge.count.collectAsState()
+    val downloads by downloadManager.queue.updates.collectAsState()
     val activeDownloads = downloads.activeDownloadCount()
     val scope = rememberCoroutineScope()
 

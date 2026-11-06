@@ -121,19 +121,37 @@ fun LibraryScreen(
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
 
+    /** 失效与失败共用一个落点：[planLoad] 决定整屏去登录/给重试，还是有内容时只弹提示。 */
+    fun applyFailure(outcome: SessionOutcome<*>, hasContent: Boolean) {
+        val plan = planLoad(outcome, hasContent = hasContent, failureMessage = "加载失败")
+        if (plan.keepContent) {
+            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
+        } else {
+            failure = plan
+        }
+    }
+
     fun load(targetPage: Int, append: Boolean) {
-        loadToken++
-        val token = loadToken
         val tabIndex = tab
         val keyword = appliedQuery
         // 在不在拉、还能不能拉都交给 feed：重复触底不会再并发打同一页
         val creatorRequest = if (append && tabIndex == 0) creatorFeed.beginLoadMore() else null
         val workRequest = if (append && tabIndex != 0) workFeed.beginLoadMore() else null
+        // 拦截必须在占用 token 之前：被拦下的重复触底若先自增 token，在途请求的结果会被丢弃，
+        // feed 就永远停在 loadingMore，页脚一直转圈且再也拉不动。
         if (creatorRequest === creatorFeed || workRequest === workFeed) return
+        loadToken++
+        val token = loadToken
         if (creatorRequest != null) creatorFeed = creatorRequest
         if (workRequest != null) workFeed = workRequest
         if (!append && !refreshing) loading = true
         failure = null
+        // 附加页说明列表已有内容；首屏与下拉刷新则按当前 Tab 是否已有条目决定要不要保住列表
+        val hasContent = append || if (tabIndex == 0) {
+            creatorFeed.items.isNotEmpty()
+        } else {
+            workFeed.items.isNotEmpty()
+        }
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
             val outcome = authCall.call {
@@ -150,30 +168,25 @@ fun LibraryScreen(
                 is SessionOutcome.Ok -> when (val value = outcome.value) {
                     is CreatorPage -> {
                         val slice = librarySlice(value.items, value.total, targetPage)
-                        creatorFeed = if (append) {
-                            creatorRequest!!.append(slice) { it.id }
-                        } else {
-                            PagedFeed<CreatorMeta>().replace(slice) { it.id }
-                        }
+                        creatorFeed = creatorRequest?.append(slice) { it.id }
+                            ?: PagedFeed<CreatorMeta>().replace(slice) { it.id }
                     }
 
                     is CreatorWorkPage -> {
                         filters = value.filters
                         val slice = librarySlice(value.items, value.total, targetPage)
-                        workFeed = if (append) {
-                            workRequest!!.append(slice) { it.id }
-                        } else {
-                            PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
-                        }
+                        workFeed = workRequest?.append(slice) { it.id }
+                            ?: PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
                     }
 
                     else -> Unit
                 }
 
-                SessionOutcome.Expired -> failure = planLoad(outcome, hasContent = false, failureMessage = "")
+                SessionOutcome.Expired -> applyFailure(outcome, hasContent)
 
                 is SessionOutcome.Failed -> {
-                    failure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
+                    applyFailure(outcome, hasContent)
+                    // 附加页失败只影响页脚，重试入口交给页脚上的「加载失败，点击重试」
                     creatorRequest?.let { creatorFeed = it.failLoadMore() }
                     workRequest?.let { workFeed = it.failLoadMore() }
                 }
@@ -336,7 +349,6 @@ fun LibraryScreen(
                     item(key = "footer") {
                         LibraryFooter(
                             feed = activeFeed,
-                            total = total,
                             mode = paginationMode,
                             totalPages = totalPages,
                             onLoadMore = { load(activeFeed.page + 1, append = true) },
@@ -938,52 +950,20 @@ private fun FilterSpinner(
     }
 }
 
-/** 列表底部：加载更多/没有更多/点击翻页。 */
+/** 列表底部：点击模式交给 PagerBar，滚动模式交给 LoadMoreFooter，本文件不再自己拼一套。 */
 @Composable
 private fun LibraryFooter(
     feed: PagedFeed<*>,
-    total: Int,
     mode: PaginationMode,
     totalPages: Int,
     onLoadMore: () -> Unit,
     onPageChange: (Int) -> Unit,
 ) {
-    val itemCount = feed.items.size
-    if (itemCount == 0) return
-    Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-        when {
-            feed.loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-            mode == PaginationMode.CLICK -> Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TextButton(
-                    text = "上一页",
-                    onClick = { onPageChange(feed.page - 1) },
-                    enabled = feed.page > 1,
-                    minWidth = 0.dp,
-                    minHeight = 36.dp,
-                )
-                Text(
-                    text = "${feed.page} / $totalPages",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                TextButton(
-                    text = "下一页",
-                    onClick = { onPageChange(feed.page + 1) },
-                    enabled = feed.page < totalPages,
-                    minWidth = 0.dp,
-                    minHeight = 36.dp,
-                )
-            }
-            itemCount < total -> TextButton(text = "加载更多", onClick = onLoadMore)
-            else -> Text(
-                text = "没有更多了",
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        }
+    if (feed.items.isEmpty()) return
+    if (mode == PaginationMode.CLICK) {
+        PagerBar(page = feed.page, totalPages = totalPages, onPageChange = onPageChange)
+    } else {
+        LoadMoreFooter(feed = feed, onLoadMore = onLoadMore)
     }
 }
 

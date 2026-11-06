@@ -71,8 +71,12 @@ class ApiDomain(context: Context, private val appScope: CoroutineScope) {
         if (!switched) return
         // 会话注入要走网络与写盘，放到锁外：锁只保护网关实例本身的重建，
         // 否则一次线路切换会把并发的其它切换全堵在网络超时上。
-        onSwitched()
-        previous?.let { old -> runCatching { old.close() } }
+        // 旧网关必须在迁移失败时也释放，否则连接池随每次失败的切换泄漏
+        try {
+            onSwitched()
+        } finally {
+            previous?.let { old -> runCatching { old.close() } }
+        }
     }
 
     /** 冷启动预热：线路池一次读盘，避免网关装配时还没拿到上次刷新结果。 */

@@ -495,11 +495,20 @@ fun LazyListScope.searchResultItems(
     }
 }
 
-/** 通用点击分页条；页码与总页数由调用方给出，避免各页自己拼一套翻页控件。 */
+/**
+ * 通用点击分页条；页码与总页数由调用方给出，避免各页自己拼一套翻页控件。
+ *
+ * [totalPages] 为 null 表示接口不返回总数：这时只显示当前页，下一页能不能点按 [hasMore] 判。
+ */
 @Composable
-fun PagerBar(page: Int, totalPages: Int, onPageChange: (Int) -> Unit) {
+fun PagerBar(
+    page: Int,
+    totalPages: Int? = null,
+    hasMore: Boolean = false,
+    onPageChange: (Int) -> Unit,
+) {
     val current = page.coerceAtLeast(1)
-    val total = totalPages.coerceAtLeast(1)
+    val total = totalPages?.coerceAtLeast(1)
     Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
         androidx.compose.foundation.layout.Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -513,14 +522,14 @@ fun PagerBar(page: Int, totalPages: Int, onPageChange: (Int) -> Unit) {
                 minHeight = 36.dp,
             )
             Text(
-                text = "$current / $total",
+                text = total?.let { "$current / $it" } ?: "第 $current 页",
                 style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
             TextButton(
                 text = "下一页",
                 onClick = { onPageChange(current + 1) },
-                enabled = current < total,
+                enabled = total?.let { current < it } ?: hasMore,
                 minWidth = 0.dp,
                 minHeight = 36.dp,
             )

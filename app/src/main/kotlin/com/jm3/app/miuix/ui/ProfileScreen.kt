@@ -69,12 +69,18 @@ private fun ProfileSelector.options(): List<Pair<String, String>> = when (this) 
 private sealed interface ProfileUiState {
     data object Loading : ProfileUiState
     data object Loaded : ProfileUiState
-    data class Failed(val message: String) : ProfileUiState
+    /** sessionExpired 区分「重试可能好」和「会话没了」：后者只能去登录，给重试按钮是骗人的。 */
+    data class Failed(val message: String, val sessionExpired: Boolean = false) : ProfileUiState
 }
 
 /** 个人资料：只读账号信息 + 全量可编辑字段，保存后以服务端返回为准。 */
 @Composable
-fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, authCall: AuthCall) {
+fun ProfileScreen(
+    onBack: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
+    onOpenLogin: () -> Unit = {},
+) {
     val user by Jm3Graph.account.user.collectAsState()
     var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
     var profile by remember { mutableStateOf<UserProfile?>(null) }
@@ -88,6 +94,23 @@ fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, auth
         profile = next
         fields.clear()
         fields.putAll(next.editableFields())
+    }
+
+    /** 失效与失败共用一个落点：已读到资料就保留表单，只弹提示；否则整屏化，失效换成「去登录」。 */
+    fun applyFailure(outcome: SessionOutcome<*>) {
+        val plan = planLoad(
+            outcome = outcome,
+            hasContent = profile != null,
+            failureMessage = "个人资料加载失败",
+        )
+        if (plan.keepContent) {
+            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
+        } else {
+            state = ProfileUiState.Failed(
+                message = plan.message.orEmpty(),
+                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+            )
+        }
     }
 
     fun load(showLoading: Boolean = true) {
@@ -105,13 +128,9 @@ fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, auth
                     state = ProfileUiState.Loaded
                 }
 
-                SessionOutcome.Expired -> state = ProfileUiState.Failed(
-                    planLoad(outcome, hasContent = false, failureMessage = "个人资料加载失败").message.orEmpty(),
-                )
+                SessionOutcome.Expired -> applyFailure(outcome)
 
-                is SessionOutcome.Failed -> state = ProfileUiState.Failed(
-                    planLoad(outcome, hasContent = false, failureMessage = "个人资料加载失败").message.orEmpty(),
-                )
+                is SessionOutcome.Failed -> applyFailure(outcome)
             }
         }
     }
@@ -166,11 +185,18 @@ fun ProfileScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, auth
     ) { innerPadding ->
         when (val s = state) {
             ProfileUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            is ProfileUiState.Failed -> ErrorScreen(
-                message = s.message,
-                onRetry = { load() },
-                modifier = Modifier.padding(innerPadding),
-            )
+            is ProfileUiState.Failed -> if (s.sessionExpired) {
+                LoginExpiredScreen(
+                    onOpenLogin = onOpenLogin,
+                    modifier = Modifier.padding(innerPadding),
+                )
+            } else {
+                ErrorScreen(
+                    message = s.message,
+                    onRetry = { load() },
+                    modifier = Modifier.padding(innerPadding),
+                )
+            }
             ProfileUiState.Loaded -> Column(
                 modifier = Modifier
                     .fillMaxSize()

@@ -24,9 +24,10 @@ import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
  * 玻璃表面的角色：决定「理想形态」——磨砂半径、折射带、边缘高光、底衬不透明度、采样余量，
  * 不决定降级；降级只由 [GlassTier] 决定。
  *
- * 新增表面时先在这里选角色，不要另抄一套光学链路。唯一的例外是底栏的隐藏录制层
- * （FloatingBottomBarLayers.kt 的 BottomBarActiveTabsLayer）：它不画可见像素，只供
- * tabsBackdrop 录制选中态内容，因此保留手写链路。
+ * 新增表面时先在这里选角色，不要另抄一套光学链路。手写链路只剩两处，都在底栏：
+ * - BottomBarActiveTabsLayer：不画可见像素，只供 tabsBackdrop 录制选中态内容；
+ * - BottomBarIndicatorLayer：透镜高度/强度（10dp/14dp）、高光与内阴影都随按下进度连续变化，
+ *   角色表只描述静态形态，收不住这组参数，因此仍手写。
  *
  * [TopAppBar] 的磨砂由渐进模糊承担（GlassScaffold.kt 的 topBarProgressiveBlur），
  * 这里只提供「是否采样」与实色兜底不透明度。

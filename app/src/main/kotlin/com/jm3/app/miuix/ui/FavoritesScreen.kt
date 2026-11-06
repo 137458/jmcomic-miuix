@@ -167,9 +167,13 @@ fun FavoritesScreen(
                     feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
                 }
 
-                SessionOutcome.Expired -> applyFailure(outcome, hasContent = false, failureMessage = "")
+                // 刷新失败/失效都不该把已有列表清掉：保留内容只提示，没有内容才换整屏
+                SessionOutcome.Expired -> applyFailure(
+                    outcome,
+                    hasContent = feed != null,
+                    failureMessage = "",
+                )
 
-                // 刷新失败不该把已有列表清掉：保留内容，只在页脚提示
                 is SessionOutcome.Failed -> applyFailure(
                     outcome,
                     hasContent = feed != null,

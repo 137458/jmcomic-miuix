@@ -242,6 +242,8 @@ fun MainScreen(
                                             else -> MineScreen(
                                                 account = account,
                                                 authCall = authCall,
+                                                unreadBadge = unreadBadge,
+                                                downloadManager = downloadManager,
                                                 snackbarHostState = snackbarHostState,
                                                 onOpenLogin = onOpenLogin,
                                                 onOpenFavorites = onOpenFavorites,

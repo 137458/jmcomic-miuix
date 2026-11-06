@@ -75,12 +75,24 @@ fun TrackingScreen(
     val scope = rememberCoroutineScope()
 
     /**
-     * 会话失效：清本地会话已由 [AuthCall] 在返回结局前做完，这里只把整屏切成「去登录」。
+     * 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏。
      *
-     * 重试同一个请求只会再吃一次 401，所以这里不给重试，只留登录入口。
+     * 失效时 [AuthCall] 已在返回结局前清掉本地会话，整屏只能去登录，重试同一个请求只会再吃一次 401。
      */
-    fun applyExpired() {
-        state = TrackingUiState.Failed(SessionOutcome.Expired.message, sessionExpired = true)
+    fun applyFailure(outcome: SessionOutcome<*>) {
+        val plan = planLoad(
+            outcome = outcome,
+            hasContent = feed.items.isNotEmpty(),
+            failureMessage = "追踪列表加载失败",
+        )
+        if (plan.keepContent) {
+            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
+        } else {
+            state = TrackingUiState.Failed(
+                message = plan.message.orEmpty(),
+                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+            )
+        }
     }
 
     fun loadFirstPage(showLoading: Boolean = true) {
@@ -103,11 +115,9 @@ fun TrackingScreen(
                     state = TrackingUiState.Loaded
                 }
 
-                SessionOutcome.Expired -> applyExpired()
+                SessionOutcome.Expired -> applyFailure(outcome)
 
-                is SessionOutcome.Failed -> {
-                    state = TrackingUiState.Failed(outcome.messageOr("追踪列表加载失败"))
-                }
+                is SessionOutcome.Failed -> applyFailure(outcome)
             }
         }
     }
@@ -137,7 +147,7 @@ fun TrackingScreen(
                     ) { it.id }
                 }
 
-                SessionOutcome.Expired -> applyExpired()
+                SessionOutcome.Expired -> applyFailure(outcome)
 
                 is SessionOutcome.Failed -> feed = requested.failLoadMore()
             }
@@ -160,7 +170,7 @@ fun TrackingScreen(
                     snackbarHostState.showSnackbar("已取消追踪")
                 }
 
-                SessionOutcome.Expired -> applyExpired()
+                SessionOutcome.Expired -> applyFailure(outcome)
 
                 is SessionOutcome.Failed -> {
                     snackbarHostState.showSnackbar("操作失败：" + outcome.messageOr("请稍后重试"))

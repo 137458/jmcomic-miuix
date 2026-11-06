@@ -81,12 +81,18 @@ private sealed interface TasksUiState {
     /** imageHost 为图片域名，用于拼接勋章图的相对路径。 */
     data class Loaded(val page: TaskPage, val imageHost: String) : TasksUiState
 
-    data class Failed(val message: String) : TasksUiState
+    /** sessionExpired 区分「重试可能好」和「会话没了」：后者只能去登录，给重试按钮是骗人的。 */
+    data class Failed(val message: String, val sessionExpired: Boolean = false) : TasksUiState
 }
 
 /** 成就/任务：称号与勋章两个维度，支持「我的/全部」筛选。 */
 @Composable
-fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, authCall: AuthCall) {
+fun TasksScreen(
+    onBack: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+    authCall: AuthCall,
+    onOpenLogin: () -> Unit = {},
+) {
     val types = TaskType.entries
     val filters = TaskFilter.entries
     var typeIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -102,6 +108,23 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, authCa
 
     // 快速切换页签时旧响应不能覆盖新条件的结果，慢网下否则会把 A 类型的结果画在 B 类型的格子位置
     var requestToken by remember { mutableIntStateOf(0) }
+
+    /** 失效与失败共用一个落点：已有成就格就保留，只弹提示；否则整屏化，失效换成「去登录」。 */
+    fun applyFailure(outcome: SessionOutcome<*>) {
+        val plan = planLoad(
+            outcome = outcome,
+            hasContent = state is TasksUiState.Loaded,
+            failureMessage = "成就列表加载失败",
+        )
+        if (plan.keepContent) {
+            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
+        } else {
+            state = TasksUiState.Failed(
+                message = plan.message.orEmpty(),
+                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+            )
+        }
+    }
 
     fun load(showLoading: Boolean = true) {
         if (showLoading) state = TasksUiState.Loading
@@ -122,13 +145,9 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, authCa
             when (outcome) {
                 is SessionOutcome.Ok -> state = outcome.value
 
-                SessionOutcome.Expired -> state = TasksUiState.Failed(
-                    planLoad(outcome, hasContent = false, failureMessage = "成就列表加载失败").message.orEmpty(),
-                )
+                SessionOutcome.Expired -> applyFailure(outcome)
 
-                is SessionOutcome.Failed -> state = TasksUiState.Failed(
-                    planLoad(outcome, hasContent = false, failureMessage = "成就列表加载失败").message.orEmpty(),
-                )
+                is SessionOutcome.Failed -> applyFailure(outcome)
             }
         }
     }
@@ -170,11 +189,18 @@ fun TasksScreen(onBack: () -> Unit, snackbarHostState: SnackbarHostState, authCa
         Column(modifier = Modifier.fillMaxSize()) {
             when (val s = state) {
                 TasksUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-                is TasksUiState.Failed -> ErrorScreen(
-                    message = s.message,
-                    onRetry = { load() },
-                    modifier = Modifier.padding(innerPadding),
-                )
+                is TasksUiState.Failed -> if (s.sessionExpired) {
+                    LoginExpiredScreen(
+                        onOpenLogin = onOpenLogin,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                } else {
+                    ErrorScreen(
+                        message = s.message,
+                        onRetry = { load() },
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                }
                 is TasksUiState.Loaded -> TaskGrid(
                     type = type,
                     page = s.page,

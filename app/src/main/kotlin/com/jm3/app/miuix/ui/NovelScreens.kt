@@ -1247,23 +1247,11 @@ private fun NovelCommentsPanel(
                 feed.items.forEach { item ->
                     CommentRow(item = item, onReply = { replyTarget = it })
                 }
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    when {
-                        feed.loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-                        feed.hasMore -> TextButton(
-                            text = "加载更多",
-                            onClick = { load(feed.page + 1, replace = false, showLoading = false) },
-                        )
-                        else -> Text(
-                            text = "已经到底了",
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                }
+                // 三态页脚与其他列表共用：加载中 / 失败重试 / 没有更多
+                LoadMoreFooter(
+                    feed = feed,
+                    onLoadMore = { load(feed.page + 1, replace = false, showLoading = false) },
+                )
             }
         }
         Spacer(modifier = Modifier.height(8.dp))

@@ -228,33 +228,12 @@ fun WatchHistoryScreen(
                         }
                         item(key = "footer") {
                             if (mode == PaginationMode.CLICK) {
-                                // 点击分页要靠页码定位，不能用「加载更多」式页脚
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        TextButton(
-                                            text = "上一页",
-                                            onClick = { fetch(feed.page - 1, replace = true, showLoading = false) },
-                                            enabled = feed.page > 1,
-                                            minWidth = 0.dp,
-                                            minHeight = 36.dp,
-                                        )
-                                        Text(
-                                            text = "第 ${feed.page} 页",
-                                            style = MiuixTheme.textStyles.footnote1,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        )
-                                        TextButton(
-                                            text = "下一页",
-                                            onClick = { fetch(feed.page + 1, replace = true, showLoading = false) },
-                                            enabled = feed.hasMore,
-                                            minWidth = 0.dp,
-                                            minHeight = 36.dp,
-                                        )
-                                    }
-                                }
+                                // 接口不返回总数，交给通用翻页条按 feed.hasMore 判下一页
+                                PagerBar(
+                                    page = feed.page,
+                                    hasMore = feed.hasMore,
+                                    onPageChange = { target -> fetch(target, replace = true, showLoading = false) },
+                                )
                             } else {
                                 // 三态页脚与其他列表保持一致：加载中 / 失败重试 / 没有更多
                                 LoadMoreFooter(

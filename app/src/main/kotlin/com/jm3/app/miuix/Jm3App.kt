@@ -60,6 +60,7 @@ import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.update.UpdateDownloader
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.Jm3Log
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
 import com.jm3.core.session.AccountManager
@@ -174,11 +175,6 @@ object Jm3Graph {
     val authCall: AuthCall
         get() = session.authCall
 
-    /** 转接：[SessionDomain.unread]。 */
-    @Deprecated("改用 session.unread.count")
-    val unreadNotifications: StateFlow<Int>
-        get() = session.unread.count
-
     /** 转接：[SettingsDomain.paginationMode]。 */
     @Deprecated("改用 preferences.paginationMode")
     var paginationMode: PaginationMode
@@ -211,9 +207,6 @@ object Jm3Graph {
     @Deprecated("改用 session.applyDomains")
     suspend fun applyDomains(apiDomains: List<String>) = session.applyDomains(apiDomains)
 
-    /** 转接：[SessionDomain.scheduleRefreshUnread]。 */
-    @Deprecated("改用 session.scheduleRefreshUnread")
-    fun refreshUnreadNotifications() = session.scheduleRefreshUnread()
 }
 
 @Serializable
@@ -376,12 +369,15 @@ fun Jm3App() {
 
     // 启动顺序：先恢复主题与线路（切了线路时 applyDomains 会把会话注入新网关），最后再兜一次会话恢复。
     LaunchedEffect(Unit) {
-        // 设置读盘失败也要往下走：会话恢复是登录态的起点，不能被主题或线路拖住
-        runCatching {
+        // 设置读盘失败也要往下走：会话恢复是登录态的起点，不能被主题或线路拖住。
+        // 五句全是挂起调用，用 runCatchingSuspending：取消原样抛出，失败留一条事实日志。
+        runCatchingSuspending {
             themeModeName = Jm3Graph.settings.themeMode().name
             dynamicColor = Jm3Graph.settings.dynamicColor()
             Jm3Graph.paginationMode = Jm3Graph.settings.paginationMode()
             Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
+        }.onFailure { failure ->
+            Jm3Log.warn("Jm3App", "启动读盘失败（" + failure.javaClass.name + "），改用默认设置")
         }
         Jm3Graph.account.restore()
     }
@@ -496,6 +492,7 @@ fun Jm3App() {
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
                             authCall = Jm3Graph.session.authCall,
+                            unreadBadge = Jm3Graph.session.unread,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -513,6 +510,7 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             snackbarHostState = snackbarHostState,
                             authCall = Jm3Graph.session.authCall,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.Profile>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -520,6 +518,7 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             snackbarHostState = snackbarHostState,
                             authCall = Jm3Graph.session.authCall,
+                            onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
                     entry<Route.WatchHistory>(swipeDismiss = NavSwipeDirection.LeftToRight) {
