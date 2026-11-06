@@ -20,12 +20,14 @@ class FileDownloadStore(private val root: File) : DownloadStore {
         dir(photoId).mkdirs()
         val target = file(photoId, index)
         val tmp = File(target.parentFile, target.name + ".tmp")
-        tmp.outputStream().use { it.write(bytes) }
+        // 写字节与移动两段都可能失败（磁盘满、路径被占）：失败必须清掉半截临时文件，
+        // 否则契约里「不许留下临时文件」只在 rename 这半段成立。
         // 覆盖写必须真替换：File.renameTo 在 Windows 上遇到已存在目标会返回 false。
-        val replaced = runCatching {
+        val stored = runCatching {
+            tmp.outputStream().use { it.write(bytes) }
             Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }.isSuccess
-        if (!replaced) {
+        if (!stored) {
             tmp.delete()
             error("下载页落盘失败：${target.path}")
         }

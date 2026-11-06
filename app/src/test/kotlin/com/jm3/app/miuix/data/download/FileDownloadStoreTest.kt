@@ -3,6 +3,7 @@ package com.jm3.app.miuix.data.download
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
+import kotlin.test.assertFailsWith
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -101,6 +102,19 @@ class FileDownloadStoreTest {
 
         assertContentEquals("新页".encodeToByteArray(), store.read("p", 1))
         assertEquals(listOf(1), store.files("p"))
+    }
+
+    @Test
+    fun `写入失败时不留临时文件`() {
+        val store = store()
+        val dir = File(root, "p").apply { mkdirs() }
+        // 让写临时文件这一步必然失败（同名路径已被目录占住），验证失败分支也守"不留临时文件"的契约。
+        val blocked = File(dir, "00001.jpg.tmp").apply { mkdirs() }
+
+        assertFailsWith<IllegalStateException> { store.write("p", 1, byteArrayOf(1, 2, 3)) }
+        assertFalse(blocked.exists(), "写入失败后不许留下临时路径")
+        assertFalse(store.exists("p", 1), "失败时不得把半截内容当成已落盘")
+        assertEquals(emptyList<Int>(), store.files("p"))
     }
 
     @Test
