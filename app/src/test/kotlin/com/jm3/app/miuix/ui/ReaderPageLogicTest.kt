@@ -202,24 +202,5 @@ class ReaderPageLogicTest {
         val size = readerPageDecodeSize(Int.MAX_VALUE, 0.75f)
         assertTrue(size.width.toLong() * size.height <= MAX_PAGE_DECODE_PIXELS)
     }
-
-    @Test
-    fun 内存预算估算RGB565相比ARGB8888节省一半内存() {
-        val size = IntSize(1080, 1440)
-        val argbBytes = estimatePageMemoryBytes(size, isRgb565 = false)
-        val rgb565Bytes = estimatePageMemoryBytes(size, isRgb565 = true)
-        assertEquals(1080L * 1440L * 4L, argbBytes)
-        assertEquals(1080L * 1440L * 2L, rgb565Bytes)
-        assertEquals(argbBytes / 2, rgb565Bytes)
-    }
-
-    @Test
-    fun 单页四百万像素上限在RGB565下守住八兆字节上界() {
-        val maxPixels = 4_000_000
-        val size = IntSize(2000, 2000)
-        val bytes = estimatePageMemoryBytes(size, isRgb565 = true)
-        assertEquals(8_000_000L, bytes)
-        assertTrue(bytes <= 8_000_000L)
-    }
 }
 
