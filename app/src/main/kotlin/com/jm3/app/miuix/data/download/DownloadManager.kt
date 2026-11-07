@@ -7,6 +7,7 @@ import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.DownloadTask
 import com.jm3.core.download.toResumeTask
+import com.jm3.core.runCatchingSuspending
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -29,18 +30,23 @@ class DownloadManager(
     fun ensureStarted() {
         if (!started.compareAndSet(false, true)) return
         appScope.launch {
-            // 先收敛上次进程被杀遗留的中断记录，再启动 worker
-            ledger.recoverInterruptedRecords()
+            // 恢复中断记录只是台账修复，失败也必须启动 worker；否则整条下载链路永久停摆
+            runCatchingSuspending { ledger.recoverInterruptedRecords() }
             queue.start(appScope)
         }
         ledger.start(appScope, queue.updates)
     }
 
-    /** 章节入队（total 未知，开跑前由 resolver 补齐）。 */
-    fun enqueueChapter(photoId: String, albumId: String, title: String) {
+    /**
+     * 章节入队（total 未知，开跑前由 resolver 补齐）。
+     *
+     * 返回是否真的接受了新任务：已在队列/运行中/已完成的章节会返回 false，
+     * UI 据此区分「已加入」和「已在下载队列或已下载」，不能把 false 当成静默成功。
+     */
+    fun enqueueChapter(photoId: String, albumId: String, title: String): Boolean {
         ensureStarted()
         // 标题可能为空（详情页未拿到章节名）：空串会让书架/任务列表出现无文字的空行。
-        queue.enqueue(
+        return queue.enqueue(
             DownloadTask(
                 photoId = photoId,
                 albumId = albumId,

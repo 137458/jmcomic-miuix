@@ -155,6 +155,30 @@ fun AlbumDetailScreen(
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val selectionHaptic = rememberSelectionHaptic()
 
+    /** 批量下载：只有全部章节都已在队列/已下载时才提示“无新增”，否则报告本次实际入队数量。 */
+    fun downloadAll(albumId: String, chapters: List<Chapter>) {
+        if (chapters.isEmpty()) return
+        var accepted = 0
+        chapters.forEachIndexed { index, chapter ->
+            val title = ChapterLabels.chapterTitle(chapter.title, index)
+            if (downloadManager.enqueueChapter(chapter.id, albumId, title)) accepted++
+        }
+        scope.launch {
+            snackbarHostState.showSnackbar(
+                if (accepted > 0) "已加入下载队列（$accepted 个章节）" else "这些章节已在下载队列或已下载",
+            )
+        }
+    }
+
+    fun downloadChapter(chapter: Chapter, albumId: String, title: String) {
+        val accepted = downloadManager.enqueueChapter(chapter.id, albumId, title)
+        scope.launch {
+            snackbarHostState.showSnackbar(
+                if (accepted) "已加入下载队列" else "该章节已在下载队列或已下载",
+            )
+        }
+    }
+
     fun copyText(label: String, value: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         clipboard?.setPrimaryClip(ClipData.newPlainText(label, value))
@@ -272,15 +296,7 @@ fun AlbumDetailScreen(
                                 if (loadedDetail.chapters.size > 1) {
                                     TooltipBox(text = "下载全部") {
                                         IconButton(
-                                            onClick = {
-                                                loadedDetail.chapters.forEachIndexed { index, chapter ->
-                                                    downloadManager.enqueueChapter(
-                                                        photoId = chapter.id,
-                                                        albumId = loadedDetail.id,
-                                                        title = ChapterLabels.chapterTitle(chapter.title, index),
-                                                    )
-                                                }
-                                            },
+                                            onClick = { downloadAll(loadedDetail.id, loadedDetail.chapters) },
                                         ) {
                                             Icon(imageVector = MiuixIcons.Download, contentDescription = "下载全部")
                                         }
@@ -328,14 +344,8 @@ fun AlbumDetailScreen(
                                 onDownloadAll = if (loadedDetail == null || loadedDetail.chapters.isEmpty()) {
                                     null
                                 } else {
-                                    // 与顶栏「下载全部」同一套标题兜底：空标题不能进书架
-                                    { loadedDetail.chapters.forEachIndexed { index, chapter ->
-                                        downloadManager.enqueueChapter(
-                                            photoId = chapter.id,
-                                            albumId = loadedDetail.id,
-                                            title = ChapterLabels.chapterTitle(chapter.title, index),
-                                        )
-                                    } }
+                                    // 与顶栏「下载全部」共用同一套动作与反馈，避免两处行为分叉
+                                    { downloadAll(loadedDetail.id, loadedDetail.chapters) }
                                 },
                             )
                         }
@@ -401,11 +411,7 @@ fun AlbumDetailScreen(
                                             },
                                             onRead = { photoId -> onOpenReader(photoId) },
                                             onDownload = { chapter, title ->
-                                                downloadManager.enqueueChapter(
-                                                    photoId = chapter.id,
-                                                    albumId = detail.id,
-                                                    title = title,
-                                                )
+                                                downloadChapter(chapter, detail.id, title)
                                             },
                                         )
                                     }
