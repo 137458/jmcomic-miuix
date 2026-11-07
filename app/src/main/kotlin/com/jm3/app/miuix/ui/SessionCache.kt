@@ -97,6 +97,11 @@ internal class SessionCache {
         entries.remove(key)
     }
 
+    /** 分页模式变化后作废列表结果：旧模式下已追加的内容不能按新语义展示；侧栏数据与此无关，保留。 */
+    fun forgetPages() {
+        entries.clear()
+    }
+
     /** 退出登录等场景整份清空。 */
     fun clear() {
         entries.clear()

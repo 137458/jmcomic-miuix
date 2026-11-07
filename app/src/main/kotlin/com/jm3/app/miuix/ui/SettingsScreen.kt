@@ -128,6 +128,8 @@ fun SettingsScreen(
     fun applyPaginationMode(mode: PaginationMode) {
         if (mode == deps.preferences.paginationMode) return
         deps.preferences.paginationMode = mode
+        // 列表页此时已被设置路由移出组合；作废旧模式的缓存，回来时才会按新语义从第 1 页加载。
+        deps.sessionCache.forgetPages()
         scope.launch { deps.preferences.repository.setPaginationMode(mode) }
     }
 

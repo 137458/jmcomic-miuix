@@ -79,6 +79,7 @@ import com.jm3.core.reader.ReaderPagePlan
 import com.jm3.core.reader.ReaderPageProgress
 import com.jm3.core.reader.advancePrefetch
 import com.jm3.core.reader.jumpTo
+import com.jm3.core.reader.readerProgressOnExit
 import com.jm3.core.reader.resolveRestoredPage
 import com.jm3.core.reader.settleJump
 import com.jm3.core.reader.stepPages
@@ -456,17 +457,17 @@ private fun ReaderPages(
         )
     }
 
-    // 离开阅读器时补记当前页：此时协程作用域已取消，挂在进程作用域上才写得完
+    // 离开阅读器时补记当前页：此时协程作用域已取消，挂在进程作用域上才写得完。
+    // 恢复流程未完成时首帧页码还是第 1 页，此时不能写盘，否则会覆盖尚未读取的旧进度。
     DisposableEffect(photo.photoId) {
         onDispose {
-            val total = photo.images.size
-            if (total > 0) {
-                deps.appScope.launch {
-                    settings.setReaderLastPage(
-                        photo.photoId,
-                        ReaderPageProgress(page = latestPage, total = total),
-                    )
-                }
+            val progress = readerProgressOnExit(
+                restored = progressRestored,
+                page = latestPage,
+                total = photo.images.size,
+            ) ?: return@onDispose
+            deps.appScope.launch {
+                settings.setReaderLastPage(photo.photoId, progress)
             }
         }
     }

@@ -100,6 +100,24 @@ class SessionCacheTest {
     }
 
     @Test
+    fun 分页模式变化只作废列表结果并保留侧栏数据() {
+        val cache = SessionCache()
+        cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakeFeed))
+        cache.remember(browseKey(), ListState.Loaded(fakeFeed))
+        cache.homeSide = HomeSideData(
+            hotTags = listOf("热血"),
+            serialUpdates = fakeFeed.items,
+            randomPicks = fakeFeed.items,
+        )
+
+        cache.forgetPages()
+
+        assertEquals(ListState.Loading, cache.stateOf(SessionListKey.HomeFeed))
+        assertFalse(cache.hasPage(browseKey()))
+        assertEquals(listOf("热血"), cache.homeSide.hotTags)
+    }
+
+    @Test
     fun 侧栏数据整份替换并且能一次清空() {
         val cache = SessionCache()
         assertTrue(cache.homeSide.isEmpty)

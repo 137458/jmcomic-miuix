@@ -86,6 +86,8 @@ fun HistoryScreen(
     val mode = deps.preferences.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
+    // 翻页在途守卫：仓库读取期间禁用翻页条，避免连点重复请求
+    var pageBusy by remember { mutableStateOf(false) }
     // 在途、失败、是否还有下一页都由 PagedFeed 记；仓库按 pageSize 分页，满页即代表还有下一页
     var feed by remember { mutableStateOf(PagedFeed<HistoryEntry>()) }
     var state by remember { mutableStateOf<HistoryListState>(HistoryListState.Loading) }
@@ -114,18 +116,24 @@ fun HistoryScreen(
 
     /** 点击分页：仓库按固定页大小切片，整页替换后回到列表顶部。 */
     fun jumpToPage(target: Int) {
+        if (pageBusy) return
         val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
         if (resolved == feed.page) return
+        pageBusy = true
         scope.launch {
-            runCatchingSuspending { repository.page(resolved, pageSize) }
-                .onSuccess {
-                    feed = PagedFeed<HistoryEntry>().replace(
-                        PageSlice(items = it, hasMore = it.size >= pageSize, page = resolved),
-                    ) { entry -> entry.photoId }
-                    state = HistoryListState.Loaded
-                    listState.scrollToItem(0)
-                }
-                .onFailure { state = HistoryListState.Failed(it.message ?: "历史加载失败") }
+            try {
+                runCatchingSuspending { repository.page(resolved, pageSize) }
+                    .onSuccess {
+                        feed = PagedFeed<HistoryEntry>().replace(
+                            PageSlice(items = it, hasMore = it.size >= pageSize, page = resolved),
+                        ) { entry -> entry.photoId }
+                        state = HistoryListState.Loaded
+                        listState.scrollToItem(0)
+                    }
+                    .onFailure { state = HistoryListState.Failed(it.message ?: "历史加载失败") }
+            } finally {
+                pageBusy = false
+            }
         }
     }
 
@@ -228,6 +236,7 @@ fun HistoryScreen(
                                     PagerBar(
                                         page = feed.page,
                                         hasMore = feed.hasMore,
+                                        enabled = !pageBusy,
                                         onPageChange = ::jumpToPage,
                                     )
                                 } else {

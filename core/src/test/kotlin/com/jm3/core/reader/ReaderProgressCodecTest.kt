@@ -94,6 +94,31 @@ class ReaderProgressCodecTest {
     }
 
     @Test
+    fun 退出补记_恢复未完成时不写进度() {
+        assertNull(readerProgressOnExit(restored = false, page = 1, total = 20))
+    }
+
+    @Test
+    fun 退出补记_恢复完成后按当前页写进度() {
+        assertEquals(ReaderPageProgress(page = 5, total = 20), readerProgressOnExit(true, page = 5, total = 20))
+    }
+
+    @Test
+    fun 退出补记_页码越界时夹到总页数() {
+        assertEquals(ReaderPageProgress(page = 20, total = 20), readerProgressOnExit(true, page = 33, total = 20))
+    }
+
+    @Test
+    fun 退出补记_空章节不写进度() {
+        assertNull(readerProgressOnExit(true, page = 1, total = 0))
+    }
+
+    @Test
+    fun 退出补记_非法页码不写进度() {
+        assertNull(readerProgressOnExit(true, page = 0, total = 20))
+    }
+
+    @Test
     fun 历史总页数为零时视为损坏数据不恢复() = runTest {
         assertNull(resolveRestoredPage(ReaderPageProgress(page = 5, total = 0), totalPages = 20))
     }

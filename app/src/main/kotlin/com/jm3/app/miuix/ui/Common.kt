@@ -511,12 +511,14 @@ fun LazyListScope.searchResultItems(
  * 通用点击分页条；页码与总页数由调用方给出，避免各页自己拼一套翻页控件。
  *
  * [totalPages] 为 null 表示接口不返回总数：这时只显示当前页，下一页能不能点按 [hasMore] 判。
+ * [enabled] 为 false 时两键都禁用，供翻页请求在途期间使用（屏幕仍保留当前列表）。
  */
 @Composable
 fun PagerBar(
     page: Int,
     totalPages: Int? = null,
     hasMore: Boolean = false,
+    enabled: Boolean = true,
     onPageChange: (Int) -> Unit,
 ) {
     val current = page.coerceAtLeast(1)
@@ -529,7 +531,7 @@ fun PagerBar(
             TextButton(
                 text = "上一页",
                 onClick = { onPageChange(current - 1) },
-                enabled = current > 1,
+                enabled = enabled && current > 1,
                 minWidth = 0.dp,
                 minHeight = 36.dp,
             )
@@ -541,7 +543,7 @@ fun PagerBar(
             TextButton(
                 text = "下一页",
                 onClick = { onPageChange(current + 1) },
-                enabled = total?.let { current < it } ?: hasMore,
+                enabled = enabled && (total?.let { current < it } ?: hasMore),
                 minWidth = 0.dp,
                 minHeight = 36.dp,
             )

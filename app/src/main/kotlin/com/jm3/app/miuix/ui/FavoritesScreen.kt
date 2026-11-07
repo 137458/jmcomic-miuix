@@ -110,6 +110,8 @@ fun FavoritesScreen(
     val mode = deps.preferences.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
+    // 翻页在途守卫：请求期间列表仍可读，但翻页条要禁用，避免连点重复请求
+    var pageBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成「去登录」）。 */
@@ -157,24 +159,30 @@ fun FavoritesScreen(
 
     /** 点击分页：按目标页整页替换，页码换算复用通用判据。 */
     fun jumpToPage(target: Int) {
+        if (pageBusy) return
         val current = feed ?: return
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
+        pageBusy = true
         val targetFolderId = folderId
         scope.launch {
-            val outcome = authCall.call { deps.gateway.favorites(targetFolderId, resolved) }
-            if (targetFolderId != folderId) return@launch
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val next = outcome.value
-                    if (next.folders.isNotEmpty()) folders = next.folders
-                    feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
-                    listState.scrollToItem(0)
+            try {
+                val outcome = authCall.call { deps.gateway.favorites(targetFolderId, resolved) }
+                if (targetFolderId != folderId) return@launch
+                when (outcome) {
+                    is SessionOutcome.Ok -> {
+                        val next = outcome.value
+                        if (next.folders.isNotEmpty()) folders = next.folders
+                        feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
+                        listState.scrollToItem(0)
+                    }
+
+                    SessionOutcome.Expired -> applyFailure(outcome, hasContent = true, failureMessage = "")
+
+                    is SessionOutcome.Failed -> applyFailure(outcome, hasContent = true, failureMessage = "收藏翻页失败")
                 }
-
-                SessionOutcome.Expired -> applyFailure(outcome, hasContent = true, failureMessage = "")
-
-                is SessionOutcome.Failed -> applyFailure(outcome, hasContent = true, failureMessage = "收藏翻页失败")
+            } finally {
+                pageBusy = false
             }
         }
     }
@@ -586,6 +594,7 @@ fun FavoritesScreen(
                                         page = p.page,
                                         totalPages = p.pageCount,
                                         hasMore = p.hasMore,
+                                        enabled = !pageBusy,
                                         onPageChange = ::jumpToPage,
                                     )
                                 } else {

@@ -37,3 +37,14 @@ fun resolveRestoredPage(saved: ReaderPageProgress?, totalPages: Int): Int? {
     if (saved.total < 1) return null
     return if (saved.page > totalPages) totalPages else saved.page
 }
+
+/**
+ * 离开阅读器时补记的进度。
+ *
+ * 进度恢复流程完成前不写：此时 [page] 还停在首帧的第 1 页，写盘会把尚未读取的旧进度覆盖掉。
+ * 页码按 [total] 夹取，避免长图列表末尾的留白项把页码推到越界值。
+ */
+fun readerProgressOnExit(restored: Boolean, page: Int, total: Int): ReaderPageProgress? {
+    if (!restored || total <= 0 || page < 1) return null
+    return ReaderPageProgress(page = page.coerceAtMost(total), total = total)
+}

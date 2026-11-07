@@ -76,6 +76,8 @@ fun TrackingScreen(
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     var pageSizeHint by remember { mutableIntStateOf(0) }
+    // 翻页在途守卫：请求期间禁用翻页条，避免连点重复请求
+    var pageBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     /**
@@ -132,31 +134,37 @@ fun TrackingScreen(
 
     /** 点击分页：按目标页整页替换；接口只给总数，用首页条数估算页码容量。 */
     fun jumpToPage(target: Int) {
+        if (pageBusy) return
         val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
         if (resolved == feed.page) return
+        pageBusy = true
         scope.launch {
-            val outcome = authCall.call { deps.gateway.trackingList(resolved) }
-            refreshing = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val page = outcome.value
-                    val sizeHint = pageSizeHint.coerceAtLeast(page.items.size)
-                    val seen = (resolved - 1).coerceAtLeast(0) * sizeHint + page.items.size
-                    feed = PagedFeed<TrackingItem>().replace(
-                        PageSlice(
-                            items = page.items,
-                            hasMore = page.items.isNotEmpty() && seen < page.total,
-                            total = page.total,
-                            page = resolved,
-                        ),
-                    ) { it.id }
-                    state = TrackingUiState.Loaded
-                    listState.scrollToItem(0)
+            try {
+                val outcome = authCall.call { deps.gateway.trackingList(resolved) }
+                refreshing = false
+                when (outcome) {
+                    is SessionOutcome.Ok -> {
+                        val page = outcome.value
+                        val sizeHint = pageSizeHint.coerceAtLeast(page.items.size)
+                        val seen = (resolved - 1).coerceAtLeast(0) * sizeHint + page.items.size
+                        feed = PagedFeed<TrackingItem>().replace(
+                            PageSlice(
+                                items = page.items,
+                                hasMore = page.items.isNotEmpty() && seen < page.total,
+                                total = page.total,
+                                page = resolved,
+                            ),
+                        ) { it.id }
+                        state = TrackingUiState.Loaded
+                        listState.scrollToItem(0)
+                    }
+
+                    SessionOutcome.Expired -> applyFailure(outcome)
+
+                    is SessionOutcome.Failed -> applyFailure(outcome)
                 }
-
-                SessionOutcome.Expired -> applyFailure(outcome)
-
-                is SessionOutcome.Failed -> applyFailure(outcome)
+            } finally {
+                pageBusy = false
             }
         }
     }
@@ -297,6 +305,7 @@ fun TrackingScreen(
                                     PagerBar(
                                         page = feed.page,
                                         hasMore = feed.hasMore,
+                                        enabled = !pageBusy,
                                         onPageChange = ::jumpToPage,
                                     )
                                 } else {
