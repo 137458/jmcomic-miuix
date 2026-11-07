@@ -53,6 +53,7 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.NovelChapter
@@ -685,6 +686,7 @@ private fun NovelDetailHeader(
     onToggleFavorite: () -> Unit,
     onComments: () -> Unit,
 ) {
+    val skin = LocalSkin.current
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Row(verticalAlignment = Alignment.Top) {
             NovelCover(url = detail.coverUrl, width = 100.dp, height = 136.dp)
@@ -751,7 +753,7 @@ private fun NovelDetailHeader(
         ) {
             Text(text = if (savedChapter == null) "开始阅读" else "继续阅读")
         }
-        Card(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 ActionCell(
                     icon = if (detail.favorite) MiuixIcons.FolderFill else MiuixIcons.Folder,
@@ -777,7 +779,7 @@ private fun NovelDetailHeader(
             }
         }
         if (detail.description.isNotBlank()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
                 Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleDescription).padding(14.dp)) {
                     Text(
                         text = detail.description,
@@ -809,8 +811,9 @@ private fun NovelChapterGroupCard(
     onToggle: () -> Unit,
     onOpen: (NovelChapterMeta) -> Unit,
 ) {
+    val skin = LocalSkin.current
     val showToggle = shouldShowChapterGroupToggle(group.size)
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         if (showToggle) {
             BasicComponent(
                 title = novelGroupTitle(group),
@@ -847,6 +850,7 @@ fun NovelReaderScreen(
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
 ) {
+    val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
     var detail by remember { mutableStateOf<NovelDetail?>(null) }
     var chapter by remember { mutableStateOf<NovelChapter?>(null) }
@@ -1042,9 +1046,10 @@ fun NovelReaderScreen(
         OverlayBottomSheet(
             show = fontSheetOpen,
             title = "字号",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { fontSheetOpen = false },
         ) {
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(
                         text = "当前字号 ${fontSize}sp",
@@ -1076,6 +1081,7 @@ fun NovelReaderScreen(
         OverlayBottomSheet(
             show = commentsOpen,
             title = "评论",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { commentsOpen = false },
         ) {
             Column(
@@ -1155,6 +1161,7 @@ private fun NovelCommentsPanel(
     authCall: AuthCall,
     modifier: Modifier = Modifier,
 ) {
+    val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
     var feed by remember { mutableStateOf(PagedFeed<CommentItem>()) }
     var loading by remember { mutableStateOf(true) }
@@ -1278,7 +1285,7 @@ private fun NovelCommentsPanel(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Card(modifier = Modifier.fillMaxWidth()) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                 TextField(
                     value = draft,

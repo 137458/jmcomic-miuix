@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
@@ -81,6 +82,7 @@ fun HistoryScreen(
     onOpenAlbum: (String) -> Unit,
     onOpenReader: (String) -> Unit,
 ) {
+    val skin = LocalSkin.current
     val repository = deps.history
     val pageSize = 20
     val mode = deps.preferences.paginationMode
@@ -252,6 +254,7 @@ fun HistoryScreen(
         OverlayDialog(
             show = showClearConfirm,
             title = "清空阅读历史",
+            cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = { showClearConfirm = false },
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {

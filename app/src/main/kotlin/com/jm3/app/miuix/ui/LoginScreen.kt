@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.session.AccountManager
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
@@ -31,6 +32,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
+    val skin = LocalSkin.current
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -54,7 +56,7 @@ fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),

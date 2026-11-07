@@ -71,6 +71,7 @@ import coil3.compose.AsyncImagePainter
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.shouldLoadMore
 import com.jm3.core.model.SearchResult
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -98,6 +99,7 @@ fun CommentReplySheet(
     onDismiss: () -> Unit,
     onSend: (String) -> Unit,
 ) {
+    val skin = LocalSkin.current
     var text by rememberSaveable { mutableStateOf("") }
     // 每次重新展开时清掉上一次草稿，避免把回复 A 的内容发到 B
     LaunchedEffect(show, targetAuthor) {
@@ -106,9 +108,10 @@ fun CommentReplySheet(
     OverlayBottomSheet(
         show = show,
         title = targetAuthor?.let { "回复 $it" } ?: "回复",
+        cornerRadius = skin.shapes.sheetCorner,
         onDismissRequest = onDismiss,
     ) {
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 TextField(
                     value = text,

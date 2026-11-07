@@ -51,6 +51,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.effect.BgEffectBackground
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.update.ApkInstaller
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.ReleaseInfo
@@ -367,9 +368,10 @@ private fun UpdateChangelogSection(
     onOpenRelease: (String) -> Unit,
     onRecheck: () -> Unit,
 ) {
+    val skin = LocalSkin.current
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(text = changelogTitle(state))
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -550,10 +552,11 @@ private fun UpdateSettingsSection(
     onAutoCheckChange: (Boolean) -> Unit,
     onIgnoreChange: () -> Unit,
 ) {
+    val skin = LocalSkin.current
     val ignored = latestVersion != null && UpdatePrompt.isIgnored(ignoredVersion, latestVersion)
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(text = "更新设置")
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             SwitchPreference(
                 title = "自动检查更新",
                 summary = "每次启动应用时自动检查最新版本",
@@ -586,9 +589,10 @@ private fun UpdateActionsSection(
     onRecheck: () -> Unit,
     onOpenRelease: () -> Unit,
 ) {
+    val skin = LocalSkin.current
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(text = "版本与操作")
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             BasicComponent(
                 title = "手动检查更新",
                 summary = if (checking) "正在检索远端版本信息…" else "点击从 GitHub Releases 检索最新版本",

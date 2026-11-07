@@ -101,6 +101,7 @@ import com.jm3.app.miuix.ui.glass.GlassRole
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.glassSurface
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -340,6 +341,7 @@ private fun ReaderPages(
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
+    val skin = LocalSkin.current
     val imageLoader = rememberReaderImageLoader(gateway, downloadFiles)
     val listState = rememberLazyListState()
     val context = LocalPlatformContext.current
@@ -1053,6 +1055,7 @@ private fun ReaderPages(
         OverlayBottomSheet(
             show = showPageSheet,
             title = "跳页",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { showPageSheet = false },
         ) {
             NumberPicker(
@@ -1077,6 +1080,7 @@ private fun ReaderPages(
         OverlayBottomSheet(
             show = showChapterSheet,
             title = "章节",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { showChapterSheet = false },
         ) {
             if (chapters.isEmpty()) {
@@ -1105,6 +1109,7 @@ private fun ReaderPages(
         OverlayBottomSheet(
             show = showCommentSheet,
             title = "评论",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { showCommentSheet = false },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -1165,6 +1170,7 @@ private fun ReaderPages(
         OverlayDialog(
             show = showTrackPrompt,
             title = "已经最后一话了！",
+            cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = { closeTrackPrompt() },
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {

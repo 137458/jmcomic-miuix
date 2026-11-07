@@ -50,6 +50,7 @@ import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
@@ -103,6 +104,7 @@ fun HomeScreen(
     onOpenAlbum: (String) -> Unit,
     onOpenWeek: () -> Unit,
 ) {
+    val skin = LocalSkin.current
     var query by rememberSaveable { mutableStateOf("") }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     // 已执行的关键词/标签；空串且未执行时展示发现流，rememberSaveable 保证从详情页返回时保留
@@ -611,7 +613,7 @@ fun HomeScreen(
                                         )
                                     }
                                 }
-                                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                                     HotTagFlow(
                                         tags = hotTags,
                                         expanded = showAllTags,
@@ -663,10 +665,11 @@ fun HomeScreen(
         OverlayDialog(
             show = showSearchHelp,
             title = "搜索语法",
+            cornerRadius = skin.shapes.dialogCorner,
             summary = "用空格与 +/- 组合关键词，可缩小搜索范围。",
             onDismissRequest = { showSearchHelp = false },
         ) {
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 BasicComponent(title = "全彩 人妻", summary = "同时包含这两个关键词（空格分隔）")
                 BasicComponent(title = "全彩 +人妻", summary = "两个关键词都必须包含")
                 BasicComponent(title = "全彩 -人妻", summary = "包含「全彩」，排除「人妻」")
@@ -690,7 +693,8 @@ private fun SearchHistoryCard(
     onRemove: (String) -> Unit,
     onClear: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+    val skin = LocalSkin.current
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically,

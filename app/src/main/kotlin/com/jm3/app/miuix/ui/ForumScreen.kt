@@ -44,6 +44,7 @@ import com.jm3.core.replacedBy
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
@@ -407,10 +408,12 @@ private fun ForumTopicCard(
     onReply: (CommentItem) -> Unit,
     onOpenAlbum: (albumId: String) -> Unit,
 ) {
+    val skin = LocalSkin.current
     val albumId = item.albumId
         ?: item.albumName?.filter { it.isDigit() }?.takeIf { it.isNotBlank() }
     val albumName = item.albumName?.takeIf { albumId != null }
     Card(
+        cornerRadius = skin.shapes.cardCorner,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
@@ -470,7 +473,9 @@ private fun ForumTopicCard(
 /** 闲聊档的社区规则卡：折叠态给一行提要，展开态给全文，避免只剩标题时看不出内容。 */
 @Composable
 private fun ForumRulesCard(expanded: Boolean, onToggle: () -> Unit) {
+    val skin = LocalSkin.current
     Card(
+        cornerRadius = skin.shapes.cardCorner,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -524,6 +529,7 @@ private fun ForumComposeSheet(
     onDismiss: () -> Unit,
     onSend: (String) -> Unit,
 ) {
+    val skin = LocalSkin.current
     var text by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(show) {
         if (show) text = ""
@@ -531,9 +537,10 @@ private fun ForumComposeSheet(
     OverlayBottomSheet(
         show = show,
         title = "发布新帖",
+        cornerRadius = skin.shapes.sheetCorner,
         onDismissRequest = onDismiss,
     ) {
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 TextField(
                     value = text,

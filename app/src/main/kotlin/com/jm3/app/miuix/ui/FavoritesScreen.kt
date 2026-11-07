@@ -39,6 +39,7 @@ import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -71,6 +72,7 @@ fun FavoritesScreen(
     authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
+    val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     // 0 = 收藏夹；1 = 标签收藏
@@ -517,7 +519,7 @@ fun FavoritesScreen(
                         contentPadding = innerPadding,
                     ) {
                         item(key = "folder-selector") {
-                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                                 // OverlaySpinnerPreference 内置弹出选择层，替代手写 Dialog + RadioButtonPreference。
                                 val selectedIndex = folderOptions.indexOfFirst { it.first == folderId }
                                 OverlaySpinnerPreference(
@@ -631,7 +633,7 @@ fun FavoritesScreen(
                     contentPadding = innerPadding,
                 ) {
                     item(key = "add-tag") {
-                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                             BasicComponent(
                                 title = "添加标签",
                                 summary = "共 ${list.size} 个收藏标签",
@@ -644,7 +646,7 @@ fun FavoritesScreen(
                         }
                     }
                     items(list, key = { it.tag }) { item ->
-                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                             BasicComponent(
                                 title = "#${item.tag}",
                                 summary = item.updatedAt?.let { "更新于 $it" } ?: "更新时间未知",
@@ -668,6 +670,7 @@ fun FavoritesScreen(
         OverlayDialog(
             show = showCreate || editTarget != null,
             title = if (showCreate) "新建收藏夹" else "重命名收藏夹",
+            cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = {
                 showCreate = false
                 editTarget = null
@@ -715,6 +718,7 @@ fun FavoritesScreen(
         OverlayDialog(
             show = deleteTarget != null,
             title = "删除收藏夹",
+            cornerRadius = skin.shapes.dialogCorner,
             summary = deleteTarget?.let { "将删除收藏夹「${it.second}」，夹内作品不会取消收藏。" },
             onDismissRequest = { deleteTarget = null; folderError = null },
         ) {
@@ -744,6 +748,7 @@ fun FavoritesScreen(
         OverlayBottomSheet(
             show = moveTarget != null,
             title = "移动到收藏夹",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = {
                 if (!moveBusy) {
                     moveTarget = null
@@ -769,7 +774,7 @@ fun FavoritesScreen(
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                         items(movableFolders, key = { it.first }) { (id, name) ->
-                            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                                 BasicComponent(
                                     title = name,
                                     enabled = !moveBusy,
@@ -800,6 +805,7 @@ fun FavoritesScreen(
         OverlayDialog(
             show = showAddTag,
             title = "添加标签",
+            cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = {
                 if (!tagBusy) {
                     showAddTag = false
@@ -845,6 +851,7 @@ fun FavoritesScreen(
         OverlayDialog(
             show = tagDeleteTarget != null,
             title = "删除标签",
+            cornerRadius = skin.shapes.dialogCorner,
             summary = tagDeleteTarget?.let { "将取消收藏标签「#$it」。" },
             onDismissRequest = {
                 if (!tagBusy) {

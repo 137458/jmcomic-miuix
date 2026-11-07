@@ -30,6 +30,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.NOTIFICATION_TYPE_FOLLOW
 import com.jm3.core.model.NotificationBody
 import com.jm3.core.model.NotificationItem
@@ -256,12 +257,14 @@ private fun NotificationCard(
     onToggleRead: () -> Unit,
     onOpenAlbum: (albumId: String) -> Unit,
 ) {
+    val skin = LocalSkin.current
     // 正文形态固定：content 不会在列表内变化，key 用 id 避免每次重组重复解析
     val body = remember(item.id, item.content) { notificationBody(item.content) }
     val title = remember(item.id, item.title, item.type, item.content) { notificationDisplayTitle(item) }
     val updates = (body as? NotificationBody.Updates)?.items.orEmpty()
     val typeLabel = if (item.type == NOTIFICATION_TYPE_FOLLOW) "漫画追踪通知" else "站内通知"
     Card(
+        cornerRadius = skin.shapes.cardCorner,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         onClick = onToggleExpanded,
     ) {

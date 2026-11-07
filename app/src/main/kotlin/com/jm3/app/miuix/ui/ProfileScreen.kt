@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.UserProfile
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
@@ -86,6 +87,7 @@ fun ProfileScreen(
     authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
+    val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
     var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
     var profile by remember { mutableStateOf<UserProfile?>(null) }
@@ -211,13 +213,13 @@ fun ProfileScreen(
                 // SmallTitle 自带 8dp 上间距，再补 8dp 让首块内容的顶部留白与左右 16dp 一致
                 Spacer(modifier = Modifier.height(8.dp))
                 SmallTitle(text = "账号信息", insideMargin = ProfileSectionTitleMargin)
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     BasicComponent(title = "用户名", summary = profile?.username.orEmpty())
                     BasicComponent(title = "邮箱", summary = profile?.email.orEmpty())
                 }
 
                 SmallTitle(text = "基本信息", insideMargin = ProfileSectionTitleMargin)
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     FieldInput(fields, "nickname", "昵称")
                     FieldInput(fields, "lastName", "姓")
                     FieldInput(fields, "firstName", "名")
@@ -242,7 +244,7 @@ fun ProfileScreen(
                 }
 
                 SmallTitle(text = "位置信息", insideMargin = ProfileSectionTitleMargin)
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     FieldInput(fields, "birthPlace", "出生地")
                     FieldInput(fields, "city", "城市")
                     FieldInput(fields, "country", "国家")
@@ -252,7 +254,7 @@ fun ProfileScreen(
                 }
 
                 SmallTitle(text = "其他信息", insideMargin = ProfileSectionTitleMargin)
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     FieldInput(fields, "aboutMe", "关于我", multiline = true)
                     FieldInput(fields, "infoHere", "其他信息", multiline = true)
                     FieldInput(fields, "collections", "收藏类别", multiline = true)
@@ -289,9 +291,10 @@ fun ProfileScreen(
             OverlayBottomSheet(
                 show = true,
                 title = kind.title,
+                cornerRadius = skin.shapes.sheetCorner,
                 onDismissRequest = { selector = null },
             ) {
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                     kind.options().forEach { (value, label) ->
                         RadioButtonPreference(
                             title = label,

@@ -54,6 +54,7 @@ import com.jm3.app.miuix.ui.glass.GlassSearchInputField
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
@@ -598,6 +599,7 @@ fun CreatorWorkDetailScreen(
     authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
+    val skin = LocalSkin.current
     var work by remember { mutableStateOf<CreatorWork?>(null) }
     var loading by remember { mutableStateOf(true) }
     // 失效与失败共用一个落点：计划自己决定「整屏去登录」还是「给重试按钮」
@@ -735,6 +737,7 @@ fun CreatorWorkDetailScreen(
         OverlayBottomSheet(
             show = relatedOpen,
             title = "相关作品",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { relatedOpen = false },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -761,7 +764,9 @@ fun CreatorWorkDetailScreen(
 /** 创作者行：背景图 + 暗色蒙版 + 头像 + 名称/更新时间。 */
 @Composable
 private fun CreatorRow(creator: CreatorMeta, onClick: () -> Unit) {
+    val skin = LocalSkin.current
     Card(
+        cornerRadius = skin.shapes.cardCorner,
         modifier = Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .pressScale(),
@@ -962,9 +967,10 @@ private fun FilterSpinner(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val skin = LocalSkin.current
     val all = remember(options) { listOf("全部") + options.distinct() }
     val selectedIndex = all.indexOf(selected).coerceAtLeast(0)
-    Card(modifier = modifier) {
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = modifier) {
         OverlaySpinnerPreference(
             items = all.mapIndexed { index, text ->
                 DropdownItem(text = text, selected = index == selectedIndex)

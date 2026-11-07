@@ -24,6 +24,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicksDetail
 import com.jm3.core.paging.PagedFeed
@@ -50,6 +51,7 @@ fun WeekScreen(
     authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
+    val skin = LocalSkin.current
     var periods by remember { mutableStateOf<List<WeeklyPeriod>>(emptyList()) }
     var selected by rememberSaveable { mutableIntStateOf(0) }
     var detail by remember { mutableStateOf<WeeklyPicksDetail?>(null) }
@@ -126,7 +128,7 @@ fun WeekScreen(
                 if (periods.isNotEmpty()) {
                     val topCurrent = periods[selected.coerceIn(0, periods.lastIndex)]
                     // 期数选择器固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切期
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                         OverlaySpinnerPreference(
                             items = periods.map { DropdownItem(text = it.title, selected = it.id == topCurrent.id) },
                             selectedIndex = selected.coerceIn(0, periods.lastIndex),

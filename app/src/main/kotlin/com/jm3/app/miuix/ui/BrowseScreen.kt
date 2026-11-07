@@ -41,6 +41,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseCategory
@@ -87,6 +88,7 @@ fun BrowseScreen(
     authCall: AuthCall,
     onOpenAlbum: (String) -> Unit,
 ) {
+    val skin = LocalSkin.current
     var categoryValue by rememberSaveable { mutableStateOf(BrowseCategory.ALL.apiValue) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
@@ -460,6 +462,7 @@ fun BrowseScreen(
         OverlayBottomSheet(
             show = showMoreSheet,
             title = "更多分类",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { showMoreSheet = false },
         ) {
             CategoryBlocksSheet(
@@ -475,6 +478,7 @@ fun BrowseScreen(
         OverlayBottomSheet(
             show = showWeeklySheet,
             title = "每周连载更新",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { showWeeklySheet = false },
         ) {
             val feed = weeklyFeed
@@ -519,6 +523,7 @@ fun BrowseScreen(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String) -> Unit) {
+    val skin = LocalSkin.current
     if (blocks.isEmpty()) {
         Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
             Text(text = "暂无更多分类")
@@ -527,7 +532,7 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
         LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
             items(blocks) { block ->
                 SmallTitle(text = block.title)
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
