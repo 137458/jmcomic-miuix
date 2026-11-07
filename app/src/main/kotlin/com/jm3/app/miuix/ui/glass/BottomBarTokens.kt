@@ -34,9 +34,6 @@ internal data class GlassBottomBarTokens(
     val contentPadding: Dp,
 ) {
     val floating: Boolean get() = form == BottomBarForm.FLOATING
-
-    /** 胶囊圆角：悬浮为半高，贴底只圆上两角。 */
-    val cornerRadius: Dp get() = if (floating) height / 2 else DockedTopCorner
 }
 
 private val DockedTopCorner = 24.dp

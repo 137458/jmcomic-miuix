@@ -1,5 +1,9 @@
 package com.jm3.app.miuix.ui.glass
 
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
 import kotlin.test.Test
@@ -21,8 +25,10 @@ class BottomBarTokensTest {
         assertEquals(0.1f, tokens.shadowAlphaLight)
         assertEquals(0.2f, tokens.shadowAlphaDark)
         assertEquals(100f, tokens.contentPadding.value)
-        assertEquals(32f, tokens.cornerRadius.value)
         assertTrue(tokens.floating)
+        val (topLeft, bottomLeft) = cornerRadii(tokens)
+        assertEquals(50f, topLeft)
+        assertEquals(50f, bottomLeft)
     }
 
     @Test
@@ -35,7 +41,9 @@ class BottomBarTokensTest {
         assertEquals(0.14f, tokens.shadowAlphaLight)
         assertEquals(0.26f, tokens.shadowAlphaDark)
         assertEquals(104f, tokens.contentPadding.value)
-        assertEquals(34f, tokens.cornerRadius.value)
+        val (topLeft, bottomLeft) = cornerRadii(tokens)
+        assertEquals(50f, topLeft)
+        assertEquals(50f, bottomLeft)
     }
 
     @Test
@@ -47,7 +55,9 @@ class BottomBarTokensTest {
             assertEquals(0f, tokens.shadowAlphaLight)
             assertEquals(0f, tokens.shadowAlphaDark)
             assertEquals(tokens.height.value, tokens.contentPadding.value)
-            assertEquals(24f, tokens.cornerRadius.value)
+            val (topLeft, bottomLeft) = cornerRadii(tokens)
+            assertEquals(24f, topLeft)
+            assertEquals(0f, bottomLeft)
         }
     }
 
@@ -86,5 +96,16 @@ class BottomBarTokensTest {
                 "$size/$form 内容净空不能小于条高",
             )
         }
+    }
+
+    /** 用实际绘制的形状生成 outline，验证真实生效的圆角，而不是未被绘制消费的 token。 */
+    private fun cornerRadii(tokens: GlassBottomBarTokens): Pair<Float, Float> {
+        val outline = bottomBarShape(tokens).createOutline(
+            size = Size(100f, 100f),
+            layoutDirection = LayoutDirection.Ltr,
+            density = Density(1f),
+        )
+        val roundRect = (outline as Outline.Rounded).roundRect
+        return roundRect.topLeftCornerRadius.x to roundRect.bottomLeftCornerRadius.x
     }
 }
