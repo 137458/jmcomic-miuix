@@ -209,7 +209,8 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                // 大屏把更新内容收进可读宽度并居中，背景特效仍铺满整屏
+                modifier = Modifier.fillMaxSize().readableWidth(),
                 contentPadding = innerPadding,
             ) {
                 item(key = "hero") {

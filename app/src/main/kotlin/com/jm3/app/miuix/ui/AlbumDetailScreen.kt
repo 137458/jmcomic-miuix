@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -164,6 +166,8 @@ internal fun AlbumDetailScreen(
     val uiState by stateHolder.uiState.collectAsState()
 
     val listState = rememberLazyListState()
+    // 大屏分栏时右栏独立滚动，不跟随左栏的封面与信息
+    val rightListState = rememberLazyListState()
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val selectionHaptic = rememberSelectionHaptic()
 
@@ -290,6 +294,214 @@ internal fun AlbumDetailScreen(
     val currentTitle = loadedDetail?.title?.takeIf { it.isNotBlank() } ?: effectiveTitle?.takeIf { it.isNotBlank() } ?: "详情"
     val resumeId = uiState.latestPhotoId?.takeIf { id -> loadedDetail?.chapters?.any { it.id == id } == true }
 
+    // 单栏与大屏两栏共用同一套条目构建：这些函数只描述放置哪些区块，
+    // 是否拆到左右两栏由外部布局决定，避免两套列表逻辑各自漂移。
+    fun LazyListScope.headerItem() {
+        // 首项必须始终渲染，确保列表卡片点击后首帧完成头图测量，转场动画即时起飞
+        item(key = "header") {
+            DetailHeader(
+                albumId = albumId,
+                detail = loadedDetail,
+                fallbackTitle = effectiveTitle,
+                fallbackCoverUrl = effectiveCoverUrl,
+                resumeId = resumeId,
+                loggedIn = user != null,
+                favorited = uiState.favorited,
+                favoriteBusy = uiState.favoriteBusy,
+                liked = sessionCache.engagement.likedOf(albumId) ?: uiState.liked,
+                likeBusy = uiState.likeBusy,
+                tracking = uiState.tracking,
+                trackingBusy = uiState.trackingBusy,
+                onRead = { photoId -> onOpenReader(photoId, null) },
+                onFavorite = { stateHolder.onFavoriteClick(user != null, onOpenLogin) },
+                onLike = { stateHolder.like(user != null, onOpenLogin) },
+                onTrack = { stateHolder.toggleTracking(user != null, onOpenLogin) },
+                onOpenSearch = onOpenSearch,
+                onDownloadAll = if (loadedDetail == null || loadedDetail.chapters.isEmpty()) {
+                    null
+                } else {
+                    // 与顶栏「下载全部」共用同一套动作与反馈，避免两处行为分叉
+                    { downloadAll(loadedDetail.id, loadedDetail.chapters) }
+                },
+            )
+        }
+    }
+
+    fun LazyListScope.previewItems() {
+        // 预览紧随详情信息、位于章节之前：首章前几页，点第 i 张直达第 i 页
+        previewPlan?.let { plan ->
+            item(key = "preview-title") { SmallTitle(text = "预览") }
+            item(key = "preview") {
+                AlbumPreviewRow(
+                    plan = plan,
+                    imageLoader = previewImageLoader,
+                    onOpenPage = { page -> onOpenReader(plan.chapterId, page) },
+                )
+            }
+        }
+    }
+
+    fun LazyListScope.chapterItems(detail: AlbumDetail) {
+        // 章节是作品页核心内容，紧随头部；简介、标签、作者等次要信息后置
+        item(key = "chapters-title") {
+            SmallTitle(
+                text = if (detail.chapters.isEmpty()) {
+                    "章节"
+                } else {
+                    "章节（${detail.chapters.size}）"
+                },
+            )
+        }
+        if (detail.chapters.isEmpty()) {
+            item(key = "chapters-empty") { EmptyState(title = "暂无章节") }
+        }
+        ChapterGroups.of(detail.chapters, Chapter::id).forEach { group ->
+            item(key = "chapter-group-" + group.id) {
+                ChapterGroupCard(
+                    group = group.items,
+                    startPosition = group.startPosition,
+                    expanded = group.id in uiState.expandedGroups,
+                    resumeId = resumeId,
+                    readPhotoIds = uiState.readPhotoIds,
+                    onToggle = {
+                        selectionHaptic()
+                        stateHolder.toggleGroup(group.id)
+                    },
+                    onRead = { photoId -> onOpenReader(photoId, null) },
+                    onDownload = { chapter, title ->
+                        downloadChapter(chapter, detail.id, title)
+                    },
+                )
+            }
+        }
+    }
+
+    fun LazyListScope.infoItems(detail: AlbumDetail) {
+        if (detail.description.isNotBlank()) {
+            item(key = "description") {
+                DescriptionSection(
+                    text = detail.description,
+                    expanded = uiState.descriptionExpanded,
+                    onToggle = { stateHolder.setDescriptionExpanded(!uiState.descriptionExpanded) },
+                    onCopy = { copyText("简介", detail.description) },
+                )
+            }
+        }
+        val validTags = detail.tags.map { it.trim() }.filter { it.isNotBlank() }
+        if (validTags.isNotEmpty()) {
+            item(key = "tags-title") { SmallTitle(text = "标签") }
+            item(key = "tags") {
+                LazyRow(
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(validTags) { tag ->
+                        TextButton(
+                            text = tag,
+                            onClick = { onOpenSearch(tag, SearchScope.TAG) },
+                            minWidth = 0.dp,
+                            minHeight = 32.dp,
+                        )
+                    }
+                }
+            }
+        }
+        item(key = "info") {
+            AlbumInfoCard(
+                albumId = albumId,
+                detail = detail,
+                onCopy = { label, value -> copyText(label, value) },
+                onOpenSearch = onOpenSearch,
+            )
+        }
+    }
+
+    fun LazyListScope.tailItems(detail: AlbumDetail) {
+        if (detail.related.isNotEmpty()) {
+            item(key = "related-title") { SmallTitle(text = "更多相关") }
+            item(key = "related") {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(detail.related, key = { it.id }) { related ->
+                        RelatedAlbumCard(related = related, onClick = { onOpenAlbum(related.id) })
+                    }
+                }
+            }
+        }
+        item(key = "comments-title") {
+            val total = (uiState.commentsState as? CommentsUiState.Loaded)?.feed?.total
+            SmallTitle(text = if (total != null) "评论（$total）" else "评论")
+        }
+        item(key = "comment-composer") {
+            CommentComposer(
+                loggedIn = user != null,
+                text = uiState.commentText,
+                busy = uiState.commentBusy,
+                onTextChange = stateHolder::setCommentText,
+                onLogin = onOpenLogin,
+                onSend = stateHolder::postComment,
+            )
+        }
+        when (val cs = uiState.commentsState) {
+            is CommentsUiState.Loading -> item(key = "comments-loading") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    InfiniteProgressIndicator()
+                }
+            }
+            is CommentsUiState.Failed -> item(key = "comments-failed") {
+                if (cs.sessionExpired) {
+                    LoginExpiredScreen(
+                        onOpenLogin = onOpenLogin,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    )
+                } else {
+                    ErrorScreen(
+                        message = cs.message,
+                        onRetry = { stateHolder.reloadComments() },
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    )
+                }
+            }
+            is CommentsUiState.Loaded -> {
+                item(key = "comments-card") {
+                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            if (cs.feed.items.isEmpty()) {
+                                Text(
+                                    text = "暂无评论，来抢沙发",
+                                    style = MiuixTheme.textStyles.footnote1,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                )
+                            }
+                            for (comment in cs.feed.items) {
+                                CommentRow(
+                                    item = comment,
+                                    onReply = {
+                                        if (user == null) onOpenLogin() else stateHolder.setReplyTarget(comment)
+                                    },
+                                )
+                            }
+                            if (cs.feed.items.isNotEmpty()) {
+                                LoadMoreFooter(
+                                    feed = cs.feed,
+                                    onLoadMore = stateHolder::loadMoreComments,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     var rootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
     CompositionLocalProvider(
@@ -339,40 +551,38 @@ internal fun AlbumDetailScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
+                    // 大屏两栏：左封面+信息、右预览/章节/评论，避免单栏拉满整屏；
+                    // 手机断点以下或详情未就绪时仍走原来的单栏列表
+                    val wideDetail = loadedDetail?.takeIf { LocalWideLayout.current.twoPaneDetail }
+                    if (wideDetail != null) {
+                        Row(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                            TrackedLazyColumn(
+                                state = listState,
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier.weight(0.38f).fillMaxHeight(),
+                            ) {
+                                headerItem()
+                                infoItems(wideDetail)
+                            }
+                            TrackedLazyColumn(
+                                state = rightListState,
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier.weight(0.62f).fillMaxHeight(),
+                            ) {
+                                previewItems()
+                                chapterItems(wideDetail)
+                                tailItems(wideDetail)
+                            }
+                        }
+                    } else {
                     TrackedLazyColumn(
                         state = listState,
                         contentPadding = innerPadding,
-                        modifier = Modifier.fillMaxSize(),
+                        // 未分栏的大屏仍把单栏内容收进可读宽度，评论不会一行横跨整屏
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                     ) {
                         // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                        // 首项必须始终渲染，确保列表卡片点击后首帧完成头图测量，转场动画即时起飞
-                        item(key = "header") {
-                            DetailHeader(
-                                albumId = albumId,
-                                detail = loadedDetail,
-                                fallbackTitle = effectiveTitle,
-                                fallbackCoverUrl = effectiveCoverUrl,
-                                resumeId = resumeId,
-                                loggedIn = user != null,
-                                favorited = uiState.favorited,
-                                favoriteBusy = uiState.favoriteBusy,
-                                liked = sessionCache.engagement.likedOf(albumId) ?: uiState.liked,
-                                likeBusy = uiState.likeBusy,
-                                tracking = uiState.tracking,
-                                trackingBusy = uiState.trackingBusy,
-                                onRead = { photoId -> onOpenReader(photoId, null) },
-                                onFavorite = { stateHolder.onFavoriteClick(user != null, onOpenLogin) },
-                                onLike = { stateHolder.like(user != null, onOpenLogin) },
-                                onTrack = { stateHolder.toggleTracking(user != null, onOpenLogin) },
-                                onOpenSearch = onOpenSearch,
-                                onDownloadAll = if (loadedDetail == null || loadedDetail.chapters.isEmpty()) {
-                                    null
-                                } else {
-                                    // 与顶栏「下载全部」共用同一套动作与反馈，避免两处行为分叉
-                                    { downloadAll(loadedDetail.id, loadedDetail.chapters) }
-                                },
-                            )
-                        }
+                        headerItem()
 
                         when (val s = uiState.albumState) {
                             is AlbumUiState.Loading -> {
@@ -408,171 +618,13 @@ internal fun AlbumDetailScreen(
                             }
                             is AlbumUiState.Loaded -> {
                                 val detail = s.detail
-                                // 预览紧随详情信息、位于章节之前：首章前几页，点第 i 张直达第 i 页
-                                previewPlan?.let { plan ->
-                                    item(key = "preview-title") { SmallTitle(text = "预览") }
-                                    item(key = "preview") {
-                                        AlbumPreviewRow(
-                                            plan = plan,
-                                            imageLoader = previewImageLoader,
-                                            onOpenPage = { page -> onOpenReader(plan.chapterId, page) },
-                                        )
-                                    }
-                                }
-                                // 章节是作品页核心内容，紧随头部；简介、标签、作者等次要信息后置
-                                item(key = "chapters-title") {
-                                    SmallTitle(
-                                        text = if (detail.chapters.isEmpty()) {
-                                            "章节"
-                                        } else {
-                                            "章节（${detail.chapters.size}）"
-                                        },
-                                    )
-                                }
-                                if (detail.chapters.isEmpty()) {
-                                    item(key = "chapters-empty") { EmptyState(title = "暂无章节") }
-                                }
-                                ChapterGroups.of(detail.chapters, Chapter::id).forEach { group ->
-                                    item(key = "chapter-group-" + group.id) {
-                                        ChapterGroupCard(
-                                            group = group.items,
-                                            startPosition = group.startPosition,
-                                            expanded = group.id in uiState.expandedGroups,
-                                            resumeId = resumeId,
-                                            readPhotoIds = uiState.readPhotoIds,
-                                            onToggle = {
-                                                selectionHaptic()
-                                                stateHolder.toggleGroup(group.id)
-                                            },
-                                            onRead = { photoId -> onOpenReader(photoId, null) },
-                                            onDownload = { chapter, title ->
-                                                downloadChapter(chapter, detail.id, title)
-                                            },
-                                        )
-                                    }
-                                }
-                                if (detail.description.isNotBlank()) {
-                                    item(key = "description") {
-                                        DescriptionSection(
-                                            text = detail.description,
-                                            expanded = uiState.descriptionExpanded,
-                                            onToggle = { stateHolder.setDescriptionExpanded(!uiState.descriptionExpanded) },
-                                            onCopy = { copyText("简介", detail.description) },
-                                        )
-                                    }
-                                }
-                                val validTags = detail.tags.map { it.trim() }.filter { it.isNotBlank() }
-                                if (validTags.isNotEmpty()) {
-                                    item(key = "tags-title") { SmallTitle(text = "标签") }
-                                    item(key = "tags") {
-                                        LazyRow(
-                                            modifier = Modifier.padding(bottom = 6.dp),
-                                            contentPadding = PaddingValues(horizontal = 16.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            items(validTags) { tag ->
-                                                TextButton(
-                                                    text = tag,
-                                                    onClick = { onOpenSearch(tag, SearchScope.TAG) },
-                                                    minWidth = 0.dp,
-                                                    minHeight = 32.dp,
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                item(key = "info") {
-                                    AlbumInfoCard(
-                                        albumId = albumId,
-                                        detail = detail,
-                                        onCopy = { label, value -> copyText(label, value) },
-                                        onOpenSearch = onOpenSearch,
-                                    )
-                                }
-                                if (detail.related.isNotEmpty()) {
-                                    item(key = "related-title") { SmallTitle(text = "更多相关") }
-                                    item(key = "related") {
-                                        LazyRow(
-                                            contentPadding = PaddingValues(horizontal = 16.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            items(detail.related, key = { it.id }) { related ->
-                                                RelatedAlbumCard(related = related, onClick = { onOpenAlbum(related.id) })
-                                            }
-                                        }
-                                    }
-                                }
-                                item(key = "comments-title") {
-                                    val total = (uiState.commentsState as? CommentsUiState.Loaded)?.feed?.total
-                                    SmallTitle(text = if (total != null) "评论（$total）" else "评论")
-                                }
-                                item(key = "comment-composer") {
-                                    CommentComposer(
-                                        loggedIn = user != null,
-                                        text = uiState.commentText,
-                                        busy = uiState.commentBusy,
-                                        onTextChange = stateHolder::setCommentText,
-                                        onLogin = onOpenLogin,
-                                        onSend = stateHolder::postComment,
-                                    )
-                                }
-                                when (val cs = uiState.commentsState) {
-                                    is CommentsUiState.Loading -> item(key = "comments-loading") {
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth().padding(24.dp),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            InfiniteProgressIndicator()
-                                        }
-                                    }
-                                    is CommentsUiState.Failed -> item(key = "comments-failed") {
-                                        if (cs.sessionExpired) {
-                                            LoginExpiredScreen(
-                                                onOpenLogin = onOpenLogin,
-                                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                            )
-                                        } else {
-                                            ErrorScreen(
-                                                message = cs.message,
-                                                onRetry = { stateHolder.reloadComments() },
-                                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                            )
-                                        }
-                                    }
-                                    is CommentsUiState.Loaded -> {
-                                        item(key = "comments-card") {
-                                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                                                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                                    if (cs.feed.items.isEmpty()) {
-                                                        Text(
-                                                            text = "暂无评论，来抢沙发",
-                                                            style = MiuixTheme.textStyles.footnote1,
-                                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                                        )
-                                                    }
-                                                    for (comment in cs.feed.items) {
-                                                        CommentRow(
-                                                            item = comment,
-                                                            onReply = {
-                                                                if (user == null) onOpenLogin() else stateHolder.setReplyTarget(comment)
-                                                            },
-                                                        )
-                                                    }
-                                                    if (cs.feed.items.isNotEmpty()) {
-                                                        LoadMoreFooter(
-                                                            feed = cs.feed,
-                                                            onLoadMore = stateHolder::loadMoreComments,
-                                                            modifier = Modifier.padding(top = 8.dp),
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                previewItems()
+                                chapterItems(detail)
+                                infoItems(detail)
+                                tailItems(detail)
                             }
                         }
+                    }
                     }
                     // 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏
                     OverlayBottomSheet(

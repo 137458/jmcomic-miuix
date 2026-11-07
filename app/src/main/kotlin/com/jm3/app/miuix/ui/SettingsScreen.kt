@@ -276,9 +276,11 @@ fun SettingsScreen(
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
+        // 大屏把设置内容收进可读宽度并居中，避免一行文字横跨整屏；手机断点以下不限宽
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .readableWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
             // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样

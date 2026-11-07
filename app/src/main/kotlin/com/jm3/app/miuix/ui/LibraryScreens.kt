@@ -108,6 +108,8 @@ fun LibraryScreen(
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
+    // 作品网格列数：手机断点以下仍是两列，大屏按窗口宽度补列，卡片宽度由列宽反算
+    val gridColumns = LocalWideLayout.current.gridColumns
     var query by rememberSaveable { mutableStateOf("") }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var appliedQuery by rememberSaveable { mutableStateOf("") }
@@ -339,7 +341,7 @@ fun LibraryScreen(
                         }
                     } else {
                         items(
-                            items = workFeed.items.chunked(2),
+                            items = workFeed.items.chunked(gridColumns),
                             key = { row -> row.joinToString(",") { it.id } },
                         ) { row ->
                             Row(
@@ -361,7 +363,10 @@ fun LibraryScreen(
                                         },
                                     )
                                 }
-                                if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                                // 末行不足一列时补空位，避免剩余卡片被均分拉宽
+                                repeat(gridColumns - row.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }
@@ -403,6 +408,8 @@ fun CreatorWorksScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
+    // 作者主页的作品网格与大屏列数一致：手机两列，大屏随窗口补列
+    val gridColumns = LocalWideLayout.current.gridColumns
 
     fun load(showLoading: Boolean) {
         loadToken++
@@ -548,7 +555,7 @@ fun CreatorWorksScreen(
                         }
                     } else {
                         items(
-                            items = works.chunked(2),
+                            items = works.chunked(gridColumns),
                             key = { row -> row.joinToString(",") { it.id } },
                         ) { row ->
                             Row(
@@ -568,7 +575,9 @@ fun CreatorWorksScreen(
                                         onOpenAuthor = null,
                                     )
                                 }
-                                if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                                repeat(gridColumns - row.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }

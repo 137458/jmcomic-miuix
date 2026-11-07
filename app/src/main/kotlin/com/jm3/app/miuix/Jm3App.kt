@@ -17,6 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import coil3.ImageLoader
@@ -39,6 +40,7 @@ import com.jm3.app.miuix.ui.ForumScreen
 import com.jm3.app.miuix.ui.HistoryScreen
 import com.jm3.app.miuix.ui.LibraryScreen
 import com.jm3.app.miuix.ui.LocalAlbumHeroHost
+import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.LoginScreen
 import com.jm3.app.miuix.ui.MainScreen
 import com.jm3.app.miuix.ui.NovelDetailScreen
@@ -56,6 +58,7 @@ import com.jm3.app.miuix.ui.UpdateStartupPrompt
 import com.jm3.app.miuix.ui.TrackingScreen
 import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
+import com.jm3.app.miuix.ui.WideLayout
 import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.update.UpdateDownloader
 import com.jm3.core.paging.PaginationModePolicy
@@ -445,6 +448,12 @@ fun Jm3App() {
         Jm3Graph.account.restore()
     }
 
+    // 窗口宽高变化（折叠展开、分屏、旋转）会重建这份布局参数，各页随之重新判定列数与分栏
+    val configuration = LocalConfiguration.current
+    val wideLayout = remember(configuration.screenWidthDp, configuration.screenHeightDp) {
+        WideLayout(widthDp = configuration.screenWidthDp, heightDp = configuration.screenHeightDp)
+    }
+
     MiuixTheme(controller = controller) {
         // edge-to-edge 下状态栏/导航栏图标明暗跟随应用内主题，而非系统夜间模式
         val view = LocalView.current
@@ -458,7 +467,10 @@ fun Jm3App() {
         }
         // 转场特效：圆角裁剪贴合设备屏幕圆角，背景色补上浮层下露出的底色（HyperOS 浮动转场观感）
         val screenCornerRadius = rememberNavSystemCornerRadius()
-        CompositionLocalProvider(LocalAlbumHeroHost provides heroHost) {
+        CompositionLocalProvider(
+            LocalAlbumHeroHost provides heroHost,
+            LocalWideLayout provides wideLayout,
+        ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 NavDisplay(
                     backStack = backStack,
