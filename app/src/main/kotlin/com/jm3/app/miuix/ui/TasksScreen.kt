@@ -39,7 +39,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -88,6 +88,7 @@ private sealed interface TasksUiState {
 /** 成就/任务：称号与勋章两个维度，支持「我的/全部」筛选。 */
 @Composable
 fun TasksScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
@@ -101,7 +102,7 @@ fun TasksScreen(
     var refreshing by remember { mutableStateOf(false) }
     val selectionHaptic = rememberSelectionHaptic()
     val scope = rememberCoroutineScope()
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
 
     val type = types[typeIndex]
     val filter = filters[filterIndex]
@@ -136,8 +137,8 @@ fun TasksScreen(
         scope.launch {
             val outcome = authCall.call {
                 // 勋章图与 API 同域，域名解析失败时退化为不展示图片
-                val host = runCatching { Jm3Graph.gateway.imageHost() }.getOrDefault("")
-                TasksUiState.Loaded(Jm3Graph.gateway.tasks(requestType, requestFilter), host)
+                val host = runCatching { deps.gateway.imageHost() }.getOrDefault("")
+                TasksUiState.Loaded(deps.gateway.tasks(requestType, requestFilter), host)
             }
             // 令牌已被更新的请求替换：这次响应属于旧条件，整体丢弃（含刷新态复位）
             if (token != requestToken) return@launch

@@ -36,7 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -52,6 +52,7 @@ import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -80,6 +81,7 @@ enum class BrowseMode(val title: String) {
 
 @Composable
 fun BrowseScreen(
+    deps: ScreenDeps,
     mode: BrowseMode,
     gateway: Jm3Gateway,
     authCall: AuthCall,
@@ -90,8 +92,8 @@ fun BrowseScreen(
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     // 筛选口径与列表结果一起进缓存：切 tab 回来时按同一口径取回上次的结果，滚动位置才有内容可落
     val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
-    val sessionCache = Jm3Graph.sessionCache
-    val pageMode = Jm3Graph.preferences.paginationMode
+    val sessionCache = deps.sessionCache
+    val pageMode = deps.preferences.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     var state by remember { mutableStateOf(sessionCache.stateOf(SessionListKey.Browse(pageKey))) }
     // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
@@ -330,6 +332,7 @@ fun BrowseScreen(
         val activeTag = tagKeyword
         if (activeTag != null) {
             TagResultSection(
+                deps = deps,
                 gateway = gateway,
                 authCall = authCall,
                 keyword = activeTag,
@@ -549,6 +552,7 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
 /** 标签/子分类检索结果：BrowseScreen 内部页面，返回即回到分类浏览，避免跳转其它页面。 */
 @Composable
 private fun TagResultSection(
+    deps: ScreenDeps,
     gateway: Jm3Gateway,
     authCall: AuthCall,
     keyword: String,
@@ -559,7 +563,7 @@ private fun TagResultSection(
 ) {
     var state by remember(keyword, order) { mutableStateOf<ListState>(ListState.Loading) }
     var requestToken by remember(keyword, order) { mutableIntStateOf(0) }
-    val pageMode = Jm3Graph.preferences.paginationMode
+    val pageMode = deps.preferences.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()

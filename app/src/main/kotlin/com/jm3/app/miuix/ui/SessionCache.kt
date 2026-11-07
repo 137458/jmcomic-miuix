@@ -56,7 +56,7 @@ internal data class HomeSideData(
 }
 
 /**
- * 会话级列表缓存，全应用一个实例（挂在 [com.jm3.app.miuix.Jm3Graph] 上）。
+ * 会话级列表缓存，全应用一个实例（由组装根持有，经屏幕依赖容器注入）。
  *
  * 页面数据是 remember 的：切 tab 或点进详情再回来，Compose 会销毁整棵页面，回来只剩一个 Loading 项，
  * LazyList 会把恢复的滚动索引钳到 0，用户就回到了列表顶部。这里按身份留一份已加载的结果，回来首帧就能铺满列表。

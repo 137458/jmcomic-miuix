@@ -24,7 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
@@ -72,6 +72,7 @@ private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
 /** 设置中心：主题/线路/数据管理/关于。内容一屏内可读，关于作为分区而非独立页。 */
 @Composable
 fun SettingsScreen(
+    deps: ScreenDeps,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
     dynamicColor: Boolean,
@@ -101,7 +102,7 @@ fun SettingsScreen(
     var showDisclaimer by remember { mutableStateOf(false) }
 
     // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
-    val paginationMode = Jm3Graph.preferences.paginationMode
+    val paginationMode = deps.preferences.paginationMode
     // 版本号连点进入隐藏诊断（原版 secret tap 进 /test）
     var diagnostics by remember { mutableStateOf(false) }
     var versionTapCount by remember { mutableIntStateOf(0) }
@@ -125,9 +126,9 @@ fun SettingsScreen(
     }
 
     fun applyPaginationMode(mode: PaginationMode) {
-        if (mode == Jm3Graph.preferences.paginationMode) return
-        Jm3Graph.preferences.paginationMode = mode
-        scope.launch { Jm3Graph.preferences.repository.setPaginationMode(mode) }
+        if (mode == deps.preferences.paginationMode) return
+        deps.preferences.paginationMode = mode
+        scope.launch { deps.preferences.repository.setPaginationMode(mode) }
     }
 
     // 连点计数在窗口内归零，避免误触累计
@@ -182,7 +183,7 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         if (!loadedSaved) {
             loadedSaved = true
-            val saved = Jm3Graph.settings.apiDomains()
+            val saved = deps.settings.apiDomains()
             domainsInput.value = saved.joinToString("\n")
             activeDomains.value = saved.joinToString("、")
         }
@@ -257,7 +258,7 @@ fun SettingsScreen(
                     selectedIndex = PaginationMode.entries.indexOf(paginationMode),
                     showValue = false,
                     onSelectedIndexChange = { index ->
-                        resolvePaginationSelection(Jm3Graph.preferences.paginationMode, index)
+                        resolvePaginationSelection(deps.preferences.paginationMode, index)
                             ?.takeIf { it.changed }
                             ?.let { applyPaginationMode(it.mode) }
                     },
@@ -322,9 +323,9 @@ fun SettingsScreen(
                         applying.value = true
                         scope.launch {
                             // 写入即归一（去协议头/路径/空白项并去重），读回的就是真正生效的线路表。
-                            Jm3Graph.settings.setApiDomains(domainsInput.value.split("\n"))
-                            val applied = Jm3Graph.settings.apiDomains()
-                            Jm3Graph.applyDomains(applied)
+                            deps.settings.setApiDomains(domainsInput.value.split("\n"))
+                            val applied = deps.settings.apiDomains()
+                            deps.applyDomains(applied)
                             activeDomains.value = applied.joinToString("、")
                             applying.value = false
                             // 网关已重建，诊断数据属于旧实例，重新读取。
@@ -469,8 +470,8 @@ fun SettingsScreen(
                     confirmClear = null
                     scope.launch {
                         when (target) {
-                            "history" -> Jm3Graph.history.clear()
-                            "downloads" -> Jm3Graph.downloadManager.clearAll()
+                            "history" -> deps.history.clear()
+                            "downloads" -> deps.downloadManager.clearAll()
                         }
                         snackbarHostState.showSnackbar(
                             if (target == "history") "已清空阅读历史" else "已清空下载",

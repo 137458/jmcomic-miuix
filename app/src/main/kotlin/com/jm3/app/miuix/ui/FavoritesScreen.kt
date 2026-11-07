@@ -26,7 +26,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.appendedBy
 import com.jm3.core.model.FavoriteFolderAction
@@ -34,6 +34,7 @@ import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.TagFavorite
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -64,12 +65,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** 收藏页：收藏夹（作品）与标签收藏两个分段。 */
 @Composable
 fun FavoritesScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     // 0 = 收藏夹；1 = 标签收藏
     var tabIndex by rememberSaveable { mutableStateOf(0) }
@@ -105,7 +107,7 @@ fun FavoritesScreen(
     var tagInput by remember { mutableStateOf("") }
     var tagDeleteTarget by remember { mutableStateOf<String?>(null) }
 
-    val mode = Jm3Graph.preferences.paginationMode
+    val mode = deps.preferences.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -136,7 +138,7 @@ fun FavoritesScreen(
             failure = null
             feed = null
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
-            val outcome = authCall.call { Jm3Graph.gateway.favorites(targetFolderId, 1) }
+            val outcome = authCall.call { deps.gateway.favorites(targetFolderId, 1) }
             // 请求期间切换了收藏夹：丢弃旧夹结果，避免覆盖新夹内容。
             if (targetFolderId != folderId) return@launch
             when (outcome) {
@@ -160,7 +162,7 @@ fun FavoritesScreen(
         if (resolved == current.page) return
         val targetFolderId = folderId
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.favorites(targetFolderId, resolved) }
+            val outcome = authCall.call { deps.gateway.favorites(targetFolderId, resolved) }
             if (targetFolderId != folderId) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -183,7 +185,7 @@ fun FavoritesScreen(
         refreshing = true
         scope.launch {
             val targetFolderId = folderId
-            val outcome = authCall.call { Jm3Graph.gateway.favorites(targetFolderId, 1) }
+            val outcome = authCall.call { deps.gateway.favorites(targetFolderId, 1) }
             refreshing = false
             if (targetFolderId != folderId) return@launch
             when (outcome) {
@@ -221,7 +223,7 @@ fun FavoritesScreen(
         folderBusy = true
         folderError = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.manageFavoriteFolder(action, targetId, name) }
+            val outcome = authCall.call { deps.gateway.manageFavoriteFolder(action, targetId, name) }
             folderBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -259,7 +261,7 @@ fun FavoritesScreen(
         moveError = null
         scope.launch {
             val outcome = authCall.call {
-                Jm3Graph.gateway.manageFavoriteFolder(
+                deps.gateway.manageFavoriteFolder(
                     FavoriteFolderAction.MOVE,
                     targetFolderId.toString(),
                     "",
@@ -296,7 +298,7 @@ fun FavoritesScreen(
         scope.launch {
             tagsError = null
             tags = null
-            val outcome = authCall.call { Jm3Graph.gateway.tagsFavorite() }
+            val outcome = authCall.call { deps.gateway.tagsFavorite() }
             if (user?.uid != uid) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> tags = outcome.value
@@ -322,7 +324,7 @@ fun FavoritesScreen(
         tagBusy = true
         tagError = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.addFavoriteTags(listOf(tag)) }
+            val outcome = authCall.call { deps.gateway.addFavoriteTags(listOf(tag)) }
             tagBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -348,7 +350,7 @@ fun FavoritesScreen(
         tagBusy = true
         tagError = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.removeFavoriteTags(listOf(tag)) }
+            val outcome = authCall.call { deps.gateway.removeFavoriteTags(listOf(tag)) }
             tagBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -390,7 +392,7 @@ fun FavoritesScreen(
         val targetFolderId = folderId
         feed = requested
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.favorites(targetFolderId, requested.page + 1) }
+            val outcome = authCall.call { deps.gateway.favorites(targetFolderId, requested.page + 1) }
             // 加载期间切换了收藏夹：这批结果属于旧收藏夹，丢弃以免串夹。
             if (targetFolderId != folderId) return@launch
             when (outcome) {

@@ -47,7 +47,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.effect.BgEffectBackground
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -84,10 +84,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * - 头部图标与标题随滚动淡出（阈值与 localsend/pixez 一致），滚动进度在 draw 阶段读取，
  *   避免每个像素的滚动位移都触发整页重组。
  * - 进入页面即检查一次，"自动检查更新"只控制启动期的静默检查；手动检查走同一入口。
- * - 下载状态复用 [Jm3Graph.updateDownloader]，页面只做展示与转发，不在本地维护第二套状态机。
+ * - 下载状态复用 [ScreenDeps.updateDownloader]，页面只做展示与转发，不在本地维护第二套状态机。
  */
 @Composable
-fun UpdateScreen(onBack: () -> Unit) {
+fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -101,7 +101,7 @@ fun UpdateScreen(onBack: () -> Unit) {
     var showDialog by remember { mutableStateOf(false) }
     var autoCheckUpdate by remember { mutableStateOf(true) }
     var ignoredVersion by remember { mutableStateOf<String?>(null) }
-    val downloadState by Jm3Graph.updateDownloader.state.collectAsState()
+    val downloadState by deps.updateDownloader.state.collectAsState()
 
     val listState = rememberLazyListState()
     val heroHeightPx = remember { mutableFloatStateOf(1f) }
@@ -118,15 +118,15 @@ fun UpdateScreen(onBack: () -> Unit) {
     // 设置与检查放在同一个副作用里：拆成两个 LaunchedEffect 时检查可能读到尚未加载的忽略版本，
     // 导致已忽略的版本又弹一次窗。
     LaunchedEffect(attempt) {
-        autoCheckUpdate = Jm3Graph.settings.autoCheckUpdate()
-        ignoredVersion = Jm3Graph.settings.ignoredUpdateVersion()
+        autoCheckUpdate = deps.settings.autoCheckUpdate()
+        ignoredVersion = deps.settings.ignoredUpdateVersion()
         state = null
         showDialog = false
         val outcome = center.evaluate(
             localVersion = currentVersion,
             prompt = UpdatePromptState(
                 ignoredVersion = ignoredVersion,
-                promptedVersion = Jm3Graph.settings.promptedUpdateVersion(),
+                promptedVersion = deps.settings.promptedUpdateVersion(),
             ),
         )
         state = outcome
@@ -134,7 +134,7 @@ fun UpdateScreen(onBack: () -> Unit) {
         // 免得启动期弹过的版本进页面又被弹一次
         if (outcome is UpdateOutcome.Available && outcome.notify) {
             showDialog = true
-            Jm3Graph.settings.setPromptedUpdateVersion(outcome.release.version)
+            deps.settings.setPromptedUpdateVersion(outcome.release.version)
         }
     }
 
@@ -146,7 +146,7 @@ fun UpdateScreen(onBack: () -> Unit) {
 
     fun startDownload(release: ReleaseInfo) {
         val asset = release.apk ?: return
-        Jm3Graph.updateDownloader.start(context, asset)
+        deps.updateDownloader.start(context, asset)
     }
 
     fun installApk(file: File) {
@@ -162,13 +162,13 @@ fun UpdateScreen(onBack: () -> Unit) {
 
     fun setAutoCheck(enabled: Boolean) {
         autoCheckUpdate = enabled
-        scope.launch { Jm3Graph.settings.setAutoCheckUpdate(enabled) }
+        scope.launch { deps.settings.setAutoCheckUpdate(enabled) }
     }
 
     fun toggleIgnoredVersion(latestVersion: String) {
         val next = UpdatePrompt.toggleIgnored(ignoredVersion, latestVersion)
         ignoredVersion = next
-        scope.launch { Jm3Graph.settings.setIgnoredUpdateVersion(next) }
+        scope.launch { deps.settings.setIgnoredUpdateVersion(next) }
     }
 
     val snapshot = state
@@ -227,8 +227,8 @@ fun UpdateScreen(onBack: () -> Unit) {
                         state = snapshot,
                         downloadState = downloadState,
                         onStartDownload = ::startDownload,
-                        onCancelDownload = { Jm3Graph.updateDownloader.cancel() },
-                        onResetDownload = { Jm3Graph.updateDownloader.reset() },
+                        onCancelDownload = { deps.updateDownloader.cancel() },
+                        onResetDownload = { deps.updateDownloader.reset() },
                         onInstall = ::installApk,
                         onOpenRelease = ::openReleasePage,
                         onRecheck = { attempt++ },
@@ -282,9 +282,9 @@ fun UpdateScreen(onBack: () -> Unit) {
             onIgnore = { version ->
                 showDialog = false
                 ignoredVersion = version
-                scope.launch { Jm3Graph.settings.setIgnoredUpdateVersion(version) }
+                scope.launch { deps.settings.setIgnoredUpdateVersion(version) }
             },
-            onCancelDownload = { Jm3Graph.updateDownloader.cancel() },
+            onCancelDownload = { deps.updateDownloader.cancel() },
         )
     }
 }

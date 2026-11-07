@@ -8,7 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.core.update.ReleaseInfo
 import com.jm3.core.update.UpdateCenter
 import com.jm3.core.update.UpdatePromptState
@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
  * - 下载动作不在弹窗内实现：交给更新页统一的下载状态机，避免出现第二套进度状态。
  */
 @Composable
-internal fun UpdateStartupPrompt(onOpenUpdatePage: () -> Unit) {
+internal fun UpdateStartupPrompt(deps: ScreenDeps, onOpenUpdatePage: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val currentVersion = remember(context) { loadCurrentVersion(context) }
@@ -34,15 +34,15 @@ internal fun UpdateStartupPrompt(onOpenUpdatePage: () -> Unit) {
 
     LaunchedEffect(Unit) {
         val pending = center.promptForStartup(
-            autoCheckEnabled = Jm3Graph.settings.autoCheckUpdate(),
+            autoCheckEnabled = deps.settings.autoCheckUpdate(),
             localVersion = currentVersion,
             prompt = UpdatePromptState(
-                ignoredVersion = Jm3Graph.settings.ignoredUpdateVersion(),
-                promptedVersion = Jm3Graph.settings.promptedUpdateVersion(),
+                ignoredVersion = deps.settings.ignoredUpdateVersion(),
+                promptedVersion = deps.settings.promptedUpdateVersion(),
             ),
         ) ?: return@LaunchedEffect
         // 先记账再弹窗：同版本在本次安装期内不再打扰，冷启动时由下一次检查决定
-        Jm3Graph.settings.setPromptedUpdateVersion(pending.version)
+        deps.settings.setPromptedUpdateVersion(pending.version)
         release = pending
     }
 
@@ -54,7 +54,7 @@ internal fun UpdateStartupPrompt(onOpenUpdatePage: () -> Unit) {
         onDismiss = { release = null },
         onDownload = {
             release = null
-            pending.apk?.let { asset -> Jm3Graph.updateDownloader.start(context, asset) }
+            pending.apk?.let { asset -> deps.updateDownloader.start(context, asset) }
             onOpenUpdatePage()
         },
         onOpenRelease = {
@@ -63,9 +63,9 @@ internal fun UpdateStartupPrompt(onOpenUpdatePage: () -> Unit) {
         },
         onIgnore = { version ->
             release = null
-            scope.launch { Jm3Graph.settings.setIgnoredUpdateVersion(version) }
+            scope.launch { deps.settings.setIgnoredUpdateVersion(version) }
         },
-        onCancelDownload = { Jm3Graph.updateDownloader.cancel() },
+        onCancelDownload = { deps.updateDownloader.cancel() },
         onOpenUpdatePage = {
             release = null
             onOpenUpdatePage()

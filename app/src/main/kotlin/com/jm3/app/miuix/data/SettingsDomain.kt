@@ -20,7 +20,7 @@ class SettingsDomain(context: Context) {
     val repository: SettingsRepository
         get() = store
 
-    /** 分页模式的当前值：列表页经 Jm3Graph.preferences.paginationMode 读它。 */
+    /** 分页模式的当前值：列表页经屏幕依赖容器读它。 */
     private var paginationModeState by mutableStateOf(PaginationMode.INFINITE)
 
     /**

@@ -338,6 +338,19 @@ fun Jm3App() {
     }
     // 显式指定路由超类型，否则 saver 只按 Route.Main 序列化，压入二级页后保存会抛异常
     val backStack = rememberNavBackStack<Route>(Route.Main)
+    // 屏幕依赖一次性构造：此后各路由只接 deps，屏幕内部不再直读组装根。
+    val deps = remember {
+        ScreenDeps(
+            api = Jm3Graph.api,
+            preferences = Jm3Graph.preferences,
+            session = Jm3Graph.session,
+            library = Jm3Graph.library,
+            downloads = Jm3Graph.downloads,
+            updates = Jm3Graph.updates,
+            sessionCache = Jm3Graph.sessionCache,
+            appScope = Jm3Graph.appScope,
+        )
+    }
     val scope = rememberCoroutineScope()
     // colorSchemeMode 是 val 不可赋值：主题切换通过重建 controller 完成。
     var themeModeName by rememberSaveable { mutableStateOf(ThemeMode.SYSTEM.name) }
@@ -416,6 +429,7 @@ fun Jm3App() {
                 ) {
                     entry<Route.Main> {
                         MainScreen(
+                            deps = deps,
                             gateway = Jm3Graph.api.gateway,
                             account = Jm3Graph.session.account,
                             downloadManager = Jm3Graph.downloads.manager,
@@ -444,6 +458,7 @@ fun Jm3App() {
                     }
                     entry<Route.Favorites>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         FavoritesScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             authCall = Jm3Graph.session.authCall,
@@ -452,6 +467,7 @@ fun Jm3App() {
                     }
                     entry<Route.History>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         HistoryScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
@@ -459,6 +475,7 @@ fun Jm3App() {
                     }
                     entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         ShelfScreen(
+                            deps = deps,
                             gateway = Jm3Graph.gateway,
                             authCall = Jm3Graph.session.authCall,
                             onBack = { backStack.removeLastOrNull() },
@@ -467,6 +484,7 @@ fun Jm3App() {
                     }
                     entry<Route.Settings>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         SettingsScreen(
+                            deps = deps,
                             themeMode = themeMode,
                             onThemeModeChange = { mode ->
                                 themeModeName = mode.name
@@ -485,10 +503,14 @@ fun Jm3App() {
                         )
                     }
                     entry<Route.Update>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                        UpdateScreen(onBack = { backStack.removeLastOrNull() })
+                        UpdateScreen(
+                            deps = deps,
+                            onBack = { backStack.removeLastOrNull() },
+                        )
                     }
                     entry<Route.Week>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         WeekScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             authCall = Jm3Graph.session.authCall,
@@ -497,6 +519,7 @@ fun Jm3App() {
                     }
                     entry<Route.Notifications>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         NotificationsScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
@@ -507,6 +530,7 @@ fun Jm3App() {
                     }
                     entry<Route.Tracking>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         TrackingScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
@@ -516,6 +540,7 @@ fun Jm3App() {
                     }
                     entry<Route.Tasks>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         TasksScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             snackbarHostState = snackbarHostState,
                             authCall = Jm3Graph.session.authCall,
@@ -524,6 +549,7 @@ fun Jm3App() {
                     }
                     entry<Route.Profile>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         ProfileScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             snackbarHostState = snackbarHostState,
                             authCall = Jm3Graph.session.authCall,
@@ -532,6 +558,7 @@ fun Jm3App() {
                     }
                     entry<Route.WatchHistory>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         WatchHistoryScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
@@ -541,6 +568,7 @@ fun Jm3App() {
                     }
                     entry<Route.Forum>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         ForumScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
@@ -571,6 +599,7 @@ fun Jm3App() {
                     }
                     entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                         ReaderScreen(
+                            deps = deps,
                             photoId = route.photoId,
                             authCall = Jm3Graph.session.authCall,
                             gateway = Jm3Graph.api.gateway,
@@ -590,6 +619,7 @@ fun Jm3App() {
                     }
                     entry<Route.Novel>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         NovelListScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
                             onOpenLogin = { backStack.add(Route.Login) },
@@ -599,6 +629,7 @@ fun Jm3App() {
                     }
                     entry<Route.NovelDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                         NovelDetailScreen(
+                            deps = deps,
                             novelId = route.novelId,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
@@ -613,6 +644,7 @@ fun Jm3App() {
                     }
                     entry<Route.NovelReader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                         NovelReaderScreen(
+                            deps = deps,
                             novelId = route.novelId,
                             initialChapterId = route.chapterId,
                             onBack = { backStack.removeLastOrNull() },
@@ -623,6 +655,7 @@ fun Jm3App() {
                     }
                     entry<Route.Library>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         LibraryScreen(
+                            deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
                             onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
@@ -633,6 +666,7 @@ fun Jm3App() {
                     }
                     entry<Route.Creator>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                         CreatorWorksScreen(
+                            deps = deps,
                             creatorId = route.creatorId,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
@@ -644,6 +678,7 @@ fun Jm3App() {
                     }
                     entry<Route.CreatorWork>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                         CreatorWorkDetailScreen(
+                            deps = deps,
                             workId = route.workId,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
@@ -654,6 +689,7 @@ fun Jm3App() {
                     }
                     entry<Route.Search>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
                         SearchScreen(
+                            deps = deps,
                             query = route.query,
                             scope = route.scope,
                             gateway = Jm3Graph.gateway,
@@ -666,7 +702,10 @@ fun Jm3App() {
                 AlbumHeroOverlay(host = heroHost, modifier = Modifier.fillMaxSize())
                 // 更新页自身也会检查并弹窗，停留在更新页时不再叠加启动期提示
                 if (backStack.lastOrNull() != Route.Update) {
-                    UpdateStartupPrompt(onOpenUpdatePage = { backStack.add(Route.Update) })
+                    UpdateStartupPrompt(
+                        deps = deps,
+                        onOpenUpdatePage = { backStack.add(Route.Update) },
+                    )
                 }
             }
         }

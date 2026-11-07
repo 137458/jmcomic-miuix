@@ -25,11 +25,12 @@ import androidx.compose.ui.text.style.TextAlign
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.TrackingItem
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -58,6 +59,7 @@ private sealed interface TrackingUiState {
 /** 连载追踪：已关注作品的更新列表，支持一键取消关注。 */
 @Composable
 fun TrackingScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
@@ -70,7 +72,7 @@ fun TrackingScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var removingId by remember { mutableStateOf<String?>(null) }
-    val mode = Jm3Graph.preferences.paginationMode
+    val mode = deps.preferences.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     var pageSizeHint by remember { mutableIntStateOf(0) }
@@ -101,7 +103,7 @@ fun TrackingScreen(
         if (showLoading) state = TrackingUiState.Loading
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
-            val outcome = authCall.call { Jm3Graph.gateway.trackingList(1) }
+            val outcome = authCall.call { deps.gateway.trackingList(1) }
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -133,7 +135,7 @@ fun TrackingScreen(
         val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
         if (resolved == feed.page) return
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.trackingList(resolved) }
+            val outcome = authCall.call { deps.gateway.trackingList(resolved) }
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -166,7 +168,7 @@ fun TrackingScreen(
         val page = requested.page + 1
         feed = requested
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.trackingList(page) }
+            val outcome = authCall.call { deps.gateway.trackingList(page) }
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val next = outcome.value
@@ -193,7 +195,7 @@ fun TrackingScreen(
         if (removingId != null) return
         removingId = item.id
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.setTracking(item.id) }
+            val outcome = authCall.call { deps.gateway.setTracking(item.id) }
             removingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {

@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -63,6 +63,7 @@ private fun searchStateOf(outcome: SessionOutcome<SearchPage>, failureMessage: S
 /** 独立搜索结果页：标签/作者/作品/人物点击与外部入口共用，支持排序与分页。 */
 @Composable
 fun SearchScreen(
+    deps: ScreenDeps,
     query: String,
     scope: SearchScope,
     gateway: Jm3Gateway,
@@ -84,7 +85,8 @@ fun SearchScreen(
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
     // 分页模式是全局可观察状态，设置页切换后本页立即变更控件形态。
-    val clickPaging = Jm3Graph.preferences.paginationMode == PaginationMode.CLICK
+    val mode = deps.preferences.paginationMode
+    val clickPaging = mode == PaginationMode.CLICK
 
     fun fetch(page: Int, sort: BrowseOrder): SearchPage =
         gateway.search(query, page, sort, scope, time)
@@ -139,6 +141,8 @@ fun SearchScreen(
     LaunchedEffect(query, scope, orderValue, timeValue) {
         loadFirstPage()
     }
+
+    PaginationModeReloadEffect(mode) { loadFirstPage() }
 
     GlassScaffold(
         topBar = {

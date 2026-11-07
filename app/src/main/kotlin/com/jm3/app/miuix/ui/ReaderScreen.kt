@@ -59,12 +59,13 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryEntry
@@ -92,6 +93,8 @@ import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
@@ -168,6 +171,7 @@ internal fun readerLoadFailure(outcome: SessionOutcome<*>): ReaderUiState.Failed
 
 @Composable
 fun ReaderScreen(
+    deps: ScreenDeps,
     photoId: String,
     authCall: AuthCall,
     gateway: Jm3Gateway,
@@ -189,7 +193,7 @@ fun ReaderScreen(
         state = ReaderUiState.Loading
         scope.launch {
             // 落盘页是本地文件，不经网关
-            val saved = runCatching { downloadManager.find(photoId) }.getOrNull()
+            val saved = runCatchingSuspending { downloadManager.find(photoId) }.getOrNull()
             val local = saved
                 ?.takeIf { it.record.status == DownloadStatus.DONE }
                 ?.pagesJson
@@ -262,7 +266,7 @@ fun ReaderScreen(
         is ReaderUiState.Loaded -> {
             LaunchedEffect(s.photo.photoId) {
                 val coverUrl = (authCall.call { gateway.coverUrl(s.photo.albumId) } as? SessionOutcome.Ok)?.value
-                runCatching {
+                runCatchingSuspending {
                     history.upsert(
                         HistoryEntry(
                             photoId = s.photo.photoId,
@@ -275,6 +279,7 @@ fun ReaderScreen(
                 }
             }
             ReaderPages(
+                deps = deps,
                 photo = s.photo,
                 chapters = s.chapters,
                 chapterIndex = s.chapterIndex,
@@ -298,6 +303,7 @@ fun ReaderScreen(
 @OptIn(ExperimentalScrollBarApi::class)
 @Composable
 private fun ReaderPages(
+    deps: ScreenDeps,
     photo: PhotoPages,
     chapters: List<Chapter>,
     chapterIndex: Int,
@@ -347,8 +353,6 @@ private fun ReaderPages(
     // 阅读进度：纵横模式落定后才恢复上次页码，恢复只做一次
     var horizontalReady by remember { mutableStateOf(false) }
     var progressRestored by remember(photo.photoId) { mutableStateOf(false) }
-    // 实际恢复到的页码：为 null 表示本次没有历史进度可恢复
-    var restoredPage by remember(photo.photoId) { mutableStateOf<Int?>(null) }
     // 离开阅读器时补记当前页：状态对象在离开时仍可读
     val latestPage by rememberUpdatedState(pagePlan.currentPage)
     var showPageSheet by remember { mutableStateOf(false) }
@@ -384,17 +388,19 @@ private fun ReaderPages(
     val totalPages = photo.images.size.coerceAtLeast(1)
     val lastIndex = (photo.images.size - 1).coerceAtLeast(0)
 
+    // 恢复提示与音量键提示共用同一条队列，避免两条 Snackbar 互相顶掉
+    val snackbarQueue = remember { Mutex() }
+
     LaunchedEffect(Unit) {
         horizontal = settings.readerHorizontal()
         // 纵横模式决定跳页走 pager 还是列表，恢复进度必须等它落定
         horizontalReady = true
         if (!settings.volumeKeyHintShown()) {
             delay(1000)
-            // 恢复进度的提示更贴近当前动作，先让位给它；音量键提示留到下次
-            if (restoredPage == null) {
+            snackbarQueue.withLock {
                 snackbarHostState.showSnackbar("可使用音量键＋翻页")
-                settings.markVolumeKeyHintShown()
             }
+            settings.markVolumeKeyHintShown()
         }
     }
 
@@ -426,10 +432,17 @@ private fun ReaderPages(
         val saved = settings.readerLastPage(photo.photoId)
         progressRestored = true
         val target = resolveRestoredPage(saved, photo.images.size)
-        if (target == null || target == pagePlan.currentPage) return@LaunchedEffect
-        restoredPage = target
-        goToPage(target)
-        snackbarHostState.showSnackbar("已恢复到上次读到的第 $target 页")
+        if (saved == null || target == null) return@LaunchedEffect
+        if (target != pagePlan.currentPage) goToPage(target)
+        snackbarQueue.withLock {
+            snackbarHostState.showSnackbar(
+                if (saved.total != photo.images.size) {
+                    "章节页数已更新，已恢复到第 $target 页"
+                } else {
+                    "已恢复到上次读到的第 $target 页"
+                },
+            )
+        }
     }
 
     // 页码一变就记进度：读到最后一页同样落盘。
@@ -448,7 +461,7 @@ private fun ReaderPages(
         onDispose {
             val total = photo.images.size
             if (total > 0) {
-                Jm3Graph.appScope.launch {
+                deps.appScope.launch {
                     settings.setReaderLastPage(
                         photo.photoId,
                         ReaderPageProgress(page = latestPage, total = total),

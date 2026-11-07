@@ -24,7 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
@@ -59,6 +59,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun MineScreen(
+    deps: ScreenDeps,
     account: AccountManager,
     authCall: AuthCall,
     unreadBadge: UnreadBadge,
@@ -114,7 +115,7 @@ fun MineScreen(
             // 启动恢复会先置登录态再注入 Cookie：AuthCall 的闸门保证注入完成前不发出请求
             checkInLoading = true
             checkInError = null
-            val outcome = authCall.call { Jm3Graph.gateway.dailyCheckInStatus(uid) }
+            val outcome = authCall.call { deps.gateway.dailyCheckInStatus(uid) }
             checkInLoading = false
             when (outcome) {
                 is SessionOutcome.Ok -> checkInStatus = outcome.value
@@ -132,7 +133,7 @@ fun MineScreen(
     /** 签到后的回读：失效时仍只解释原因并留登录入口，不把「未生效」误报给用户。 */
     suspend fun refreshCheckInStatus(uid: String): DailyCheckInStatus? {
         val outcome = authCall.call {
-            runCatchingSuspending { Jm3Graph.gateway.dailyCheckInStatus(uid) }.getOrNull()
+            runCatchingSuspending { deps.gateway.dailyCheckInStatus(uid) }.getOrNull()
         }
         return when (outcome) {
             is SessionOutcome.Ok -> outcome.value
@@ -154,7 +155,7 @@ fun MineScreen(
         checkInBusy = true
         checkInError = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.dailyCheckIn(uid, status.dailyId) }
+            val outcome = authCall.call { deps.gateway.dailyCheckIn(uid, status.dailyId) }
             checkInBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {

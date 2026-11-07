@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import com.jm3.core.paging.pagingModeReloadPage
 import com.jm3.core.settings.PaginationMode
 
 /**

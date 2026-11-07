@@ -34,7 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassFabItem
 import com.jm3.app.miuix.ui.glass.GlassFloatingActionBar
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
@@ -48,6 +48,7 @@ import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -87,6 +88,7 @@ private const val HOT_TAG_COLLAPSED = 8
 /** 首页：固定搜索栏 + 发现流（连载更新/热门标签/随便看看/最新上架）或搜索结果。 */
 @Composable
 fun HomeScreen(
+    deps: ScreenDeps,
     gateway: Jm3Gateway,
     authCall: AuthCall,
     onOpenAlbum: (String) -> Unit,
@@ -99,7 +101,7 @@ fun HomeScreen(
     var searchByTag by rememberSaveable { mutableStateOf(false) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
     // 页面当前的列表状态（含失败态）由 Composable 持有；会话缓存只留加载成功的结果，供重建后恢复。
-    val sessionCache = Jm3Graph.sessionCache
+    val sessionCache = deps.sessionCache
     var feed by remember { mutableStateOf(sessionCache.stateOf(SessionListKey.HomeFeed)) }
     var results by remember { mutableStateOf(sessionCache.stateOrNull(SessionListKey.HomeSearch)) }
     var hotTags by remember { mutableStateOf(sessionCache.homeSide.hotTags) }
@@ -118,8 +120,9 @@ fun HomeScreen(
     val listState = rememberLazyListState()
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
-    // 分页模式是 Jm3Graph 的全局可观察状态，设置页切换后本页立即变更控件形态。
-    val clickPaging = Jm3Graph.preferences.paginationMode == PaginationMode.CLICK
+    // 分页模式来自设置域的可观察状态：设置页切换后立即变更控件形态，并触发第一页重载。
+    val mode = deps.preferences.paginationMode
+    val clickPaging = mode == PaginationMode.CLICK
     val searching = isShowingSearchResults(activeQuery, results)
 
     /** 列表状态与会话缓存一起改：只改其一，切走再回来就会先闪上一份结果。 */
@@ -147,9 +150,9 @@ fun HomeScreen(
     /** 搜索历史读写都在 IO 线程，写入后重新读取，UI 只拿最新快照。 */
     fun mutateHistory(block: suspend () -> Unit) {
         scope.launch {
-            withContext(Dispatchers.IO) { runCatching { block() } }
+            withContext(Dispatchers.IO) { runCatchingSuspending { block() } }
             searchHistory = withContext(Dispatchers.IO) {
-                runCatching { Jm3Graph.settings.searchHistory() }.getOrDefault(searchHistory)
+                runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(searchHistory)
             }
         }
     }
@@ -173,7 +176,7 @@ fun HomeScreen(
         val token = listToken
         rememberResults(ListState.Loading)
         // 提交即记录：标签检索与排序切换也会把当前关键词前移。
-        mutateHistory { Jm3Graph.settings.addSearchHistory(trimmed) }
+        mutateHistory { deps.settings.addSearchHistory(trimmed) }
         scope.launch {
             val next = authCall.call { requestSearch(1, byTag, trimmed, sort) }
             if (token != listToken) return@launch
@@ -311,19 +314,25 @@ fun HomeScreen(
                     .orEmpty()
                 // 搜索历史是本地 DataStore，不走网关，因此不进 AuthCall，直接留在 IO 线程读。
                 val storedHistory = withContext(Dispatchers.IO) {
-                    runCatching { Jm3Graph.settings.searchHistory() }.getOrDefault(emptyList())
+                    runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(emptyList())
                 }
                 rememberSide(tags = tags, updates = updates, picks = picks)
                 searchHistory = storedHistory
             }
         } else {
             scope.launch {
-                // 同上：本地历史读取与网关无关，保留 runCatching + IO 即可。
+                // 同上：本地历史读取与网关无关，仍在 IO 线程读取并保留取消传播。
                 searchHistory = withContext(Dispatchers.IO) {
-                    runCatching { Jm3Graph.settings.searchHistory() }.getOrDefault(searchHistory)
+                    runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(searchHistory)
                 }
             }
         }
+    }
+
+    // 分页模式切换后清掉已追加内容并回到第 1 页重取，避免两种翻页语义混用。
+    PaginationModeReloadEffect(mode) {
+        if (searching) rememberResults(ListState.Loading) else rememberFeed(ListState.Loading)
+        refresh()
     }
 
     // 接近列表尾部时自动加载下一页；点击分页模式下改由页码控件驱动。
@@ -529,10 +538,10 @@ fun HomeScreen(
                                         runSearch(word, byTag = false, sort = order)
                                     },
                                     onRemove = { word ->
-                                        mutateHistory { Jm3Graph.settings.removeSearchHistory(word) }
+                                        mutateHistory { deps.settings.removeSearchHistory(word) }
                                     },
                                     onClear = {
-                                        mutateHistory { Jm3Graph.settings.clearSearchHistory() }
+                                        mutateHistory { deps.settings.clearSearchHistory() }
                                     },
                                 )
                             }

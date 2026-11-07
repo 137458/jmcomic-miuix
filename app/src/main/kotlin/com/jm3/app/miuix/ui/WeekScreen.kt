@@ -20,7 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -44,6 +44,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 @Composable
 fun WeekScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     authCall: AuthCall,
@@ -69,7 +70,7 @@ fun WeekScreen(
         if (showLoading) detailLoading = true
         detailFailure = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.weeklyPicksDetail(period.id) }
+            val outcome = authCall.call { deps.gateway.weeklyPicksDetail(period.id) }
             if (current != detailToken) return@launch
             detailLoading = false
             refreshing = false
@@ -86,7 +87,7 @@ fun WeekScreen(
         periodsLoading = true
         periodsFailure = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.weeklyPicks() }
+            val outcome = authCall.call { deps.gateway.weeklyPicks() }
             periodsLoading = false
             refreshing = false
             when (outcome) {

@@ -26,7 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -60,6 +60,7 @@ private const val NOTIFICATION_PREVIEW_UPDATES = 2
 /** 信箱：通知列表、按类型筛选、标记已读/未读；底栏未读数随列表状态同步。 */
 @Composable
 fun NotificationsScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
@@ -106,7 +107,7 @@ fun NotificationsScreen(
     fun load(showLoading: Boolean = true) {
         if (showLoading) loading = true
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.notifications() }
+            val outcome = authCall.call { deps.gateway.notifications() }
             loading = false
             refreshing = false
             when (outcome) {
@@ -131,7 +132,7 @@ fun NotificationsScreen(
         markingId = item.id
         scope.launch {
             val target = !item.read
-            val outcome = authCall.call { Jm3Graph.gateway.markNotification(item.id, target) }
+            val outcome = authCall.call { deps.gateway.markNotification(item.id, target) }
             markingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {

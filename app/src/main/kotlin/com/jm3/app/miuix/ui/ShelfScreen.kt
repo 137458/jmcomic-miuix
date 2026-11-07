@@ -16,7 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.data.download.contentDescriptionRes
 import com.jm3.app.miuix.data.download.textRes
 import com.jm3.app.miuix.ui.glass.GlassScaffold
@@ -42,6 +42,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** 本地书架：下载进度、暂停/继续/重试、删除与离线阅读入口。 */
 @Composable
 fun ShelfScreen(
+    deps: ScreenDeps,
     gateway: Jm3Gateway,
     authCall: AuthCall,
     onBack: () -> Unit,
@@ -52,10 +53,10 @@ fun ShelfScreen(
 
     // 初次加载 + 队列进度驱动刷新
     LaunchedEffect(Unit) {
-        Jm3Graph.downloadManager.ensureStarted()
-        records = Jm3Graph.downloadManager.records()
-        Jm3Graph.downloadManager.queue.updates.collect {
-            records = Jm3Graph.downloadManager.records()
+        deps.downloadManager.ensureStarted()
+        records = deps.downloadManager.records()
+        deps.downloadManager.queue.updates.collect {
+            records = deps.downloadManager.records()
         }
     }
 
@@ -132,19 +133,19 @@ fun ShelfScreen(
                                     Icon(MiuixIcons.Play, contentDescription = actionLabel)
                                 }
                                 DownloadAction.Pause -> IconButton(
-                                    onClick = { Jm3Graph.downloadManager.pause(record.photoId) },
+                                    onClick = { deps.downloadManager.pause(record.photoId) },
                                 ) {
                                     Icon(MiuixIcons.Pause, contentDescription = actionLabel)
                                 }
                                 DownloadAction.Resume, DownloadAction.Retry -> IconButton(
-                                    onClick = { Jm3Graph.downloadManager.resumeRecord(record) },
+                                    onClick = { deps.downloadManager.resumeRecord(record) },
                                 ) {
                                     Icon(MiuixIcons.Refresh, contentDescription = actionLabel)
                                 }
                             }
                             IconButton(
                                 onClick = {
-                                    Jm3Graph.downloadManager.remove(record.photoId)
+                                    deps.downloadManager.remove(record.photoId)
                                     records = records.filterNot { it.photoId == record.photoId }
                                 },
                             ) {

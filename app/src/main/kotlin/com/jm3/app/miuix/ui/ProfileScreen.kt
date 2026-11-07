@@ -21,7 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.model.UserProfile
@@ -76,12 +76,13 @@ private sealed interface ProfileUiState {
 /** 个人资料：只读账号信息 + 全量可编辑字段，保存后以服务端返回为准。 */
 @Composable
 fun ProfileScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
     var profile by remember { mutableStateOf<UserProfile?>(null) }
     var saving by remember { mutableStateOf(false) }
@@ -121,7 +122,7 @@ fun ProfileScreen(
         }
         if (showLoading) state = ProfileUiState.Loading
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.userProfile(uid) }
+            val outcome = authCall.call { deps.gateway.userProfile(uid) }
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     applyProfile(outcome.value)
@@ -140,7 +141,7 @@ fun ProfileScreen(
         if (saving) return
         saving = true
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.editUserProfile(uid, fields.toMap()) }
+            val outcome = authCall.call { deps.gateway.editUserProfile(uid, fields.toMap()) }
             saving = false
             when (outcome) {
                 is SessionOutcome.Ok -> {

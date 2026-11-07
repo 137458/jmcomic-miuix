@@ -302,6 +302,7 @@ internal fun UpdateAvailableDialog(
             }
 
             if (plan.showProgress) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 SmallTitle(text = "下载进度", insideMargin = DialogSectionMargin)
                 Card(modifier = Modifier.fillMaxWidth()) {
                     BasicComponent(
@@ -318,6 +319,7 @@ internal fun UpdateAvailableDialog(
             }
 
             if (plan.hasNotes) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 SmallTitle(text = "更新说明", insideMargin = DialogSectionMargin)
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(DialogCardPadding)) {
@@ -374,26 +376,13 @@ internal fun UpdateAvailableDialog(
     }
 }
 
-/** 版本信息的一行：标签与取值同用 Miuix 文本层级，长取值自然换行而不挤压标签列。 */
+/** 版本信息的一行：标签与取值交给 Miuix 基础信息行，长取值由组件自身排版换行。 */
 @Composable
 private fun DialogInfoRow(row: UpdateDialogInfoRow) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(DialogButtonGap),
-    ) {
-        Text(
-            text = row.label,
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            modifier = Modifier.weight(0.38f),
-        )
-        Text(
-            text = row.value,
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(0.62f),
-        )
-    }
+    BasicComponent(
+        title = row.label,
+        summary = row.value,
+    )
 }
 
 /** 弹窗摘要：版本跃迁，外加发布日期（有则显示）；安装包等明细交给内容区的信息卡。 */

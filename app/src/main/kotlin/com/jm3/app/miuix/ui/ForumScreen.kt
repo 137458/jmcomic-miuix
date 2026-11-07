@@ -32,7 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -80,14 +80,15 @@ private sealed interface ForumUiState {
  */
 @Composable
 fun ForumScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
     onOpenAlbum: (albumId: String) -> Unit = {},
 ) {
-    val user by Jm3Graph.account.user.collectAsState()
-    val pageMode = Jm3Graph.preferences.paginationMode
+    val user by deps.account.user.collectAsState()
+    val pageMode = deps.preferences.paginationMode
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
     val forumScope = ForumScope.entries[scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)]
@@ -136,7 +137,7 @@ fun ForumScreen(
         // 追加请求要立刻进入加载态，页脚才能显示进度；置位同时充当在途守卫
         feed = requested
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.forum(forumScope, targetPage) }
+            val outcome = authCall.call { deps.gateway.forum(forumScope, targetPage) }
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -180,7 +181,7 @@ fun ForumScreen(
         if (text.isBlank() || replyBusy) return
         replyBusy = true
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.replyComment(albumId, text, target.id) }
+            val outcome = authCall.call { deps.gateway.replyComment(albumId, text, target.id) }
             replyBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -201,7 +202,7 @@ fun ForumScreen(
         if (text.isBlank() || composeBusy) return
         composeBusy = true
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.postComment("", text) }
+            val outcome = authCall.call { deps.gateway.postComment("", text) }
             composeBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {

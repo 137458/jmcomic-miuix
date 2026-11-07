@@ -43,7 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -92,6 +92,7 @@ private val LIBRARY_TABS = listOf("创作者", "作品")
 /** 书库首页：创作者/作品双 Tab + 关键词搜索 + 语言/来源筛选 + 两种分页模式。 */
 @Composable
 fun LibraryScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenCreator: (String) -> Unit,
     onOpenWork: (String) -> Unit,
@@ -116,7 +117,7 @@ fun LibraryScreen(
     var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     // 切换 Tab/筛选/搜索时旧响应不能覆盖新结果
     var loadToken by remember { mutableIntStateOf(0) }
-    val paginationMode = Jm3Graph.preferences.paginationMode
+    val paginationMode = deps.preferences.paginationMode
     // 阻尼阈值略低：下拉更轻快即触发刷新，回弹仍由库的弹簧曲线负责
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
@@ -156,9 +157,9 @@ fun LibraryScreen(
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
             val outcome = authCall.call {
                 if (tabIndex == 0) {
-                    Jm3Graph.gateway.creatorAuthors(targetPage, keyword)
+                    deps.gateway.creatorAuthors(targetPage, keyword)
                 } else {
-                    Jm3Graph.gateway.creatorWorks(targetPage, keyword, lang, source)
+                    deps.gateway.creatorWorks(targetPage, keyword, lang, source)
                 }
             }
             if (token != loadToken) return@launch
@@ -197,6 +198,7 @@ fun LibraryScreen(
     LaunchedEffect(tab, appliedQuery, lang, source) {
         load(1, append = false)
     }
+    PaginationModeReloadEffect(paginationMode) { load(1, append = false) }
 
     val activeFeed: PagedFeed<*> = if (tab == 0) creatorFeed else workFeed
     val itemCount = activeFeed.items.size
@@ -364,6 +366,7 @@ fun LibraryScreen(
 /** 作者主页：背景/头像/赞助入口 + 语言来源筛选 + 作品网格。 */
 @Composable
 fun CreatorWorksScreen(
+    deps: ScreenDeps,
     creatorId: String,
     onBack: () -> Unit,
     onOpenCreator: (String) -> Unit,
@@ -390,7 +393,7 @@ fun CreatorWorksScreen(
         if (showLoading) loading = true
         failure = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
+            val outcome = authCall.call { deps.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
             if (token != loadToken) return@launch
             loading = false
             refreshing = false
@@ -561,6 +564,7 @@ fun CreatorWorksScreen(
 /** 作品详情：描述 + 整页图片 + 底部「相关作品」悬浮入口。 */
 @Composable
 fun CreatorWorkDetailScreen(
+    deps: ScreenDeps,
     workId: String,
     onBack: () -> Unit,
     onOpenWork: (String) -> Unit,
@@ -582,7 +586,7 @@ fun CreatorWorkDetailScreen(
         loading = true
         failure = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.creatorWork(workId) }
+            val outcome = authCall.call { deps.gateway.creatorWork(workId) }
             if (token != loadToken) return@launch
             loading = false
             when (outcome) {

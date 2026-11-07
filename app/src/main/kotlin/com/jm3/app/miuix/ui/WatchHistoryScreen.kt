@@ -17,11 +17,13 @@ import androidx.compose.ui.graphics.Color
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pagerTargetPage
+import com.jm3.core.paging.pagerNextPage
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -46,13 +48,14 @@ private sealed interface WatchUiState {
 /** 服务端观看记录：与本地历史不同，这里记录的是账号云端足迹，支持逐条删除。 */
 @Composable
 fun WatchHistoryScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
-    val mode = Jm3Graph.preferences.paginationMode
+    val mode = deps.preferences.paginationMode
     // 当前页码、是否还有下一页、追加在途与追加失败都由 PagedFeed 记；
     // 追加失败时 hasMore 保持原值，所以页脚一定留着重试入口，不会被误画成「已经到底」
     var feed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
@@ -90,7 +93,7 @@ fun WatchHistoryScreen(
         if (!replace) feed = requested
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
-            val outcome = authCall.call { Jm3Graph.gateway.watchHistory(targetPage) }
+            val outcome = authCall.call { deps.gateway.watchHistory(targetPage) }
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -120,7 +123,7 @@ fun WatchHistoryScreen(
         if (deletingId != null) return
         deletingId = item.id
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.deleteWatchHistory(item.id) }
+            val outcome = authCall.call { deps.gateway.deleteWatchHistory(item.id) }
             deletingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {

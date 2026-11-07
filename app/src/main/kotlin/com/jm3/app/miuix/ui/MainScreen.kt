@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.glass.IosLiquidGlassNavigationBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
@@ -87,6 +88,7 @@ private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
 
 @Composable
 fun MainScreen(
+    deps: ScreenDeps,
     gateway: Jm3Gateway,
     account: AccountManager,
     downloadManager: DownloadManager,
@@ -222,24 +224,28 @@ fun MainScreen(
                                     saveableStateHolder.SaveableStateProvider(currentTab) {
                                         when (currentTab) {
                                             0 -> HomeScreen(
+                                                deps = deps,
                                                 gateway = gateway,
                                                 authCall = authCall,
                                                 onOpenAlbum = onOpenAlbum,
                                                 onOpenWeek = onOpenWeek,
                                             )
                                             1 -> BrowseScreen(
+                                                deps = deps,
                                                 mode = BrowseMode.CATEGORY,
                                                 gateway = gateway,
                                                 authCall = authCall,
                                                 onOpenAlbum = onOpenAlbum,
                                             )
                                             2 -> BrowseScreen(
+                                                deps = deps,
                                                 mode = BrowseMode.RANK,
                                                 gateway = gateway,
                                                 authCall = authCall,
                                                 onOpenAlbum = onOpenAlbum,
                                             )
                                             else -> MineScreen(
+                                                deps = deps,
                                                 account = account,
                                                 authCall = authCall,
                                                 unreadBadge = unreadBadge,

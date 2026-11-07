@@ -9,6 +9,7 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.reader.ChapterGroups
 import com.jm3.core.replacedBy
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
@@ -155,8 +156,8 @@ class AlbumDetailStateHolder(
     }
 
     suspend fun loadHistory() {
-        val latest = runCatching { history.latestForAlbum(albumId) }.getOrNull()?.photoId
-        val readIds = runCatching { history.readPhotoIds(albumId) }.getOrDefault(emptySet())
+        val latest = runCatchingSuspending { history.latestForAlbum(albumId) }.getOrNull()?.photoId
+        val readIds = runCatchingSuspending { history.readPhotoIds(albumId) }.getOrDefault(emptySet())
         _uiState.update { current ->
             val detail = (current.albumState as? AlbumUiState.Loaded)?.detail
             val resumeGroup = if (detail != null && latest != null) {

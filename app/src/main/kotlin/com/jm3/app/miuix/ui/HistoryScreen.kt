@@ -21,11 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pagerTargetPage
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.settings.PaginationMode
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,13 +76,14 @@ private fun List<HistoryEntry>.groupByAlbum(): List<AlbumHistory> {
 
 @Composable
 fun HistoryScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     onOpenReader: (String) -> Unit,
 ) {
-    val repository = Jm3Graph.history
+    val repository = deps.history
     val pageSize = 20
-    val mode = Jm3Graph.preferences.paginationMode
+    val mode = deps.preferences.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     // 在途、失败、是否还有下一页都由 PagedFeed 记；仓库按 pageSize 分页，满页即代表还有下一页
@@ -93,7 +96,7 @@ fun HistoryScreen(
     fun loadFirstPage() {
         scope.launch {
             state = HistoryListState.Loading
-            runCatching { repository.page(1, pageSize) }
+            runCatchingSuspending { repository.page(1, pageSize) }
                 .onSuccess {
                     feed = PagedFeed<HistoryEntry>().replace(
                         PageSlice(items = it, hasMore = it.size >= pageSize, page = 1),
@@ -114,7 +117,7 @@ fun HistoryScreen(
         val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
         if (resolved == feed.page) return
         scope.launch {
-            runCatching { repository.page(resolved, pageSize) }
+            runCatchingSuspending { repository.page(resolved, pageSize) }
                 .onSuccess {
                     feed = PagedFeed<HistoryEntry>().replace(
                         PageSlice(items = it, hasMore = it.size >= pageSize, page = resolved),
@@ -133,7 +136,7 @@ fun HistoryScreen(
         val page = requested.page + 1
         feed = requested
         scope.launch {
-            runCatching { repository.page(page, pageSize) }
+            runCatchingSuspending { repository.page(page, pageSize) }
                 .onSuccess { next ->
                     feed = requested.append(
                         PageSlice(items = next, hasMore = next.size >= pageSize, page = page),
@@ -146,7 +149,7 @@ fun HistoryScreen(
     /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从当前列表移除。 */
     fun removeAlbum(albumId: String) {
         scope.launch {
-            runCatching { repository.deleteAlbum(albumId) }
+            runCatchingSuspending { repository.deleteAlbum(albumId) }
             feed = feed.copy(items = feed.items.filterNot { it.albumId == albumId })
         }
     }
@@ -155,7 +158,7 @@ fun HistoryScreen(
         if (clearing) return
         clearing = true
         scope.launch {
-            runCatching { repository.clear() }
+            runCatchingSuspending { repository.clear() }
             clearing = false
             showClearConfirm = false
             feed = PagedFeed()

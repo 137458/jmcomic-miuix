@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import com.jm3.app.miuix.Jm3Graph
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
@@ -109,13 +109,14 @@ internal fun novelActionNotice(
 /** 小说列表页：排序 + 关键词搜索 + 点赞/收藏。 */
 @Composable
 fun NovelListScreen(
+    deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenNovel: (String) -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
 ) {
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     var orderName by rememberSaveable { mutableStateOf(NovelOrder.DEFAULT.name) }
     val order = NovelOrder.entries.firstOrNull { it.name == orderName } ?: NovelOrder.DEFAULT
     var query by rememberSaveable { mutableStateOf("") }
@@ -140,9 +141,9 @@ fun NovelListScreen(
         scope.launch {
             val outcome = authCall.call {
                 if (keyword.isBlank()) {
-                    Jm3Graph.gateway.novelList(orderValue, 1)
+                    deps.gateway.novelList(orderValue, 1)
                 } else {
-                    Jm3Graph.gateway.searchNovels(keyword)
+                    deps.gateway.searchNovels(keyword)
                 }
             }
             if (token != loadToken) return@launch
@@ -180,7 +181,7 @@ fun NovelListScreen(
         if (busyId != null) return
         busyId = item.id
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelLike(item.id) }
+            val outcome = authCall.call { deps.gateway.toggleNovelLike(item.id) }
             busyId = null
             val notice = novelActionNotice(outcome, failurePrefix = "点赞失败：")
             if (notice == null) {
@@ -202,7 +203,7 @@ fun NovelListScreen(
         if (busyId != null) return
         busyId = item.id
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelFavorite(item.id) }
+            val outcome = authCall.call { deps.gateway.toggleNovelFavorite(item.id) }
             busyId = null
             val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
             if (notice == null) {
@@ -405,6 +406,7 @@ private fun NovelRowAction(
 /** 小说详情：头部信息 + 目录/相关/评论三档 + 阅读入口。 */
 @Composable
 fun NovelDetailScreen(
+    deps: ScreenDeps,
     novelId: String,
     onBack: () -> Unit,
     onOpenNovel: (String) -> Unit,
@@ -414,7 +416,7 @@ fun NovelDetailScreen(
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
 ) {
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     var detail by remember { mutableStateOf<NovelDetail?>(null) }
     var savedChapter by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -434,7 +436,7 @@ fun NovelDetailScreen(
         loading = true
         failure = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.novelDetail(novelId) }
+            val outcome = authCall.call { deps.gateway.novelDetail(novelId) }
             loading = false
             if (outcome is SessionOutcome.Ok) {
                 detail = outcome.value
@@ -446,7 +448,7 @@ fun NovelDetailScreen(
     }
 
     LaunchedEffect(novelId) {
-        savedChapter = Jm3Graph.settings.novelLastChapter(novelId)
+        savedChapter = deps.settings.novelLastChapter(novelId)
         load()
     }
 
@@ -479,7 +481,7 @@ fun NovelDetailScreen(
         if (actionBusy) return
         actionBusy = true
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelLike(novelId) }
+            val outcome = authCall.call { deps.gateway.toggleNovelLike(novelId) }
             actionBusy = false
             val notice = novelActionNotice(outcome, failurePrefix = "点赞失败：")
             if (notice == null) {
@@ -500,7 +502,7 @@ fun NovelDetailScreen(
         if (actionBusy) return
         actionBusy = true
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelFavorite(novelId) }
+            val outcome = authCall.call { deps.gateway.toggleNovelFavorite(novelId) }
             actionBusy = false
             val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
             if (notice == null) {
@@ -637,6 +639,7 @@ fun NovelDetailScreen(
                             }
                             else -> item(key = "comments") {
                                 NovelCommentsPanel(
+                                    deps = deps,
                                     novelId = novelId,
                                     onOpenLogin = onOpenLogin,
                                     snackbarHostState = snackbarHostState,
@@ -819,6 +822,7 @@ private fun NovelChapterGroupCard(
 /** 小说阅读页：正文 + 字号 + 繁简 + 章节切换 + 评论/收藏。 */
 @Composable
 fun NovelReaderScreen(
+    deps: ScreenDeps,
     novelId: String,
     initialChapterId: String,
     onBack: () -> Unit,
@@ -826,7 +830,7 @@ fun NovelReaderScreen(
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
 ) {
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     var detail by remember { mutableStateOf<NovelDetail?>(null) }
     var chapter by remember { mutableStateOf<NovelChapter?>(null) }
     var currentId by rememberSaveable { mutableStateOf(initialChapterId) }
@@ -846,14 +850,14 @@ fun NovelReaderScreen(
         if (showLoading) loading = true
         failure = null
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.novelChapter(chapterId, language) }
+            val outcome = authCall.call { deps.gateway.novelChapter(chapterId, language) }
             if (token != loadToken) return@launch
             loading = false
             if (outcome is SessionOutcome.Ok) {
                 chapter = outcome.value
                 currentId = chapterId
                 favorited = outcome.value.favorite
-                scope.launch { Jm3Graph.settings.setNovelLastChapter(novelId, chapterId) }
+                scope.launch { deps.settings.setNovelLastChapter(novelId, chapterId) }
             } else {
                 // 翻到下一章失败时旧正文还在：保留正文只提示，不把正在读的章节顶掉
                 val plan = planLoad(
@@ -871,10 +875,10 @@ fun NovelReaderScreen(
     }
 
     LaunchedEffect(novelId) {
-        fontSize = Jm3Graph.settings.novelFontSize()
-        lang = Jm3Graph.settings.novelLang()
+        fontSize = deps.settings.novelFontSize()
+        lang = deps.settings.novelLang()
         // 目录只是辅助数据：普通失败保持静默（正文该能读就读），只有会话失效才提示去登录
-        when (val detailOutcome = authCall.call { Jm3Graph.gateway.novelDetail(novelId) }) {
+        when (val detailOutcome = authCall.call { deps.gateway.novelDetail(novelId) }) {
             is SessionOutcome.Ok -> {
                 detail = detailOutcome.value
                 favorited = detailOutcome.value.favorite
@@ -910,7 +914,7 @@ fun NovelReaderScreen(
             return
         }
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.toggleNovelFavorite(novelId) }
+            val outcome = authCall.call { deps.gateway.toggleNovelFavorite(novelId) }
             val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
             if (notice == null) {
                 favorited = !favorited
@@ -924,7 +928,7 @@ fun NovelReaderScreen(
 
     fun changeLang(next: String) {
         lang = next
-        scope.launch { Jm3Graph.settings.setNovelLang(next) }
+        scope.launch { deps.settings.setNovelLang(next) }
         loadChapter(currentId, next, showLoading = false)
     }
 
@@ -935,7 +939,7 @@ fun NovelReaderScreen(
         )
         if (next == fontSize) return
         fontSize = next
-        scope.launch { Jm3Graph.settings.setNovelFontSize(next) }
+        scope.launch { deps.settings.setNovelFontSize(next) }
     }
 
     GlassScaffold(
@@ -1065,6 +1069,7 @@ fun NovelReaderScreen(
                     .padding(horizontal = 16.dp),
             ) {
                 NovelCommentsPanel(
+                    deps = deps,
                     novelId = novelId,
                     onOpenLogin = onOpenLogin,
                     snackbarHostState = snackbarHostState,
@@ -1126,13 +1131,14 @@ private fun NovelReaderToolbar(
 /** 小说评论区：列表 + 加载更多 + 发评论 + 回复。详情页与阅读页共用。 */
 @Composable
 private fun NovelCommentsPanel(
+    deps: ScreenDeps,
     novelId: String,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
     authCall: AuthCall,
     modifier: Modifier = Modifier,
 ) {
-    val user by Jm3Graph.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     var feed by remember { mutableStateOf(PagedFeed<CommentItem>()) }
     var loading by remember { mutableStateOf(true) }
     var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
@@ -1150,7 +1156,7 @@ private fun NovelCommentsPanel(
         failure = null
         feed = requested
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.novelComments(novelId, targetPage) }
+            val outcome = authCall.call { deps.gateway.novelComments(novelId, targetPage) }
             loading = false
             if (outcome is SessionOutcome.Ok) {
                 feed = if (replace) {
@@ -1187,7 +1193,7 @@ private fun NovelCommentsPanel(
         }
         sending = true
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.postNovelComment(novelId, text, "") }
+            val outcome = authCall.call { deps.gateway.postNovelComment(novelId, text, "") }
             sending = false
             val notice = novelActionNotice(outcome, failurePrefix = "发布失败：")
             if (notice == null) {
@@ -1206,7 +1212,7 @@ private fun NovelCommentsPanel(
         if (text.isBlank() || replyBusy) return
         replyBusy = true
         scope.launch {
-            val outcome = authCall.call { Jm3Graph.gateway.replyNovelComment(novelId, text, target.id, "") }
+            val outcome = authCall.call { deps.gateway.replyNovelComment(novelId, text, target.id, "") }
             replyBusy = false
             val notice = novelActionNotice(outcome, failurePrefix = "回复失败：")
             if (notice == null) {
