@@ -1363,12 +1363,17 @@ private fun NovelCover(url: String?, width: Dp, height: Dp) {
     }
 }
 
-/** 秒级时间戳 → yyyy-MM-dd；0/负值按空串（不展示）。 */
+/**
+ * 秒级时间戳 → yyyy-MM-dd；0/负值按空串（不展示）。
+ *
+ * 走 [rememberDateFormatter]，与 HistoryScreen/TrackingScreen 同一口径：按组合期
+ * locale 排版，切系统语言后自动重建，不再捕获进程级默认 locale/zone。
+ */
+@Composable
 private fun formatUnixSeconds(seconds: Long): String {
     if (seconds <= 0L) return ""
+    val dateFormat = rememberDateFormatter("yyyy-MM-dd")
     return runCatching {
-        java.time.Instant.ofEpochSecond(seconds)
-            .atZone(java.time.ZoneId.systemDefault())
-            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        dateFormat.format(java.util.Date(seconds * 1000L))
     }.getOrDefault("")
 }
