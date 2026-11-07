@@ -17,7 +17,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import coil3.ImageLoader
@@ -60,6 +59,7 @@ import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
 import com.jm3.app.miuix.ui.WideLayout
 import com.jm3.app.miuix.ui.NotificationsScreen
+import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.update.UpdateDownloader
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
 import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
@@ -86,6 +86,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
@@ -475,9 +476,12 @@ fun Jm3App() {
     }
 
     // 窗口宽高变化（折叠展开、分屏、旋转）会重建这份布局参数，各页随之重新判定列数与分栏
-    val configuration = LocalConfiguration.current
-    val wideLayout = remember(configuration.screenWidthDp, configuration.screenHeightDp) {
-        WideLayout(widthDp = configuration.screenWidthDp, heightDp = configuration.screenHeightDp)
+    val windowSize = rememberWindowDpSize()
+    val wideLayout = remember(windowSize) {
+        WideLayout(
+            widthDp = windowSize.width.value.roundToInt(),
+            heightDp = windowSize.height.value.roundToInt(),
+        )
     }
 
     // 皮肤只替换主题取值与 CompositionLocal，不切换宿主、不重建页面树：

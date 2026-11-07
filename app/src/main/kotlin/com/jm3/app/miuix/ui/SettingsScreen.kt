@@ -22,7 +22,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
@@ -129,7 +128,8 @@ fun SettingsScreen(
     // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
     val paginationMode = deps.preferences.paginationMode
     // 底栏尺寸/形态：偏好存 null 表示未显式设置，展示与生效都按同一处窗口断点解析
-    val widthDp = LocalConfiguration.current.screenWidthDp
+    val windowDp = rememberWindowDpSize()
+    val widthDp = windowDp.width.value.roundToInt()
     val bottomBarSize = BottomBarPreferencePolicy.resolveSize(deps.preferences.bottomBarSize, widthDp)
     // 尺寸档只有「偏大」是强制选择；「普通」与未设置同义，都表示按设备自适应
     val bottomBarSizeOption =
@@ -146,7 +146,7 @@ fun SettingsScreen(
     // 双页只在 600dp 以上横屏可见；其它窗口尺寸整行不渲染，阅读器也会自动回落到单页
     val readerSpreadAllowed = ReaderSpreadPolicy.supportsSpread(
         widthDp,
-        LocalConfiguration.current.screenHeightDp,
+        windowDp.height.value.roundToInt(),
     )
     var volumeKeyPaging by remember { mutableStateOf(true) }
     var keepScreenOn by remember { mutableStateOf(true) }
