@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -109,8 +110,9 @@ internal object DownloadNotifier {
             .build()
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PAUSED, notification)
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
             // 权限在检查与投递之间被撤销：放弃这条提示，不影响下载流程
+            Log.w("DownloadNotifier", "暂停提示投递被拒", e)
         }
     }
 

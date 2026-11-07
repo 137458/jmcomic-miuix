@@ -174,8 +174,9 @@ class DownloadService : Service() {
             try {
                 NotificationManagerCompat.from(app)
                     .notify(DownloadNotifier.NOTIFICATION_ID, DownloadNotifier.build(app, presentation))
-            } catch (_: SecurityException) {
+            } catch (e: SecurityException) {
                 // 权限在检查与投递之间被撤销：跳过本次进度刷新，服务继续运行
+                Log.w(TAG, "进度通知投递被拒", e)
             }
         }
     }
