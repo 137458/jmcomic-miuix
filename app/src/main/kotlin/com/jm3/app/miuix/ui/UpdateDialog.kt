@@ -49,6 +49,9 @@ private val NotesPrefixGap = 6.dp
 /** 弹窗内容区的限高：超长说明在弹窗内部滚动，底部主按钮始终留在可视区。 */
 private val DialogBodyMaxHeight = 240.dp
 
+/** 内容区上下羽化距离：按视口高度取，太短会只剩一条几乎看不见的边。 */
+private val DialogBodyFade = 40.dp
+
 /** 弹窗底部：内容到按键区、按键之间各留一档，按键边界才分得清。 */
 private val DialogButtonsTopSpacing = 12.dp
 private val DialogButtonGap = 8.dp
@@ -264,13 +267,19 @@ internal fun UpdateAvailableDialog(
         summary = plan.summary,
         onDismissRequest = onDismiss,
     ) {
-        // 水平内边距由弹窗的 insideMargin 提供，这里只负责限高、滚动与边缘羽化
+        // 水平内边距由弹窗的 insideMargin 提供，这里只负责限高、滚动与边缘羽化。
+        // 羽化必须在 verticalScroll 外侧：放内侧时量到的是内容整高，遮罩落在滚出视口的顶部，
+        // 用户看到的就是"被硬裁切、没有渐变"。放外侧后按视口高度生成渐变带，上下边缘才肉眼可见。
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = DialogBodyMaxHeight)
-                .verticalScroll(scrollState)
-                .verticalEdgeFade(top = hasContentAbove, bottom = hasContentBelow),
+                .verticalEdgeFade(
+                    top = hasContentAbove,
+                    bottom = hasContentBelow,
+                    fade = DialogBodyFade,
+                )
+                .verticalScroll(scrollState),
         ) {
             if (plan.showProgress) {
                 Text(
