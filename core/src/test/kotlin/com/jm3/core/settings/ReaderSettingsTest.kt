@@ -15,11 +15,24 @@ class ReaderSettingsTest {
     fun 未写入时使用默认值() = runTest {
         val r = repo()
         assertEquals(false, r.readerHorizontal())
+        assertEquals(ReaderSpreadMode.SINGLE, r.readerSpread())
         assertEquals(true, r.readerVolumeKeyPaging())
         assertEquals(true, r.readerKeepScreenOn())
         assertEquals(-1, r.readerBrightness())
         assertEquals(ReaderImageQuality.STANDARD, r.readerImageQuality())
         assertEquals(3, r.readerPrefetchPages())
+    }
+
+    @Test
+    fun 双页阅读可切换读回且损坏值回退单页() = runTest {
+        val r = repo()
+        r.setReaderSpread(ReaderSpreadMode.DOUBLE)
+        assertEquals(ReaderSpreadMode.DOUBLE, r.readerSpread())
+        r.setReaderSpread(ReaderSpreadMode.SINGLE)
+        assertEquals(ReaderSpreadMode.SINGLE, r.readerSpread())
+        // 损坏的持久化值不能把用户带进双页
+        r.writeString(SettingsKeys.READER_SPREAD, "BROKEN")
+        assertEquals(ReaderSpreadMode.SINGLE, r.readerSpread())
     }
 
     @Test

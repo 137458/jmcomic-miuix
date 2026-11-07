@@ -148,6 +148,14 @@ interface ReaderSettings : SettingsKeyStore, ReaderProgressSettings {
         writeBoolean(SettingsKeys.READER_HORIZONTAL, enabled)
     }
 
+    /** 阅读页布局：默认单页，双页仅在宽屏横屏生效。 */
+    suspend fun readerSpread(): ReaderSpreadMode =
+        ReaderPreferences.normalizeSpreadMode(readString(SettingsKeys.READER_SPREAD))
+
+    suspend fun setReaderSpread(mode: ReaderSpreadMode) {
+        writeString(SettingsKeys.READER_SPREAD, mode.name)
+    }
+
     suspend fun volumeKeyHintShown(): Boolean = readBoolean(SettingsKeys.VOLUME_KEY_HINT) ?: false
 
     suspend fun markVolumeKeyHintShown() {

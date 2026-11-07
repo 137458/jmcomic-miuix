@@ -236,6 +236,34 @@ class ReaderPageLogicTest {
         assertTrue(frame.decodeSize.width < readerPageDecodeSize(1440, 0.5f).width)
     }
 
+    @Test
+    fun 双页并存的解码预算按两页分摊不翻倍() {
+        val windowWidth = 1600
+        val windowHeight = 1200
+        listOf(EconomyBudget, StandardBudget, HighBudget).forEach { budget ->
+            val page = readerSpreadPageDecodeSize(windowWidth, windowHeight, budget)
+            // 两页合计不能超过一档预算
+            assertTrue(
+                page.width.toLong() * page.height * 2 <= budget.toLong(),
+                "预算 $budget 两页合计 ${page.width}x${page.height} x2 超了",
+            )
+            // 单页预算取一半，宽度取半屏
+            assertTrue(page.width <= windowWidth / 2)
+        }
+    }
+
+    @Test
+    fun 双页单页尺寸与整屏收敛后的密度一致() {
+        // 1600x1200 在标准档：整屏约 1365x1024，双页每页约 965x724，两页合计仍在一档预算内
+        val single = readerScreenDecodeSize(1600, 1200)
+        val spreadPage = readerSpreadPageDecodeSize(1600, 1200)
+        assertTrue(spreadPage.width < single.width)
+        assertTrue(
+            spreadPage.width.toLong() * spreadPage.height * 2 <= StandardBudget.toLong(),
+            "双页合计必须留在标准档预算内",
+        )
+    }
+
     private companion object {
         const val EconomyBudget = 2_000_000
         const val StandardBudget = 4_000_000

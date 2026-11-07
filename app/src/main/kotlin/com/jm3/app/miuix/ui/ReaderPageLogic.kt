@@ -182,6 +182,17 @@ internal fun readerScreenDecodeSize(
     maxPixels: Int = MAX_PAGE_DECODE_PIXELS,
 ): IntSize = fitDecodeBudget(width.coerceAtLeast(1), height.coerceAtLeast(1), maxPixels)
 
+/** 双页并排时单页的请求尺寸：宽度按半屏，预算按两页分摊。 */
+internal fun readerSpreadPageDecodeSize(
+    windowWidthPx: Int,
+    windowHeightPx: Int,
+    maxPixels: Int = MAX_PAGE_DECODE_PIXELS,
+): IntSize = readerScreenDecodeSize(
+    width = (windowWidthPx / 2).coerceAtLeast(1),
+    height = windowHeightPx,
+    maxPixels = (maxPixels / 2).coerceAtLeast(1),
+)
+
 /** 把 (width, height) 等比收敛到单边上限与像素预算内，返回的边长至少 1 px。 */
 private fun fitDecodeBudget(width: Int, height: Int, maxPixels: Int): IntSize {
     var w = width.toFloat()

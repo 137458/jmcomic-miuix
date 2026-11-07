@@ -40,6 +40,9 @@ internal object SettingsKeys {
 
     const val THEME_MODE = "theme_mode"
     const val DYNAMIC_COLOR = "dynamic_color"
+
+    /** 界面风格：与 Eta 的 appearance_ui_style 同名，未设置时不写键。 */
+    const val UI_SKIN = "appearance_ui_style"
     const val PAGINATION_MODE = "pagination_mode"
     const val BOTTOM_BAR_SIZE = "bottom_bar_size"
     const val BOTTOM_BAR_FORM = "bottom_bar_form"
@@ -47,6 +50,7 @@ internal object SettingsKeys {
     const val API_DOMAINS = "api_domains"
     const val SEARCH_HISTORY = "search_history"
     const val READER_HORIZONTAL = "reader_horizontal"
+    const val READER_SPREAD = "reader_spread"
     const val READER_VOLUME_KEY_PAGING = "reader_volume_key_paging"
     const val READER_KEEP_SCREEN_ON = "reader_keep_screen_on"
     const val READER_BRIGHTNESS = "reader_brightness"

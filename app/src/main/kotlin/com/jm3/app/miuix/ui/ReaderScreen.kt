@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -82,6 +83,7 @@ import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.reader.ReaderPagePlan
 import com.jm3.core.reader.ReaderPageProgress
+import com.jm3.core.reader.ReaderSpreadPolicy
 import com.jm3.core.reader.advancePrefetch
 import com.jm3.core.reader.jumpTo
 import com.jm3.core.reader.readerProgressOnExit
@@ -91,6 +93,7 @@ import com.jm3.core.reader.stepPages
 import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ReaderSettings
+import com.jm3.core.settings.ReaderSpreadMode
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
@@ -105,6 +108,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
+import me.saket.telephoto.zoomable.rememberZoomableState
+import me.saket.telephoto.zoomable.zoomable
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -337,7 +342,6 @@ private fun ReaderPages(
 ) {
     val imageLoader = rememberReaderImageLoader(gateway, downloadFiles)
     val listState = rememberLazyListState()
-    val pagerState = rememberPagerState { photo.images.size }
     val context = LocalPlatformContext.current
     // 亮度与常亮直接作用在宿主 Activity 的窗口上
     val activityContext = LocalContext.current
@@ -367,12 +371,33 @@ private fun ReaderPages(
     }
     // 横向翻页整屏、纵向按容器宽，两套排布的解码尺寸不同
     var horizontal by remember { mutableStateOf(false) }
+    // 双页阅读只在大屏横屏下叠加在左右阅读上：默认单页，转屏或换设备后自动回落到单页。
+    var spreadMode by remember { mutableStateOf(ReaderSpreadMode.SINGLE) }
+    val wideLayout = LocalWideLayout.current
+    val spreadEligible = ReaderSpreadPolicy.supportsSpread(wideLayout.widthDp, wideLayout.heightDp)
+    val spreadActive = spreadEligible && spreadMode == ReaderSpreadMode.DOUBLE && horizontal
+    // pager 的页数随单/双页切换：跨页索引只是 pager 下标，持久化仍走单页索引
+    val pagerPageCount = if (spreadActive) {
+        ReaderSpreadPolicy.spreadCount(photo.images.size)
+    } else {
+        photo.images.size
+    }
+    val pagerState = rememberPagerState { pagerPageCount }
+    // 双页并存时两页共用一档质量预算：单页宽度取半屏、预算取一半，合计不翻倍
+    val spreadPageSize = remember(windowSize.width, windowSize.height, imageQuality) {
+        val fit = readerSpreadPageDecodeSize(
+            windowSize.width,
+            windowSize.height,
+            imageQuality.maxDecodePixels,
+        )
+        Size(fit.width, fit.height)
+    }
     // 已发起预加载的页号；翻页向前向后都只发一次。键随章节与布局基线走：
     // 换话、页宽变了、切换纵横或换质量档后，按旧尺寸解的页要重新发一次，否则新尺寸永远等不到解码
-    val prefetched = remember(photo, pageWidthPx, horizontal, imageQuality) { mutableSetOf<Int>() }
+    val prefetched = remember(photo, pageWidthPx, horizontal, imageQuality, spreadActive) { mutableSetOf<Int>() }
     // 当前页是否处于放大态：放大时让出翻页手势，交给缩放层自己消费
     var pageZoomed by remember(photo) { mutableStateOf(false) }
-    LaunchedEffect(pagerState.currentPage) { pageZoomed = false }
+    LaunchedEffect(pagerState.currentPage, spreadActive) { pageZoomed = false }
     // 长图模式下双击打开的整屏缩放层：存放 photo.images 下标，null 表示未打开
     var zoomOverlayIndex by remember(photo) { mutableStateOf<Int?>(null) }
     // 页码的唯一真源：顶栏、跳页器、音量键与预取都从这份计划取页码，跳页冻结也在这里
@@ -417,12 +442,23 @@ private fun ReaderPages(
         ?.takeIf { chapterIndex in 0 until chapters.lastIndex }
     val totalPages = photo.images.size.coerceAtLeast(1)
     val lastIndex = (photo.images.size - 1).coerceAtLeast(0)
+    // 顶栏页码：双页下按单页索引显示当前可见范围（如 4-5/12），仍以单页坐标对外
+    val pageLabel = if (spreadActive && photo.images.isNotEmpty()) {
+        val pages = ReaderSpreadPolicy.pagesInSpread(
+            ReaderSpreadPolicy.spreadIndexForPage(pagePlan.currentPage, photo.images.size),
+            photo.images.size,
+        )
+        "${pages.joinToString("-")}/${photo.images.size}"
+    } else {
+        "${pagePlan.currentPage}/${photo.images.size}"
+    }
 
     // 恢复提示与音量键提示共用同一条队列，避免两条 Snackbar 互相顶掉
     val snackbarQueue = remember { Mutex() }
 
     LaunchedEffect(Unit) {
         horizontal = settings.readerHorizontal()
+        spreadMode = settings.readerSpread()
         // 纵横模式决定跳页走 pager 还是列表，恢复进度必须等它落定
         horizontalReady = true
         volumeKeyPaging = settings.readerVolumeKeyPaging()
@@ -477,13 +513,25 @@ private fun ReaderPages(
 
     /** 跳页：先让计划进入“跳页中”，再驱动 pager 或列表；落地后才恢复可见页回写。 */
     fun goToPage(page: Int) {
-        val next = jumpTo(pagePlan, page)
+        // 双页下把目标换算成所在跨页的锚点：进度、页码与跳页都用同一个单页坐标，
+        // 用户输入第 5 页时落到含 4、5 页的那一屏，不会因为并排而错开一页。
+        val canonical = if (spreadActive) {
+            ReaderSpreadPolicy.anchorPageForPage(page, photo.images.size)
+        } else {
+            page
+        }
+        val next = jumpTo(pagePlan, canonical)
         if (next == pagePlan) return
         pagePlan = next
         val target = next.pendingTarget ?: return
         if (horizontal) {
+            val pagerTarget = if (spreadActive) {
+                ReaderSpreadPolicy.spreadIndexForPage(target, photo.images.size)
+            } else {
+                target - 1
+            }
             scope.launch {
-                pagerState.springAnimateToPage(target - 1)
+                pagerState.springAnimateToPage(pagerTarget.coerceIn(0, (pagerPageCount - 1).coerceAtLeast(0)))
                 pagePlan = settleJump(pagePlan, target)
             }
         } else {
@@ -503,18 +551,23 @@ private fun ReaderPages(
         val saved = settings.readerLastPage(photo.photoId)
         progressRestored = true
         // 详情页预览点第 i 张时优先直达该页；起始页无效再回退历史进度
-        val target = resolveInitialPage(startPage, saved, photo.images.size)
-        if (target == null) return@LaunchedEffect
-        if (target != pagePlan.currentPage) goToPage(target)
+        val target = resolveInitialPage(startPage, saved, photo.images.size) ?: return@LaunchedEffect
+        // 双页下提示与落点一致：显示的是目标页所在的跨页锚点，避免提示页比画面多一页
+        val restoredPage = if (spreadActive) {
+            ReaderSpreadPolicy.anchorPageForPage(target, photo.images.size)
+        } else {
+            target
+        }
+        if (restoredPage != pagePlan.currentPage) goToPage(restoredPage)
         // 直达预览页不提示「恢复进度」，只有回退历史进度时才提示
         val directPage = startPage != null && startPage in 1..photo.images.size
         if (directPage) return@LaunchedEffect
         snackbarQueue.withLock {
             snackbarHostState.showSnackbar(
                 if (saved != null && saved.total != photo.images.size) {
-                    "章节页数已更新，已恢复到第 $target 页"
+                    "章节页数已更新，已恢复到第 $restoredPage 页"
                 } else {
-                    "已恢复到上次读到的第 $target 页"
+                    "已恢复到上次读到的第 $restoredPage 页"
                 },
             )
         }
@@ -552,11 +605,35 @@ private fun ReaderPages(
         val page = pagePlan.currentPage.coerceIn(1, totalPages)
         horizontal = nextHorizontal
         scope.launch { settings.setReaderHorizontal(nextHorizontal) }
+        val nextSpreadActive = spreadEligible && spreadMode == ReaderSpreadMode.DOUBLE && nextHorizontal
         if (nextHorizontal) {
-            scope.launch { pagerState.scrollToPage((page - 1).coerceIn(0, lastIndex)) }
+            val nextPageCount = if (nextSpreadActive) {
+                ReaderSpreadPolicy.spreadCount(photo.images.size)
+            } else {
+                photo.images.size
+            }
+            val index = if (nextSpreadActive) {
+                ReaderSpreadPolicy.spreadIndexForPage(page, photo.images.size)
+            } else {
+                page - 1
+            }
+            scope.launch { pagerState.scrollToPage(index.coerceIn(0, (nextPageCount - 1).coerceAtLeast(0))) }
         } else {
             scope.launch { listState.scrollToItem((page - 1).coerceIn(0, lastIndex)) }
         }
+    }
+
+    // 转屏或分屏改变可用宽度时，pager 的页数会切换单/双页语义：
+    // 用当前单页锚点重新定位到对应的跨页，避免把「第 4 页」直接当成第 4 屏而错位。
+    LaunchedEffect(spreadActive, horizontal, pagerPageCount) {
+        if (!horizontal || pagerPageCount <= 0) return@LaunchedEffect
+        val page = pagePlan.currentPage.coerceIn(1, totalPages)
+        val index = if (spreadActive) {
+            ReaderSpreadPolicy.spreadIndexForPage(page, photo.images.size)
+        } else {
+            page - 1
+        }
+        pagerState.scrollToPage(index.coerceIn(0, pagerPageCount - 1))
     }
 
     fun requireLogin(): Boolean {
@@ -706,7 +783,14 @@ private fun ReaderPages(
                     val now = System.currentTimeMillis()
                     if (now - lastVolumeAt >= VOLUME_THROTTLE_MS) {
                         lastVolumeAt = now
-                        goToPage(stepPages(pagePlan, delta))
+                        // 双页下按屏步进：音量键一次翻一屏，不会因为锚点相同而卡住
+                        goToPage(
+                            if (spreadActive) {
+                                ReaderSpreadPolicy.stepAnchor(pagePlan.currentPage, delta, photo.images.size)
+                            } else {
+                                stepPages(pagePlan, delta)
+                            },
+                        )
                     }
                     true
                 }
@@ -720,10 +804,18 @@ private fun ReaderPages(
     }
 
     // 最后一话最后一页弹追更引导；勾选静默后三天内不再出现
-    LaunchedEffect(pagePlan.currentPage, photo.images.size) {
+    LaunchedEffect(pagePlan.currentPage, photo.images.size, spreadActive) {
         if (trackPromptShown || photo.images.isEmpty()) return@LaunchedEffect
         if (chapters.isEmpty() || chapterIndex != chapters.lastIndex) return@LaunchedEffect
-        if (pagePlan.currentPage != photo.images.size) return@LaunchedEffect
+        // 双页下当前页记的是末屏锚点，判断「已到末页」要看是否落在最后那一屏
+        val atLastPage = if (spreadActive) {
+            val total = photo.images.size
+            ReaderSpreadPolicy.spreadIndexForPage(pagePlan.currentPage, total) ==
+                ReaderSpreadPolicy.spreadCount(total) - 1
+        } else {
+            pagePlan.currentPage == photo.images.size
+        }
+        if (!atLastPage) return@LaunchedEffect
         if (System.currentTimeMillis() < settings.trackPromptMuteUntil()) return@LaunchedEffect
         trackPromptShown = true
         showTrackPrompt = true
@@ -743,7 +835,7 @@ private fun ReaderPages(
                             Icon(imageVector = MiuixIcons.ChevronBackward, contentDescription = "上一话")
                         }
                         TextButton(
-                            text = "${pagePlan.currentPage}/${photo.images.size}",
+                            text = pageLabel,
                             onClick = {
                                 pickerValue = pagePlan.currentPage
                                 showPageSheet = true
@@ -781,44 +873,88 @@ private fun ReaderPages(
                     userScrollEnabled = false,
                     pageNestedScrollConnection = PagerGestureNestedScrollConnection,
                 ) { index ->
-                    ReaderPage(
-                        image = photo.images[index],
-                        imageLoader = imageLoader,
-                        decodeSize = screenSize,
-                        modifier = Modifier.fillMaxSize(),
-                        zoomEnabled = true,
-                        isCurrentPage = index == pagerState.currentPage,
-                        onTap = { chromeVisible = !chromeVisible },
-                        onZoomChanged = { zoomed ->
-                            // 只有当前页的缩放状态才约束翻页，预加载的邻页不参与
-                            if (index == pagerState.currentPage) pageZoomed = zoomed
-                        },
-                        // 放大后内容已到边界仍继续横拖时接翻页：此时缩放层不再消费手势
-                        onHorizontalEdgeDrag = if (pageZoomed) {
-                            { dragX, stillPinned ->
-                                val turn = decideEdgePageTurn(
-                                    dragX = dragX,
-                                    // 左右模式整屏一页，页宽就是窗口宽（Size 的 width 是 Dimension，不宜参与算术）
-                                    pageWidth = pageWidthPx.toFloat(),
-                                    currentPage = pagerState.currentPage,
-                                    pageCount = photo.images.size,
-                                )
-                                if (turn != EdgePageTurn.None) {
-                                    val target = if (turn == EdgePageTurn.Next) {
-                                        pagerState.currentPage + 1
-                                    } else {
-                                        pagerState.currentPage - 1
-                                    }
-                                    // 惯性带不走内容才算真的贴边，否则这次手势只是在平移
-                                    scope.launch {
-                                        if (stillPinned()) pagerState.springAnimateToPage(target)
+                    if (spreadActive) {
+                        val spreadImages = ReaderSpreadPolicy.pagesInSpread(index, photo.images.size)
+                            .mapNotNull { page -> photo.images.getOrNull(page - 1) }
+                        ReaderSpreadPage(
+                            images = spreadImages,
+                            imageLoader = imageLoader,
+                            decodeSize = spreadPageSize,
+                            modifier = Modifier.fillMaxSize(),
+                            isCurrentPage = index == pagerState.currentPage,
+                            onTap = { chromeVisible = !chromeVisible },
+                            onZoomChanged = { zoomed ->
+                                if (index == pagerState.currentPage) pageZoomed = zoomed
+                            },
+                            // 整屏同步放大后内容到边界仍继续横拖时接翻页，语义与单页一致
+                            onHorizontalEdgeDrag = if (pageZoomed) {
+                                { dragX, stillPinned ->
+                                    val turn = decideEdgePageTurn(
+                                        dragX = dragX,
+                                        // 双页一屏铺满窗口，翻页行程仍按整屏宽度判定
+                                        pageWidth = pageWidthPx.toFloat(),
+                                        currentPage = pagerState.currentPage,
+                                        pageCount = pagerPageCount,
+                                    )
+                                    if (turn != EdgePageTurn.None) {
+                                        val target = if (turn == EdgePageTurn.Next) {
+                                            pagerState.currentPage + 1
+                                        } else {
+                                            pagerState.currentPage - 1
+                                        }
+                                        scope.launch {
+                                            if (stillPinned()) {
+                                                pagerState.springAnimateToPage(
+                                                    target.coerceIn(0, (pagerPageCount - 1).coerceAtLeast(0)),
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        } else {
-                            null
-                        },
-                    )
+                            } else {
+                                null
+                            },
+                        )
+                    } else {
+                        ReaderPage(
+                            image = photo.images[index],
+                            imageLoader = imageLoader,
+                            decodeSize = screenSize,
+                            modifier = Modifier.fillMaxSize(),
+                            zoomEnabled = true,
+                            isCurrentPage = index == pagerState.currentPage,
+                            onTap = { chromeVisible = !chromeVisible },
+                            onZoomChanged = { zoomed ->
+                                // 只有当前页的缩放状态才约束翻页，预加载的邻页不参与
+                                if (index == pagerState.currentPage) pageZoomed = zoomed
+                            },
+                            // 放大后内容已到边界仍继续横拖时接翻页：此时缩放层不再消费手势
+                            onHorizontalEdgeDrag = if (pageZoomed) {
+                                { dragX, stillPinned ->
+                                    val turn = decideEdgePageTurn(
+                                        dragX = dragX,
+                                        // 左右模式整屏一页，页宽就是窗口宽（Size 的 width 是 Dimension，不宜参与算术）
+                                        pageWidth = pageWidthPx.toFloat(),
+                                        currentPage = pagerState.currentPage,
+                                        pageCount = photo.images.size,
+                                    )
+                                    if (turn != EdgePageTurn.None) {
+                                        val target = if (turn == EdgePageTurn.Next) {
+                                            pagerState.currentPage + 1
+                                        } else {
+                                            pagerState.currentPage - 1
+                                        }
+                                        // 惯性带不走内容才算真的贴边，否则这次手势只是在平移
+                                        scope.launch {
+                                            if (stillPinned()) pagerState.springAnimateToPage(target)
+                                        }
+                                    }
+                                }
+                            } else {
+                                null
+                            },
+                        )
+                    }
                 }
             } else {
                 // 长列表与它的滚动条必须同层：TrackedLazyColumn 内部就是 Box { LazyColumn + ListScrollBar }，
@@ -1078,39 +1214,52 @@ private fun ReaderPages(
         imageLoader,
         pageWidthPx,
         screenSize,
+        spreadActive,
+        spreadPageSize,
         horizontal,
         imageQuality,
         prefetchPages,
     ) {
-        snapshotFlow { if (horizontal) pagerState.currentPage else listState.firstVisibleItemIndex }
-            .collectLatest { first ->
-                val next = advancePrefetch(pagePlan, first, prefetched, ahead = prefetchPages)
-                pagePlan = next.plan
-                for (index in next.pages) {
-                    prefetched += index
-                    val page = photo.images[index]
-                    val size = if (horizontal) {
-                        // 左右模式整屏展示，请求尺寸与展示一致
-                        screenSize
-                    } else {
-                        // 纵向按容器宽推算页框；尺寸与展示走同一处换算，否则内存缓存键不同，预取等于白解
-                        readerPageFrame(
-                            pageWidthPx = pageWidthPx,
-                            knownRatio = pageRatios[page.index],
-                            chapterSeed = chapterRatioSeed,
-                            decodeRatio = decodeRatios[page.index],
-                            maxPixels = imageQuality.maxDecodePixels,
-                        ).decodeSize.toCoilSize()
-                    }
-                    imageLoader.enqueue(
-                        ImageRequest.Builder(context)
-                            .data(page)
-                            .size(size)
-                            .configureReaderDefaults()
-                            .build(),
-                    )
+        snapshotFlow {
+            if (horizontal) {
+                // 双页下 pager 下标是跨页索引：回写计划前先换算成该屏的单页锚点
+                if (spreadActive) {
+                    (ReaderSpreadPolicy.anchorPageForSpread(pagerState.currentPage, photo.images.size) - 1)
+                        .coerceAtLeast(0)
+                } else {
+                    pagerState.currentPage
                 }
+            } else {
+                listState.firstVisibleItemIndex
             }
+        }.collectLatest { first ->
+            val next = advancePrefetch(pagePlan, first, prefetched, ahead = prefetchPages)
+            pagePlan = next.plan
+            for (index in next.pages) {
+                prefetched += index
+                val page = photo.images[index]
+                val size = if (horizontal) {
+                    // 左右模式整屏展示；双页时两页共用半屏尺寸与半档预算，与展示保持一致
+                    if (spreadActive) spreadPageSize else screenSize
+                } else {
+                    // 纵向按容器宽推算页框；尺寸与展示走同一处换算，否则内存缓存键不同，预取等于白解
+                    readerPageFrame(
+                        pageWidthPx = pageWidthPx,
+                        knownRatio = pageRatios[page.index],
+                        chapterSeed = chapterRatioSeed,
+                        decodeRatio = decodeRatios[page.index],
+                        maxPixels = imageQuality.maxDecodePixels,
+                    ).decodeSize.toCoilSize()
+                }
+                imageLoader.enqueue(
+                    ImageRequest.Builder(context)
+                        .data(page)
+                        .size(size)
+                        .configureReaderDefaults()
+                        .build(),
+                )
+            }
+        }
     }
 }
 
@@ -1181,6 +1330,106 @@ private fun ReaderToolbar(
 
 /** 纯函数算出的解码像素转成 Coil 的 Size；预取与展示共用这一处，内存缓存键才一致。 */
 private fun IntSize.toCoilSize(): Size = Size(width, height)
+
+/**
+ * 双页阅读的一屏：两页共用一个缩放层，整屏同步缩放。
+ *
+ * 不用「两页各自缩放」：并排两页各带一套手势识别会在中缝附近抢指针，
+ * 放大后横向拖动究竟该平移左页、右页还是翻页没有稳定答案。整屏共用一个
+ * ZoomableState 后，捏合与平移只作用于整屏，未放大时仍由 pager 负责翻页；
+ * 放大到边界后沿用单页的 edge-drag 交接，翻页手势不会被缩放层吃掉。
+ */
+@Composable
+private fun ReaderSpreadPage(
+    images: List<PageImage>,
+    imageLoader: ImageLoader,
+    decodeSize: Size,
+    modifier: Modifier = Modifier,
+    isCurrentPage: Boolean = true,
+    onTap: (() -> Unit)? = null,
+    onZoomChanged: ((Boolean) -> Unit)? = null,
+    onHorizontalEdgeDrag: ((dragX: Float, stillPinned: suspend () -> Boolean) -> Unit)? = null,
+) {
+    val zoomableState = rememberZoomableState()
+    val zoomed by remember(zoomableState) {
+        derivedStateOf { isPageZoomed(zoomableState.zoomFraction) }
+    }
+    LaunchedEffect(zoomed) { onZoomChanged?.invoke(zoomed) }
+    // 翻走即复位：整屏缩放态不残留到下一屏
+    LaunchedEffect(isCurrentPage) {
+        if (!isCurrentPage) zoomableState.resetZoom()
+    }
+    val tapHandler: ((Offset) -> Unit)? = if (onTap != null) {
+        { onTap() }
+    } else {
+        null
+    }
+    // 与单页缩放路径同一套边界空拖判定；只是内容由整屏两页共同承担
+    val edgeDrag = rememberUpdatedState(onHorizontalEdgeDrag)
+    Box(
+        modifier = if (onHorizontalEdgeDrag != null) {
+            modifier
+                .zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
+                .pointerInput(zoomableState) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val edgeTracker = EdgeDragTracker()
+                            .apply { start(zoomableState.contentTransformation.offset.x) }
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            // 多指是捏合缩放，不参与翻页判定
+                            if (event.changes.size > 1) break
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            edgeTracker.onDrag(
+                                deltaX = change.positionChange().x,
+                                offsetX = zoomableState.contentTransformation.offset.x,
+                            )
+                            if (!change.pressed) {
+                                val pinnedDragX = edgeTracker.pinnedDragX()
+                                if (pinnedDragX != 0f) {
+                                    val offsetAtRelease = zoomableState.contentTransformation.offset.x
+                                    edgeDrag.value?.invoke(pinnedDragX) {
+                                        kotlinx.coroutines.delay(EDGE_CONFIRM_DELAY_MS)
+                                        kotlin.math.abs(
+                                            zoomableState.contentTransformation.offset.x - offsetAtRelease,
+                                        ) < EDGE_CONFIRM_MOVE_PX
+                                    }
+                                }
+                                break
+                            }
+                        }
+                    }
+                }
+        } else {
+            modifier.zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
+        },
+    ) {
+        if (images.size >= 2) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                images.forEach { image ->
+                    ReaderPage(
+                        image = image,
+                        imageLoader = imageLoader,
+                        decodeSize = decodeSize,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
+            }
+        } else {
+            // 首页单页与末尾补空：单页保持与并排页相同的宽度，居中显示，翻屏时版面不跳
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                images.firstOrNull()?.let { image ->
+                    ReaderPage(
+                        image = image,
+                        imageLoader = imageLoader,
+                        decodeSize = decodeSize,
+                        modifier = Modifier.fillMaxHeight().fillMaxWidth(0.5f),
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ReaderPage(

@@ -30,6 +30,7 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.reader.ReaderSpreadPolicy
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.BottomBarForm
@@ -38,6 +39,7 @@ import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
+import com.jm3.core.settings.ReaderSpreadMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.WideScreenNavigation
 import kotlinx.coroutines.delay
@@ -134,6 +136,12 @@ fun SettingsScreen(
     val showWideScreenNavigation = BottomBarPreferencePolicy.supportsWideScreenNavigation(widthDp)
     // 阅读器设置：与分页模式同卡片，读写沿用现有设置存储，不新建二级页
     var readerHorizontal by remember { mutableStateOf(false) }
+    var readerSpread by remember { mutableStateOf(ReaderSpreadMode.SINGLE) }
+    // 双页只在 600dp 以上横屏可见；其它窗口尺寸整行不渲染，阅读器也会自动回落到单页
+    val readerSpreadAllowed = ReaderSpreadPolicy.supportsSpread(
+        widthDp,
+        LocalConfiguration.current.screenHeightDp,
+    )
     var volumeKeyPaging by remember { mutableStateOf(true) }
     var keepScreenOn by remember { mutableStateOf(true) }
     var readerBrightness by remember { mutableIntStateOf(ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) }
@@ -250,6 +258,7 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         val repository = deps.preferences.repository
         readerHorizontal = repository.readerHorizontal()
+        readerSpread = repository.readerSpread()
         volumeKeyPaging = repository.readerVolumeKeyPaging()
         keepScreenOn = repository.readerKeepScreenOn()
         readerBrightness = repository.readerBrightness()
@@ -406,6 +415,36 @@ fun SettingsScreen(
                         }
                     },
                 )
+                // 双页是大屏横屏的附加排布：窗口不够宽或竖屏时整行不渲染，避免给手机增加噪音
+                if (readerSpreadAllowed) {
+                    OverlaySpinnerPreference(
+                        title = "双页阅读",
+                        summary = if (readerSpread == ReaderSpreadMode.DOUBLE) {
+                            "大屏横屏下两页并排，按左右翻页生效"
+                        } else {
+                            "单页显示，可按左右翻页"
+                        },
+                        items = ReaderSpreadMode.entries.map { mode ->
+                            DropdownItem(text = mode.label, selected = mode == readerSpread)
+                        },
+                        selectedIndex = ReaderSpreadMode.entries.indexOf(readerSpread),
+                        showValue = false,
+                        onSelectedIndexChange = { index ->
+                            ReaderSpreadMode.entries.getOrNull(index)?.let { mode ->
+                                if (mode != readerSpread) {
+                                    readerSpread = mode
+                                    scope.launch { deps.preferences.repository.setReaderSpread(mode) }
+                                    // 双页叠加在左右翻页上：显式选双页时同步打开左右翻页，
+                                    // 否则纵向连续滚动下看不到并排效果；横向阅读的默认值本身不变
+                                    if (mode == ReaderSpreadMode.DOUBLE && !readerHorizontal) {
+                                        readerHorizontal = true
+                                        scope.launch { deps.preferences.repository.setReaderHorizontal(true) }
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
                 SwitchPreference(
                     title = "音量键翻页",
                     summary = "关闭后音量键恢复调节系统音量",

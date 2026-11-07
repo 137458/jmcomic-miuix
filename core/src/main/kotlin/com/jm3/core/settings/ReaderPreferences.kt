@@ -7,6 +7,12 @@ enum class ReaderImageQuality(val label: String, val maxDecodePixels: Int) {
     HIGH("高清", 6_000_000),
 }
 
+/** 阅读页布局：单页 / 双页。双页仅在 600dp 以上横屏可用，默认单页。 */
+enum class ReaderSpreadMode(val label: String) {
+    SINGLE("单页"),
+    DOUBLE("双页"),
+}
+
 /** 阅读器设置的归一常量与纯函数。 */
 object ReaderPreferences {
 
@@ -35,4 +41,8 @@ object ReaderPreferences {
     /** 质量档名归一，损坏值回退标准档。 */
     fun normalizeImageQuality(raw: String?): ReaderImageQuality =
         ReaderImageQuality.entries.firstOrNull { it.name == raw } ?: ReaderImageQuality.STANDARD
+
+    /** 阅读页布局归一，损坏值回退单页。 */
+    fun normalizeSpreadMode(raw: String?): ReaderSpreadMode =
+        ReaderSpreadMode.entries.firstOrNull { it.name == raw } ?: ReaderSpreadMode.SINGLE
 }
