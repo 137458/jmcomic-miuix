@@ -7,7 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
@@ -241,7 +241,10 @@ fun CollapsibleSearchBar(
 }
 
 /**
- * 顶栏搜索输入框：固定 40dp 高、16sp、圆角胶囊，背后铺一层 [GlassRole.SearchField] 玻璃。
+ * 顶栏搜索输入框：最小 40dp 高、16sp、圆角胶囊，背后铺一层 [GlassRole.SearchField] 玻璃。
+ *
+ * 高度只设下限：字体放大到 1.5–2.0 倍时由内容撑开，不裁字；折叠行程按实测高度换算，
+ * 展开高度变化不会导致收起到展开的距离与实际高度不一致。
  *
  * 玻璃放在 InputField 之后绘制（Box 内先测量后叠层），InputField 自身底色改为透明，
  * 文字、占位符与光标直接落在 0.72 底衬上；降级时底衬依次抬到 0.88 与不透明。
@@ -282,7 +285,7 @@ fun GlassSearchInputField(
             trailingIcon = trailingIcon,
             textStyle = TextStyle(fontSize = 16.sp),
             color = Color.Transparent,
-            modifier = Modifier.fillMaxWidth().height(40.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
         )
     }
 }
