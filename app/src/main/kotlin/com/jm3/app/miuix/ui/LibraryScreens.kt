@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 
 import androidx.compose.foundation.verticalScroll
@@ -44,9 +45,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.glass.CollapsibleSearchAction
+import com.jm3.app.miuix.ui.glass.CollapsibleSearchBar
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
+import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
@@ -121,6 +126,8 @@ fun LibraryScreen(
     // 阻尼阈值略低：下拉更轻快即触发刷新，回弹仍由库的弹簧曲线负责
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val searchCollapse = rememberCollapsibleSearchState(expanded = searchExpanded, listState = listState)
 
     /** 失效与失败共用一个落点：[planLoad] 决定整屏去登录/给重试，还是有内容时只弹提示。 */
     fun applyFailure(outcome: SessionOutcome<*>, hasContent: Boolean) {
@@ -214,26 +221,32 @@ fun LibraryScreen(
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                     color = Color.Transparent,
-                )
-                // 胶囊搜索框：展开态输入，提交即按当前 Tab 检索
-                SearchBar(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    expanded = searchExpanded,
-                    onExpandedChange = { searchExpanded = it },
-                    inputField = {
-                        InputField(
-                            query = query,
-                            onQueryChange = { query = it },
-                            onSearch = {
-                                appliedQuery = query.trim()
-                                searchExpanded = false
-                            },
-                            expanded = searchExpanded,
-                            onExpandedChange = { searchExpanded = it },
-                            label = if (tab == 0) "搜索创作者" else "搜索作品",
-                        )
+                    actions = {
+                        CollapsibleSearchAction(state = searchCollapse)
                     },
-                ) {}
+                )
+                // 胶囊搜索框：展开态输入，提交即按当前 Tab 检索；滚动时收起，页签与筛选保持吸顶。
+                CollapsibleSearchBar(state = searchCollapse) {
+                    SearchBar(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        expanded = searchExpanded,
+                        onExpandedChange = { searchExpanded = it },
+                        inputField = {
+                            InputField(
+                                query = query,
+                                onQueryChange = { query = it },
+                                onSearch = {
+                                    appliedQuery = query.trim()
+                                    searchExpanded = false
+                                },
+                                expanded = searchExpanded,
+                                onExpandedChange = { searchExpanded = it },
+                                interactionSource = searchCollapse.interactionSource,
+                                label = if (tab == 0) "搜索创作者" else "搜索作品",
+                            )
+                        },
+                    ) {}
+                }
                 GlassChipRow(
                     tabs = LIBRARY_TABS,
                     selectedTabIndex = tab,
@@ -272,6 +285,7 @@ fun LibraryScreen(
             }
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
+        collapsibleSearch = searchCollapse,
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -313,7 +327,8 @@ fun LibraryScreen(
             ) {
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().collapsibleSearchScroll(searchCollapse),
                     contentPadding = innerPadding,
                 ) {
                     if (tab == 0) {

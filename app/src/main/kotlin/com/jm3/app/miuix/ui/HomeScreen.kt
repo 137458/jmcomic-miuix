@@ -35,12 +35,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.glass.CollapsibleSearchAction
+import com.jm3.app.miuix.ui.glass.CollapsibleSearchBar
 import com.jm3.app.miuix.ui.glass.GlassFabItem
 import com.jm3.app.miuix.ui.glass.GlassFloatingActionBar
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
+import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
+import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
@@ -118,6 +122,8 @@ fun HomeScreen(
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    // 搜索栏折叠与顶栏折叠各自独立：这里只跟随列表已消费的滚动位移，不改动顶栏行为。
+    val searchCollapse = rememberCollapsibleSearchState(expanded = searchExpanded, listState = listState)
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     // 分页模式来自设置域的可观察状态：设置页切换后立即变更控件形态，并触发第一页重载。
@@ -371,6 +377,7 @@ fun HomeScreen(
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                     color = Color.Transparent,
                     actions = {
+                        CollapsibleSearchAction(state = searchCollapse)
                         TooltipBox(text = "每周必看") {
                             IconButton(onClick = onOpenWeek) {
                                 Icon(imageVector = MiuixIcons.Weeks, contentDescription = "每周必看")
@@ -378,72 +385,75 @@ fun HomeScreen(
                         }
                     },
                 )
-                // 搜索栏固定于列表之外：与顶栏同处玻璃层，结果滚动后仍可直接改关键词。
-                SearchBar(
-                    inputField = {
-                        InputField(
-                            query = query,
-                            onQueryChange = {
-                                query = it
-                                // 清空输入即退出搜索态，回到发现流
-                                if (it.isBlank() && searching) clearSearch()
-                            },
-                            onSearch = { submitSearch() },
-                            expanded = searchExpanded,
-                            onExpandedChange = { searchExpanded = it },
-                            label = "搜索 / 车号",
-                            // 自绘尾部动作：保留清空入口，并常驻「?」语法帮助。
-                            trailingIcon = {
-                                Row(
-                                    modifier = Modifier.padding(end = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    if (query.isNotEmpty()) {
+                // 搜索栏固定于列表之外：与顶栏同处玻璃层；向下滚动内容时收起，向上滚动回展。
+                CollapsibleSearchBar(state = searchCollapse) {
+                    SearchBar(
+                        inputField = {
+                            InputField(
+                                query = query,
+                                onQueryChange = {
+                                    query = it
+                                    // 清空输入即退出搜索态，回到发现流
+                                    if (it.isBlank() && searching) clearSearch()
+                                },
+                                onSearch = { submitSearch() },
+                                expanded = searchExpanded,
+                                onExpandedChange = { searchExpanded = it },
+                                interactionSource = searchCollapse.interactionSource,
+                                label = "搜索 / 车号",
+                                // 自绘尾部动作：保留清空入口，并常驻「?」语法帮助。
+                                trailingIcon = {
+                                    Row(
+                                        modifier = Modifier.padding(end = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        if (query.isNotEmpty()) {
+                                            IconButton(
+                                                onClick = {
+                                                    query = ""
+                                                    if (searching) clearSearch()
+                                                },
+                                                minWidth = 32.dp,
+                                                minHeight = 32.dp,
+                                            ) {
+                                                Icon(
+                                                    imageVector = MiuixIcons.Basic.Close,
+                                                    contentDescription = "清空输入",
+                                                    tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            }
+                                        }
                                         IconButton(
-                                            onClick = {
-                                                query = ""
-                                                if (searching) clearSearch()
-                                            },
+                                            onClick = { showSearchHelp = true },
                                             minWidth = 32.dp,
                                             minHeight = 32.dp,
                                         ) {
                                             Icon(
-                                                imageVector = MiuixIcons.Basic.Close,
-                                                contentDescription = "清空输入",
+                                                imageVector = MiuixIcons.Help,
+                                                contentDescription = "搜索语法帮助",
                                                 tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
                                                 modifier = Modifier.size(16.dp),
                                             )
                                         }
                                     }
-                                    IconButton(
-                                        onClick = { showSearchHelp = true },
-                                        minWidth = 32.dp,
-                                        minHeight = 32.dp,
-                                    ) {
-                                        Icon(
-                                            imageVector = MiuixIcons.Help,
-                                            contentDescription = "搜索语法帮助",
-                                            tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    },
-                    onExpandedChange = { searchExpanded = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    expanded = searchExpanded,
-                    outsideEndAction = {
-                        IconButton(onClick = ::submitSearch) {
-                            Icon(
-                                imageVector = MiuixIcons.Search,
-                                contentDescription = "搜索",
+                                },
+                                modifier = Modifier.fillMaxWidth(),
                             )
-                        }
-                    },
-                ) {}
+                        },
+                        onExpandedChange = { searchExpanded = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        expanded = searchExpanded,
+                        outsideEndAction = {
+                            IconButton(onClick = ::submitSearch) {
+                                Icon(
+                                    imageVector = MiuixIcons.Search,
+                                    contentDescription = "搜索",
+                                )
+                            }
+                        },
+                    ) {}
+                }
                 // 搜索结果排序常驻玻璃顶栏：与内容同处玻璃采样区，列表滚动时背景随之实时更新
                 if (searching) {
                     GlassChipRow(
@@ -480,6 +490,7 @@ fun HomeScreen(
                 )
             }
         },
+        collapsibleSearch = searchCollapse,
     ) { innerPadding ->
         // 列表内容滚到玻璃顶栏（顶栏 + 搜索栏）下方，顶栏才能采样到真实背景
         GlassPullToRefresh(
@@ -492,7 +503,7 @@ fun HomeScreen(
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().collapsibleSearchScroll(searchCollapse),
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 contentPadding = innerPadding,
             ) {

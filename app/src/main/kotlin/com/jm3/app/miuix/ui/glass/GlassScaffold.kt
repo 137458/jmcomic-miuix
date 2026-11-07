@@ -120,6 +120,8 @@ fun GlassScaffold(
     modifier: Modifier = Modifier,
     snackbarHost: @Composable () -> Unit = {},
     floatingActionButton: @Composable () -> Unit = {},
+    // 顶栏内含可折叠搜索栏时传入：内容 top 净空会实时减去搜索栏收起高度，避免留下空缺。
+    collapsibleSearch: CollapsibleSearchState? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val backdrop = rememberBlurBackdrop()
@@ -165,12 +167,14 @@ fun GlassScaffold(
                 contentBottomPadding,
                 scrollBehavior.state,
                 density,
+                collapsibleSearch,
             ) {
                 CollapsingContentPadding(
                     expandedTop = topBarExpandedHeight,
                     state = scrollBehavior.state,
                     density = density,
                     bottom = contentBottomPadding,
+                    searchState = collapsibleSearch,
                 )
             }
             // 折叠行为对内容同样可见：页面里的 GlassTopBarScrollSync 需要它补同步
@@ -350,10 +354,16 @@ private class CollapsingContentPadding(
     private val state: TopAppBarState,
     private val density: Density,
     private val bottom: Dp,
+    private val searchState: CollapsibleSearchState? = null,
 ) : PaddingValues {
 
-    override fun calculateTopPadding(): Dp =
-        (expandedTop + with(density) { state.heightOffset.toDp() }).coerceAtLeast(0.dp)
+    override fun calculateTopPadding(): Dp {
+        val collapsedSearch = searchState?.let {
+            with(density) { it.collapsedHeightPx.toDp() }
+        } ?: 0.dp
+        return (expandedTop + with(density) { state.heightOffset.toDp() } - collapsedSearch)
+            .coerceAtLeast(0.dp)
+    }
 
     override fun calculateBottomPadding(): Dp = bottom
 

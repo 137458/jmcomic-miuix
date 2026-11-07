@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -41,10 +42,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.glass.CollapsibleSearchAction
+import com.jm3.app.miuix.ui.glass.CollapsibleSearchBar
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
+import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.core.appendedBy
 import com.jm3.core.model.CommentItem
@@ -132,6 +137,8 @@ fun NovelListScreen(
     var busyId by remember { mutableStateOf<String?>(null) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val searchCollapse = rememberCollapsibleSearchState(expanded = searchExpanded, listState = listState)
 
     fun load(orderValue: String, keyword: String, showLoading: Boolean) {
         loadToken++
@@ -227,26 +234,32 @@ fun NovelListScreen(
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                     color = Color.Transparent,
-                )
-                // 胶囊搜索框：展开态输入，提交即检索
-                SearchBar(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    expanded = searchExpanded,
-                    onExpandedChange = { searchExpanded = it },
-                    inputField = {
-                        InputField(
-                            query = query,
-                            onQueryChange = { query = it },
-                            onSearch = {
-                                appliedQuery = query.trim()
-                                searchExpanded = false
-                            },
-                            expanded = searchExpanded,
-                            onExpandedChange = { searchExpanded = it },
-                            label = "搜索小说",
-                        )
+                    actions = {
+                        CollapsibleSearchAction(state = searchCollapse)
                     },
-                ) {}
+                )
+                // 胶囊搜索框：展开态输入，提交即检索；滚动时收起，排序页签保持吸顶
+                CollapsibleSearchBar(state = searchCollapse) {
+                    SearchBar(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        expanded = searchExpanded,
+                        onExpandedChange = { searchExpanded = it },
+                        inputField = {
+                            InputField(
+                                query = query,
+                                onQueryChange = { query = it },
+                                onSearch = {
+                                    appliedQuery = query.trim()
+                                    searchExpanded = false
+                                },
+                                expanded = searchExpanded,
+                                onExpandedChange = { searchExpanded = it },
+                                interactionSource = searchCollapse.interactionSource,
+                                label = "搜索小说",
+                            )
+                        },
+                    ) {}
+                }
                 // 排序收进胶囊条：与全站筛选同构，不再用设置卡片占掉半屏
                 GlassChipRow(
                     tabs = NovelOrder.entries.map { it.label },
@@ -263,6 +276,7 @@ fun NovelListScreen(
             }
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
+        collapsibleSearch = searchCollapse,
     ) { innerPadding ->
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -293,7 +307,8 @@ fun NovelListScreen(
             ) {
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().collapsibleSearchScroll(searchCollapse),
                     contentPadding = innerPadding,
                 ) {
                     items(items, key = { it.id }) { item ->
