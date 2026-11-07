@@ -525,10 +525,6 @@ fun SettingsScreen(
                 testDownloadState = UpdateDownloadState.Idle
                 scope.launch { snackbarHostState.showSnackbar("测试弹窗：已取消下载") }
             },
-            onOpenUpdatePage = {
-                showTestUpdateDialog = false
-                onOpenUpdate()
-            },
         )
     }
 }

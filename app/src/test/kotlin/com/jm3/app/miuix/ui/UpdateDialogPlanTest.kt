@@ -11,8 +11,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 更新弹窗的数据计划：把「弹窗里有哪些信息、哪些操作、进度条怎么显示」收成纯函数，
- * 这样 Miuix 组件只负责铺像素，长日志折叠与下载态切换都能脱离设备验证。
+ * 更新弹窗的数据计划：弹窗只回答三件事——从哪个版本到哪个版本、更新说明是什么、下一步做什么。
+ * 其余版本明细（体积、文件名、附件数量、说明行数）不进入计划，从数据层就杜绝再次堆回界面。
  */
 class UpdateDialogPlanTest {
 
@@ -42,49 +42,29 @@ class UpdateDialogPlanTest {
         UpdateDownloadState.Downloading(downloaded, total, speed)
 
     @Test
-    fun `info rows expose version metadata for a normal release`() {
+    fun `summary merges version jump and publish date into one line`() {
+        assertEquals("当前 1.1.0 → 最新 1.2.3 · 2026-03-04", updateDialogSummary("1.1.0", shortRelease))
+    }
+
+    @Test
+    fun `summary drops the date when the release has none`() {
         assertEquals(
-            listOf(
-                UpdateDialogInfoRow("当前版本", "1.1.0"),
-                UpdateDialogInfoRow("最新版本", "1.2.3"),
-                UpdateDialogInfoRow("版本名称", "常规版"),
-                UpdateDialogInfoRow("发布日期", "2026-03-04"),
-                UpdateDialogInfoRow("安装包", "app-1.2.3.apk"),
-                UpdateDialogInfoRow("安装包大小", "1.0 MB"),
-                UpdateDialogInfoRow("附件数量", "1"),
-                UpdateDialogInfoRow("更新说明", "3 行"),
-            ),
-            updateDialogInfoRows("1.1.0", shortRelease),
+            "当前 1.1.0 → 最新 1.2.3",
+            updateDialogSummary("1.1.0", shortRelease.copy(publishedAt = "  ")),
         )
     }
 
     @Test
-    fun `info rows stay complete when the release has no apk`() {
-        assertEquals(
-            listOf(
-                UpdateDialogInfoRow("当前版本", "1.1.0"),
-                UpdateDialogInfoRow("最新版本", "2.0.0-beta"),
-                UpdateDialogInfoRow("版本名称", "仅说明版"),
-                UpdateDialogInfoRow("发布日期", "not-a-date"),
-                UpdateDialogInfoRow("安装包", "未附带 APK"),
-                UpdateDialogInfoRow("安装包大小", "未知"),
-                UpdateDialogInfoRow("附件数量", "1"),
-                UpdateDialogInfoRow("更新说明", "1 行"),
-            ),
-            updateDialogInfoRows("1.1.0", noApkRelease),
-        )
+    fun `summary keeps a non iso date as published`() {
+        assertEquals("当前 1.1.0 → 最新 2.0.0-beta · not-a-date", updateDialogSummary("1.1.0", noApkRelease))
     }
 
     @Test
-    fun `long fixture selects the universal apk and reports every asset`() {
-        val rows = updateDialogInfoRows("9.9.8", TEST_LONG_UPDATE_RELEASE).associate { it.label to it.value }
-        assertEquals("9.9.9-test-long", rows["最新版本"])
-        assertEquals("长日志排版验证版", rows["版本名称"])
-        assertEquals("2026-06-18", rows["发布日期"])
-        assertEquals("jm3-9.9.9-test-universal.apk", rows["安装包"])
-        assertEquals("45.8 MB", rows["安装包大小"])
-        assertEquals("4", rows["附件数量"])
-        assertTrue((rows["更新说明"] ?: "").startsWith("6"))
+    fun `long fixture still collapses to a single version line`() {
+        assertEquals(
+            "当前 9.9.8 → 最新 9.9.9-test-long · 2026-06-18",
+            updateDialogSummary("9.9.8", TEST_LONG_UPDATE_RELEASE),
+        )
     }
 
     @Test
@@ -159,35 +139,26 @@ class UpdateDialogPlanTest {
     }
 
     @Test
-    fun `idle plan offers every secondary action and no progress`() {
+    fun `idle plan is one primary plus dismiss, ignore optional`() {
         val plan = buildUpdateDialogPlan(
             currentVersion = "1.1.0",
             release = shortRelease,
             downloadState = UpdateDownloadState.Idle,
             canIgnore = true,
             canCancelDownload = false,
-            canOpenUpdatePage = true,
         )
         assertEquals("立即下载", plan.primaryText)
+        assertEquals("当前 1.1.0 → 最新 1.2.3 · 2026-03-04", plan.summary)
         assertFalse(plan.showProgress)
         assertNull(plan.progressFraction)
         assertNull(plan.progressDetail)
         assertTrue(plan.hasNotes)
-        assertEquals(
-            listOf(
-                UpdateDialogActionItem(UpdateDialogAction.IGNORE_VERSION),
-                UpdateDialogActionItem(UpdateDialogAction.COPY_NOTES),
-                UpdateDialogActionItem(UpdateDialogAction.OPEN_RELEASE),
-                UpdateDialogActionItem(UpdateDialogAction.OPEN_UPDATE_PAGE),
-                UpdateDialogActionItem(UpdateDialogAction.DISMISS),
-            ),
-            plan.actions,
-        )
-        assertEquals(8, plan.infoRows.size)
+        assertFalse(plan.showCancelDownload)
+        assertTrue(plan.showIgnore)
     }
 
     @Test
-    fun `downloading plan exposes cancel and disables ignore`() {
+    fun `downloading plan exposes progress and cancel, hides ignore`() {
         val state = downloading(87L * 1_000_000, 100L * 1_000_000)
         val plan = buildUpdateDialogPlan(
             currentVersion = "1.1.0",
@@ -195,67 +166,39 @@ class UpdateDialogPlanTest {
             downloadState = state,
             canIgnore = true,
             canCancelDownload = true,
-            canOpenUpdatePage = true,
         )
         assertEquals("下载中 87%", plan.primaryText)
         assertTrue(plan.showProgress)
         assertEquals(0.87f, plan.progressFraction)
         assertEquals("83.0 MB / 95.4 MB · 2.4 MB/s", plan.progressDetail)
-        assertEquals(
-            listOf(
-                UpdateDialogActionItem(UpdateDialogAction.CANCEL_DOWNLOAD),
-                UpdateDialogActionItem(UpdateDialogAction.IGNORE_VERSION, enabled = false),
-                UpdateDialogActionItem(UpdateDialogAction.COPY_NOTES),
-                UpdateDialogActionItem(UpdateDialogAction.OPEN_RELEASE),
-                UpdateDialogActionItem(UpdateDialogAction.OPEN_UPDATE_PAGE),
-                UpdateDialogActionItem(UpdateDialogAction.DISMISS),
-            ),
-            plan.actions,
-        )
+        assertTrue(plan.showCancelDownload)
+        assertFalse(plan.showIgnore)
     }
 
     @Test
-    fun `no apk keeps the releases fallback and omits cancel`() {
+    fun `cancel only appears while a download is running`() {
+        val plan = buildUpdateDialogPlan(
+            currentVersion = "1.1.0",
+            release = shortRelease,
+            downloadState = UpdateDownloadState.Idle,
+            canIgnore = false,
+            canCancelDownload = true,
+        )
+        assertFalse(plan.showCancelDownload)
+        assertFalse(plan.showIgnore)
+    }
+
+    @Test
+    fun `no apk keeps the releases fallback`() {
         val plan = buildUpdateDialogPlan(
             currentVersion = "1.1.0",
             release = noApkRelease,
             downloadState = UpdateDownloadState.Idle,
             canIgnore = true,
             canCancelDownload = true,
-            canOpenUpdatePage = false,
         )
         assertEquals("前往 Releases 页面", plan.primaryText)
         assertFalse(plan.showProgress)
-        assertEquals(
-            listOf(
-                UpdateDialogActionItem(UpdateDialogAction.IGNORE_VERSION),
-                UpdateDialogActionItem(UpdateDialogAction.COPY_NOTES),
-                UpdateDialogActionItem(UpdateDialogAction.OPEN_RELEASE),
-                UpdateDialogActionItem(UpdateDialogAction.DISMISS),
-            ),
-            plan.actions,
-        )
-    }
-
-    @Test
-    fun `plan omits actions whose callbacks are unavailable`() {
-        val plan = buildUpdateDialogPlan(
-            currentVersion = "1.1.0",
-            release = shortRelease,
-            downloadState = UpdateDownloadState.Idle,
-            canIgnore = false,
-            canCancelDownload = false,
-            canOpenUpdatePage = false,
-        )
-        assertEquals(
-            listOf(
-                UpdateDialogActionItem(UpdateDialogAction.COPY_NOTES),
-                UpdateDialogActionItem(UpdateDialogAction.OPEN_RELEASE),
-                UpdateDialogActionItem(UpdateDialogAction.DISMISS),
-            ),
-            plan.actions,
-        )
-        assertFalse(plan.actions.any { it.action == UpdateDialogAction.IGNORE_VERSION })
     }
 
     @Test
@@ -266,7 +209,6 @@ class UpdateDialogPlanTest {
             downloadState = UpdateDownloadState.Idle,
             canIgnore = true,
             canCancelDownload = false,
-            canOpenUpdatePage = true,
         )
         assertFalse(plan.hasNotes)
     }
@@ -275,18 +217,13 @@ class UpdateDialogPlanTest {
     fun `settled download returns to the primary action`() {
         val done = UpdateDownloadState.Done(File("/tmp/app.apk"))
         val failed = UpdateDownloadState.Failed("网络中断")
-        assertEquals("立即下载", buildUpdateDialogPlan("1.1.0", shortRelease, done, true, true, true).primaryText)
-        assertEquals("立即下载", buildUpdateDialogPlan("1.1.0", shortRelease, failed, true, true, true).primaryText)
-    }
-
-    @Test
-    fun `action labels are stable and copy label reflects clipboard state`() {
-        assertEquals("取消下载", updateDialogActionLabel(UpdateDialogAction.CANCEL_DOWNLOAD, false))
-        assertEquals("忽略此版本", updateDialogActionLabel(UpdateDialogAction.IGNORE_VERSION, false))
-        assertEquals("在浏览器查看完整说明", updateDialogActionLabel(UpdateDialogAction.OPEN_RELEASE, false))
-        assertEquals("打开更新页面", updateDialogActionLabel(UpdateDialogAction.OPEN_UPDATE_PAGE, false))
-        assertEquals("稍后", updateDialogActionLabel(UpdateDialogAction.DISMISS, false))
-        assertEquals("复制更新说明", updateDialogActionLabel(UpdateDialogAction.COPY_NOTES, noteCopied = false))
-        assertEquals("已复制说明", updateDialogActionLabel(UpdateDialogAction.COPY_NOTES, noteCopied = true))
+        assertEquals(
+            "立即下载",
+            buildUpdateDialogPlan("1.1.0", shortRelease, done, canIgnore = true, canCancelDownload = true).primaryText,
+        )
+        assertEquals(
+            "立即下载",
+            buildUpdateDialogPlan("1.1.0", shortRelease, failed, canIgnore = true, canCancelDownload = true).primaryText,
+        )
     }
 }

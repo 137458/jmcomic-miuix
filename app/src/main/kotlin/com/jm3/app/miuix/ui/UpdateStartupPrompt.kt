@@ -66,9 +66,5 @@ internal fun UpdateStartupPrompt(deps: ScreenDeps, onOpenUpdatePage: () -> Unit)
             scope.launch { deps.settings.setIgnoredUpdateVersion(version) }
         },
         onCancelDownload = { deps.updateDownloader.cancel() },
-        onOpenUpdatePage = {
-            release = null
-            onOpenUpdatePage()
-        },
     )
 }

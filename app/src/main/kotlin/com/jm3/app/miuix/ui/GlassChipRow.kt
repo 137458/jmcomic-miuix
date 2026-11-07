@@ -12,12 +12,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Text
@@ -46,20 +42,14 @@ private val ChipRowEndFadeWidth = 24.dp
 /**
  * 胶囊条右缘渐隐：胶囊条横向滚动时会在右边界切出半枚胶囊，直接硬切像坏图；
  * 用 24dp 的 alpha 渐隐替代硬边，滚动中的半枚胶囊因此读作「右边还有内容」。
+ * 遮罩底座与更新弹窗的竖向羽化共用 [edgeFadeMask]。
  */
-internal fun Modifier.chipRowEndFade(): Modifier = graphicsLayer {
-    compositingStrategy = CompositingStrategy.Offscreen
-}.drawWithContent {
-    drawContent()
-    if (size.width <= 0f) return@drawWithContent
+internal fun Modifier.chipRowEndFade(): Modifier = edgeFadeMask {
     val fade = ChipRowEndFadeWidth.toPx().coerceAtMost(size.width)
-    drawRect(
-        brush = Brush.horizontalGradient(
-            0f to Color.Black,
-            (size.width - fade) / size.width to Color.Black,
-            1f to Color.Transparent,
-        ),
-        blendMode = BlendMode.DstIn,
+    Brush.horizontalGradient(
+        0f to Color.Black,
+        (size.width - fade) / size.width to Color.Black,
+        1f to Color.Transparent,
     )
 }
 

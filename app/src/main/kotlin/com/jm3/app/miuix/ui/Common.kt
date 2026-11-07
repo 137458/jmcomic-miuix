@@ -9,9 +9,13 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -58,6 +62,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImagePainter
@@ -661,6 +666,49 @@ fun Modifier.shimmer(visible: Boolean = true): Modifier {
             end = Offset(currentOffset, height),
         )
         drawRect(brush = brush)
+    }
+}
+
+/** 边缘羽化带的默认宽度：与胶囊条右缘渐隐同一档，滚动区边缘不再出现硬切线。 */
+internal val EdgeFadeWidth = 24.dp
+
+/**
+ * 边缘羽化底座：离屏合成后用 DstIn 遮罩把内容在指定边缘淡出。
+ *
+ * 胶囊条右缘渐隐与更新弹窗的说明滚动区共用这一份实现，避免两处各写一遍 Offscreen + 遮罩。
+ */
+internal fun Modifier.edgeFadeMask(brushFactory: DrawScope.() -> Brush): Modifier =
+    graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }.drawWithContent {
+        drawContent()
+        if (size.width <= 0f || size.height <= 0f) return@drawWithContent
+        drawRect(brush = brushFactory(), blendMode = BlendMode.DstIn)
+    }
+
+/**
+ * 竖向边缘羽化：滚动区上下两侧的内容淡出，替代硬裁切。
+ *
+ * 只在 [top] / [bottom] 为 true 的一侧铺渐变：滚到顶或底时对应一侧完全实心，
+ * 不会出现"永远有雾"的假暗示；两侧都为 false 时不增加离屏图层。
+ */
+internal fun Modifier.verticalEdgeFade(
+    top: Boolean,
+    bottom: Boolean,
+    fade: Dp = EdgeFadeWidth,
+): Modifier {
+    if (!top && !bottom) return this
+    return edgeFadeMask {
+        val fadePx = fade.toPx().coerceAtMost(size.height / 2f)
+        val stop = (fadePx / size.height).coerceIn(0f, 0.5f)
+        when {
+            top && bottom -> Brush.verticalGradient(
+                0f to Color.Transparent,
+                stop to Color.Black,
+                1f - stop to Color.Black,
+                1f to Color.Transparent,
+            )
+            top -> Brush.verticalGradient(0f to Color.Transparent, stop to Color.Black)
+            else -> Brush.verticalGradient(1f - stop to Color.Black, 1f to Color.Transparent)
+        }
     }
 }
 

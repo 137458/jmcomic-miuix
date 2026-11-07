@@ -1,27 +1,25 @@
 package com.jm3.app.miuix.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -31,7 +29,6 @@ import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
 import com.jm3.core.update.ReleaseInfo
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -215,21 +212,17 @@ private fun parseInlineNotes(text: String, codeColor: Color, codeBackground: Col
 }
 
 /**
- * 发现新版本的一次性提示框：版本信息卡 + 下载进度 + 更新说明 + 完整操作区。
+ * 发现新版本的一次性提示框：一行版本跃迁 + 更新说明 + 主次两级动作。
  *
  * 取舍：
- * - 版本信息、进度、说明按 [buildUpdateDialogPlan] 的快照铺 Miuix 组件（SmallTitle 分区、
- *   Card 承载、BasicComponent 放进度、LinearProgressIndicator 显示比例），弹窗自身不重复判断
- *   版本关系与下载状态。
- * - 内容区限高 [DialogBodyMaxHeight] 并整体滚动；主按钮与次级操作放在滚动区之外。Releases
- *   说明可能长达几十行，若把按钮也卷进滚动区，用户反而找不到主操作。
- * - 长说明默认折叠到 [UPDATE_NOTES_PREVIEW_LINES] 行，展开后仍在同一滚动区里阅读；短说明
- *   不出现"展开全部"，避免多一个点了没变化的按钮。
- * - 操作区按回调是否提供来组装：取消下载、忽略此版本、复制说明、浏览器看全文、打开更新页、
- *   稍后各占一格，两列排布；下载中禁掉"忽略此版本"，避免状态与提示规则打架。
+ * - 版本信息不再单独成卡：顶部摘要已给出「当前 → 最新 · 发布日期」，弹窗里不再重复
+ *   当前版本、版本名称、安装包文件名、附件数量、说明行数等对"是否更新"没有影响的信息。
+ * - 说明区限高 [DialogBodyMaxHeight] 并整体滚动，上下边缘按是否还有内容做羽化
+ *   （[verticalEdgeFade]）：滚到顶/底时对应一侧完全实心，不做"永远有雾"的暗示。
+ * - 长说明默认折叠到 [UPDATE_NOTES_PREVIEW_LINES] 行，短说明不出现"展开全部"。
+ * - 底部只有主按钮（下载 / 前往 Releases）与「稍后」「取消下载（仅下载中）」；
+ *   「忽略此版本」降级为说明下方的文字链接，不再与主操作并列。
  * - 没有 .apk 资产时主按钮改为打开 Releases 页面，保证主操作永远有明确结果。
- * - [onIgnore] 非空时才有"忽略此版本"；[onCancelDownload] / [onOpenUpdatePage] 同理，
- *   设置页的测试弹窗不提供这两项，也就不会露出无效按钮。
  *
  * @param show 由页面控制显隐；下载完成或失败时页面收起弹窗，安装与重试交给页面的下载卡
  * @param downloadState 下载状态，参与进度条、主按钮文案与禁用态
@@ -245,80 +238,53 @@ internal fun UpdateAvailableDialog(
     onOpenRelease: () -> Unit,
     onIgnore: ((version: String) -> Unit)? = null,
     onCancelDownload: (() -> Unit)? = null,
-    onOpenUpdatePage: (() -> Unit)? = null,
 ) {
-    val context = LocalContext.current
-    val plan = remember(currentVersion, release, downloadState, onIgnore, onCancelDownload, onOpenUpdatePage) {
+    val plan = remember(currentVersion, release, downloadState, onIgnore, onCancelDownload) {
         buildUpdateDialogPlan(
             currentVersion = currentVersion,
             release = release,
             downloadState = downloadState,
             canIgnore = onIgnore != null,
             canCancelDownload = onCancelDownload != null,
-            canOpenUpdatePage = onOpenUpdatePage != null,
         )
     }
     var notesExpanded by remember(show, release.tagName) { mutableStateOf(false) }
-    var noteCopied by remember(show, release.tagName) { mutableStateOf(false) }
     val notesState = remember(release.notes, notesExpanded) {
         updateDialogNotesState(release.notes, notesExpanded, UPDATE_NOTES_PREVIEW_LINES)
     }
     val downloading = downloadState is UpdateDownloadState.Downloading
-
-    fun performAction(action: UpdateDialogAction) {
-        when (action) {
-            UpdateDialogAction.CANCEL_DOWNLOAD -> onCancelDownload?.invoke()
-            UpdateDialogAction.IGNORE_VERSION -> onIgnore?.invoke(release.version)
-            UpdateDialogAction.COPY_NOTES -> {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                clipboard?.setPrimaryClip(ClipData.newPlainText("更新说明", release.notes))
-                noteCopied = true
-            }
-            UpdateDialogAction.OPEN_RELEASE -> onOpenRelease()
-            UpdateDialogAction.OPEN_UPDATE_PAGE -> onOpenUpdatePage?.invoke()
-            UpdateDialogAction.DISMISS -> onDismiss()
-        }
-    }
+    val scrollState = rememberScrollState()
+    // 只在还有内容的方向羽化：滚到顶或底时对应一侧恢复实心，避免"永远有雾"的假暗示
+    val hasContentAbove by remember { derivedStateOf { scrollState.value > 0 } }
+    val hasContentBelow by remember { derivedStateOf { scrollState.maxValue > scrollState.value } }
 
     WindowDialog(
         show = show,
         title = "发现新版本",
-        summary = dialogSummary(currentVersion = currentVersion, release = release),
+        summary = plan.summary,
         onDismissRequest = onDismiss,
     ) {
-        // 水平内边距由弹窗的 insideMargin 提供，这里只负责限高与整体滚动
+        // 水平内边距由弹窗的 insideMargin 提供，这里只负责限高、滚动与边缘羽化
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = DialogBodyMaxHeight)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState)
+                .verticalEdgeFade(top = hasContentAbove, bottom = hasContentBelow),
         ) {
-            SmallTitle(text = "版本信息", insideMargin = DialogSectionMargin)
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(DialogCardPadding)) {
-                    plan.infoRows.forEach { row -> DialogInfoRow(row = row) }
-                }
-            }
-
             if (plan.showProgress) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                SmallTitle(text = "下载进度", insideMargin = DialogSectionMargin)
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    BasicComponent(
-                        title = plan.primaryText,
-                        summary = plan.progressDetail,
-                        bottomAction = {
-                            LinearProgressIndicator(
-                                progress = plan.progressFraction,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        },
-                    )
-                }
+                Text(
+                    text = plan.progressDetail.orEmpty(),
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = plan.progressFraction,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-
             if (plan.hasNotes) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 SmallTitle(text = "更新说明", insideMargin = DialogSectionMargin)
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(DialogCardPadding)) {
@@ -350,44 +316,35 @@ internal fun UpdateAvailableDialog(
             ) {
                 Text(text = plan.primaryText, style = MiuixTheme.textStyles.button)
             }
-            plan.actions.chunked(2).forEach { pair ->
+            if (plan.showCancelDownload) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(DialogButtonGap),
                 ) {
-                    pair.forEach { item ->
-                        TextButton(
-                            text = updateDialogActionLabel(item.action, noteCopied),
-                            onClick = { performAction(item.action) },
-                            enabled = item.enabled,
-                            colors = if (item.action == UpdateDialogAction.IGNORE_VERSION) {
-                                ButtonDefaults.textButtonColors(textColor = MiuixTheme.colorScheme.error)
-                            } else {
-                                ButtonDefaults.textButtonColors()
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
+                    TextButton(
+                        text = "取消下载",
+                        onClick = { onCancelDownload?.invoke() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        text = "稍后",
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
+            } else {
+                TextButton(text = "稍后", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
+            }
+            if (plan.showIgnore) {
+                TextButton(
+                    text = "忽略此版本",
+                    onClick = { onIgnore?.invoke(release.version) },
+                    colors = ButtonDefaults.textButtonColors(textColor = MiuixTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
-}
-
-/** 版本信息的一行：标签与取值交给 Miuix 基础信息行，长取值由组件自身排版换行。 */
-@Composable
-private fun DialogInfoRow(row: UpdateDialogInfoRow) {
-    BasicComponent(
-        title = row.label,
-        summary = row.value,
-    )
-}
-
-/** 弹窗摘要：版本跃迁，外加发布日期（有则显示）；安装包等明细交给内容区的信息卡。 */
-private fun dialogSummary(currentVersion: String, release: ReleaseInfo): String {
-    val base = "当前 $currentVersion → 最新 ${release.version}"
-    return if (release.publishedDate.isNotBlank()) "$base，发布于 ${release.publishedDate}" else base
 }
 
 /**
