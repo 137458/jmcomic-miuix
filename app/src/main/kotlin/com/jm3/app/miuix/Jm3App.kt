@@ -629,6 +629,7 @@ fun Jm3App() {
                             history = Jm3Graph.library.history,
                             downloadManager = Jm3Graph.downloads.manager,
                             account = Jm3Graph.session.account,
+                            sessionCache = Jm3Graph.sessionCache,
                         )
                     }
                     entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->

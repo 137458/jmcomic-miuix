@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.runtime.mutableStateMapOf
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PagedFeed
 
@@ -56,6 +57,27 @@ internal data class HomeSideData(
 }
 
 /**
+ * 跨页共享的喜欢状态：阅读页与详情页读写同一份，避免一边切换后另一边仍显示旧值。
+ *
+ * 只在用户本进程内明确切换过时记值；未记过时调用方回落到服务端返回的 liked。
+ * 用快照映射：详情页在组合期读取，值变化能直接驱动图标刷新。
+ */
+internal class AlbumEngagementStore {
+
+    private val likedAlbums = mutableStateMapOf<String, Boolean>()
+
+    fun likedOf(albumId: String): Boolean? = likedAlbums[albumId]
+
+    fun setLiked(albumId: String, liked: Boolean) {
+        likedAlbums[albumId] = liked
+    }
+
+    fun clear() {
+        likedAlbums.clear()
+    }
+}
+
+/**
  * 会话级列表缓存，全应用一个实例（由组装根持有，经屏幕依赖容器注入）。
  *
  * 页面数据是 remember 的：切 tab 或点进详情再回来，Compose 会销毁整棵页面，回来只剩一个 Loading 项，
@@ -67,6 +89,9 @@ internal data class HomeSideData(
 internal class SessionCache {
 
     private val entries = mutableMapOf<SessionListKey, ListState>()
+
+    /** 跨页喜欢状态；退出登录时与列表缓存一起作废。 */
+    val engagement = AlbumEngagementStore()
 
     /** 首页侧栏数据；与分页列表无关，整份替换。 */
     var homeSide: HomeSideData = HomeSideData()
@@ -106,6 +131,7 @@ internal class SessionCache {
     fun clear() {
         entries.clear()
         homeSide = HomeSideData()
+        engagement.clear()
     }
 }
 

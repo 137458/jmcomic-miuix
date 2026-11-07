@@ -224,6 +224,47 @@ class AlbumDetailStateHolderTest {
     }
 
     @Test
+    fun 阅读页取消喜欢后详情页可再次喜欢() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val messages = mutableListOf<String>()
+        var likeCalled = 0
+        // 阅读页先喜欢、随后取消：服务端最终是「未喜欢」，共享表已有明确结论
+        val engagement = AlbumEngagementStore().apply {
+            setLiked("123", true)
+            setLiked("123", false)
+        }
+        val gateway = fakeGateway(
+            // 详情首载拿到的还是取消前的旧快照 liked=true
+            onAlbum = { sampleAlbum(it, liked = true) },
+            onToggleLike = { likeCalled++ },
+        )
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = gateway,
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = { messages.add(it) },
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
+            engagement = engagement,
+        )
+
+        holder.loadAll(userUid = "user_1")
+        advanceUntilIdle()
+        assertTrue(holder.uiState.value.liked, "旧快照仍显示已喜欢")
+
+        holder.like(isLoggedIn = true, onOpenLogin = {})
+        advanceUntilIdle()
+
+        assertEquals(1, likeCalled, "共享表已取消喜欢时不能拿旧快照提前返回")
+        assertTrue(holder.uiState.value.liked)
+        assertEquals(true, engagement.likedOf("123"))
+        assertEquals("已喜欢", messages.lastOrNull())
+
+        testScope.cancel()
+    }
+
+    @Test
     fun 发表评论成功清空输入框并刷新评论列表() = runTest {
         val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val messages = mutableListOf<String>()

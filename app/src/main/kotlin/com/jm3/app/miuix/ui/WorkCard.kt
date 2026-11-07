@@ -166,10 +166,12 @@ internal fun WorkTagLine(
     tags: List<String>,
     modifier: Modifier = Modifier,
     maxTags: Int = 3,
+    // 无标签时也占一行：同一行卡片要等高时传 true，否则有没有标签的卡片会差一行
+    reserveLine: Boolean = false,
 ) {
-    if (tags.isEmpty()) return
+    if (tags.isEmpty() && !reserveLine) return
     Text(
-        text = tags.take(maxTags).joinToString(" ") { "#" + it },
+        text = if (tags.isEmpty()) "\u00A0" else tags.take(maxTags).joinToString(" ") { "#" + it },
         style = MiuixTheme.textStyles.footnote2,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         maxLines = 1,

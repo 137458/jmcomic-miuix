@@ -8,6 +8,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -162,6 +164,9 @@ fun ActionCell(
     }
     Column(
         modifier = modifier
+            // 点击涟漪按胶囊裁剪：底部工具栏与详情操作栏都是圆形/胶囊外形，
+            // 不裁的话 ripple 会按单元格矩形铺开，看起来就是一块方块。
+            .clip(RoundedCornerShape(percent = 50))
             .clickable(enabled = enabled, onClick = onClick)
             .pressScale(hapticFeedback = true)
             .padding(vertical = 6.dp),

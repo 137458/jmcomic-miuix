@@ -138,7 +138,7 @@ fun NovelListScreen(
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    val searchCollapse = rememberCollapsibleSearchState(expanded = searchExpanded, listState = listState)
+    val searchCollapse = rememberCollapsibleSearchState(listState = listState)
 
     fun load(orderValue: String, keyword: String, showLoading: Boolean) {
         loadToken++

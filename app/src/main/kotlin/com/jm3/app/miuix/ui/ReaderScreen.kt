@@ -362,7 +362,10 @@ private fun ReaderPages(
     var chromeVisible by remember { mutableStateOf(true) }
     var lastVolumeAt by remember { mutableLongStateOf(0L) }
     var favorited by remember(photo.albumId) { mutableStateOf(favoritedInit) }
-    var liked by remember(photo.albumId) { mutableStateOf(likedInit) }
+    // 详情页改过喜欢状态时以共享表为准，避免回来读到的还是首载快照
+    var liked by remember(photo.albumId) {
+        mutableStateOf(deps.sessionCache.engagement.likedOf(photo.albumId) ?: likedInit)
+    }
     var engagementBusy by remember { mutableStateOf(false) }
     var comments by remember(photo.albumId) { mutableStateOf<CommentPage?>(null) }
     var commentsLoading by remember { mutableStateOf(false) }
@@ -515,17 +518,15 @@ private fun ReaderPages(
 
     fun toggleLike() {
         if (!requireLogin() || engagementBusy) return
-        if (liked) {
-            scope.launch { snackbarHostState.showSnackbar("已经喜欢过了") }
-            return
-        }
+        val next = !liked
         engagementBusy = true
         scope.launch {
             val outcome = authCall.call { gateway.toggleLike(photo.albumId) }
             engagementBusy = false
             if (outcome is SessionOutcome.Ok) {
-                liked = true
-                snackbarHostState.showSnackbar("已喜欢")
+                liked = next
+                deps.sessionCache.engagement.setLiked(photo.albumId, next)
+                snackbarHostState.showSnackbar(if (next) "已喜欢" else "已取消喜欢")
             } else {
                 reportAction(outcome, "操作失败")
             }

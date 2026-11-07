@@ -63,7 +63,7 @@ data class AlbumDetailViewState(
  *
  * 所有网关调用都经 [authCall]：启动闸门、IO 调度与失效处置由它统一给，这里只负责三支结局的落点。
  */
-class AlbumDetailStateHolder(
+internal class AlbumDetailStateHolder(
     val albumId: String,
     private val gateway: AlbumDetailPort,
     private val authCall: AuthCall,
@@ -71,6 +71,8 @@ class AlbumDetailStateHolder(
     private val scope: CoroutineScope,
     private val showMessage: (String) -> Unit,
     private val onOpenLogin: () -> Unit,
+    // 与阅读页共享的喜欢状态；默认独立实例只用于单测隔离，生产须传 SessionCache.engagement。
+    private val engagement: AlbumEngagementStore = AlbumEngagementStore(),
 ) {
     private val _uiState = MutableStateFlow(AlbumDetailViewState())
     val uiState: StateFlow<AlbumDetailViewState> = _uiState.asStateFlow()
@@ -293,7 +295,8 @@ class AlbumDetailStateHolder(
         }
         val current = _uiState.value
         if (current.likeBusy) return
-        if (current.liked) {
+        // 阅读页取消喜欢后服务端已是未喜欢：以共享状态为准，避免这里拿旧 liked 提前返回。
+        if (engagement.likedOf(albumId) ?: current.liked) {
             showMessage("已经喜欢过了")
             return
         }
@@ -302,6 +305,7 @@ class AlbumDetailStateHolder(
             val outcome = authCall.call { gateway.toggleLike(albumId) }
             _uiState.update { it.copy(likeBusy = false) }
             if (outcome is SessionOutcome.Ok) {
+                engagement.setLiked(albumId, true)
                 _uiState.update { it.copy(liked = true) }
                 showMessage("已喜欢")
             } else {

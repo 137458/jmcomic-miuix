@@ -118,7 +118,7 @@ private const val COMMENT_BADGE_DESCRIPTION = "徽章"
 
 /** 详情页：信息/简介/标签/相关作品/章节分组/评论，对齐原版 Desc + Series 能力域。 */
 @Composable
-fun AlbumDetailScreen(
+internal fun AlbumDetailScreen(
     albumId: String,
     initialTitle: String? = null,
     initialCoverUrl: String? = null,
@@ -133,6 +133,7 @@ fun AlbumDetailScreen(
     history: HistoryRepository,
     downloadManager: DownloadManager,
     account: AccountManager,
+    sessionCache: SessionCache,
 ) {
     val context = LocalContext.current
     val user by account.user.collectAsState()
@@ -147,6 +148,7 @@ fun AlbumDetailScreen(
             scope = scope,
             showMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
             onOpenLogin = onOpenLogin,
+            engagement = sessionCache.engagement,
         )
     }
     val uiState by stateHolder.uiState.collectAsState()
@@ -332,7 +334,7 @@ fun AlbumDetailScreen(
                                 loggedIn = user != null,
                                 favorited = uiState.favorited,
                                 favoriteBusy = uiState.favoriteBusy,
-                                liked = uiState.liked,
+                                liked = sessionCache.engagement.likedOf(albumId) ?: uiState.liked,
                                 likeBusy = uiState.likeBusy,
                                 tracking = uiState.tracking,
                                 trackingBusy = uiState.trackingBusy,

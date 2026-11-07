@@ -127,7 +127,7 @@ fun LibraryScreen(
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    val searchCollapse = rememberCollapsibleSearchState(expanded = searchExpanded, listState = listState)
+    val searchCollapse = rememberCollapsibleSearchState(listState = listState)
 
     /** 失效与失败共用一个落点：[planLoad] 决定整屏去登录/给重试，还是有内容时只弹提示。 */
     fun applyFailure(outcome: SessionOutcome<*>, hasContent: Boolean) {

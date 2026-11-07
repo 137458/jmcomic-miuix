@@ -31,6 +31,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.EdgeFadeWidth
@@ -40,6 +42,7 @@ import com.jm3.app.miuix.ui.SearchHeaderIntent
 import com.jm3.app.miuix.ui.edgeFadeMask
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.Icon
@@ -53,6 +56,9 @@ private val CollapseScrollThreshold = 24.dp
 /** 向上滚动累计超过该净位移才开始展开；小于折叠阈值形成滞回，快速来回甩动不会反复翻转。 */
 private val ExpandScrollThreshold = 16.dp
 
+/** 收起进度过该阈值即释放输入焦点：此时插槽开始明显收缩，输入框不该继续持有光标。 */
+private const val CollapseFocusReleaseProgress = 0.02f
+
 /** 吸附弹簧：阻尼略高、刚度中低，跟手松手后一次到位，不来回弹。 */
 private val SearchHeaderSettleSpec = spring<Float>(
     dampingRatio = 0.85f,
@@ -60,7 +66,10 @@ private val SearchHeaderSettleSpec = spring<Float>(
 )
 
 /**
- * 可折叠搜索栏状态：滚动增量驱动 [progress]，焦点/搜索展开时锁定为展开态。
+ * 可折叠搜索栏状态：滚动增量驱动 [progress]。
+ *
+ * 不因聚焦锁定展开：键盘弹出时继续下滑也要能收起搜索栏；收起时的焦点释放
+ * 由 [CollapsibleSearchBar] 统一处理，页面只负责跳转前主动收键盘。
  *
  * 进度为 0（完整可见）到 1（完全收起）。状态读取只发生在布局与绘制阶段，
  * 滚动过程只触发重新测量与重绘，不触发页面重组。
@@ -71,14 +80,13 @@ class CollapsibleSearchState internal constructor(
     private val collapseThresholdPx: Float,
     private val expandThresholdPx: Float,
 ) {
-    /** 交给 `InputField` 观察聚焦；聚焦即锁定展开，键盘弹出期间不收起。 */
+    /** 交给 `InputField` 观察聚焦；[CollapsibleSearchBar] 用它判断收起时是否需要释放焦点。 */
     val interactionSource = MutableInteractionSource()
 
     /** 展开态实测高度：折叠净空与位移都按它换算。首次测量为完整高度，之后只增不减适配字体缩放。 */
     private var expandedHeightPx by mutableIntStateOf(0)
 
     private var collapseState by mutableStateOf(SearchHeaderCollapseState())
-    private var locked by mutableStateOf(false)
     private var animationJob: Job? = null
 
     /** 当前折叠进度，布局阶段读取。 */
@@ -99,7 +107,7 @@ class CollapsibleSearchState internal constructor(
     }
 
     internal fun onScrollDelta(deltaPx: Float): Float {
-        if (locked || deltaPx == 0f || expandedHeightPx <= 0) return 0f
+        if (deltaPx == 0f || expandedHeightPx <= 0) return 0f
         animationJob?.cancel()
         // 吸附动画被打断时，以当前视觉进度为准继续累计，避免状态跳回动画起点。
         val before = progress
@@ -125,7 +133,7 @@ class CollapsibleSearchState internal constructor(
         val target = SearchHeaderCollapseLogic.settleTarget(
             state = collapseState,
             velocityPxPerSecond = velocityPxPerSecond,
-            locked = locked,
+            locked = false,
         )
         val intent = SearchHeaderCollapseLogic.intentForTarget(target)
         collapseState = collapseState.copy(
@@ -135,16 +143,6 @@ class CollapsibleSearchState internal constructor(
             expandDebtPx = 0f,
         )
         animateTo(target)
-    }
-
-    internal fun setLocked(value: Boolean) {
-        if (locked == value) return
-        locked = value
-        if (value) {
-            // 聚焦/展开搜索时立即确定展开方向，视觉进度由弹簧补齐，键盘弹起期间保持可见。
-            collapseState = SearchHeaderCollapseLogic.forceExpanded(collapseState)
-            animateTo(0f)
-        }
     }
 
     /** 再唤入口、回到列表顶部时手动展开。 */
@@ -172,12 +170,10 @@ class CollapsibleSearchState internal constructor(
 /**
  * 创建可折叠搜索栏状态。
  *
- * @param expanded 搜索框展开态；展开时与聚焦一样锁定为展开，防止结果页刚提交就收起。
  * @param listState 列表状态；回到顶部时强制展开，覆盖下拉刷新回弹与程序化滚动的尾部。
  */
 @Composable
 fun rememberCollapsibleSearchState(
-    expanded: Boolean,
     listState: LazyListState? = null,
 ): CollapsibleSearchState {
     val density = LocalDensity.current
@@ -188,10 +184,6 @@ fun rememberCollapsibleSearchState(
             collapseThresholdPx = with(density) { CollapseScrollThreshold.roundToPx().toFloat() },
             expandThresholdPx = with(density) { ExpandScrollThreshold.roundToPx().toFloat() },
         )
-    }
-    val focused by state.interactionSource.collectIsFocusedAsState()
-    LaunchedEffect(focused, expanded) {
-        state.setLocked(focused || expanded)
     }
     LaunchedEffect(listState, state) {
         val lazyState = listState ?: return@LaunchedEffect
@@ -213,6 +205,22 @@ fun CollapsibleSearchBar(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focused by state.interactionSource.collectIsFocusedAsState()
+    // 搜索栏被滚走时释放焦点并落键盘：只收高度不清焦点的话，输入框隐形但仍持有焦点，
+    // 键盘会悬在半空，任何一次状态刷新还会把光标拉回原位置。
+    LaunchedEffect(state, focused) {
+        if (!focused) return@LaunchedEffect
+        snapshotFlow { state.progress > CollapseFocusReleaseProgress }
+            .distinctUntilChanged()
+            .collect { collapsing ->
+                if (collapsing) {
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                }
+            }
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()

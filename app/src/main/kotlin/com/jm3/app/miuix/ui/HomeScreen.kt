@@ -33,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.CollapsibleSearchAction
@@ -123,7 +125,9 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     // 搜索栏折叠与顶栏折叠各自独立：这里只跟随列表已消费的滚动位移，不改动顶栏行为。
-    val searchCollapse = rememberCollapsibleSearchState(expanded = searchExpanded, listState = listState)
+    val searchCollapse = rememberCollapsibleSearchState(listState = listState)
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     // 分页模式来自设置域的可观察状态：设置页切换后立即变更控件形态，并触发第一页重载。
@@ -206,11 +210,27 @@ fun HomeScreen(
         clearSearch()
     }
 
+    /**
+     * 收起搜索输入：清焦点、落键盘、退出展开态。
+     * 只藏键盘不清焦点的话，任何一次状态刷新都会让输入框把键盘再拉回来。
+     */
+    fun dismissSearchInput() {
+        focusManager.clearFocus()
+        keyboard?.hide()
+        searchExpanded = false
+    }
+
+    /** 跳转作品前先收掉搜索入口：焦点不能跟着新页面进栈，否则回来/刷新时键盘会再次弹出。 */
+    fun openAlbum(albumId: String) {
+        dismissSearchInput()
+        onOpenAlbum(albumId)
+    }
+
     fun submitSearch() {
         val q = query.trim()
         when {
             q.isEmpty() -> Unit
-            q.all { it.isDigit() } -> onOpenAlbum(q) // 车号直达
+            q.all { it.isDigit() } -> openAlbum(q) // 车号直达
             else -> runSearch(q, byTag = false, sort = order)
         }
     }
@@ -364,7 +384,7 @@ fun HomeScreen(
 
     fun openRandom() {
         val candidates = randomPicks.ifEmpty { activeFeed()?.items.orEmpty() }
-        candidates.randomOrNull()?.let { onOpenAlbum(it.id) }
+        candidates.randomOrNull()?.let { openAlbum(it.id) }
     }
 
     val selectionHaptic = rememberSelectionHaptic()
@@ -531,7 +551,7 @@ fun HomeScreen(
                             clickPaging = clickPaging,
                             onLoadMore = ::loadMore,
                             onPageChange = ::jumpToPage,
-                            onOpenAlbum = onOpenAlbum,
+                            onOpenAlbum = { openAlbum(it) },
                         )
                     }
                 } else {
@@ -563,7 +583,7 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     items(serialUpdates, key = { it.id }) { update ->
-                                        SerialUpdateCard(update = update, onClick = { onOpenAlbum(update.id) })
+                                        SerialUpdateCard(update = update, onClick = { openAlbum(update.id) })
                                     }
                                 }
                             }
@@ -602,7 +622,7 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     items(randomPicks, key = { it.id }) { pick ->
-                                        RandomPickCard(pick = pick, onClick = { onOpenAlbum(pick.id) })
+                                        RandomPickCard(pick = pick, onClick = { openAlbum(pick.id) })
                                     }
                                 }
                             }
@@ -625,7 +645,7 @@ fun HomeScreen(
                             clickPaging = clickPaging,
                             onLoadMore = ::loadMore,
                             onPageChange = ::jumpToPage,
-                            onOpenAlbum = onOpenAlbum,
+                            onOpenAlbum = { openAlbum(it) },
                         )
                     }
                 }
@@ -784,10 +804,11 @@ private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
         onClick = onClick,
         albumId = pick.id,
         coverContentDescription = pick.title,
-        subtitle = pick.authors.joinToString(" / ").ifBlank { null },
+        // 缺作者/缺标签也占住对应行：随机推荐是等高卡片，少一行就会比同排卡片矮
+        subtitle = pick.authors.joinToString(" / ").ifBlank { "未知作者" },
         category = pick.category,
         modifier = Modifier.width(WorkCardTokens.CompactWidth),
         badge = { WorkAlbumCodeBadge(pick.id) },
-        footer = { WorkTagLine(pick.tags) },
+        footer = { WorkTagLine(pick.tags, reserveLine = true) },
     )
 }
