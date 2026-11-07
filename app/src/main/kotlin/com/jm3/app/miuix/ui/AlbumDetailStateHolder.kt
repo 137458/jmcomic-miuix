@@ -407,8 +407,4 @@ class AlbumDetailStateHolder(
             current.copy(expandedGroups = next)
         }
     }
-
-    fun toggleDescription() {
-        _uiState.update { it.copy(descriptionExpanded = !it.descriptionExpanded) }
-    }
 }

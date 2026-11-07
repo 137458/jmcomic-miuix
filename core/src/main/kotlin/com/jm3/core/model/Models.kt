@@ -137,12 +137,6 @@ data class DailyCheckInStatus(
         get() = if (totalDays <= 0) 0f else (signedDays.toFloat() / totalDays).coerceIn(0f, 1f)
 }
 
-/** 单个 API 域名的探测延迟（毫秒），供设置页排序展示。 */
-data class DomainLatency(
-    val domain: String,
-    val latencyMs: Int,
-)
-
 /** 筛选选项公共形态，供 UI 泛型渲染。 */
 interface LabeledOption {
     val apiValue: String

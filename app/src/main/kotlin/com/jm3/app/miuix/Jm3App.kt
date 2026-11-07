@@ -148,7 +148,7 @@ object Jm3Graph {
         // 网关装配是同步的且早于启动协程，线路池必须在这里就读出来（纯文本，一次几十字节）。
         api.warmUp()
         preferences = SettingsDomain(app)
-        session = SessionDomain(app, preferences.store, api, appScope)
+        session = SessionDomain(app, preferences.store, api)
         library = LibraryDomain(app)
         downloads = DownloadDomain(app, api, library, appScope)
         updates = UpdateDomain(app, appScope)

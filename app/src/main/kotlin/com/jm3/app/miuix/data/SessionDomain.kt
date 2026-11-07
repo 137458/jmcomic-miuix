@@ -6,8 +6,6 @@ import com.jm3.core.EncryptedCredentialStore
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.UnreadBadge
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 
 /**
  * 会话域：账号、带闸门的调用入口、未读数。
@@ -19,7 +17,6 @@ class SessionDomain(
     context: Context,
     settingsStore: SettingsStore,
     private val api: ApiDomain,
-    private val appScope: CoroutineScope,
 ) {
 
     private val appContext: Context = context.applicationContext
@@ -41,16 +38,6 @@ class SessionDomain(
     // 未读数也是网关调用：走 [AuthCall] 才有启动闸门与「401 判失效」，并且切到 IO——
     // 库的 notifications() 是阻塞方法，直接在这里调就是主线程联网。
     val unread: UnreadBadge = UnreadBadge { authCall.call { api.unreadCount() } }
-
-    /** 重新统计未读：登录态由账号决定，调用方不必自己判；未登录归零、请求失败保留上次结果由 [UnreadBadge] 决定。 */
-    suspend fun refreshUnread() {
-        unread.refresh(account.user.value != null)
-    }
-
-    /** 后台刷一次未读：角标刷新不需要调用方等结果。 */
-    fun scheduleRefreshUnread() {
-        appScope.launch { refreshUnread() }
-    }
 
     /** 换线路并把已持久化会话迁移过去：网关重建在 [ApiDomain]，会话迁移归这个域（它持有账号）。 */
     suspend fun applyDomains(apiDomains: List<String>) {
