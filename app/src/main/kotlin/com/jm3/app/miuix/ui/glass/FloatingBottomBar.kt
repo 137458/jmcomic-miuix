@@ -363,7 +363,10 @@ fun FloatingBottomBar(
     }
 
     Box(
-        modifier = modifier.width(IntrinsicSize.Min),
+        // 悬浮档按内容宽度收口，贴底档需要横向撑满整屏；Tab 项已用 weight 均分，宽度由外层约束决定
+        modifier = modifier.then(
+            if (tokens.floating) Modifier.width(IntrinsicSize.Min) else Modifier.fillMaxWidth(),
+        ),
         contentAlignment = Alignment.CenterStart,
     ) {
         // ── 1. Base Layer（未选中状态底层外壳） ──
