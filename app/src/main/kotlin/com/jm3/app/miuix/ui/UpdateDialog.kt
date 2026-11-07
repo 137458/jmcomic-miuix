@@ -21,9 +21,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.MarkdownBlock
@@ -61,9 +65,9 @@ private val DialogCardPadding = PaddingValues(horizontal = 16.dp, vertical = 8.d
 /**
  * 把 [MarkdownBlocks] 的块级结果排版成 Compose 文本，供页面与弹窗共用。
  *
- * 取舍：core 只做分块、不做行内解析（见 [MarkdownBlocks] 的说明），粗体与内联代码这层由这里补上。
- * 只认 `**粗体**` 与反引号两种标记，其余标记（链接、图片、HTML）一律按原文显示：更新说明是
- * 外部输入，多认一种标记就多一份误渲染与解析失败的风险，而 Releases 正文的实际用法就是这两种。
+ * 取舍：core 只做分块、不做行内解析（见 [MarkdownBlocks] 的说明），粗体、内联代码与链接这层由这里补上。
+ * 只认 `**粗体**`、反引号与 `[文字](链接)` 三种标记，其余标记（图片、HTML）一律按原文显示：
+ * 更新说明是外部输入，多认一种标记就多一份误渲染与解析失败的风险，而 Releases 正文的实际用法就是这三种。
  *
  * @param markdown Release 说明原文，空串表示该版本没写说明
  */
@@ -147,25 +151,67 @@ private fun NotesListItem(prefix: String, text: String) {
 @Composable
 private fun rememberNotesInline(text: String): AnnotatedString {
     val codeColor = MiuixTheme.colorScheme.primary
+    val linkColor = MiuixTheme.colorScheme.primary
     val codeBackground = MiuixTheme.colorScheme.surfaceContainerHigh
-    return remember(text, codeColor, codeBackground) {
-        parseInlineNotes(text = text, codeColor = codeColor, codeBackground = codeBackground)
+    return remember(text, codeColor, linkColor, codeBackground) {
+        parseInlineNotes(
+            text = text,
+            codeColor = codeColor,
+            linkColor = linkColor,
+            codeBackground = codeBackground,
+        )
     }
 }
 
 /**
- * 解析行内的 `**粗体**` 与反引号内联代码。
+ * 解析行内的 `**粗体**`、反引号内联代码与 `[文字](链接)`。
  *
- * 两种标记都只在"成对出现"时生效，未闭合的标记按原文输出。更新说明里出现半个标记的概率很低，
+ * 三类标记都只在"成对出现"时生效，未闭合的标记按原文输出。更新说明里出现半个标记的概率很低，
  * 但一旦把它当开标记，剩下整段都会变成粗体或等宽：错误会从一个小符号扩散成整段排版事故，
  * 所以这里宁可漏渲染也不误渲染。
  */
-private fun parseInlineNotes(text: String, codeColor: Color, codeBackground: Color): AnnotatedString {
+internal fun parseInlineNotes(
+    text: String,
+    codeColor: Color,
+    linkColor: Color,
+    codeBackground: Color,
+): AnnotatedString {
     val builder = AnnotatedString.Builder()
     // pushStyle 与 pop 严格成对：只有确认后面确实存在结束标记时才 push，因此循环结束时栈必定为空
     var bold = false
     var index = 0
     while (index < text.length) {
+        if (text[index] == LinkOpen) {
+            val closingBracket = text.indexOf(LinkClose, index + 1)
+            val closingParen = if (
+                closingBracket > index + 1 &&
+                closingBracket + 1 < text.length &&
+                text[closingBracket + 1] == LinkTargetOpen
+            ) {
+                text.indexOf(LinkTargetClose, closingBracket + 2)
+            } else {
+                -1
+            }
+            if (closingBracket > index + 1 && closingParen > closingBracket + 2) {
+                val label = text.substring(index + 1, closingBracket)
+                val url = text.substring(closingBracket + 2, closingParen)
+                builder.withLink(
+                    LinkAnnotation.Url(
+                        url = url,
+                        styles = TextLinkStyles(
+                            style = SpanStyle(
+                                color = linkColor,
+                                textDecoration = TextDecoration.Underline,
+                            ),
+                        ),
+                    ),
+                ) {
+                    append(label)
+                }
+                index = closingParen + 1
+                continue
+            }
+        }
         if (text.startsWith(BoldMark, index)) {
             val closing = text.indexOf(BoldMark, index + BoldMark.length)
             when {
@@ -368,7 +414,11 @@ internal fun updateDialogPrimaryText(hasApk: Boolean, downloadState: UpdateDownl
     else -> "立即下载"
 }
 
-/** 行内标记：只认粗体与内联代码两种，长度变化时两处扫描逻辑需同步。 */
+/** 行内标记：只认粗体、内联代码与链接三种，长度变化时两处扫描逻辑需同步。 */
 private const val BoldMark = "**"
 private const val CodeMark = '`'
+private const val LinkOpen = '['
+private const val LinkClose = ']'
+private const val LinkTargetOpen = '('
+private const val LinkTargetClose = ')'
 private val BoldSpan = SpanStyle(fontWeight = FontWeight.Bold)
