@@ -439,14 +439,16 @@ private fun ReaderPages(
         }
     }
 
-    // 阅读亮度作用在 Activity 窗口上：进入页面按设置应用，离开时恢复原值
+    // 阅读亮度作用在 Activity 窗口上：进入页面按设置应用，离开时恢复原值。
+    // 换章时新旧页短暂并存，原亮度只由首个页面记录、最后一个页面恢复，否则旧页销毁会抹掉新页的亮度。
     val readerWindow = activity?.window
     DisposableEffect(readerWindow) {
-        val originalBrightness = readerWindow?.attributes?.screenBrightness
+        ReaderWindowLeases.enterBrightness(readerWindow?.attributes?.screenBrightness)
         onDispose {
-            if (readerWindow != null && originalBrightness != null) {
+            val restore = ReaderWindowLeases.originalBrightness
+            if (ReaderWindowLeases.exitBrightness() && readerWindow != null && restore != null) {
                 readerWindow.attributes = readerWindow.attributes.apply {
-                    screenBrightness = originalBrightness
+                    screenBrightness = restore
                 }
             }
         }
@@ -461,11 +463,16 @@ private fun ReaderPages(
             }
         }
     }
-    // 阅读时保持亮屏：开关与窗口标记同生命周期
+    // 阅读时保持亮屏：开关与窗口标记同生命周期；并存的新旧页按引用计数，最后一个离开才清标记
     DisposableEffect(readerWindow, keepScreenOn) {
         if (readerWindow == null || !keepScreenOn) return@DisposableEffect onDispose {}
+        ReaderWindowLeases.enterKeepScreenOn()
         readerWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose { readerWindow.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+        onDispose {
+            if (ReaderWindowLeases.exitKeepScreenOn()) {
+                readerWindow.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
     }
 
     /** 跳页：先让计划进入“跳页中”，再驱动 pager 或列表；落地后才恢复可见页回写。 */
