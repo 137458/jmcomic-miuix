@@ -153,7 +153,7 @@ class UpdateDialogPlanTest {
             updateDialogDownloadDetail(downloading(4L * 1_000_000, 0, 1_500_000L)),
         )
         assertEquals(
-            "1 KB / 2 KB · 1 KB/s",
+            "1.0 KB / 2.0 KB · 1.0 KB/s",
             updateDialogDownloadDetail(downloading(1024L, 2048L, 1024L)),
         )
     }

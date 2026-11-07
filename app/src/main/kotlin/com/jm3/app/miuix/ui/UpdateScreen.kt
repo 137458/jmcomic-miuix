@@ -652,7 +652,7 @@ internal fun formatUpdateSize(bytes: Long): String {
     val mb = kb * 1024
     return when {
         bytes >= mb -> String.format(Locale.US, "%.1f MB", bytes / mb)
-        bytes >= kb -> String.format(Locale.US, "%.0f KB", bytes / kb)
+        bytes >= kb -> String.format(Locale.US, "%.1f KB", bytes / kb)
         else -> "$bytes B"
     }
 }

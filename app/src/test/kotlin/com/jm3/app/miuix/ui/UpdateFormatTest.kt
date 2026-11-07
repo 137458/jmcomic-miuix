@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
  * 更新页的字节换算契约。
  *
  * 下载量与速度共用同一套刻度，所以两者必须落在同一单位档位：未知长度（0 或负值）
- * 显示 0 B 而不是怪异的负数，KB 档不出现小数，MB 档保留一位小数。
+ * 显示 0 B 而不是怪异的负数，KB 与 MB 档都保留一位小数。
  */
 class UpdateFormatTest {
 
@@ -24,10 +24,10 @@ class UpdateFormatTest {
     }
 
     @Test
-    fun `kilobyte band rounds to whole kilobytes`() {
-        assertEquals("1 KB", formatUpdateSize(1024))
-        assertEquals("2 KB", formatUpdateSize(1536))
-        assertEquals("10 KB", formatUpdateSize(10L * 1024))
+    fun `kilobyte band keeps one decimal`() {
+        assertEquals("1.0 KB", formatUpdateSize(1024))
+        assertEquals("1.5 KB", formatUpdateSize(1536))
+        assertEquals("10.0 KB", formatUpdateSize(10L * 1024))
     }
 
     @Test
@@ -40,7 +40,7 @@ class UpdateFormatTest {
     @Test
     fun `speed appends per second suffix on the same scale`() {
         assertEquals("0 B/s", formatUpdateSpeed(0))
-        assertEquals("2 KB/s", formatUpdateSpeed(2048))
+        assertEquals("2.0 KB/s", formatUpdateSpeed(2048))
         assertEquals("2.5 MB/s", formatUpdateSpeed(1024L * 1024 * 5 / 2))
     }
 }

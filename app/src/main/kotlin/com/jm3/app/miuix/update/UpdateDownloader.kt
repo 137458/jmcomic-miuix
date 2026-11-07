@@ -2,6 +2,7 @@ package com.jm3.app.miuix.update
 
 import android.content.Context
 import android.os.SystemClock
+import com.jm3.app.miuix.ui.formatUpdateSize
 import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.UpdateProgress
 import java.io.File
@@ -10,7 +11,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -194,7 +194,7 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
                 publish(
                     token,
                     UpdateDownloadState.Failed(
-                        "安装包不完整（已下载 ${formatBytes(result.downloaded)} / 应为 ${formatBytes(total)}）",
+                        "安装包不完整（已下载 ${formatUpdateSize(result.downloaded)} / 应为 ${formatUpdateSize(total)}）",
                     ),
                 )
                 return
@@ -301,13 +301,6 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
             cleaned == "." || cleaned == ".." -> FALLBACK_FILE_NAME
             else -> cleaned
         }
-    }
-
-    /** 字节数转可读文本，只用于失败提示；进度展示的格式由界面自己决定。 */
-    private fun formatBytes(bytes: Long): String = when {
-        bytes >= 1024L * 1024L -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
-        bytes >= 1024L -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
-        else -> "$bytes B"
     }
 }
 
