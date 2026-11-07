@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 图标底色：完整铺满 108dp 画布，由 Miuix 主题的 primaryContainer(#5D9BFF) 过渡到 primary(#3482FF)，
-     左上角叠一层极淡的高光，避免大面积纯色显得扁平。 -->
+<!-- 图标底色：深蓝同色系，由 #0A2A5E 过渡到 #1B4E9E（同一色相拉大明度差，让前景的浅蓝字标边缘更锐），
+     左上角叠一层极淡的浅蓝高光（#9EC2FF），避免大面积深蓝显得死板。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -17,10 +17,10 @@
                 android:endY="104">
                 <item
                     android:offset="0"
-                    android:color="#FF5D9BFF" />
+                    android:color="#FF0A2A5E" />
                 <item
                     android:offset="1"
-                    android:color="#FF3482FF" />
+                    android:color="#FF1B4E9E" />
             </gradient>
         </aapt:attr>
     </path>
@@ -28,15 +28,15 @@
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="radial"
-                android:centerX="36"
-                android:centerY="28"
-                android:gradientRadius="72">
+                android:centerX="34"
+                android:centerY="26"
+                android:gradientRadius="76">
                 <item
                     android:offset="0"
-                    android:color="#26FFFFFF" />
+                    android:color="#389EC2FF" />
                 <item
                     android:offset="1"
-                    android:color="#00FFFFFF" />
+                    android:color="#009EC2FF" />
             </gradient>
         </aapt:attr>
     </path>
