@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 class GlassSurfaceTest {
 
     @Test
-    fun `液态玻璃档六个表面各自的理想形态`() {
+    fun `液态玻璃档各表面各自的理想形态`() {
         val bottomBar = resolveGlassSurface(GlassRole.BottomBar, GlassTier.LiquidGlass)
         assertTrue(bottomBar.drawsBackdrop)
         assertEquals(4f, bottomBar.blurRadiusDp)
@@ -51,6 +51,19 @@ class GlassSurfaceTest {
         assertEquals(10f, topBar.blurRadiusDp)
         assertTrue(topBar.drawsBackdrop)
         assertEquals(0f, topBar.scrimAlpha)
+
+        val searchField = resolveGlassSurface(GlassRole.SearchField, GlassTier.LiquidGlass)
+        assertTrue(searchField.drawsBackdrop)
+        assertEquals(10f, searchField.blurRadiusDp, "与顶栏渐进模糊同半径，避免胶囊边缘跳变")
+        assertEquals(12f, searchField.lensRefractionHeightDp)
+        assertEquals(12f, searchField.lensRefractionAmountDp)
+        assertEquals(0.5f, searchField.highlightAlpha)
+        assertEquals(0.72f, searchField.scrimAlpha)
+        assertTrue(searchField.effectPaddingDp >= searchField.lensRefractionAmountDp)
+        assertEquals(18f, resolveGlassSurface(GlassRole.SearchField, GlassTier.Blur).blurRadiusDp)
+        assertEquals(0.88f, resolveGlassSurface(GlassRole.SearchField, GlassTier.Blur).scrimAlpha)
+        assertEquals(1f, resolveGlassSurface(GlassRole.SearchField, GlassTier.Solid).scrimAlpha)
+        assertFalse(resolveGlassSurface(GlassRole.SearchField, GlassTier.Solid).drawsBackdrop)
     }
 
     @Test

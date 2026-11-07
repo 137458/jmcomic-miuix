@@ -42,6 +42,28 @@ interface PaginationSettings : SettingsKeyStore {
 }
 
 /**
+ * 底栏尺寸与形态：读回 null 表示用户从未显式设置，调用方按窗口断点解析默认值。
+ *
+ * 非法持久化值也读成 null，与「未设置」走同一条断点回落。
+ */
+interface BottomBarSettings : SettingsKeyStore {
+
+    suspend fun bottomBarSizeOrNull(): BottomBarSize? =
+        BottomBarSize.entries.firstOrNull { it.name == readString(SettingsKeys.BOTTOM_BAR_SIZE) }
+
+    suspend fun setBottomBarSize(size: BottomBarSize) {
+        writeString(SettingsKeys.BOTTOM_BAR_SIZE, size.name)
+    }
+
+    suspend fun bottomBarFormOrNull(): BottomBarForm? =
+        BottomBarForm.entries.firstOrNull { it.name == readString(SettingsKeys.BOTTOM_BAR_FORM) }
+
+    suspend fun setBottomBarForm(form: BottomBarForm) {
+        writeString(SettingsKeys.BOTTOM_BAR_FORM, form.name)
+    }
+}
+
+/**
  * 自定义 API 线路：读与写都走 [Domains]，对称归一。
  *
  * 调用方只管交出用户输入的行，不需要在写之前自己补一遍归一化。

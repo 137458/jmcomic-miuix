@@ -32,7 +32,7 @@ import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
  * [TopAppBar] 的磨砂由渐进模糊承担（GlassScaffold.kt 的 topBarProgressiveBlur），
  * 这里只提供「是否采样」与实色兜底不透明度。
  */
-internal enum class GlassRole { TopAppBar, Toolbar, BottomBar, FloatingActionBar, Capsule, Snackbar }
+internal enum class GlassRole { TopAppBar, Toolbar, BottomBar, FloatingActionBar, Capsule, Snackbar, SearchField }
 
 /**
  * 角色表里一行的理想形态。
@@ -142,6 +142,23 @@ internal fun glassRoleSpec(role: GlassRole): GlassRoleSpec = when (role) {
         blurScrimAlpha = 0.68f,
         solidScrimAlpha = 0.95f,
         vibrancy = true,
+    )
+
+    /**
+     * 顶栏搜索行：磨砂半径与顶栏渐进模糊一致（10dp），避免两层采样在胶囊边缘出现模糊跳变；
+     * 底衬按可读性优先给到 0.72，降级档再抬到 0.88，实色档回到不透明。
+     * 折射 12dp 小于采样余量 24dp，满足采样不越界。
+     */
+    GlassRole.SearchField -> GlassRoleSpec(
+        effectPaddingDp = 24f,
+        liquidBlurDp = 10f,
+        blurTierBlurDp = 18f,
+        lensHeightDp = 12f,
+        lensAmountDp = 12f,
+        highlightAlpha = 0.5f,
+        liquidScrimAlpha = 0.72f,
+        blurScrimAlpha = 0.88f,
+        solidScrimAlpha = 1f,
     )
 }
 

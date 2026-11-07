@@ -431,6 +431,9 @@ fun Jm3App() {
                     userModified = Jm3Graph.preferences.paginationModeUserModified,
                 )
             )
+            // 底栏尺寸/形态：盘上是 null 表示用户从未显式设置，交给窗口断点在组合期决定。
+            Jm3Graph.preferences.applyStartupBottomBarSize(Jm3Graph.preferences.repository.bottomBarSizeOrNull())
+            Jm3Graph.preferences.applyStartupBottomBarForm(Jm3Graph.preferences.repository.bottomBarFormOrNull())
             Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
         }.onFailure { failure ->
             Jm3Log.warn("Jm3App", "启动读盘失败（" + failure.javaClass.name + "），改用默认设置")

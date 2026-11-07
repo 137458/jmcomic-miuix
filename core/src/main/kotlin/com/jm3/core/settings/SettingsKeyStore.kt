@@ -41,6 +41,8 @@ internal object SettingsKeys {
     const val THEME_MODE = "theme_mode"
     const val DYNAMIC_COLOR = "dynamic_color"
     const val PAGINATION_MODE = "pagination_mode"
+    const val BOTTOM_BAR_SIZE = "bottom_bar_size"
+    const val BOTTOM_BAR_FORM = "bottom_bar_form"
     const val API_DOMAINS = "api_domains"
     const val SEARCH_HISTORY = "search_history"
     const val READER_HORIZONTAL = "reader_horizontal"

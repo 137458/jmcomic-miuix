@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -38,8 +39,11 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.glass.IosLiquidGlassNavigationBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
+import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
+import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
+import kotlin.math.roundToInt
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.session.AccountManager
@@ -72,12 +76,6 @@ private enum class MainTab(val label: String) {
 
 /** 宽屏阈值：≥600dp 视为平板/折叠展开/桌面，主框架切为可折叠侧栏。 */
 private val WIDE_SCREEN_WIDTH = 600.dp
-
-/**
- * 底栏内容净空：列表末项需让出的高度（胶囊 64dp + 底边距 + 呼吸空间），
- * 经 GlassScaffold 叠加进 bottom contentPadding；内容其余部分穿透底栏滚动。
- */
-private val FLOATING_BAR_CONTENT_PADDING = 100.dp
 
 private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
     MainTab.HOME -> MiuixIcons.Home
@@ -143,11 +141,26 @@ fun MainScreen(
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             // 宽屏改用 NavigationRail：底栏让位给侧栏，列表获得更宽的横向空间
             val wideScreen = maxWidth >= WIDE_SCREEN_WIDTH
+            // 底栏尺寸/形态档在组合期一次性解析：未显式设置时按窗口宽度断点取默认值，
+            // 切换偏好只会重建这份 token，不进入滚动或测量热路径。
+            val widthDp = maxWidth.value.roundToInt()
+            val barTokens = remember(
+                deps.preferences.bottomBarSize,
+                deps.preferences.bottomBarForm,
+                widthDp,
+            ) {
+                resolveBottomBarTokens(
+                    explicitSize = deps.preferences.bottomBarSize,
+                    explicitForm = deps.preferences.bottomBarForm,
+                    widthDp = widthDp,
+                )
+            }
             // 底栏玻璃采样源：设备不支持 RuntimeShader 时返回 null，底栏自动降级为实色
             val backdrop = rememberBlurBackdrop()
             // 主框架展示悬浮底栏时给列表提供底部净空，内容其余部分穿透底栏持续被采样
             CompositionLocalProvider(
-                LocalFloatingBarContentPadding provides if (wideScreen) 0.dp else FLOATING_BAR_CONTENT_PADDING,
+                LocalFloatingBarContentPadding provides if (wideScreen) 0.dp else barTokens.contentPadding,
+                LocalGlassBottomBarTokens provides barTokens,
             ) {
                 Scaffold(
                     snackbarHost = { GlassSnackbarHost(state = snackbarHostState, backdrop = backdrop) },

@@ -7,6 +7,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,8 +35,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jm3.app.miuix.ui.EdgeFadeWidth
 import com.jm3.app.miuix.ui.SearchHeaderCollapseLogic
 import com.jm3.app.miuix.ui.SearchHeaderCollapseState
@@ -47,8 +51,10 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Search
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 向下滚动累计超过该净位移才开始收起，避免轻触与抖动误收起。 */
 private val CollapseScrollThreshold = 24.dp
@@ -231,6 +237,53 @@ fun CollapsibleSearchBar(
             .onSizeChanged { state.onMeasuredHeight(it.height) },
     ) {
         content()
+    }
+}
+
+/**
+ * 顶栏搜索输入框：固定 40dp 高、16sp、圆角胶囊，背后铺一层 [GlassRole.SearchField] 玻璃。
+ *
+ * 玻璃放在 InputField 之后绘制（Box 内先测量后叠层），InputField 自身底色改为透明，
+ * 文字、占位符与光标直接落在 0.72 底衬上；降级时底衬依次抬到 0.88 与不透明。
+ */
+@Composable
+fun GlassSearchInputField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSearch: (String) -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    interactionSource: MutableInteractionSource,
+    label: String,
+    modifier: Modifier = Modifier,
+    trailingIcon: @Composable (() -> Unit)? = null,
+) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .then(
+                    glassSurface(
+                        backdrop = LocalGlassBackdrop.current,
+                        role = GlassRole.SearchField,
+                        tint = MiuixTheme.colorScheme.surfaceContainer,
+                        shape = CircleShape,
+                    ),
+                ),
+        )
+        InputField(
+            query = query,
+            onQueryChange = onQueryChange,
+            onSearch = onSearch,
+            expanded = expanded,
+            onExpandedChange = onExpandedChange,
+            interactionSource = interactionSource,
+            label = label,
+            trailingIcon = trailingIcon,
+            textStyle = TextStyle(fontSize = 16.sp),
+            color = Color.Transparent,
+            modifier = Modifier.fillMaxWidth().height(40.dp),
+        )
     }
 }
 

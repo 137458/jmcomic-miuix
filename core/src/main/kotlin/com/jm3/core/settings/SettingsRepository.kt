@@ -19,6 +19,7 @@ enum class PaginationMode(val label: String) {
 interface SettingsRepository :
     AppearanceSettings,
     PaginationSettings,
+    BottomBarSettings,
     DomainSettings,
     SearchHistorySettings,
     ReaderSettings,

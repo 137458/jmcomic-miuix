@@ -66,19 +66,26 @@ internal fun BottomBarBaseLayer(
     onSizeChanged: (IntSize) -> Unit,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val tokens = LocalGlassBottomBarTokens.current
     CompositionLocalProvider(LocalFloatingBottomBarContentColor provides colors.contentColor) {
         Row(
             modifier = Modifier
                 .selectableGroup()
                 .onSizeChanged(onSizeChanged)
                 .graphicsLayer { translationX = panelOffsetState.value }
-                .dropShadow(
-                    shape = pillShape,
-                    shadow = Shadow(
-                        radius = 10.dp,
-                        color = Color.Black,
-                        alpha = if (isDark) 0.2f else 0.1f,
-                    ),
+                .then(
+                    if (tokens.floating) {
+                        Modifier.dropShadow(
+                            shape = pillShape,
+                            shadow = Shadow(
+                                radius = 10.dp,
+                                color = Color.Black,
+                                alpha = if (isDark) tokens.shadowAlphaDark else tokens.shadowAlphaLight,
+                            ),
+                        )
+                    } else {
+                        Modifier
+                    },
                 )
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -102,8 +109,8 @@ internal fun BottomBarBaseLayer(
                     ),
                 )
                 .then(if (isLiquidGlassMode && interactiveHighlight != null) interactiveHighlight.modifier else Modifier)
-                .height(64.dp)
-                .padding(4.dp),
+                .height(tokens.height)
+                .padding(tokens.innerPadding),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )
@@ -128,6 +135,7 @@ internal fun BottomBarActiveTabsLayer(
     content: @Composable RowScope.() -> Unit,
 ) {
     if (backdrop != null && isLiquidGlassMode) {
+        val tokens = LocalGlassBottomBarTokens.current
         CompositionLocalProvider(
             LocalFloatingBottomBarTabScale provides {
                 lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
@@ -154,8 +162,8 @@ internal fun BottomBarActiveTabsLayer(
                         onDrawSurface = { drawRect(containerColor) },
                     )
                     .then(interactiveHighlight?.modifier ?: Modifier)
-                    .height(64.dp)
-                    .padding(4.dp),
+                    .height(tokens.height)
+                    .padding(tokens.innerPadding),
                 verticalAlignment = Alignment.CenterVertically,
                 content = content,
             )
@@ -185,6 +193,7 @@ internal fun BottomBarIndicatorLayer(
     content: @Composable RowScope.() -> Unit,
 ) {
     if (tabWidthPx > 0f) {
+        val tokens = LocalGlassBottomBarTokens.current
         val tabWidthDp = with(density) { tabWidthPx.toDp() }
         if (isLiquidGlassMode && combinedBackdrop != null) {
             Box(
@@ -232,7 +241,7 @@ internal fun BottomBarIndicatorLayer(
                             alpha = dampedDragAnimation.pressProgress,
                         )
                     }
-                    .height(56.dp)
+                    .height(tokens.indicatorHeight)
                     .width(tabWidthDp),
             )
         } else {
@@ -249,7 +258,7 @@ internal fun BottomBarIndicatorLayer(
                     .then(dampedDragAnimation.modifier)
                     .clip(pillShape)
                     .background(colors.indicatorColor.copy(alpha = 0.15f), pillShape)
-                    .height(56.dp)
+                    .height(tokens.indicatorHeight)
                     .width(tabWidthDp),
                 contentAlignment = Alignment.CenterStart,
             ) {
@@ -259,7 +268,7 @@ internal fun BottomBarIndicatorLayer(
                             .clearAndSetSemantics {}
                             .wrapContentWidth(align = Alignment.Start, unbounded = true)
                             .requiredWidth(with(density) { (totalWidthPx - 8.dp.toPx()).toDp() })
-                            .height(56.dp)
+                            .height(tokens.indicatorHeight)
                             .graphicsLayer {
                                 val progressOffset = dampedDragAnimation.value * tabWidthPx
                                 translationX = if (isLtr) -progressOffset else progressOffset

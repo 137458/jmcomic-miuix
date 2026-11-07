@@ -225,7 +225,10 @@ fun FloatingBottomBar(
     content: @Composable RowScope.() -> Unit,
 ) {
     val isDark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
-    val pillShape = remember { CircleShape }
+    val tokens = LocalGlassBottomBarTokens.current
+    // 外壳形状跟随形态档；选中指示器始终是胶囊，避免贴底档被上圆角裁出方角。
+    val pillShape = remember(tokens) { bottomBarShape(tokens) }
+    val indicatorShape = remember { CircleShape }
     val tier = resolveGlassTier(
         hasBackdrop = backdrop != null,
         shaderSupported = isRuntimeShaderSupported(),
@@ -409,7 +412,7 @@ fun FloatingBottomBar(
             panelOffsetState = panelOffsetState,
             interactiveHighlight = interactiveHighlight,
             pillHighlight = pillHighlight,
-            pillShape = pillShape,
+            pillShape = indicatorShape,
             colors = colors,
             isDark = isDark,
             isLtr = isLtr,
@@ -436,18 +439,32 @@ fun IosLiquidGlassNavigationBar(
     val onItemClickUpdated by rememberUpdatedState(onItemClick)
     val directSelector = remember { FloatingBottomBarDirectSelector() }
 
+    val tokens = LocalGlassBottomBarTokens.current
     val navBarBottomPadding = WindowInsets.navigationBars.only(WindowInsetsSides.Bottom).asPaddingValues().calculateBottomPadding()
-    val bottomPaddingValue = if (navBarBottomPadding != 0.dp) 8.dp + navBarBottomPadding else 20.dp
+    // 悬浮：保留 8dp 视觉间隙；贴底：只让出导航栏/手势区，直接压在屏幕底边。
+    val bottomPaddingValue = if (tokens.floating) {
+        if (navBarBottomPadding != 0.dp) 8.dp + navBarBottomPadding else 20.dp
+    } else {
+        navBarBottomPadding
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = bottomPaddingValue, start = 24.dp, end = 24.dp),
+            .padding(
+                bottom = bottomPaddingValue,
+                start = tokens.horizontalMargin,
+                end = tokens.horizontalMargin,
+            ),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        // 内层胶囊按内容收紧，大屏封顶 540dp 后水平居中
+        // 悬浮档按内容收紧，大屏封顶 540dp 后水平居中；贴底档横向撑满。
         Box(
-            modifier = Modifier.widthIn(max = FLOATING_BAR_MAX_WIDTH),
+            modifier = if (tokens.floating) {
+                Modifier.widthIn(max = FLOATING_BAR_MAX_WIDTH)
+            } else {
+                Modifier.fillMaxWidth()
+            },
             contentAlignment = Alignment.Center,
         ) {
             FloatingBottomBar(
@@ -478,21 +495,21 @@ fun IosLiquidGlassNavigationBar(
                         if (currentBadge != null) {
                             BadgedBox(badge = { currentBadge() }) {
                                 Icon(
-                                    modifier = Modifier.size(24.dp),
+                                    modifier = Modifier.size(tokens.iconSize),
                                     imageVector = item.icon,
                                     contentDescription = null,
                                 )
                             }
                         } else {
                             Icon(
-                                modifier = Modifier.size(24.dp),
+                                modifier = Modifier.size(tokens.iconSize),
                                 imageVector = item.icon,
                                 contentDescription = null,
                             )
                         }
                         Text(
                             text = item.label,
-                            fontSize = 11.sp,
+                            fontSize = tokens.labelSize,
                             fontWeight = if (index == selectedIndex) FontWeight.Bold else FontWeight.Normal,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.jm3.core.settings.BottomBarForm
+import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.SettingsRepository
 
@@ -54,5 +56,38 @@ class SettingsDomain(context: Context) {
      */
     internal fun applyStartupPaginationMode(mode: PaginationMode) {
         paginationModeState = mode
+    }
+
+    /** 底栏尺寸/形态：null 表示未显式设置，由窗口宽度断点在组合期解析默认值。 */
+    private var bottomBarSizeState by mutableStateOf<BottomBarSize?>(null)
+    private var bottomBarFormState by mutableStateOf<BottomBarForm?>(null)
+
+    internal var bottomBarSizeUserModified: Boolean = false
+        private set
+    internal var bottomBarFormUserModified: Boolean = false
+        private set
+
+    /** 用户显式选择；写盘由设置页负责。 */
+    var bottomBarSize: BottomBarSize?
+        get() = bottomBarSizeState
+        set(value) {
+            bottomBarSizeState = value
+            bottomBarSizeUserModified = true
+        }
+
+    var bottomBarForm: BottomBarForm?
+        get() = bottomBarFormState
+        set(value) {
+            bottomBarFormState = value
+            bottomBarFormUserModified = true
+        }
+
+    /** 启动读盘：只落盘上已有的显式值，不把断点默认写回，也不覆盖用户刚改的选择。 */
+    internal fun applyStartupBottomBarSize(size: BottomBarSize?) {
+        if (!bottomBarSizeUserModified) bottomBarSizeState = size
+    }
+
+    internal fun applyStartupBottomBarForm(form: BottomBarForm?) {
+        if (!bottomBarFormUserModified) bottomBarFormState = form
     }
 }

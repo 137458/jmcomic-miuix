@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.CollapsibleSearchAction
@@ -43,8 +44,10 @@ import com.jm3.app.miuix.ui.glass.GlassFabItem
 import com.jm3.app.miuix.ui.glass.GlassFloatingActionBar
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassSearchInputField
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
+import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.core.Jm3Gateway
@@ -67,7 +70,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -375,14 +377,15 @@ fun HomeScreen(
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 100 }
     }
 
-    // 悬浮操作栏要让开底栏胶囊。底栏胶囊高 64dp、底边距为「8dp + 导航条 inset」，而页面内读到的
-    // inset 已被主框架消费为 0，算式无法直接换算；按手势导航真机实测标定：让出 76dp 时胶囊底距
-    // 底栏上沿只有 7dp，补到 85dp 即得 16dp 视觉间距。
+    // 悬浮操作栏要让开底栏胶囊。底边距为「8dp + 导航条 inset」，而页面内读到的 inset
+    // 已被主框架消费为 0，算式无法直接换算；按手势导航真机实测标定：底栏高度 + 21dp
+    // 即得 16dp 视觉间距。底栏档位切换后高度变化会自动跟随。
+    val bottomBarTokens = LocalGlassBottomBarTokens.current
     val floatingActionsBottom = if (LocalFloatingBarContentPadding.current == 0.dp) {
         // 宽屏改用侧栏、没有悬浮底栏，直接贴右下角
         16.dp
     } else {
-        85.dp
+        bottomBarTokens.height + 21.dp
     }
 
     fun openRandom() {
@@ -411,8 +414,9 @@ fun HomeScreen(
                 // 搜索栏固定于列表之外：与顶栏同处玻璃层；向下滚动内容时收起，向上滚动回展。
                 CollapsibleSearchBar(state = searchCollapse) {
                     SearchBar(
+                        insideMargin = DpSize(16.dp, 0.dp),
                         inputField = {
-                            InputField(
+                            GlassSearchInputField(
                                 query = query,
                                 onQueryChange = {
                                     query = it

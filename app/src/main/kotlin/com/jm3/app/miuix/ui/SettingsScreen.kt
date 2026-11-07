@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
@@ -31,6 +32,9 @@ import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.settings.BottomBarForm
+import com.jm3.core.settings.BottomBarPreferencePolicy
+import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
@@ -115,6 +119,10 @@ fun SettingsScreen(
 
     // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
     val paginationMode = deps.preferences.paginationMode
+    // 底栏尺寸/形态：偏好存 null 表示未显式设置，展示与生效都按同一处窗口断点解析
+    val widthDp = LocalConfiguration.current.screenWidthDp
+    val bottomBarSize = BottomBarPreferencePolicy.resolveSize(deps.preferences.bottomBarSize, widthDp)
+    val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.preferences.bottomBarForm, widthDp)
     // 阅读器设置：与分页模式同卡片，读写沿用现有设置存储，不新建二级页
     var readerHorizontal by remember { mutableStateOf(false) }
     var volumeKeyPaging by remember { mutableStateOf(true) }
@@ -146,6 +154,18 @@ fun SettingsScreen(
         // 列表页此时已被设置路由移出组合；作废旧模式的缓存，回来时才会按新语义从第 1 页加载。
         deps.sessionCache.forgetPages()
         scope.launch { deps.preferences.repository.setPaginationMode(mode) }
+    }
+
+    fun applyBottomBarSize(size: BottomBarSize) {
+        if (size == deps.preferences.bottomBarSize) return
+        deps.preferences.bottomBarSize = size
+        scope.launch { deps.preferences.repository.setBottomBarSize(size) }
+    }
+
+    fun applyBottomBarForm(form: BottomBarForm) {
+        if (form == deps.preferences.bottomBarForm) return
+        deps.preferences.bottomBarForm = form
+        scope.launch { deps.preferences.repository.setBottomBarForm(form) }
     }
 
     // 连点计数在窗口内归零，避免误触累计
@@ -294,6 +314,36 @@ fun SettingsScreen(
                         resolvePaginationSelection(deps.preferences.paginationMode, index)
                             ?.takeIf { it.changed }
                             ?.let { applyPaginationMode(it.mode) }
+                    },
+                )
+                OverlaySpinnerPreference(
+                    title = "底栏尺寸",
+                    summary = when (bottomBarSize) {
+                        BottomBarSize.STANDARD -> "标准高度与字号，信息密度更高"
+                        BottomBarSize.GENEROUS -> "更高的底栏，图标与标签同步放大"
+                    },
+                    items = BottomBarSize.entries.mapIndexed { index, size ->
+                        DropdownItem(text = size.label, selected = size == bottomBarSize)
+                    },
+                    selectedIndex = BottomBarSize.entries.indexOf(bottomBarSize),
+                    showValue = false,
+                    onSelectedIndexChange = { index ->
+                        BottomBarSize.entries.getOrNull(index)?.let { applyBottomBarSize(it) }
+                    },
+                )
+                OverlaySpinnerPreference(
+                    title = "底栏形态",
+                    summary = when (bottomBarForm) {
+                        BottomBarForm.FLOATING -> "圆角胶囊，与屏幕底边留出悬浮间隙"
+                        BottomBarForm.DOCKED -> "贴底通栏，紧接导航栏上方并撑满宽度"
+                    },
+                    items = BottomBarForm.entries.mapIndexed { index, form ->
+                        DropdownItem(text = form.label, selected = form == bottomBarForm)
+                    },
+                    selectedIndex = BottomBarForm.entries.indexOf(bottomBarForm),
+                    showValue = false,
+                    onSelectedIndexChange = { index ->
+                        BottomBarForm.entries.getOrNull(index)?.let { applyBottomBarForm(it) }
                     },
                 )
                 OverlaySpinnerPreference(
