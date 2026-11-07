@@ -1,6 +1,6 @@
 package com.jm3.core.settings
 
-/** 底栏尺寸档：普通保持原有数值，偏大整体更饱满。 */
+/** 底栏尺寸档：普通按设备自适应（手机标准、平板偏大），偏大在所有设备强制大值。 */
 enum class BottomBarSize(val label: String) {
     STANDARD("普通"),
     GENEROUS("偏大"),
@@ -15,7 +15,8 @@ enum class BottomBarForm(val label: String) {
 /**
  * 底栏默认值解析：未显式设置时按窗口宽度断点判断，而不是写死某一档。
  *
- * 尺寸与形态共用同一条断点判定；用户手动改过之后以用户选择为准，不再被断点覆盖。
+ * 尺寸档只有「偏大」是强制选择；「普通」与未设置同义，都按断点自适应
+ * （手机标准、平板偏大）。形态档未显式设置时走断点默认，用户选过则以其选择为准。
  * 非法持久化值由 [BottomBarSettings] 读成 null，同样走这里的断点默认。
  */
 object BottomBarPreferencePolicy {
@@ -25,15 +26,16 @@ object BottomBarPreferencePolicy {
 
     fun isTablet(widthDp: Int): Boolean = widthDp >= TABLET_MIN_WIDTH_DP
 
-    /** 手机默认普通，平板默认偏大。 */
+    /** 手机标准，平板偏大。 */
     fun defaultSize(isTablet: Boolean): BottomBarSize =
         if (isTablet) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
 
     /** 全设备默认悬浮。 */
     fun defaultForm(isTablet: Boolean): BottomBarForm = BottomBarForm.FLOATING
 
+    /** 偏大档强制大值；普通档与未设置都按设备自适应。 */
     fun resolveSize(explicit: BottomBarSize?, widthDp: Int): BottomBarSize =
-        explicit ?: defaultSize(isTablet(widthDp))
+        if (explicit == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else defaultSize(isTablet(widthDp))
 
     fun resolveForm(explicit: BottomBarForm?, widthDp: Int): BottomBarForm =
         explicit ?: defaultForm(isTablet(widthDp))

@@ -122,6 +122,9 @@ fun SettingsScreen(
     // 底栏尺寸/形态：偏好存 null 表示未显式设置，展示与生效都按同一处窗口断点解析
     val widthDp = LocalConfiguration.current.screenWidthDp
     val bottomBarSize = BottomBarPreferencePolicy.resolveSize(deps.preferences.bottomBarSize, widthDp)
+    // 尺寸档只有「偏大」是强制选择；「普通」与未设置同义，都表示按设备自适应
+    val bottomBarSizeOption =
+        if (deps.preferences.bottomBarSize == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
     val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.preferences.bottomBarForm, widthDp)
     // 阅读器设置：与分页模式同卡片，读写沿用现有设置存储，不新建二级页
     var readerHorizontal by remember { mutableStateOf(false) }
@@ -157,9 +160,14 @@ fun SettingsScreen(
     }
 
     fun applyBottomBarSize(size: BottomBarSize) {
-        if (size == deps.preferences.bottomBarSize) return
-        deps.preferences.bottomBarSize = size
-        scope.launch { deps.preferences.repository.setBottomBarSize(size) }
+        // 「普通」表示自适应，清空显式值回到断点解析；只有「偏大」是需要落盘的强制选择
+        val target = if (size == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else null
+        if (target == deps.preferences.bottomBarSize) return
+        deps.preferences.bottomBarSize = target
+        scope.launch {
+            if (target == null) deps.preferences.repository.clearBottomBarSize()
+            else deps.preferences.repository.setBottomBarSize(target)
+        }
     }
 
     fun applyBottomBarForm(form: BottomBarForm) {
@@ -318,14 +326,19 @@ fun SettingsScreen(
                 )
                 OverlaySpinnerPreference(
                     title = "底栏尺寸",
-                    summary = when (bottomBarSize) {
-                        BottomBarSize.STANDARD -> "标准高度与字号，信息密度更高"
-                        BottomBarSize.GENEROUS -> "更高的底栏，图标与标签同步放大"
+                    summary = if (bottomBarSizeOption == BottomBarSize.GENEROUS) {
+                        "偏大：所有设备都使用更高的底栏，图标与标签同步放大"
+                    } else {
+                        "普通：按设备自适应，手机用标准高度、平板用偏大高度" +
+                            "（当前设备按${if (bottomBarSize == BottomBarSize.GENEROUS) "偏大" else "标准"}显示）"
                     },
                     items = BottomBarSize.entries.mapIndexed { index, size ->
-                        DropdownItem(text = size.label, selected = size == bottomBarSize)
+                        DropdownItem(
+                            text = if (size == BottomBarSize.STANDARD) "普通（自适应）" else size.label,
+                            selected = size == bottomBarSizeOption,
+                        )
                     },
-                    selectedIndex = BottomBarSize.entries.indexOf(bottomBarSize),
+                    selectedIndex = BottomBarSize.entries.indexOf(bottomBarSizeOption),
                     showValue = false,
                     onSelectedIndexChange = { index ->
                         BottomBarSize.entries.getOrNull(index)?.let { applyBottomBarSize(it) }

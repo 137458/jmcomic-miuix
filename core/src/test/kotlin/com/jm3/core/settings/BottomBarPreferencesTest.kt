@@ -24,9 +24,33 @@ class BottomBarPreferencesTest {
     }
 
     @Test
-    fun `用户显式设置优先于断点`() {
+    fun `普通档按设备自适应`() {
+        // 普通档表示自适应：手机解析标准值，平板解析偏大值，而不是固定小号
+        assertEquals(BottomBarSize.STANDARD, BottomBarPreferencePolicy.resolveSize(BottomBarSize.STANDARD, 400))
+        assertEquals(BottomBarSize.GENEROUS, BottomBarPreferencePolicy.resolveSize(BottomBarSize.STANDARD, 800))
+    }
+
+    @Test
+    fun `偏大档强制大值`() {
+        // 用户选偏大后不再被设备断点降级
         assertEquals(BottomBarSize.GENEROUS, BottomBarPreferencePolicy.resolveSize(BottomBarSize.GENEROUS, 400))
-        assertEquals(BottomBarSize.STANDARD, BottomBarPreferencePolicy.resolveSize(BottomBarSize.STANDARD, 800))
+        assertEquals(BottomBarSize.GENEROUS, BottomBarPreferencePolicy.resolveSize(BottomBarSize.GENEROUS, 800))
+    }
+
+    @Test
+    fun `清空显式值后回落自适应`() = runBlocking {
+        val repo = InMemorySettingsRepository()
+        repo.setBottomBarSize(BottomBarSize.GENEROUS)
+        assertEquals(BottomBarSize.GENEROUS, BottomBarPreferencePolicy.resolveSize(repo.bottomBarSizeOrNull(), 400))
+
+        repo.clearBottomBarSize()
+        assertNull(repo.bottomBarSizeOrNull())
+        assertEquals(BottomBarSize.STANDARD, BottomBarPreferencePolicy.resolveSize(repo.bottomBarSizeOrNull(), 400))
+        assertEquals(BottomBarSize.GENEROUS, BottomBarPreferencePolicy.resolveSize(repo.bottomBarSizeOrNull(), 800))
+    }
+
+    @Test
+    fun `显式形态选择优先于断点`() {
         assertEquals(BottomBarForm.DOCKED, BottomBarPreferencePolicy.resolveForm(BottomBarForm.DOCKED, 400))
         assertEquals(BottomBarForm.DOCKED, BottomBarPreferencePolicy.resolveForm(BottomBarForm.DOCKED, 800))
     }

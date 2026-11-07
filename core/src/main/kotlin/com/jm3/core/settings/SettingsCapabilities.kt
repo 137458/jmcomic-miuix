@@ -55,6 +55,11 @@ interface BottomBarSettings : SettingsKeyStore {
         writeString(SettingsKeys.BOTTOM_BAR_SIZE, size.name)
     }
 
+    /** 清空显式尺寸选择，回到按设备自适应。 */
+    suspend fun clearBottomBarSize() {
+        writeString(SettingsKeys.BOTTOM_BAR_SIZE, null)
+    }
+
     suspend fun bottomBarFormOrNull(): BottomBarForm? =
         BottomBarForm.entries.firstOrNull { it.name == readString(SettingsKeys.BOTTOM_BAR_FORM) }
 

@@ -71,13 +71,13 @@ class BottomBarTokensTest {
         assertEquals(BottomBarSize.GENEROUS, tablet.size)
         assertEquals(BottomBarForm.FLOATING, tablet.form)
 
-        // 用户显式改过之后不再被断点覆盖
+        // 普通档等价自适应：平板上解析为偏大；显式形态选择仍按用户选择
         val tabletDocked = resolveBottomBarTokens(
             explicitSize = BottomBarSize.STANDARD,
             explicitForm = BottomBarForm.DOCKED,
             widthDp = 800,
         )
-        assertEquals(BottomBarSize.STANDARD, tabletDocked.size)
+        assertEquals(BottomBarSize.GENEROUS, tabletDocked.size)
         assertEquals(BottomBarForm.DOCKED, tabletDocked.form)
     }
 
