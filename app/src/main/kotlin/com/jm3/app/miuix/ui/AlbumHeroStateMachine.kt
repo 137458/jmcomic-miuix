@@ -98,6 +98,15 @@ fun HeroState.startBackward(
 }
 
 /**
+ * 反向飞行被取消、回弹到静息时调用：
+ * 把 albumId 放回 heroOrigins，保证下一次返回仍能起飞。
+ */
+fun HeroState.restoreOrigin(albumId: String): HeroState {
+    if (albumId in heroOrigins) return this
+    return copy(heroOrigins = heroOrigins + albumId)
+}
+
+/**
  * 飞行完成时调用：
  * 仅当 flight.id 与传入的 id 匹配时清空 flight。
  */

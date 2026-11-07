@@ -407,7 +407,9 @@ fun Jm3App() {
     val topAlbumId = (backStack.lastOrNull() as? Route.AlbumDetail)?.albumId
     LaunchedEffect(topAlbumId) {
         val previous = lastTopAlbumId
-        if (previous != null && previous != topAlbumId && heroHost.flight == null && heroHost.pending == null) {
+        // 上层作品仍然留在栈里（详情 A 里再进详情 B）不算退出，否则会给 A 起一段停在起点的反向飞行
+        val stillStacked = previous != null && backStack.any { (it as? Route.AlbumDetail)?.albumId == previous }
+        if (previous != null && !stillStacked && heroHost.flight == null && heroHost.pending == null) {
             heroHost.startBackward(previous)
         }
         lastTopAlbumId = topAlbumId

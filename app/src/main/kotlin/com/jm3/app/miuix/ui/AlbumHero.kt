@@ -184,7 +184,10 @@ class AlbumHeroHost {
      */
     fun isCoverHidden(albumId: String): Boolean {
         val current = flight ?: return false
-        return current.albumId == albumId && overlayReadyFlightId == current.id
+        if (current.albumId != albumId || overlayReadyFlightId != current.id) return false
+        // 反向飞行回到起点（进度 0）时覆盖层不再绘制，两端封面必须自己显示，否则会留下一帧空洞
+        if (backwardFlightId == current.id && backwardProgress <= 0f) return false
+        return true
     }
 
     /**
@@ -269,6 +272,11 @@ class AlbumHeroHost {
             backwardFlightId = null
             backwardProgress = 0f
         }
+    }
+
+    /** 反向飞行被取消、回弹回静息后由详情页调用：放回 origin，保证下一次返回仍能起飞。 */
+    fun restoreOrigin(albumId: String) {
+        state = state.restoreOrigin(albumId)
     }
 }
 
@@ -413,6 +421,10 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
     // 正向飞行自己播 tween；反向飞行的进度由详情页按返回手势写入，同一段形变正反两向。
     val backward = host.isBackwardFlight(flight.id)
     val progress = remember(flight.id) { Animatable(0f) }
+    val fraction = if (backward) host.backwardProgress else progress.value
+    // 反向飞行只在离开起点后才参与绘制：进度 0 时覆盖层与详情头图完全重合，由头图自己显示即可。
+    // 静止或回弹结束后覆盖层彻底退场，既不残留画面也不拦截触摸。
+    if (backward && fraction <= 0f) return
     LaunchedEffect(flight.id, backward) {
         if (backward) return@LaunchedEffect
         progress.animateTo(
@@ -429,7 +441,6 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     val title = host.albumTitle(flight.albumId)
     // 反向飞行的收场时机由返回手势决定：取消时详情页直接 finishFlight，提交时页面销毁时收场
-    val fraction = if (backward) host.backwardProgress else progress.value
     val rect = lerpHeroRect(flight.from, flight.to, fraction)
     val corner = lerpHeroCorner(flight.cornerFromDp, flight.cornerToDp, fraction)
     Box(modifier = modifier.fillMaxSize()) {

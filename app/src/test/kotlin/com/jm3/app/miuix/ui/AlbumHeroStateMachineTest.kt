@@ -174,4 +174,14 @@ class AlbumHeroStateMachineTest {
         val next = initial.resolveForward(headerRect = detailHeader, headerCornerDp = 16f)
         assertEquals(initial, next)
     }
+
+    @Test
+    fun restoreOrigin把取消的反向飞行origin放回且幂等() {
+        val initial = HeroState(heroOrigins = setOf("other"))
+        val restored = initial.restoreOrigin("a1")
+        assertTrue("a1" in restored.heroOrigins)
+        assertTrue("other" in restored.heroOrigins)
+        // 重复放回不改变状态
+        assertEquals(restored, restored.restoreOrigin("a1"))
+    }
 }

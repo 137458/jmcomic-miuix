@@ -72,6 +72,7 @@ import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.reader.ChapterGroups
 import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
+import top.yukonga.miuix.kmp.nav.transition.NavRole
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -184,36 +185,41 @@ fun AlbumDetailScreen(
     val navScope by rememberUpdatedState(LocalNavTransitionScope.current)
     if (heroHost != null) {
         LaunchedEffect(heroHost, albumId) {
-            // 进场期间 relativeDepth 也是负值（新页 -1 → 0），必须先等它归零，之后上升才是返回手势。
-            var settled = false
-            var retreating = false
-            snapshotFlow { (-navScope.relativeDepth).coerceIn(0f, 1f) }.collect { exit ->
-                if (!settled) {
-                    if (exit <= 0.01f) settled = true
+            // 起飞条件只能是“明确的退出信号”：返回手势进行中（gesture 非空），或本页已被标记为正在出栈（Outgoing）。
+            // 进场（Incoming）与静止（Top）都不满足，避免进场结束后误起一段停在进度 0、此后不再收场的反向飞行。
+            var startFailed = false
+            snapshotFlow {
+                val scope = navScope
+                val exit = (-scope.relativeDepth).coerceIn(0f, 1f)
+                exit to (scope.gesture != null || scope.role == NavRole.Outgoing)
+            }.collect { (exit, popping) ->
+                val own = heroHost.flight?.takeIf {
+                    it.albumId == albumId && heroHost.isBackwardFlight(it.id)
+                }
+                if (own != null) {
+                    if (exit <= 0.01f && !popping) {
+                        // 回弹到静息（取消手势或程序化返回尚未起步）：收场并把 origin 放回去，
+                        // 取消后不残留、下一次返回仍能起飞；提交中的飞行不在这里拆，等页面销毁时收场
+                        heroHost.finishFlight(own.id)
+                        heroHost.restoreOrigin(albumId)
+                        startFailed = false
+                    } else {
+                        heroHost.setBackwardProgress(own.id, exit)
+                    }
                     return@collect
                 }
                 if (exit <= 0.01f) {
-                    val flight = heroHost.flight
-                    if (retreating && flight != null && flight.albumId == albumId && heroHost.isBackwardFlight(flight.id)) {
-                        heroHost.finishFlight(flight.id)
-                    }
-                    retreating = false
+                    startFailed = false
                     return@collect
                 }
-                if (!retreating) {
-                    val current = heroHost.flight
-                    val alreadyFlying = current != null &&
-                        current.albumId == albumId &&
-                        heroHost.isBackwardFlight(current.id)
-                    if (!alreadyFlying) {
-                        if (current != null || heroHost.pending != null) return@collect
-                        // 拿不到两端矩形就不飞，退化成普通页转场
-                        if (!heroHost.startBackward(albumId)) {
-                            settled = false
-                            return@collect
-                        }
-                    }
-                    retreating = true
+                if (!popping || startFailed) return@collect
+                // 正向飞行或待飞尚未收场时先让它完成，避免两段飞行互相顶掉
+                if (heroHost.flight != null || heroHost.pending != null) return@collect
+                if (!heroHost.startBackward(albumId)) {
+                    // 拿不到两端矩形就不飞，退化成普通页转场；startBackward 会移除 origin，这里放回去
+                    startFailed = true
+                    heroHost.restoreOrigin(albumId)
+                    return@collect
                 }
                 heroHost.flight
                     ?.takeIf { it.albumId == albumId && heroHost.isBackwardFlight(it.id) }

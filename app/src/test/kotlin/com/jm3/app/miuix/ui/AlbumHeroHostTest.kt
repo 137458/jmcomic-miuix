@@ -174,8 +174,10 @@ class AlbumHeroHostTest {
         assertEquals(HERO_CARD_CORNER_DP, flight.cornerToDp)
         assertEquals(coverUrl, flight.url)
 
-        // 反向飞行同样要等覆盖层画出首帧才让位
+        // 反向飞行起点进度为 0：覆盖层尚未参与绘制，两端封面必须先显示自己
         assertFalse(host.isCoverHidden(albumId))
+        assertFalse(host.isHeaderHidden(albumId))
+        host.setBackwardProgress(flight.id, 0.35f)
         host.markOverlayReady(flight.id)
         assertTrue(host.isCoverHidden(albumId))
         assertTrue(host.isHeaderHidden(albumId))
@@ -331,6 +333,7 @@ class AlbumHeroHostTest {
         assertFalse(host.isCoverHidden(albumId))
         assertFalse(host.isHeaderHidden(albumId))
 
+        host.setBackwardProgress(host.flight!!.id, 0.2f)
         host.markOverlayReady(host.flight!!.id)
         assertTrue(host.isCoverHidden(albumId))
     }
@@ -382,5 +385,55 @@ class AlbumHeroHostTest {
         assertEquals(HERO_CARD_CORNER_DP, host.flight?.cornerFromDp)
         assertEquals(HERO_THUMB_CORNER_DP, host.flight?.cornerToDp)
         host.finishFlight(host.flight!!.id)
+    }
+
+    @Test
+    fun 反向飞行进度为0时两端封面保持可见且进度恢复后重新让位() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
+        host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
+        host.resolvePending()
+        host.finishFlight(host.flight!!.id)
+
+        assertTrue(host.startBackward(albumId))
+        val flightId = host.flight!!.id
+        // 进度 0 时覆盖层与头图完全重合，由两端封面自己显示，覆盖层不参与绘制
+        host.markOverlayReady(flightId)
+        assertFalse(host.isCoverHidden(albumId))
+        assertFalse(host.isHeaderHidden(albumId))
+
+        // 手势推开后才让位
+        host.setBackwardProgress(flightId, 0.5f)
+        assertTrue(host.isCoverHidden(albumId))
+        assertTrue(host.isHeaderHidden(albumId))
+
+        // 回弹回起点：覆盖层退场，两端封面恢复可见，不残留
+        host.setBackwardProgress(flightId, 0f)
+        assertFalse(host.isCoverHidden(albumId))
+        assertFalse(host.isHeaderHidden(albumId))
+    }
+
+    @Test
+    fun 反向飞行取消后恢复origin并允许再次起飞() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, HERO_CARD_CORNER_DP)
+        host.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP)
+        host.registerHeader(albumId, coverUrl, headerRect, HERO_CARD_CORNER_DP)
+        host.resolvePending()
+        host.finishFlight(host.flight!!.id)
+
+        assertTrue(host.startBackward(albumId))
+        val flightId = host.flight!!.id
+        host.setBackwardProgress(flightId, 0.4f)
+        // 取消回弹到静息：收场并把 origin 放回去
+        host.finishFlight(flightId)
+        host.restoreOrigin(albumId)
+        assertNull(host.flight)
+
+        // 下一次返回仍要能起飞
+        assertTrue(host.startBackward(albumId))
+        assertEquals(headerRect, host.flight?.from)
+        assertEquals(coverRect, host.flight?.to)
     }
 }
