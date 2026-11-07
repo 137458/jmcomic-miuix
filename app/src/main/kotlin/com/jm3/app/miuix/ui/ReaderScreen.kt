@@ -1,6 +1,10 @@
 package com.jm3.app.miuix.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.KeyEvent
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -50,6 +54,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.IntSize
@@ -80,9 +85,11 @@ import com.jm3.core.reader.ReaderPageProgress
 import com.jm3.core.reader.advancePrefetch
 import com.jm3.core.reader.jumpTo
 import com.jm3.core.reader.readerProgressOnExit
-import com.jm3.core.reader.resolveRestoredPage
+import com.jm3.core.reader.resolveInitialPage
 import com.jm3.core.reader.settleJump
 import com.jm3.core.reader.stepPages
+import com.jm3.core.settings.ReaderImageQuality
+import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ReaderSettings
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
@@ -144,6 +151,13 @@ object ReaderVolumeKeys {
     fun dispatch(keyCode: Int): Boolean = handler?.invoke(keyCode) ?: false
 }
 
+/** 从 Compose 的 Context 链上找宿主 Activity，窗口亮度与常亮标记都要打在它上面。 */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 sealed interface ReaderUiState {
     data object Loading : ReaderUiState
     data class Loaded(
@@ -172,6 +186,7 @@ internal fun readerLoadFailure(outcome: SessionOutcome<*>): ReaderUiState.Failed
 fun ReaderScreen(
     deps: ScreenDeps,
     photoId: String,
+    startPage: Int? = null,
     authCall: AuthCall,
     gateway: Jm3Gateway,
     downloadManager: DownloadManager,
@@ -280,6 +295,7 @@ fun ReaderScreen(
             ReaderPages(
                 deps = deps,
                 photo = s.photo,
+                startPage = startPage,
                 chapters = s.chapters,
                 chapterIndex = s.chapterIndex,
                 favoritedInit = s.favorited,
@@ -304,6 +320,7 @@ fun ReaderScreen(
 private fun ReaderPages(
     deps: ScreenDeps,
     photo: PhotoPages,
+    startPage: Int?,
     chapters: List<Chapter>,
     chapterIndex: Int,
     favoritedInit: Boolean,
@@ -322,6 +339,9 @@ private fun ReaderPages(
     val listState = rememberLazyListState()
     val pagerState = rememberPagerState { photo.images.size }
     val context = LocalPlatformContext.current
+    // 亮度与常亮直接作用在宿主 Activity 的窗口上
+    val activityContext = LocalContext.current
+    val activity = remember(activityContext) { activityContext.findActivity() }
     val windowSize = LocalWindowInfo.current.containerSize
     val scope = rememberCoroutineScope()
     val user by account.user.collectAsState()
@@ -333,15 +353,23 @@ private fun ReaderPages(
     // 只驱动请求尺寸的比例：仅当解码结果顶满请求框时才回填，避免一次回填就把内存缓存键换掉
     val decodeRatios = remember(photo) { mutableStateMapOf<Int, Float>() }
     var chapterRatioSeed by remember(photo) { mutableStateOf<Float?>(null) }
+    // 阅读器设置：首载后从设置存储读取，决定音量键、常亮、亮度、质量档与预取页数
+    var volumeKeyPaging by remember { mutableStateOf(true) }
+    var keepScreenOn by remember { mutableStateOf(true) }
+    var readerBrightness by remember { mutableIntStateOf(ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) }
+    var imageQuality by remember { mutableStateOf(ReaderImageQuality.STANDARD) }
+    var prefetchPages by remember { mutableIntStateOf(ReaderPreferences.DEFAULT_PREFETCH_PAGES) }
     // 左右模式整屏展示，解码尺寸按屏幕容器
-    val screenSize = remember(windowSize.width, windowSize.height) {
-        Size(windowSize.width.coerceAtLeast(1), windowSize.height.coerceAtLeast(1))
+    val screenSize = remember(windowSize.width, windowSize.height, imageQuality) {
+        // 横向整屏同样受质量档预算约束，预取与展示共用这一份尺寸
+        val fit = readerScreenDecodeSize(windowSize.width, windowSize.height, imageQuality.maxDecodePixels)
+        Size(fit.width, fit.height)
     }
     // 横向翻页整屏、纵向按容器宽，两套排布的解码尺寸不同
     var horizontal by remember { mutableStateOf(false) }
     // 已发起预加载的页号；翻页向前向后都只发一次。键随章节与布局基线走：
-    // 换话、页宽变了或切换纵横后，按旧尺寸解的页要重新发一次，否则新尺寸永远等不到解码
-    val prefetched = remember(photo, pageWidthPx, horizontal) { mutableSetOf<Int>() }
+    // 换话、页宽变了、切换纵横或换质量档后，按旧尺寸解的页要重新发一次，否则新尺寸永远等不到解码
+    val prefetched = remember(photo, pageWidthPx, horizontal, imageQuality) { mutableSetOf<Int>() }
     // 当前页是否处于放大态：放大时让出翻页手势，交给缩放层自己消费
     var pageZoomed by remember(photo) { mutableStateOf(false) }
     LaunchedEffect(pagerState.currentPage) { pageZoomed = false }
@@ -397,13 +425,47 @@ private fun ReaderPages(
         horizontal = settings.readerHorizontal()
         // 纵横模式决定跳页走 pager 还是列表，恢复进度必须等它落定
         horizontalReady = true
-        if (!settings.volumeKeyHintShown()) {
+        volumeKeyPaging = settings.readerVolumeKeyPaging()
+        keepScreenOn = settings.readerKeepScreenOn()
+        readerBrightness = settings.readerBrightness()
+        imageQuality = settings.readerImageQuality()
+        prefetchPages = settings.readerPrefetchPages()
+        if (volumeKeyPaging && !settings.volumeKeyHintShown()) {
             delay(1000)
             snackbarQueue.withLock {
                 snackbarHostState.showSnackbar("可使用音量键＋翻页")
             }
             settings.markVolumeKeyHintShown()
         }
+    }
+
+    // 阅读亮度作用在 Activity 窗口上：进入页面按设置应用，离开时恢复原值
+    val readerWindow = activity?.window
+    DisposableEffect(readerWindow) {
+        val originalBrightness = readerWindow?.attributes?.screenBrightness
+        onDispose {
+            if (readerWindow != null && originalBrightness != null) {
+                readerWindow.attributes = readerWindow.attributes.apply {
+                    screenBrightness = originalBrightness
+                }
+            }
+        }
+    }
+    LaunchedEffect(readerWindow, readerBrightness) {
+        if (readerWindow == null) return@LaunchedEffect
+        readerWindow.attributes = readerWindow.attributes.apply {
+            screenBrightness = if (readerBrightness == ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) {
+                WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            } else {
+                readerBrightness / 100f
+            }
+        }
+    }
+    // 阅读时保持亮屏：开关与窗口标记同生命周期
+    DisposableEffect(readerWindow, keepScreenOn) {
+        if (readerWindow == null || !keepScreenOn) return@DisposableEffect onDispose {}
+        readerWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { readerWindow.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
     /** 跳页：先让计划进入“跳页中”，再驱动 pager 或列表；落地后才恢复可见页回写。 */
@@ -433,12 +495,16 @@ private fun ReaderPages(
         // 先把旧进度读出来再放开写入闸门：反过来写会先落盘「第 1 页」，把要恢复的进度覆盖掉
         val saved = settings.readerLastPage(photo.photoId)
         progressRestored = true
-        val target = resolveRestoredPage(saved, photo.images.size)
-        if (saved == null || target == null) return@LaunchedEffect
+        // 详情页预览点第 i 张时优先直达该页；起始页无效再回退历史进度
+        val target = resolveInitialPage(startPage, saved, photo.images.size)
+        if (target == null) return@LaunchedEffect
         if (target != pagePlan.currentPage) goToPage(target)
+        // 直达预览页不提示「恢复进度」，只有回退历史进度时才提示
+        val directPage = startPage != null && startPage in 1..photo.images.size
+        if (directPage) return@LaunchedEffect
         snackbarQueue.withLock {
             snackbarHostState.showSnackbar(
-                if (saved.total != photo.images.size) {
+                if (saved != null && saved.total != photo.images.size) {
                     "章节页数已更新，已恢复到第 $target 页"
                 } else {
                     "已恢复到上次读到的第 $target 页"
@@ -615,7 +681,9 @@ private fun ReaderPages(
     // 音量键翻页：150ms 节流，与原生桥一致。
     // ReaderVolumeKeys.handler 是进程级单值，换章时新旧屏会短暂同时挂载，
     // 所以必须记住自己写入的实例，否则旧屏 onDispose 会把新屏刚写进去的 handler 清成 null。
-    DisposableEffect(Unit) {
+    DisposableEffect(volumeKeyPaging) {
+        // 关闭音量键翻页时直接不注册：按键回到系统，恢复音量调节
+        if (!volumeKeyPaging) return@DisposableEffect onDispose {}
         val mine: (Int) -> Boolean = { keyCode ->
             val delta = when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> -1
@@ -760,6 +828,7 @@ private fun ReaderPages(
                             knownRatio = pageRatios[image.index],
                             chapterSeed = chapterRatioSeed,
                             decodeRatio = decodeRatios[image.index],
+                            maxPixels = imageQuality.maxDecodePixels,
                         )
                         ReaderPage(
                             image = image,
@@ -995,10 +1064,20 @@ private fun ReaderPages(
 
     // 页码与预取共用一次订阅：纵向跟 LazyColumn、横向跟 Pager，只差请求尺寸；
     // 该发哪几页由 advancePrefetch 统一判定（页码收敛与去重都在那里），collectLatest 让快速滚动只处理最新页
-    LaunchedEffect(listState, pagerState, photo.images, imageLoader, pageWidthPx, screenSize, horizontal) {
+    LaunchedEffect(
+        listState,
+        pagerState,
+        photo.images,
+        imageLoader,
+        pageWidthPx,
+        screenSize,
+        horizontal,
+        imageQuality,
+        prefetchPages,
+    ) {
         snapshotFlow { if (horizontal) pagerState.currentPage else listState.firstVisibleItemIndex }
             .collectLatest { first ->
-                val next = advancePrefetch(pagePlan, first, prefetched)
+                val next = advancePrefetch(pagePlan, first, prefetched, ahead = prefetchPages)
                 pagePlan = next.plan
                 for (index in next.pages) {
                     prefetched += index
@@ -1013,6 +1092,7 @@ private fun ReaderPages(
                             knownRatio = pageRatios[page.index],
                             chapterSeed = chapterRatioSeed,
                             decodeRatio = decodeRatios[page.index],
+                            maxPixels = imageQuality.maxDecodePixels,
                         ).decodeSize.toCoilSize()
                     }
                     imageLoader.enqueue(

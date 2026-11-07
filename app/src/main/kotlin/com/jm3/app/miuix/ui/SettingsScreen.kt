@@ -32,9 +32,12 @@ import com.jm3.core.Jm3Gateway
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
+import com.jm3.core.settings.ReaderImageQuality
+import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ThemeMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -51,6 +54,7 @@ import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
+import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -63,6 +67,14 @@ private fun ThemeMode.label(): String = when (this) {
 private fun PaginationMode.label(): String = when (this) {
     PaginationMode.INFINITE -> "无限滚动"
     PaginationMode.CLICK -> "点击翻页"
+}
+
+private fun prefetchPagesLabel(pages: Int): String = if (pages == 0) "关闭" else "$pages 页"
+
+private fun ReaderImageQuality.summary(): String = when (this) {
+    ReaderImageQuality.ECONOMY -> "解码预算 2MP，最省流量与内存"
+    ReaderImageQuality.STANDARD -> "解码预算 4MP，清晰度与内存平衡"
+    ReaderImageQuality.HIGH -> "解码预算 6MP，优先清晰度"
 }
 
 /** 版本号连点触发隐藏诊断的阈值与窗口。 */
@@ -103,6 +115,13 @@ fun SettingsScreen(
 
     // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
     val paginationMode = deps.preferences.paginationMode
+    // 阅读器设置：与分页模式同卡片，读写沿用现有设置存储，不新建二级页
+    var readerHorizontal by remember { mutableStateOf(false) }
+    var volumeKeyPaging by remember { mutableStateOf(true) }
+    var keepScreenOn by remember { mutableStateOf(true) }
+    var readerBrightness by remember { mutableIntStateOf(ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) }
+    var imageQuality by remember { mutableStateOf(ReaderImageQuality.STANDARD) }
+    var prefetchPages by remember { mutableIntStateOf(ReaderPreferences.DEFAULT_PREFETCH_PAGES) }
     // 版本号连点进入隐藏诊断（原版 secret tap 进 /test）
     var diagnostics by remember { mutableStateOf(false) }
     var versionTapCount by remember { mutableIntStateOf(0) }
@@ -187,6 +206,16 @@ fun SettingsScreen(
         }
         loadDomainsDiagnostics()
     }
+    // 阅读器设置只在进入设置页时读一次：页面内的修改直接以本地状态为准并写盘
+    LaunchedEffect(Unit) {
+        val repository = deps.preferences.repository
+        readerHorizontal = repository.readerHorizontal()
+        volumeKeyPaging = repository.readerVolumeKeyPaging()
+        keepScreenOn = repository.readerKeepScreenOn()
+        readerBrightness = repository.readerBrightness()
+        imageQuality = repository.readerImageQuality()
+        prefetchPages = repository.readerPrefetchPages()
+    }
     LaunchedEffect(confirmClear) {
         if (confirmClear != null) {
             delay(3000)
@@ -265,6 +294,106 @@ fun SettingsScreen(
                         resolvePaginationSelection(deps.preferences.paginationMode, index)
                             ?.takeIf { it.changed }
                             ?.let { applyPaginationMode(it.mode) }
+                    },
+                )
+                OverlaySpinnerPreference(
+                    title = "默认阅读方向",
+                    summary = if (readerHorizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",
+                    items = listOf("纵向长图", "左右翻页").mapIndexed { index, label ->
+                        DropdownItem(text = label, selected = (index == 1) == readerHorizontal)
+                    },
+                    selectedIndex = if (readerHorizontal) 1 else 0,
+                    showValue = false,
+                    onSelectedIndexChange = { index ->
+                        val next = index == 1
+                        if (next != readerHorizontal) {
+                            readerHorizontal = next
+                            scope.launch { deps.preferences.repository.setReaderHorizontal(next) }
+                        }
+                    },
+                )
+                SwitchPreference(
+                    title = "音量键翻页",
+                    summary = "关闭后音量键恢复调节系统音量",
+                    checked = volumeKeyPaging,
+                    onCheckedChange = { enabled ->
+                        volumeKeyPaging = enabled
+                        scope.launch { deps.preferences.repository.setReaderVolumeKeyPaging(enabled) }
+                    },
+                )
+                SwitchPreference(
+                    title = "阅读时保持亮屏",
+                    summary = "阅读页不自动息屏",
+                    checked = keepScreenOn,
+                    onCheckedChange = { enabled ->
+                        keepScreenOn = enabled
+                        scope.launch { deps.preferences.repository.setReaderKeepScreenOn(enabled) }
+                    },
+                )
+                SliderPreference(
+                    value = if (readerBrightness == ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) {
+                        0f
+                    } else {
+                        readerBrightness.toFloat()
+                    },
+                    onValueChange = { raw ->
+                        readerBrightness = if (raw <= 0f) {
+                            ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS
+                        } else {
+                            raw.roundToInt().coerceIn(
+                                ReaderPreferences.MIN_BRIGHTNESS,
+                                ReaderPreferences.MAX_BRIGHTNESS,
+                            )
+                        }
+                    },
+                    title = "阅读亮度",
+                    summary = "0 表示跟随系统亮度，只在阅读页生效",
+                    valueText = if (readerBrightness == ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) {
+                        "跟随系统"
+                    } else {
+                        "${readerBrightness}%"
+                    },
+                    valueRange = 0f..ReaderPreferences.MAX_BRIGHTNESS.toFloat(),
+                    onValueChangeFinished = {
+                        scope.launch { deps.preferences.repository.setReaderBrightness(readerBrightness) }
+                    },
+                )
+                OverlaySpinnerPreference(
+                    title = "图片质量",
+                    summary = imageQuality.summary(),
+                    items = ReaderImageQuality.entries.map { quality ->
+                        DropdownItem(text = quality.label, selected = quality == imageQuality)
+                    },
+                    selectedIndex = ReaderImageQuality.entries.indexOf(imageQuality),
+                    showValue = false,
+                    onSelectedIndexChange = { index ->
+                        ReaderImageQuality.entries.getOrNull(index)?.let { quality ->
+                            if (quality != imageQuality) {
+                                imageQuality = quality
+                                scope.launch { deps.preferences.repository.setReaderImageQuality(quality) }
+                            }
+                        }
+                    },
+                )
+                OverlaySpinnerPreference(
+                    title = "预取页数",
+                    summary = if (prefetchPages == 0) {
+                        "不提前加载后续页"
+                    } else {
+                        "提前加载当前页之后的 $prefetchPages 页"
+                    },
+                    items = ReaderPreferences.PREFETCH_OPTIONS.map { pages ->
+                        DropdownItem(text = prefetchPagesLabel(pages), selected = pages == prefetchPages)
+                    },
+                    selectedIndex = ReaderPreferences.PREFETCH_OPTIONS.indexOf(prefetchPages),
+                    showValue = false,
+                    onSelectedIndexChange = { index ->
+                        ReaderPreferences.PREFETCH_OPTIONS.getOrNull(index)?.let { pages ->
+                            if (pages != prefetchPages) {
+                                prefetchPages = pages
+                                scope.launch { deps.preferences.repository.setReaderPrefetchPages(pages) }
+                            }
+                        }
                     },
                 )
             }

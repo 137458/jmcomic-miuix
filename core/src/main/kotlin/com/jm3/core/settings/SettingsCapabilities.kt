@@ -114,6 +114,44 @@ interface ReaderSettings : SettingsKeyStore, ReaderProgressSettings {
         writeBoolean(SettingsKeys.VOLUME_KEY_HINT, true)
     }
 
+    /** 音量键翻页；关闭时按键交还系统音量。 */
+    suspend fun readerVolumeKeyPaging(): Boolean = readBoolean(SettingsKeys.READER_VOLUME_KEY_PAGING) ?: true
+
+    suspend fun setReaderVolumeKeyPaging(enabled: Boolean) {
+        writeBoolean(SettingsKeys.READER_VOLUME_KEY_PAGING, enabled)
+    }
+
+    /** 阅读时保持亮屏。 */
+    suspend fun readerKeepScreenOn(): Boolean = readBoolean(SettingsKeys.READER_KEEP_SCREEN_ON) ?: true
+
+    suspend fun setReaderKeepScreenOn(enabled: Boolean) {
+        writeBoolean(SettingsKeys.READER_KEEP_SCREEN_ON, enabled)
+    }
+
+    /** 阅读亮度：-1 跟随系统，1..100 为窗口亮度。 */
+    suspend fun readerBrightness(): Int =
+        ReaderPreferences.normalizeBrightness(readInt(SettingsKeys.READER_BRIGHTNESS))
+
+    suspend fun setReaderBrightness(value: Int) {
+        writeInt(SettingsKeys.READER_BRIGHTNESS, ReaderPreferences.normalizeBrightness(value))
+    }
+
+    /** 图片质量档：省流/标准/高清。 */
+    suspend fun readerImageQuality(): ReaderImageQuality =
+        ReaderPreferences.normalizeImageQuality(readString(SettingsKeys.READER_IMAGE_QUALITY))
+
+    suspend fun setReaderImageQuality(quality: ReaderImageQuality) {
+        writeString(SettingsKeys.READER_IMAGE_QUALITY, quality.name)
+    }
+
+    /** 当前页之后预取的页数。 */
+    suspend fun readerPrefetchPages(): Int =
+        ReaderPreferences.normalizePrefetchPages(readInt(SettingsKeys.READER_PREFETCH_PAGES))
+
+    suspend fun setReaderPrefetchPages(pages: Int) {
+        writeInt(SettingsKeys.READER_PREFETCH_PAGES, ReaderPreferences.normalizePrefetchPages(pages))
+    }
+
     /** 末页追更引导的静默截止时间（epoch 毫秒，0 表示未静默）。 */
     suspend fun trackPromptMuteUntil(): Long = readLong(SettingsKeys.TRACK_PROMPT_MUTE_UNTIL) ?: 0L
 

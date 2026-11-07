@@ -39,6 +39,15 @@ fun resolveRestoredPage(saved: ReaderPageProgress?, totalPages: Int): Int? {
 }
 
 /**
+ * 首载页码：详情页预览点第 i 张时优先直达该页，起始页缺失或越界才回退历史进度。
+ */
+fun resolveInitialPage(startPage: Int?, saved: ReaderPageProgress?, totalPages: Int): Int? {
+    if (totalPages <= 0) return null
+    if (startPage != null && startPage in 1..totalPages) return startPage
+    return resolveRestoredPage(saved, totalPages)
+}
+
+/**
  * 离开阅读器时补记的进度。
  *
  * 进度恢复流程完成前不写：此时 [page] 还停在首帧的第 1 页，写盘会把尚未读取的旧进度覆盖掉。

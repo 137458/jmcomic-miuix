@@ -202,5 +202,44 @@ class ReaderPageLogicTest {
         val size = readerPageDecodeSize(Int.MAX_VALUE, 0.75f)
         assertTrue(size.width.toLong() * size.height <= MAX_PAGE_DECODE_PIXELS)
     }
+
+    @Test
+    fun 解码预算按图片质量档参数化() {
+        // 1440x2880 的页约 4.15 MP：省流档要缩到 2 MP 内，标准档缩到 4 MP 内，高清档原尺寸
+        val budgets = listOf(EconomyBudget, StandardBudget, HighBudget)
+        val sizes = budgets.map { readerPageDecodeSize(1440, 0.5f, maxPixels = it) }
+
+        sizes.forEachIndexed { index, size ->
+            assertTrue(
+                size.width.toLong() * size.height <= budgets[index],
+                "档位 ${budgets[index]} 解出 ${size.width}x${size.height}",
+            )
+        }
+        assertTrue(sizes[0].width < sizes[1].width)
+        assertTrue(sizes[1].width < sizes[2].width)
+        assertEquals(IntSize(1440, 2880), sizes[2])
+    }
+
+    @Test
+    fun 展示换算与预取共用同一质量档() {
+        val frame = readerPageFrame(
+            pageWidthPx = 1440,
+            knownRatio = 0.5f,
+            chapterSeed = null,
+            decodeRatio = 0.5f,
+            maxPixels = EconomyBudget,
+        )
+        assertTrue(frame.decodeSize.width.toLong() * frame.decodeSize.height <= EconomyBudget)
+        // 收敛后仍保持 1:2，且比不限制预算的原尺寸小
+        val actualRatio = frame.decodeSize.width.toFloat() / frame.decodeSize.height.toFloat()
+        assertTrue(abs(actualRatio - 0.5f) < 0.01f, "收敛后比例为 $actualRatio")
+        assertTrue(frame.decodeSize.width < readerPageDecodeSize(1440, 0.5f).width)
+    }
+
+    private companion object {
+        const val EconomyBudget = 2_000_000
+        const val StandardBudget = 4_000_000
+        const val HighBudget = 6_000_000
+    }
 }
 

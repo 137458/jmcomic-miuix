@@ -273,7 +273,7 @@ sealed interface Route : NavKey {
     ) : Route
 
     @Serializable
-    data class Reader(val photoId: String) : Route
+    data class Reader(val photoId: String, val startPage: Int? = null) : Route
 
     /** 小说列表（原版 Novels 页）。 */
     @Serializable
@@ -619,7 +619,9 @@ fun Jm3App() {
                             initialTitle = route.initialTitle,
                             initialCoverUrl = route.initialCoverUrl,
                             onBack = popBack,
-                            onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                            onOpenReader = { photoId, startPage ->
+                                backStack.add(Route.Reader(photoId, startPage))
+                            },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
                             onOpenLogin = { backStack.add(Route.Login) },
@@ -628,6 +630,7 @@ fun Jm3App() {
                             authCall = Jm3Graph.session.authCall,
                             history = Jm3Graph.library.history,
                             downloadManager = Jm3Graph.downloads.manager,
+                            downloadFiles = Jm3Graph.downloads.files,
                             account = Jm3Graph.session.account,
                             sessionCache = Jm3Graph.sessionCache,
                         )
@@ -636,6 +639,7 @@ fun Jm3App() {
                         ReaderScreen(
                             deps = deps,
                             photoId = route.photoId,
+                            startPage = route.startPage,
                             authCall = Jm3Graph.session.authCall,
                             gateway = Jm3Graph.api.gateway,
                             downloadManager = Jm3Graph.downloads.manager,

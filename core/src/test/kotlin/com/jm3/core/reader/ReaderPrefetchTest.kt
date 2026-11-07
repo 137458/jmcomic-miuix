@@ -96,6 +96,17 @@ class ReaderPrefetchTest {
     }
 
     @Test
+    fun `预取页数按设置档位生效`() {
+        val plan = ReaderPagePlan.initial(12)
+
+        assertEquals(listOf(1, 2), advancePrefetch(plan, firstVisibleIndex = 0, loaded = emptySet(), ahead = 2).pages)
+        assertEquals(
+            listOf(1, 2, 3, 4, 5),
+            advancePrefetch(plan, firstVisibleIndex = 0, loaded = emptySet(), ahead = 5).pages,
+        )
+    }
+
+    @Test
     fun `跳页进行中沿用原计划且不跳过目标页`() {
         val plan = jumpTo(ReaderPagePlan.initial(12), 7)
 

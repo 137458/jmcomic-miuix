@@ -134,4 +134,55 @@ class ReaderProgressCodecTest {
         assertEquals(15, resolveRestoredPage(ReaderPageProgress(page = 15, total = 15), totalPages = 30))
         assertEquals(5, resolveRestoredPage(ReaderPageProgress(page = 5, total = 20), totalPages = 20))
     }
+
+    @Test
+    fun 首载起始页_有效时优先于历史进度() {
+        // 详情页预览点第 4 张：即使历史进度是第 9 页，也要先到第 4 页
+        assertEquals(
+            4,
+            resolveInitialPage(
+                startPage = 4,
+                saved = ReaderPageProgress(page = 9, total = 20),
+                totalPages = 20,
+            ),
+        )
+    }
+
+    @Test
+    fun 首载起始页_越界时回退历史进度() {
+        assertEquals(
+            9,
+            resolveInitialPage(
+                startPage = 25,
+                saved = ReaderPageProgress(page = 9, total = 20),
+                totalPages = 20,
+            ),
+        )
+        assertEquals(
+            9,
+            resolveInitialPage(
+                startPage = 0,
+                saved = ReaderPageProgress(page = 9, total = 20),
+                totalPages = 20,
+            ),
+        )
+    }
+
+    @Test
+    fun 首载起始页_无起始页时回退历史进度() {
+        assertEquals(
+            9,
+            resolveInitialPage(
+                startPage = null,
+                saved = ReaderPageProgress(page = 9, total = 20),
+                totalPages = 20,
+            ),
+        )
+    }
+
+    @Test
+    fun 首载起始页_空章节没有可恢复页() {
+        assertNull(resolveInitialPage(startPage = 3, saved = null, totalPages = 0))
+        assertNull(resolveInitialPage(startPage = 1, saved = null, totalPages = 0))
+    }
 }

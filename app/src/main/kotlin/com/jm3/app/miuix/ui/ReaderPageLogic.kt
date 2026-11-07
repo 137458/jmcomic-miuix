@@ -20,10 +20,11 @@ import kotlin.math.sqrt
 internal const val DEFAULT_PAGE_ASPECT_RATIO = 3f / 4f
 
 /**
- * 单页解码的像素预算：4.0 MP。
+ * 单页解码的像素预算默认值：4.0 MP（标准质量档）。
  * 在 ARGB_8888 下约 16 MB，在 RGB_565 下约 8 MB。
  * 跟随真实比例后超长条幅的高度会失控（1080 宽、1:25 的条幅约 27000 px，原图直解要 116 MB），
  * 这里按面积等比收敛，宁可牺牲长条图的细节也不让单页位图突破预算。
+ * 实际预算由设置里的质量档给出，预取与展示必须传同一档。
  */
 internal const val MAX_PAGE_DECODE_PIXELS = 4_000_000
 
@@ -65,14 +66,18 @@ internal fun chapterSeedCandidate(detected: Float): Float? =
  *
  * 预取与展示必须共用同一份结果，否则内存缓存键不一致，预取等于白发。
  */
-internal fun readerPageDecodeSize(pageWidthPx: Int, aspectRatio: Float?): IntSize {
+internal fun readerPageDecodeSize(
+    pageWidthPx: Int,
+    aspectRatio: Float?,
+    maxPixels: Int = MAX_PAGE_DECODE_PIXELS,
+): IntSize {
     val width = pageWidthPx.coerceAtLeast(1)
     val ratio = aspectRatio?.takeIf { it.isUsableAspect() }
         ?: return IntSize(
             width,
             (width / DEFAULT_PAGE_ASPECT_RATIO).roundToInt().coerceAtLeast(1),
         )
-    return fitDecodeBudget(width, (width / ratio).roundToInt().coerceAtLeast(1))
+    return fitDecodeBudget(width, (width / ratio).roundToInt().coerceAtLeast(1), maxPixels)
 }
 
 /**
@@ -104,9 +109,10 @@ internal fun readerPageFrame(
     knownRatio: Float?,
     chapterSeed: Float?,
     decodeRatio: Float?,
+    maxPixels: Int = MAX_PAGE_DECODE_PIXELS,
 ): PageFrame = PageFrame(
     layoutRatio = readerPagePlaceholderRatio(knownRatio, chapterSeed),
-    decodeSize = readerPageDecodeSize(pageWidthPx, decodeRatio),
+    decodeSize = readerPageDecodeSize(pageWidthPx, decodeRatio, maxPixels),
 )
 
 /**
@@ -169,8 +175,15 @@ internal fun readerPageBackfill(
 /** 只有有限的正数才是可用比例：0、负数、NaN、Infinity 都会让页框或解码尺寸失真。 */
 private fun Float.isUsableAspect(): Boolean = isFinite() && this > 0f
 
+/** 横向整屏页的解码尺寸：整屏也受质量档像素预算约束。 */
+internal fun readerScreenDecodeSize(
+    width: Int,
+    height: Int,
+    maxPixels: Int = MAX_PAGE_DECODE_PIXELS,
+): IntSize = fitDecodeBudget(width.coerceAtLeast(1), height.coerceAtLeast(1), maxPixels)
+
 /** 把 (width, height) 等比收敛到单边上限与像素预算内，返回的边长至少 1 px。 */
-private fun fitDecodeBudget(width: Int, height: Int): IntSize {
+private fun fitDecodeBudget(width: Int, height: Int, maxPixels: Int): IntSize {
     var w = width.toFloat()
     var h = height.toFloat()
     val edge = MAX_PAGE_DECODE_EDGE_PX.toFloat()
@@ -180,8 +193,9 @@ private fun fitDecodeBudget(width: Int, height: Int): IntSize {
         h *= scale
     }
     val area = w * h
-    if (area > MAX_PAGE_DECODE_PIXELS) {
-        val scale = sqrt(MAX_PAGE_DECODE_PIXELS / area)
+    val budget = maxPixels.coerceAtLeast(1)
+    if (area > budget) {
+        val scale = sqrt(budget / area)
         // 面积分支向下取整：四舍五入会把乘积重新顶出预算（1000x4167 收敛成 980x4083 就超了 4 MP）
         return IntSize(
             floor(w * scale).toInt().coerceAtLeast(1),

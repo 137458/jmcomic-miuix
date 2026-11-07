@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import com.jm3.app.miuix.data.download.DownloadManager
@@ -56,11 +58,15 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.core.AlbumPreviewPlan
 import com.jm3.core.ChapterLabels
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.albumPreviewPlan
+import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
 import com.jm3.core.asAlbumDetailPort
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
@@ -68,6 +74,7 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CommentSegment
 import com.jm3.core.model.FavoriteFolderAction
+import com.jm3.core.model.PageImage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.reader.ChapterGroups
@@ -123,7 +130,7 @@ internal fun AlbumDetailScreen(
     initialTitle: String? = null,
     initialCoverUrl: String? = null,
     onBack: () -> Unit,
-    onOpenReader: (String) -> Unit,
+    onOpenReader: (photoId: String, startPage: Int?) -> Unit,
     onOpenAlbum: (String) -> Unit,
     onOpenSearch: (query: String, scope: SearchScope) -> Unit,
     onOpenLogin: () -> Unit,
@@ -132,12 +139,15 @@ internal fun AlbumDetailScreen(
     authCall: AuthCall,
     history: HistoryRepository,
     downloadManager: DownloadManager,
+    downloadFiles: DownloadStore,
     account: AccountManager,
     sessionCache: SessionCache,
 ) {
     val context = LocalContext.current
     val user by account.user.collectAsState()
     val scope = rememberCoroutineScope()
+    // 预览图与阅读页共用同一套图片加载器（含同一份缓存），避免再建第二个 loader
+    val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles)
 
     val stateHolder = remember(albumId) {
         AlbumDetailStateHolder(
@@ -265,6 +275,18 @@ internal fun AlbumDetailScreen(
     val effectiveTitle = initialTitle?.takeIf { it.isNotBlank() } ?: heroHost?.albumTitle(albumId)?.takeIf { it.isNotBlank() }
 
     val loadedDetail = (uiState.albumState as? AlbumUiState.Loaded)?.detail
+    // 详情页预览：登录且详情就绪后取首章前几页；未登录、无章节、请求失败一律隐藏整块
+    var previewPages by remember(albumId) { mutableStateOf<List<PageImage>>(emptyList()) }
+    val firstChapterId = loadedDetail?.chapters?.sortedBy { it.sortOrder }?.firstOrNull()?.id
+    LaunchedEffect(albumId, user?.uid, firstChapterId) {
+        previewPages = emptyList()
+        if (user == null || firstChapterId == null) return@LaunchedEffect
+        val outcome = authCall.call { gateway.photo(firstChapterId) }
+        previewPages = (outcome as? SessionOutcome.Ok)?.value?.images.orEmpty()
+    }
+    val previewPlan = remember(loadedDetail?.chapters, previewPages) {
+        loadedDetail?.let { albumPreviewPlan(it.chapters, previewPages) }
+    }
     val currentTitle = loadedDetail?.title?.takeIf { it.isNotBlank() } ?: effectiveTitle?.takeIf { it.isNotBlank() } ?: "详情"
     val resumeId = uiState.latestPhotoId?.takeIf { id -> loadedDetail?.chapters?.any { it.id == id } == true }
 
@@ -338,7 +360,7 @@ internal fun AlbumDetailScreen(
                                 likeBusy = uiState.likeBusy,
                                 tracking = uiState.tracking,
                                 trackingBusy = uiState.trackingBusy,
-                                onRead = { photoId -> onOpenReader(photoId) },
+                                onRead = { photoId -> onOpenReader(photoId, null) },
                                 onFavorite = { stateHolder.onFavoriteClick(user != null, onOpenLogin) },
                                 onLike = { stateHolder.like(user != null, onOpenLogin) },
                                 onTrack = { stateHolder.toggleTracking(user != null, onOpenLogin) },
@@ -386,6 +408,17 @@ internal fun AlbumDetailScreen(
                             }
                             is AlbumUiState.Loaded -> {
                                 val detail = s.detail
+                                // 预览紧随详情信息、位于章节之前：首章前几页，点第 i 张直达第 i 页
+                                previewPlan?.let { plan ->
+                                    item(key = "preview-title") { SmallTitle(text = "预览") }
+                                    item(key = "preview") {
+                                        AlbumPreviewRow(
+                                            plan = plan,
+                                            imageLoader = previewImageLoader,
+                                            onOpenPage = { page -> onOpenReader(plan.chapterId, page) },
+                                        )
+                                    }
+                                }
                                 // 章节是作品页核心内容，紧随头部；简介、标签、作者等次要信息后置
                                 item(key = "chapters-title") {
                                     SmallTitle(
@@ -411,7 +444,7 @@ internal fun AlbumDetailScreen(
                                                 selectionHaptic()
                                                 stateHolder.toggleGroup(group.id)
                                             },
-                                            onRead = { photoId -> onOpenReader(photoId) },
+                                            onRead = { photoId -> onOpenReader(photoId, null) },
                                             onDownload = { chapter, title ->
                                                 downloadChapter(chapter, detail.id, title)
                                             },
@@ -1151,6 +1184,36 @@ private fun CommentBody(item: CommentItem, onOpenAlbum: ((albumId: String) -> Un
                     },
                 )
             }
+        }
+    }
+}
+
+/** 详情页预览条：首章前几页缩略图，点第 i 张直达阅读器第 i 页。 */
+@Composable
+private fun AlbumPreviewRow(
+    plan: AlbumPreviewPlan,
+    imageLoader: ImageLoader,
+    onOpenPage: (page: Int) -> Unit,
+) {
+    // 加载中与失败都露出灰底占位，不出现白块或高度跳动
+    val placeholderColor = MiuixTheme.colorScheme.surfaceContainerHigh
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(plan.pages, key = { it.index }) { page ->
+            AsyncImage(
+                model = page,
+                imageLoader = imageLoader,
+                contentDescription = "预览第 ${page.index + 1} 页",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(width = 112.dp, height = 150.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(placeholderColor)
+                    .clickable { onOpenPage(page.index + 1) },
+            )
         }
     }
 }
