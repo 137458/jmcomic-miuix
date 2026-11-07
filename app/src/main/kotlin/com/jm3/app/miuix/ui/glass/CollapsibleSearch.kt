@@ -23,6 +23,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -31,9 +33,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.EdgeFadeWidth
 import com.jm3.app.miuix.ui.SearchHeaderCollapseLogic
 import com.jm3.app.miuix.ui.SearchHeaderCollapseState
 import com.jm3.app.miuix.ui.SearchHeaderIntent
+import com.jm3.app.miuix.ui.edgeFadeMask
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -48,9 +52,6 @@ private val CollapseScrollThreshold = 24.dp
 
 /** 向上滚动累计超过该净位移才开始展开；小于折叠阈值形成滞回，快速来回甩动不会反复翻转。 */
 private val ExpandScrollThreshold = 16.dp
-
-/** 折叠末段才开始淡出，前半程保持实心，避免文字被裁掉时出现半透明残影。 */
-private const val CollapseFadeStartProgress = 0.7f
 
 /** 吸附弹簧：阻尼略高、刚度中低，跟手松手后一次到位，不来回弹。 */
 private val SearchHeaderSettleSpec = spring<Float>(
@@ -203,8 +204,8 @@ fun rememberCollapsibleSearchState(
 }
 
 /**
- * 可折叠搜索栏插槽：按 [CollapsibleSearchState.progress] 在测量阶段收缩高度并裁剪，
- * 内容随之上移，不产生空位；末段淡出，避免半截文字硬裁。
+ * 可折叠搜索栏插槽：按 [CollapsibleSearchState.progress] 在测量阶段收缩高度，
+ * 内容随之上移并整体淡出，不产生空位，也不在收起途中留下一条硬切边。
  */
 @Composable
 fun CollapsibleSearchBar(
@@ -216,6 +217,8 @@ fun CollapsibleSearchBar(
         modifier = modifier
             .fillMaxWidth()
             .clipToBounds()
+            // 羽化层必须在收缩层外侧：它按插槽的实际高度铺遮罩，放在内侧会拿到展开前的整高
+            .collapseEdgeFade(state)
             .collapseSlot(state)
             .onSizeChanged { state.onMeasuredHeight(it.height) },
     ) {
@@ -260,7 +263,12 @@ fun Modifier.collapsibleSearchScroll(state: CollapsibleSearchState): Modifier {
     return nestedScroll(connection)
 }
 
-/** 在测量阶段收缩插槽：阅读 progress 只触发重新测量，滚动不重组。 */
+/**
+ * 在测量阶段收缩插槽：阅读 progress 只触发重新测量，滚动不重组。
+ *
+ * 只缩高度会在搜索框中间拦腰切一刀，因此同时按进度整体淡出：
+ * 被裁掉的部分已经接近透明，收起过程读作「向上滑出」而不是「被剪掉」。
+ */
 private fun Modifier.collapseSlot(state: CollapsibleSearchState): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
     val fullHeight = placeable.height
@@ -268,9 +276,25 @@ private fun Modifier.collapseSlot(state: CollapsibleSearchState): Modifier = lay
     layout(placeable.width, keepHeight) {
         // 内容整体上移被裁掉的高度：上沿滑入顶栏下方，下沿与后续页签贴合。
         placeable.placeWithLayer(0, keepHeight - fullHeight) {
-            val fade = ((state.progress - CollapseFadeStartProgress) /
-                (1f - CollapseFadeStartProgress)).coerceIn(0f, 1f)
-            alpha = 1f - fade
+            alpha = (1f - state.progress).coerceIn(0f, 1f)
         }
+    }
+}
+
+/**
+ * 裁切线的上缘羽化：羽化带宽度随进度从 0 增长到 [EdgeFadeWidth]，
+ * 展开完成时归零，完全展开的搜索框顶边保持清晰；遮罩底座与列表/弹窗羽化共用 [edgeFadeMask]。
+ */
+private fun Modifier.collapseEdgeFade(state: CollapsibleSearchState): Modifier = edgeFadeMask {
+    val progress = state.progress
+    if (progress <= 0f || size.height <= 0f) {
+        Brush.verticalGradient(0f to Color.Black, 1f to Color.Black)
+    } else {
+        val band = (EdgeFadeWidth.toPx() * progress).coerceAtMost(size.height)
+        Brush.verticalGradient(
+            0f to Color.Transparent,
+            (band / size.height).coerceIn(0f, 1f) to Color.Black,
+            1f to Color.Black,
+        )
     }
 }
