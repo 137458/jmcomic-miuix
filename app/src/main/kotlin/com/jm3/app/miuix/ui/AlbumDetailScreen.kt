@@ -1,6 +1,5 @@
 package com.jm3.app.miuix.ui
 
-import androidx.activity.compose.BackHandler
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -129,7 +128,6 @@ fun AlbumDetailScreen(
     downloadManager: DownloadManager,
     account: AccountManager,
 ) {
-    BackHandler(onBack = onBack)
     val context = LocalContext.current
     val user by account.user.collectAsState()
     val scope = rememberCoroutineScope()
