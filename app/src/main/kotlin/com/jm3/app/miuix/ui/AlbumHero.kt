@@ -76,6 +76,13 @@ class AlbumHeroHost {
      */
     private val headerReady = mutableStateMapOf<String, Boolean>()
 
+    /** 当前这段飞行是否是反向（详情 → 列表）；反向进度由返回手势直接驱动，不走独立动画。 */
+    private var backwardFlightId by mutableStateOf<Int?>(null)
+
+    /** 反向飞行进度：0 = 停在详情头图，1 = 落回列表卡片。只由能读到手势进度的详情页写入。 */
+    var backwardProgress by mutableStateOf(0f)
+        private set
+
     var state by mutableStateOf(HeroState())
         private set
 
@@ -84,6 +91,15 @@ class AlbumHeroHost {
 
     /** 正在播放的飞行；同一时刻最多一个。 */
     val flight: HeroPlan? get() = state.flight
+
+    /** 这段飞行是否是反向飞行（详情页退回列表）。 */
+    fun isBackwardFlight(id: Int): Boolean = backwardFlightId == id
+
+    /** 由详情页按返回手势进度写入；只认当前反向飞行，迟到的手势回调不会改动别的飞行。 */
+    fun setBackwardProgress(id: Int, progress: Float) {
+        if (backwardFlightId != id) return
+        backwardProgress = progress.coerceIn(0f, 1f)
+    }
 
     fun rememberAlbum(albumId: String, title: String? = null, coverUrl: String? = null) {
         if (title != null) titles[albumId] = title
@@ -192,6 +208,8 @@ class AlbumHeroHost {
         val oldPending = state.pending
         overlayReadyFlightId = null
         headerReady.remove(albumId)
+        backwardFlightId = null
+        backwardProgress = 0f
         state = state.startForward(
             id = ++sequence,
             albumId = albumId,
@@ -208,6 +226,10 @@ class AlbumHeroHost {
         val header = headerRects[current.albumId]
         val corner = headerCorners[current.albumId] ?: current.cornerFromDp
         state = state.resolveForward(headerRect = header, headerCornerDp = corner)
+        if (state.flight != null) {
+            backwardFlightId = null
+            backwardProgress = 0f
+        }
         return state.flight != null
     }
 
@@ -219,9 +241,10 @@ class AlbumHeroHost {
     fun startBackward(albumId: String): Boolean {
         val hRect = headerRects[albumId] ?: lastHeaderRects[albumId]
         val hCorner = headerCorners[albumId] ?: lastHeaderCorners[albumId] ?: 0f
+        val id = ++sequence
         overlayReadyFlightId = null
         state = state.startBackward(
-            id = ++sequence,
+            id = id,
             albumId = albumId,
             url = urls[albumId],
             headerRect = hRect,
@@ -229,6 +252,10 @@ class AlbumHeroHost {
             coverRect = coverRects[albumId],
             coverCornerDp = coverCorners[albumId] ?: 0f,
         )
+        if (state.flight?.id == id) {
+            backwardFlightId = id
+            backwardProgress = 0f
+        }
         lastHeaderRects.remove(albumId)
         lastHeaderCorners.remove(albumId)
         return state.flight != null
@@ -238,6 +265,10 @@ class AlbumHeroHost {
         state = state.finishFlight(id)
         // 只清自己那段飞行的就绪标记；id 不匹配说明这是过期回调，别动当前飞行的状态
         if (overlayReadyFlightId == id) overlayReadyFlightId = null
+        if (backwardFlightId == id) {
+            backwardFlightId = null
+            backwardProgress = 0f
+        }
     }
 }
 
@@ -379,8 +410,11 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
     }
 
     val flight = host.flight ?: return
+    // 正向飞行自己播 tween；反向飞行的进度由详情页按返回手势写入，同一段形变正反两向。
+    val backward = host.isBackwardFlight(flight.id)
     val progress = remember(flight.id) { Animatable(0f) }
-    LaunchedEffect(flight.id) {
+    LaunchedEffect(flight.id, backward) {
+        if (backward) return@LaunchedEffect
         progress.animateTo(
             targetValue = 1f,
             animationSpec = tween(durationMillis = HERO_FLIGHT_DURATION_MS, easing = FastOutSlowInEasing),
@@ -394,8 +428,10 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
 
     val density = LocalDensity.current
     val title = host.albumTitle(flight.albumId)
-    val rect = lerpHeroRect(flight.from, flight.to, progress.value)
-    val corner = lerpHeroCorner(flight.cornerFromDp, flight.cornerToDp, progress.value)
+    // 反向飞行的收场时机由返回手势决定：取消时详情页直接 finishFlight，提交时页面销毁时收场
+    val fraction = if (backward) host.backwardProgress else progress.value
+    val rect = lerpHeroRect(flight.from, flight.to, fraction)
+    val corner = lerpHeroCorner(flight.cornerFromDp, flight.cornerToDp, fraction)
     Box(modifier = modifier.fillMaxSize()) {
         // 覆盖层自己做形变，所以不叠 Coil 淡入（默认即关闭），否则会出现半透明重影
         AlbumCoverImage(

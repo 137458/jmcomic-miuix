@@ -24,13 +24,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,7 +71,9 @@ import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.reader.ChapterGroups
+import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -174,6 +179,56 @@ fun AlbumDetailScreen(
     }
 
     val heroHost = LocalAlbumHeroHost.current
+    // 预测性返回：用导航层暴露的 relativeDepth 直接驱动封面逆向飞行。
+    // 它与页面 alpha 同源（退出时 0 → -1），手势移动多少、封面回飞多少；取消回弹，提交时随页面销毁收场。
+    val navScope by rememberUpdatedState(LocalNavTransitionScope.current)
+    if (heroHost != null) {
+        LaunchedEffect(heroHost, albumId) {
+            // 进场期间 relativeDepth 也是负值（新页 -1 → 0），必须先等它归零，之后上升才是返回手势。
+            var settled = false
+            var retreating = false
+            snapshotFlow { (-navScope.relativeDepth).coerceIn(0f, 1f) }.collect { exit ->
+                if (!settled) {
+                    if (exit <= 0.01f) settled = true
+                    return@collect
+                }
+                if (exit <= 0.01f) {
+                    val flight = heroHost.flight
+                    if (retreating && flight != null && flight.albumId == albumId && heroHost.isBackwardFlight(flight.id)) {
+                        heroHost.finishFlight(flight.id)
+                    }
+                    retreating = false
+                    return@collect
+                }
+                if (!retreating) {
+                    val current = heroHost.flight
+                    val alreadyFlying = current != null &&
+                        current.albumId == albumId &&
+                        heroHost.isBackwardFlight(current.id)
+                    if (!alreadyFlying) {
+                        if (current != null || heroHost.pending != null) return@collect
+                        // 拿不到两端矩形就不飞，退化成普通页转场
+                        if (!heroHost.startBackward(albumId)) {
+                            settled = false
+                            return@collect
+                        }
+                    }
+                    retreating = true
+                }
+                heroHost.flight
+                    ?.takeIf { it.albumId == albumId && heroHost.isBackwardFlight(it.id) }
+                    ?.let { heroHost.setBackwardProgress(it.id, exit) }
+            }
+        }
+        DisposableEffect(heroHost, albumId) {
+            onDispose {
+                val flight = heroHost.flight
+                if (flight != null && flight.albumId == albumId && heroHost.isBackwardFlight(flight.id)) {
+                    heroHost.finishFlight(flight.id)
+                }
+            }
+        }
+    }
     val effectiveCoverUrl = initialCoverUrl?.takeIf { it.isNotBlank() } ?: heroHost?.coverUrl(albumId)?.takeIf { it.isNotBlank() }
     val effectiveTitle = initialTitle?.takeIf { it.isNotBlank() } ?: heroHost?.albumTitle(albumId)?.takeIf { it.isNotBlank() }
 

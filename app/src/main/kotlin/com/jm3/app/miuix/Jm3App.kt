@@ -82,7 +82,10 @@ import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
+import top.yukonga.miuix.kmp.nav.transition.NavTransitionScope
+import top.yukonga.miuix.kmp.nav.transition.navDirectionalTransition
 import top.yukonga.miuix.kmp.nav.transition.navGraphicsTransition
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -318,17 +321,41 @@ private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode 
     }
 
 /**
- * 详情页进场转场：只做 alpha，不做位移。
+ * 详情页页面变换：进入与退出共用同一段实现，只做 alpha，不做位移。
  *
  * 共享元素按根坐标插值，页面若整宽平移，头图的根坐标矩形每一帧都在变，飞行落点就会漂；
  * 所以这一页和它覆盖的那一页都不平移，位移感交给飞行的封面本身。
+ *
+ * relativeDepth 是有符号的：进入时新页 -1 → 0、旧页 0 → 1；退出时旧页 0 → -1、下页 1 → 0。
+ * 因此同一段 alpha 在两端天然是正反两向，且手势期间由手指直接驱动。
  */
-private val albumDetailTransition = navGraphicsTransition(
-    opaqueDepth = 1f,
-    dismissDirection = NavSwipeDirection.LeftToRight,
-) { scope ->
+private val albumDetailPageTransform: GraphicsLayerScope.(NavTransitionScope) -> Unit = { scope ->
     if (scope.relativeDepth <= 0f) alpha = (1f + scope.relativeDepth).coerceIn(0f, 1f)
 }
+
+/**
+ * 详情页转场：push / pop / predictivePop 各声明一段，pop 与 push 是同一个变换（镜像）。
+ *
+ * 对应 eh 项目 Navigation Compose 的 enterTransition / popEnterTransition 写法；
+ * Miuix Nav 没有 AnimatedContentTransitionScope，用 navDirectionalTransition 表达同一语义。
+ */
+private val albumDetailTransition = navDirectionalTransition(
+    navGraphicsTransition(
+        opaqueDepth = 1f,
+        dismissDirection = NavSwipeDirection.None,
+        block = albumDetailPageTransform,
+    ),
+    navGraphicsTransition(
+        opaqueDepth = 1f,
+        dismissDirection = NavSwipeDirection.None,
+        block = albumDetailPageTransform,
+    ),
+    navGraphicsTransition(
+        opaqueDepth = 1f,
+        dismissDirection = NavSwipeDirection.LeftToRight,
+        block = albumDetailPageTransform,
+    ),
+)
 
 @Composable
 fun Jm3App() {
@@ -365,9 +392,14 @@ fun Jm3App() {
     val snackbarHostState = remember { SnackbarHostState() }
     // 列表 → 详情的共享元素宿主：封面/头图矩形登记表与当前飞行都挂在它身上
     val heroHost = remember { AlbumHeroHost() }
-    // 退栈前先把头图送回列表卡片再出栈；任一端拿不到矩形时退化成普通退栈
+    // 退栈前先把头图送回列表卡片再出栈；任一端拿不到矩形时退化成普通退栈。
+    // 返回手势期间详情页已按手势进度起飞，这里只兜底非手势路径，避免同一段动画被重置。
     val popBack: () -> Unit = {
-        (backStack.lastOrNull() as? Route.AlbumDetail)?.let { heroHost.startBackward(it.albumId) }
+        (backStack.lastOrNull() as? Route.AlbumDetail)?.let { route ->
+            val flight = heroHost.flight
+            val alreadyFlying = flight != null && flight.albumId == route.albumId && heroHost.isBackwardFlight(flight.id)
+            if (!alreadyFlying) heroHost.startBackward(route.albumId)
+        }
         backStack.removeLastOrNull()
     }
     // 兜底：侧滑返回等不经过 popBack 的退出路径，靠栈顶变化补一次反向飞行
