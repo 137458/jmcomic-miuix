@@ -34,8 +34,6 @@ import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
-import com.jm3.core.update.ReleaseAsset
-import com.jm3.core.update.ReleaseInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -71,45 +69,6 @@ private fun PaginationMode.label(): String = when (this) {
 private const val DIAGNOSTIC_TAPS = 5
 private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
 
-/**
- * 测试更新弹窗用的固定假数据：只验证弹窗排版、Markdown 渲染与按钮文案，全程不触网。
- *
- * 故意带 .apk 资产与多级 Markdown，覆盖"有安装包"这条主分支；点按钮只弹提示，不会真的下载。
- */
-private val TEST_UPDATE_RELEASE = ReleaseInfo(
-    tagName = "v9.9.9-test",
-    name = "测试更新弹窗",
-    notes = """
-        ## 本次更新
-        - 新增：作品卡显示标签与车号
-        - 新增：社区论坛与本地书架显示封面
-        - 修复：连载追踪误报未登录
-
-        ### 说明
-        这是一条**测试**笔记，用于检查弹窗内的 Markdown 渲染、`行内代码` 与长文滚动。
-    """.trimIndent(),
-    htmlUrl = "https://github.com/jm3-app/jm3/releases",
-    publishedAt = "2026-01-01T00:00:00Z",
-    assets = listOf(
-        ReleaseAsset(
-            name = "jm3-9.9.9-test.apk",
-            size = 12_345_678L,
-            downloadUrl = "https://github.com/jm3-app/jm3/releases/download/v9.9.9-test/jm3-9.9.9-test.apk",
-        ),
-    ),
-)
-
-/**
- * 测试弹窗的"下载中"假状态：87/100 MB。
- *
- * 刻意取整除数，进度正好是 0.87，避免浮点乘法把 86.99999 截断成 86%（弹窗按截断取整）。
- */
-private val TEST_DOWNLOADING_STATE = UpdateDownloadState.Downloading(
-    downloaded = 87L * 1_000_000,
-    total = 100L * 1_000_000,
-    speedBytesPerSec = 2_500_000L,
-)
-
 /** 设置中心：主题/线路/数据管理/关于。内容一屏内可读，关于作为分区而非独立页。 */
 @Composable
 fun SettingsScreen(
@@ -141,13 +100,14 @@ fun SettingsScreen(
     var confirmClear by remember { mutableStateOf<String?>(null) }
     var showDisclaimer by remember { mutableStateOf(false) }
 
-    // 分页模式：与全局状态同步，切换后各列表页按新语义从第一页重载
-    var paginationMode by remember { mutableStateOf(Jm3Graph.paginationMode) }
+    // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
+    val paginationMode = Jm3Graph.preferences.paginationMode
     // 版本号连点进入隐藏诊断（原版 secret tap 进 /test）
     var diagnostics by remember { mutableStateOf(false) }
     var versionTapCount by remember { mutableIntStateOf(0) }
     // 测试更新弹窗：只在本地预览弹窗外观，不检查远端
     var showTestUpdateDialog by remember { mutableStateOf(false) }
+    var testRelease by remember { mutableStateOf(TEST_UPDATE_RELEASE) }
     var testDownloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
 
     val versionName = remember {
@@ -165,10 +125,9 @@ fun SettingsScreen(
     }
 
     fun applyPaginationMode(mode: PaginationMode) {
-        if (mode == paginationMode) return
-        paginationMode = mode
-        Jm3Graph.paginationMode = mode
-        scope.launch { Jm3Graph.settings.setPaginationMode(mode) }
+        if (mode == Jm3Graph.preferences.paginationMode) return
+        Jm3Graph.preferences.paginationMode = mode
+        scope.launch { Jm3Graph.preferences.repository.setPaginationMode(mode) }
     }
 
     // 连点计数在窗口内归零，避免误触累计
@@ -298,7 +257,9 @@ fun SettingsScreen(
                     selectedIndex = PaginationMode.entries.indexOf(paginationMode),
                     showValue = false,
                     onSelectedIndexChange = { index ->
-                        PaginationMode.entries.getOrNull(index)?.let(::applyPaginationMode)
+                        resolvePaginationSelection(Jm3Graph.preferences.paginationMode, index)
+                            ?.takeIf { it.changed }
+                            ?.let { applyPaginationMode(it.mode) }
                     },
                 )
             }
@@ -413,15 +374,26 @@ fun SettingsScreen(
                     title = "测试更新弹窗",
                     summary = "用固定假数据预览弹窗排版，不访问网络",
                     onClick = {
+                        testRelease = TEST_UPDATE_RELEASE
                         testDownloadState = UpdateDownloadState.Idle
                         showTestUpdateDialog = true
                     },
                 )
                 ArrowPreference(
                     title = "测试更新弹窗（下载中）",
-                    summary = "预览下载中的弹窗：主按钮显示 87% 进度，忽略不可点",
+                    summary = "预览下载中的弹窗：进度条、速度与取消下载入口",
                     onClick = {
+                        testRelease = TEST_UPDATE_RELEASE
                         testDownloadState = TEST_DOWNLOADING_STATE
+                        showTestUpdateDialog = true
+                    },
+                )
+                ArrowPreference(
+                    title = "测试更新弹窗（长日志）",
+                    summary = "用 60 行以上的假更新说明验证折叠、展开与滚动排版",
+                    onClick = {
+                        testRelease = TEST_LONG_UPDATE_RELEASE
+                        testDownloadState = UpdateDownloadState.Idle
                         showTestUpdateDialog = true
                     },
                 )
@@ -530,10 +502,10 @@ fun SettingsScreen(
         UpdateAvailableDialog(
             show = showTestUpdateDialog,
             currentVersion = versionName,
-            release = TEST_UPDATE_RELEASE,
+            release = testRelease,
             downloadState = testDownloadState,
             onDismiss = { showTestUpdateDialog = false },
-            // 不关弹窗：把假状态切成"下载中"，现场看主按钮怎么写进度
+            // 不关弹窗：把假状态切成"下载中"，现场看进度条与主按钮怎么写进度
             onDownload = {
                 testDownloadState = TEST_DOWNLOADING_STATE
                 scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会开始应用内下载") }
@@ -545,6 +517,14 @@ fun SettingsScreen(
             onIgnore = { version ->
                 showTestUpdateDialog = false
                 scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会把 $version 记为忽略版本") }
+            },
+            onCancelDownload = {
+                testDownloadState = UpdateDownloadState.Idle
+                scope.launch { snackbarHostState.showSnackbar("测试弹窗：已取消下载") }
+            },
+            onOpenUpdatePage = {
+                showTestUpdateDialog = false
+                onOpenUpdate()
             },
         )
     }

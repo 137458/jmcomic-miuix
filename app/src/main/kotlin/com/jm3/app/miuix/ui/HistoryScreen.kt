@@ -1,7 +1,6 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +26,7 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.settings.PaginationMode
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -80,6 +80,8 @@ fun HistoryScreen(
 ) {
     val repository = Jm3Graph.history
     val pageSize = 20
+    val mode = Jm3Graph.preferences.paginationMode
+    val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     // 在途、失败、是否还有下一页都由 PagedFeed 记；仓库按 pageSize 分页，满页即代表还有下一页
     var feed by remember { mutableStateOf(PagedFeed<HistoryEntry>()) }
@@ -104,6 +106,24 @@ fun HistoryScreen(
 
     LaunchedEffect(Unit) {
         loadFirstPage()
+    }
+    PaginationModeReloadEffect(mode) { loadFirstPage() }
+
+    /** 点击分页：仓库按固定页大小切片，整页替换后回到列表顶部。 */
+    fun jumpToPage(target: Int) {
+        val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
+        if (resolved == feed.page) return
+        scope.launch {
+            runCatching { repository.page(resolved, pageSize) }
+                .onSuccess {
+                    feed = PagedFeed<HistoryEntry>().replace(
+                        PageSlice(items = it, hasMore = it.size >= pageSize, page = resolved),
+                    ) { entry -> entry.photoId }
+                    state = HistoryListState.Loaded
+                    listState.scrollToItem(0)
+                }
+                .onFailure { state = HistoryListState.Failed(it.message ?: "历史加载失败") }
+        }
     }
 
     fun loadMore() {
@@ -144,6 +164,11 @@ fun HistoryScreen(
     }
 
     val albums = remember(feed.items) { feed.items.groupByAlbum() }
+
+    // 触底加载只在无限滚动模式生效；点击翻页由列表底部翻页条驱动。
+    if (!clickPaging) {
+        LoadMoreOnScroll(listState = listState, feed = feed, onLoadMore = ::loadMore)
+    }
 
     GlassScaffold(
         topBar = {
@@ -195,8 +220,16 @@ fun HistoryScreen(
                             )
                         }
                         if (albums.isNotEmpty()) {
-                            item(key = "load-more") {
-                                LoadMoreFooter(feed = feed, onLoadMore = ::loadMore)
+                            item(key = "pagination-footer") {
+                                if (clickPaging) {
+                                    PagerBar(
+                                        page = feed.page,
+                                        hasMore = feed.hasMore,
+                                        onPageChange = ::jumpToPage,
+                                    )
+                                } else {
+                                    LoadMoreFooter(feed = feed, onLoadMore = ::loadMore)
+                                }
                             }
                         }
                     }

@@ -1,0 +1,95 @@
+package com.jm3.core.reader
+
+import com.jm3.core.settings.InMemorySettingsRepository
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+
+/**
+ * 阅读进度的编解码契约：键里存的是 "page:total"，读到非法内容必须当作没有进度，
+ * 不能把损坏的数据还原成某一页。
+ */
+class ReaderProgressCodecTest {
+
+    @Test
+    fun 正常进度编码为页码冒号总页数() {
+        assertEquals("3:20", encodeReaderProgress(ReaderPageProgress(page = 3, total = 20)))
+    }
+
+    @Test
+    fun 编码解码往返保持页码与总页数() {
+        val progress = ReaderPageProgress(page = 7, total = 42)
+        assertEquals(progress, decodeReaderProgress(encodeReaderProgress(progress)))
+    }
+
+    @Test
+    fun 第二组往返数据同样成立() {
+        val progress = ReaderPageProgress(page = 1, total = 1)
+        assertEquals(progress, decodeReaderProgress(encodeReaderProgress(progress)))
+    }
+
+    @Test
+    fun 解码缺少分隔符返回空() {
+        assertNull(decodeReaderProgress("320"))
+    }
+
+    @Test
+    fun 解码非数字返回空() {
+        assertNull(decodeReaderProgress("abc:20"))
+    }
+
+    @Test
+    fun 解码多余分隔符返回空() {
+        assertNull(decodeReaderProgress("3:20:1"))
+    }
+
+    @Test
+    fun 解码空白返回空() {
+        assertNull(decodeReaderProgress("   "))
+    }
+
+    @Test
+    fun 解码空串返回空() {
+        assertNull(decodeReaderProgress(""))
+    }
+
+    @Test
+    fun 解码空值返回空() {
+        assertNull(decodeReaderProgress(null))
+    }
+
+    @Test
+    fun 解码零页返回空() {
+        assertNull(decodeReaderProgress("0:20"))
+    }
+
+    @Test
+    fun 解码零总页数返回空() {
+        assertNull(decodeReaderProgress("3:0"))
+    }
+
+    @Test
+    fun 解码负页返回空() {
+        assertNull(decodeReaderProgress("-1:20"))
+    }
+
+    @Test
+    fun 解码负总页数返回空() {
+        assertNull(decodeReaderProgress("3:-20"))
+    }
+
+    /**
+     * 设置层接缝：进度按漫画 id 各自成键，写进去再读出来必须是同一份进度，
+     * 没写过的漫画读出来必须是空而不是别的漫画的进度。
+     */
+    @Test
+    fun 设置层按漫画分别记住进度() = runTest {
+        val s = InMemorySettingsRepository()
+        s.setReaderLastPage("photo-1", ReaderPageProgress(page = 5, total = 20))
+        s.setReaderLastPage("photo-2", ReaderPageProgress(page = 2, total = 10))
+        assertEquals(ReaderPageProgress(page = 5, total = 20), s.readerLastPage("photo-1"))
+        assertEquals(ReaderPageProgress(page = 2, total = 10), s.readerLastPage("photo-2"))
+        assertNull(s.readerLastPage("photo-3"))
+    }
+}

@@ -116,7 +116,7 @@ fun LibraryScreen(
     var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     // 切换 Tab/筛选/搜索时旧响应不能覆盖新结果
     var loadToken by remember { mutableIntStateOf(0) }
-    val paginationMode = Jm3Graph.paginationMode
+    val paginationMode = Jm3Graph.preferences.paginationMode
     // 阻尼阈值略低：下拉更轻快即触发刷新，回弹仍由库的弹簧曲线负责
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()

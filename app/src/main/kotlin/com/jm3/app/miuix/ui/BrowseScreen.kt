@@ -35,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
@@ -55,11 +54,11 @@ import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -72,7 +71,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Weeks
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 浏览模式：分类走 categories/filter，榜单为排序+时间参数近似（同一接口）。 */
 enum class BrowseMode(val title: String) {
@@ -93,6 +91,8 @@ fun BrowseScreen(
     // 筛选口径与列表结果一起进缓存：切 tab 回来时按同一口径取回上次的结果，滚动位置才有内容可落
     val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
     val sessionCache = Jm3Graph.sessionCache
+    val pageMode = Jm3Graph.preferences.paginationMode
+    val clickPaging = pageMode == PaginationMode.CLICK
     var state by remember { mutableStateOf(sessionCache.stateOf(SessionListKey.Browse(pageKey))) }
     // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
     var refreshing by remember { mutableStateOf(false) }
@@ -152,6 +152,23 @@ fun BrowseScreen(
         }
     }
 
+    /** 点击分页：按目标页整页替换，沿用首屏缓存与筛选口径。 */
+    fun jumpToPage(target: Int) {
+        val current = (state as? ListState.Loaded)?.feed ?: return
+        val resolved = pagerTargetPage(current.page, target, current.pageCount)
+        if (resolved == current.page) return
+        requestToken++
+        val token = requestToken
+        val key = pageKey
+        publish(key, ListState.Loading)
+        scope.launch {
+            val next = authCall.call { gateway.browse(filter(), resolved) }.asListState("加载失败")
+            if (token != requestToken) return@launch
+            publish(key, next)
+            if (mode == BrowseMode.RANK) gridState.scrollToItem(0) else listState.scrollToItem(0)
+        }
+    }
+
     fun loadMore() {
         val loaded = state as? ListState.Loaded ?: return
         val requested = loaded.feed.beginLoadMore()
@@ -204,9 +221,11 @@ fun BrowseScreen(
         refresh()
     }
 
+    PaginationModeReloadEffect(pageMode) { refresh() }
+
     // 触底加载：分类页跟逐行列表，榜单页跟两列瀑布流，判据由 PagedFeed 统一给出
     val browsing = state as? ListState.Loaded
-    if (browsing != null) {
+    if (!clickPaging && browsing != null) {
         if (mode == BrowseMode.RANK) {
             LoadMoreOnScroll(gridState = gridState, feed = browsing.feed, onLoadMore = ::loadMore)
         } else {
@@ -336,6 +355,8 @@ fun BrowseScreen(
                     onRetry = ::refresh,
                     onLoadMore = ::loadMore,
                     onOpenAlbum = onOpenAlbum,
+                    clickPaging = clickPaging,
+                    onPageChange = ::jumpToPage,
                 )
             }
         } else {
@@ -424,6 +445,8 @@ fun BrowseScreen(
                             feed = s.feed,
                             onLoadMore = ::loadMore,
                             onOpenAlbum = onOpenAlbum,
+                            clickPaging = clickPaging,
+                            onPageChange = ::jumpToPage,
                         )
                     }
                 }
@@ -462,20 +485,19 @@ fun BrowseScreen(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
                     items(feed.items, key = { it.id }) { result ->
-                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                            BasicComponent(
-                                title = result.title,
-                                summary = listOf(
-                                    result.authors.joinToString(" "),
-                                    result.tags.joinToString(" "),
-                                ).filter { it.isNotBlank() }
-                                    .joinToString(" · ")
-                                    .ifBlank { null },
-                                onClick = {
-                                    showWeeklySheet = false
-                                    onOpenAlbum(result.id)
-                                },
-                            )
+                        WorkRowCard(
+                            coverUrl = result.coverUrl,
+                            title = result.title,
+                            onClick = {
+                                showWeeklySheet = false
+                                onOpenAlbum(result.id)
+                            },
+                            albumId = result.id,
+                            subtitle = result.authors.joinToString(" / ").ifBlank { null },
+                            category = result.category,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        ) {
+                            WorkCardMetaRow(tags = result.tags, albumCode = result.id)
                         }
                     }
                     if (feed.hasMore) {
@@ -537,6 +559,8 @@ private fun TagResultSection(
 ) {
     var state by remember(keyword, order) { mutableStateOf<ListState>(ListState.Loading) }
     var requestToken by remember(keyword, order) { mutableIntStateOf(0) }
+    val pageMode = Jm3Graph.preferences.paginationMode
+    val clickPaging = pageMode == PaginationMode.CLICK
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     // 从其他 tab 切回时列表已恢复滚动位置，顶栏需要补同步
@@ -550,6 +574,23 @@ private fun TagResultSection(
                 .asListState("加载失败")
             if (token != requestToken) return@launch
             state = next
+        }
+    }
+
+    /** 点击分页：按目标页整页替换，检索口径不变。 */
+    fun jumpToPage(target: Int) {
+        val current = (state as? ListState.Loaded)?.feed ?: return
+        val resolved = pagerTargetPage(current.page, target, current.pageCount)
+        if (resolved == current.page) return
+        requestToken++
+        val token = requestToken
+        state = ListState.Loading
+        scope.launch {
+            val next = authCall.call { gateway.search(keyword, resolved, order, SearchScope.TAG) }
+                .asListState("加载失败")
+            if (token != requestToken) return@launch
+            state = next
+            listState.scrollToItem(0)
         }
     }
 
@@ -571,9 +612,10 @@ private fun TagResultSection(
     }
 
     LaunchedEffect(keyword, order) { load() }
+    PaginationModeReloadEffect(pageMode) { load() }
 
     val loaded = state as? ListState.Loaded
-    if (loaded != null) {
+    if (!clickPaging && loaded != null) {
         LoadMoreOnScroll(listState = listState, feed = loaded.feed, onLoadMore = ::loadMore)
     }
 
@@ -603,6 +645,8 @@ private fun TagResultSection(
                     feed = s.feed,
                     onLoadMore = ::loadMore,
                     onOpenAlbum = onOpenAlbum,
+                    clickPaging = clickPaging,
+                    onPageChange = ::jumpToPage,
                 )
             }
         }
@@ -645,6 +689,8 @@ private fun RankResultGrid(
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
+    clickPaging: Boolean = false,
+    onPageChange: ((Int) -> Unit)? = null,
 ) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(RANK_GRID_MIN_CARD_WIDTH),
@@ -680,6 +726,8 @@ private fun RankResultGrid(
                 feed = state.feed,
                 onLoadMore = onLoadMore,
                 onOpenAlbum = onOpenAlbum,
+                clickPaging = clickPaging,
+                onPageChange = onPageChange,
             )
         }
     }

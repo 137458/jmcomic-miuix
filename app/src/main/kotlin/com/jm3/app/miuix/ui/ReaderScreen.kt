@@ -59,6 +59,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
@@ -74,8 +75,10 @@ import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.reader.ReaderPagePlan
+import com.jm3.core.reader.ReaderPageProgress
 import com.jm3.core.reader.advancePrefetch
 import com.jm3.core.reader.jumpTo
+import com.jm3.core.reader.resolveRestoredPage
 import com.jm3.core.reader.settleJump
 import com.jm3.core.reader.stepPages
 import com.jm3.core.settings.ReaderSettings
@@ -125,6 +128,9 @@ import top.yukonga.miuix.kmp.utils.pagerGestureOverride
 import top.yukonga.miuix.kmp.utils.springAnimateToPage
 
 private const val COMMENT_MAX_LENGTH = 200
+
+/** 阅读进度落盘前的静置时长：翻页停下来才写，避免连滚时逐页写设置存储。 */
+private const val PROGRESS_SAVE_DEBOUNCE_MS = 400L
 private const val VOLUME_THROTTLE_MS = 150L
 private const val TRACK_MUTE_DAYS_MS = 3L * 24 * 60 * 60 * 1000
 
@@ -338,6 +344,13 @@ private fun ReaderPages(
     var zoomOverlayIndex by remember(photo) { mutableStateOf<Int?>(null) }
     // 页码的唯一真源：顶栏、跳页器、音量键与预取都从这份计划取页码，跳页冻结也在这里
     var pagePlan by remember(photo) { mutableStateOf(ReaderPagePlan.initial(photo.images.size)) }
+    // 阅读进度：纵横模式落定后才恢复上次页码，恢复只做一次
+    var horizontalReady by remember { mutableStateOf(false) }
+    var progressRestored by remember(photo.photoId) { mutableStateOf(false) }
+    // 实际恢复到的页码：为 null 表示本次没有历史进度可恢复
+    var restoredPage by remember(photo.photoId) { mutableStateOf<Int?>(null) }
+    // 离开阅读器时补记当前页：状态对象在离开时仍可读
+    val latestPage by rememberUpdatedState(pagePlan.currentPage)
     var showPageSheet by remember { mutableStateOf(false) }
     var showChapterSheet by remember { mutableStateOf(false) }
     var showCommentSheet by remember { mutableStateOf(false) }
@@ -373,10 +386,15 @@ private fun ReaderPages(
 
     LaunchedEffect(Unit) {
         horizontal = settings.readerHorizontal()
+        // 纵横模式决定跳页走 pager 还是列表，恢复进度必须等它落定
+        horizontalReady = true
         if (!settings.volumeKeyHintShown()) {
             delay(1000)
-            snackbarHostState.showSnackbar("可使用音量键＋翻页")
-            settings.markVolumeKeyHintShown()
+            // 恢复进度的提示更贴近当前动作，先让位给它；音量键提示留到下次
+            if (restoredPage == null) {
+                snackbarHostState.showSnackbar("可使用音量键＋翻页")
+                settings.markVolumeKeyHintShown()
+            }
         }
     }
 
@@ -395,6 +413,47 @@ private fun ReaderPages(
             scope.launch {
                 listState.scrollToItem(target - 1)
                 pagePlan = settleJump(pagePlan, target)
+            }
+        }
+    }
+
+    // 恢复上次读到的页码：等纵横模式落定后再跳，避免恢复动作又被布局回写覆盖。
+    // progressRestored 同时作为「已尝试恢复」的闸门，进度写入要等它翻转后才允许，
+    // 否则首帧的「第 1 页」会先写掉还没读的旧进度。
+    LaunchedEffect(horizontalReady, photo.photoId) {
+        if (!horizontalReady || progressRestored) return@LaunchedEffect
+        // 先把旧进度读出来再放开写入闸门：反过来写会先落盘「第 1 页」，把要恢复的进度覆盖掉
+        val saved = settings.readerLastPage(photo.photoId)
+        progressRestored = true
+        val target = resolveRestoredPage(saved, photo.images.size)
+        if (target == null || target == pagePlan.currentPage) return@LaunchedEffect
+        restoredPage = target
+        goToPage(target)
+        snackbarHostState.showSnackbar("已恢复到上次读到的第 $target 页")
+    }
+
+    // 页码一变就记进度：读到最后一页同样落盘。
+    // 落盘前等一下翻页停下来，避免长图连滚时把每一页都写一遍设置存储
+    LaunchedEffect(pagePlan.currentPage, photo.images.size, progressRestored) {
+        if (!progressRestored || photo.images.isEmpty()) return@LaunchedEffect
+        delay(PROGRESS_SAVE_DEBOUNCE_MS)
+        settings.setReaderLastPage(
+            photo.photoId,
+            ReaderPageProgress(page = pagePlan.currentPage, total = photo.images.size),
+        )
+    }
+
+    // 离开阅读器时补记当前页：此时协程作用域已取消，挂在进程作用域上才写得完
+    DisposableEffect(photo.photoId) {
+        onDispose {
+            val total = photo.images.size
+            if (total > 0) {
+                Jm3Graph.appScope.launch {
+                    settings.setReaderLastPage(
+                        photo.photoId,
+                        ReaderPageProgress(page = latestPage, total = total),
+                    )
+                }
             }
         }
     }

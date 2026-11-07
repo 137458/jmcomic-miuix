@@ -284,6 +284,7 @@ fun UpdateScreen(onBack: () -> Unit) {
                 ignoredVersion = version
                 scope.launch { Jm3Graph.settings.setIgnoredUpdateVersion(version) }
             },
+            onCancelDownload = { Jm3Graph.updateDownloader.cancel() },
         )
     }
 }

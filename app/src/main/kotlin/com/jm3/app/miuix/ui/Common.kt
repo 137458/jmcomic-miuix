@@ -58,7 +58,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImagePainter
@@ -474,6 +473,8 @@ fun LazyListScope.searchResultItems(
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     ranked: Boolean = false,
+    clickPaging: Boolean = false,
+    onPageChange: ((Int) -> Unit)? = null,
 ) {
     if (feed.items.isEmpty()) {
         item(key = "empty") {
@@ -489,8 +490,19 @@ fun LazyListScope.searchResultItems(
     }
     // 单页结果（如每周必看）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
     if (feed.items.isNotEmpty() && (feed.pageCount ?: 1) > 1) {
-        item(key = "load-more") {
-            LoadMoreFooter(feed = feed, onLoadMore = onLoadMore)
+        if (clickPaging && onPageChange != null) {
+            item(key = "pager") {
+                PagerBar(
+                    page = feed.page,
+                    totalPages = feed.pageCount,
+                    hasMore = feed.hasMore,
+                    onPageChange = onPageChange,
+                )
+            }
+        } else {
+            item(key = "load-more") {
+                LoadMoreFooter(feed = feed, onLoadMore = onLoadMore)
+            }
         }
     }
 }
@@ -688,6 +700,8 @@ fun LazyStaggeredGridScope.rankResultGrid(
     feed: PagedFeed<SearchResult>,
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
+    clickPaging: Boolean = false,
+    onPageChange: ((Int) -> Unit)? = null,
 ) {
     if (feed.items.isEmpty()) {
         item(key = "rank-empty", span = StaggeredGridItemSpan.FullLine) {
@@ -708,8 +722,19 @@ fun LazyStaggeredGridScope.rankResultGrid(
     }
     // 单页结果（筛选后只有一页）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
     if (feed.items.isNotEmpty() && (feed.pageCount ?: 1) > 1) {
-        item(key = "rank-load-more", span = StaggeredGridItemSpan.FullLine) {
-            LoadMoreFooter(feed = feed, onLoadMore = onLoadMore)
+        if (clickPaging && onPageChange != null) {
+            item(key = "rank-pager", span = StaggeredGridItemSpan.FullLine) {
+                PagerBar(
+                    page = feed.page,
+                    totalPages = feed.pageCount,
+                    hasMore = feed.hasMore,
+                    onPageChange = onPageChange,
+                )
+            }
+        } else {
+            item(key = "rank-load-more", span = StaggeredGridItemSpan.FullLine) {
+                LoadMoreFooter(feed = feed, onLoadMore = onLoadMore)
+            }
         }
     }
 }

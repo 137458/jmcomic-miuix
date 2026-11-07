@@ -1,7 +1,6 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -21,7 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -37,12 +36,12 @@ import com.jm3.core.model.TagFavorite
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -106,6 +105,9 @@ fun FavoritesScreen(
     var tagInput by remember { mutableStateOf("") }
     var tagDeleteTarget by remember { mutableStateOf<String?>(null) }
 
+    val mode = Jm3Graph.preferences.paginationMode
+    val clickPaging = mode == PaginationMode.CLICK
+    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
     /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成「去登录」）。 */
@@ -147,6 +149,30 @@ fun FavoritesScreen(
                 SessionOutcome.Expired -> applyFailure(outcome, hasContent = false, failureMessage = "")
 
                 is SessionOutcome.Failed -> applyFailure(outcome, hasContent = false, failureMessage = "收藏加载失败")
+            }
+        }
+    }
+
+    /** 点击分页：按目标页整页替换，页码换算复用通用判据。 */
+    fun jumpToPage(target: Int) {
+        val current = feed ?: return
+        val resolved = pagerTargetPage(current.page, target, current.pageCount)
+        if (resolved == current.page) return
+        val targetFolderId = folderId
+        scope.launch {
+            val outcome = authCall.call { Jm3Graph.gateway.favorites(targetFolderId, resolved) }
+            if (targetFolderId != folderId) return@launch
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    val next = outcome.value
+                    if (next.folders.isNotEmpty()) folders = next.folders
+                    feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
+                    listState.scrollToItem(0)
+                }
+
+                SessionOutcome.Expired -> applyFailure(outcome, hasContent = true, failureMessage = "")
+
+                is SessionOutcome.Failed -> applyFailure(outcome, hasContent = true, failureMessage = "收藏翻页失败")
             }
         }
     }
@@ -345,6 +371,8 @@ fun FavoritesScreen(
         loadFirstPage()
     }
 
+    PaginationModeReloadEffect(mode) { loadFirstPage() }
+
     // 首次切到标签页才加载；登录态变化时清空旧数据，避免登出后残留
     LaunchedEffect(tabIndex, user?.uid) {
         if (user == null) {
@@ -393,6 +421,12 @@ fun FavoritesScreen(
             .forEach { add(it) }
     }
     val currentFolderName = folderOptions.firstOrNull { it.first == folderId }?.second ?: "全部"
+    if (!clickPaging) {
+        val scrollFeed = feed
+        if (scrollFeed != null) {
+            LoadMoreOnScroll(listState = listState, feed = scrollFeed, onLoadMore = ::loadMore)
+        }
+    }
 
     GlassScaffold(
         topBar = {
@@ -468,6 +502,7 @@ fun FavoritesScreen(
                     contentPadding = innerPadding,
                 ) {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = innerPadding,
                     ) {
@@ -519,35 +554,41 @@ fun FavoritesScreen(
                             }
                         }
                         items(p.items, key = { it.id }) { result ->
-                            val heroHost = LocalAlbumHeroHost.current
-                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                                BasicComponent(
-                                    title = result.title,
-                                    summary = listOf(result.authors.joinToString(" "), result.tags.joinToString(" "))
-                                        .filter { it.isNotBlank() }
-                                        .joinToString(" · ")
-                                        .ifBlank { null },
-                                    startAction = { FavoriteRowCover(result.id, result.coverUrl) },
-                                    endActions = {
-                                        IconButton(
-                                            onClick = {
-                                                moveError = null
-                                                moveTarget = result
-                                            },
-                                        ) {
-                                            Icon(MiuixIcons.MoveFile, contentDescription = "移动到收藏夹")
-                                        }
-                                    },
-                                    onClick = {
-                                        heroHost?.startForward(result.id, result.coverUrl, HERO_THUMB_CORNER_DP)
-                                        onOpenAlbum(result.id)
-                                    },
-                                )
+                            WorkRowCard(
+                                coverUrl = result.coverUrl,
+                                title = result.title,
+                                onClick = { onOpenAlbum(result.id) },
+                                albumId = result.id,
+                                subtitle = result.authors.joinToString(" / ").ifBlank { null },
+                                category = result.category,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                textEndPadding = 4.dp,
+                                trailing = {
+                                    IconButton(
+                                        onClick = {
+                                            moveError = null
+                                            moveTarget = result
+                                        },
+                                    ) {
+                                        Icon(MiuixIcons.MoveFile, contentDescription = "移动到收藏夹")
+                                    }
+                                },
+                            ) {
+                                WorkCardMetaRow(tags = result.tags, albumCode = result.id)
                             }
                         }
                         if (p.items.isNotEmpty()) {
-                            item(key = "load-more") {
-                                LoadMoreFooter(feed = p, onLoadMore = ::loadMore)
+                            item(key = "pagination-footer") {
+                                if (clickPaging) {
+                                    PagerBar(
+                                        page = p.page,
+                                        totalPages = p.pageCount,
+                                        hasMore = p.hasMore,
+                                        onPageChange = ::jumpToPage,
+                                    )
+                                } else {
+                                    LoadMoreFooter(feed = p, onLoadMore = ::loadMore)
+                                }
                             }
                         }
                     }
@@ -832,12 +873,4 @@ fun FavoritesScreen(
             }
         }
     }
-}
-
-
-
-/** 收藏行封面：与其他列表统一尺寸，缺失时留空占位保持行高稳定。 */
-@Composable
-private fun FavoriteRowCover(albumId: String, url: String?) {
-    WorkThumbnail(url = url, albumId = albumId)
 }

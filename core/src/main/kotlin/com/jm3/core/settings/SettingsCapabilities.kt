@@ -1,5 +1,9 @@
 package com.jm3.core.settings
 
+import com.jm3.core.reader.ReaderPageProgress
+import com.jm3.core.reader.decodeReaderProgress
+import com.jm3.core.reader.encodeReaderProgress
+
 /**
  * 设置按能力切分：每个接口只描述一类设置的默认值与归一规则，实现落在默认方法里。
  *
@@ -78,8 +82,25 @@ interface SearchHistorySettings : SettingsKeyStore {
     }
 }
 
-/** 阅读器：左右翻页、音量键提示是否已展示、末页追更静默截止时间。 */
-interface ReaderSettings : SettingsKeyStore {
+/**
+ * 漫画阅读进度：按漫画 id 记住上次读到的页码。
+ *
+ * 编解码规则收敛在 [com.jm3.core.reader.decodeReaderProgress]，
+ * Adapter 只需实现键值原语即可获得进度语义。
+ */
+interface ReaderProgressSettings : SettingsKeyStore {
+
+    /** 某部漫画上次读到的进度；没有记录或记录损坏时为 null。 */
+    suspend fun readerLastPage(photoId: String): ReaderPageProgress? =
+        decodeReaderProgress(readString(SettingsKeys.readerLastPage(photoId)))
+
+    suspend fun setReaderLastPage(photoId: String, progress: ReaderPageProgress) {
+        writeString(SettingsKeys.readerLastPage(photoId), encodeReaderProgress(progress))
+    }
+}
+
+/** 阅读器：左右翻页、音量键提示是否已展示、末页追更静默截止时间、漫画阅读进度。 */
+interface ReaderSettings : SettingsKeyStore, ReaderProgressSettings {
 
     suspend fun readerHorizontal(): Boolean = readBoolean(SettingsKeys.READER_HORIZONTAL) ?: false
 

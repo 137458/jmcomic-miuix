@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,10 +32,8 @@ import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -71,7 +70,10 @@ fun TrackingScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var removingId by remember { mutableStateOf<String?>(null) }
-    val heroHost = LocalAlbumHeroHost.current
+    val mode = Jm3Graph.preferences.paginationMode
+    val clickPaging = mode == PaginationMode.CLICK
+    val listState = rememberLazyListState()
+    var pageSizeHint by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
     /**
@@ -104,6 +106,7 @@ fun TrackingScreen(
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val page = outcome.value
+                    pageSizeHint = page.items.size
                     feed = PagedFeed<TrackingItem>().replace(
                         PageSlice(
                             items = page.items,
@@ -123,6 +126,38 @@ fun TrackingScreen(
     }
 
     LaunchedEffect(Unit) { loadFirstPage() }
+    PaginationModeReloadEffect(mode) { loadFirstPage() }
+
+    /** 点击分页：按目标页整页替换；接口只给总数，用首页条数估算页码容量。 */
+    fun jumpToPage(target: Int) {
+        val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
+        if (resolved == feed.page) return
+        scope.launch {
+            val outcome = authCall.call { Jm3Graph.gateway.trackingList(resolved) }
+            refreshing = false
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    val page = outcome.value
+                    val sizeHint = pageSizeHint.coerceAtLeast(page.items.size)
+                    val seen = (resolved - 1).coerceAtLeast(0) * sizeHint + page.items.size
+                    feed = PagedFeed<TrackingItem>().replace(
+                        PageSlice(
+                            items = page.items,
+                            hasMore = page.items.isNotEmpty() && seen < page.total,
+                            total = page.total,
+                            page = resolved,
+                        ),
+                    ) { it.id }
+                    state = TrackingUiState.Loaded
+                    listState.scrollToItem(0)
+                }
+
+                SessionOutcome.Expired -> applyFailure(outcome)
+
+                is SessionOutcome.Failed -> applyFailure(outcome)
+            }
+        }
+    }
 
     fun loadMore() {
         if (state != TrackingUiState.Loaded) return
@@ -179,6 +214,11 @@ fun TrackingScreen(
         }
     }
 
+    // 触底加载只在无限滚动模式生效；点击翻页由列表底部翻页条驱动。
+    if (!clickPaging) {
+        LoadMoreOnScroll(listState = listState, feed = feed, onLoadMore = ::loadMore)
+    }
+
     GlassScaffold(
         topBar = {
             GlassTopAppBar(
@@ -223,34 +263,43 @@ fun TrackingScreen(
                     contentPadding = innerPadding,
                 ) {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                         contentPadding = innerPadding,
                     ) {
                         items(feed.items, key = { it.id }) { item ->
-                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                                BasicComponent(
-                                    title = item.name,
-                                    summary = item.updateAt?.toReadableTime(),
-                                    startAction = { TrackingCover(item.id, item.coverUrl) },
-                                    onClick = {
-                                        heroHost?.startForward(item.id, item.coverUrl, HERO_THUMB_CORNER_DP, item.name)
-                                        onOpenAlbum(item.id)
-                                    },
-                                    endActions = {
-                                        IconButton(
-                                            onClick = { unfollow(item) },
-                                            enabled = removingId != item.id,
-                                        ) {
-                                            Icon(MiuixIcons.Delete, contentDescription = "取消追踪")
-                                        }
-                                    },
-                                )
+                            WorkRowCard(
+                                coverUrl = item.coverUrl,
+                                title = item.name,
+                                onClick = { onOpenAlbum(item.id) },
+                                albumId = item.id,
+                                subtitle = item.updateAt?.toReadableTime(),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                textEndPadding = 4.dp,
+                                trailing = {
+                                    IconButton(
+                                        onClick = { unfollow(item) },
+                                        enabled = removingId != item.id,
+                                    ) {
+                                        Icon(MiuixIcons.Delete, contentDescription = "取消追踪")
+                                    }
+                                },
+                            ) {
+                                WorkCardMetaRow(tags = emptyList(), albumCode = item.id)
                             }
                         }
                         if (feed.items.isNotEmpty()) {
-                            item(key = "load-more") {
-                                LoadMoreFooter(feed = feed, onLoadMore = ::loadMore)
+                            item(key = "pagination-footer") {
+                                if (clickPaging) {
+                                    PagerBar(
+                                        page = feed.page,
+                                        hasMore = feed.hasMore,
+                                        onPageChange = ::jumpToPage,
+                                    )
+                                } else {
+                                    LoadMoreFooter(feed = feed, onLoadMore = ::loadMore)
+                                }
                             }
                         }
                     }
@@ -260,11 +309,6 @@ fun TrackingScreen(
     }
 }
 
-/** 追踪条目封面：与其他作品行统一缩略图尺寸与圆角，缺失时留白保持行高。 */
-@Composable
-private fun TrackingCover(albumId: String, url: String?) {
-    WorkThumbnail(url = url, albumId = albumId)
-}
 
 /** Unix 秒字符串转本地时间；非数字原样返回，避免吞掉服务端文案。 */
 private fun String.toReadableTime(): String =

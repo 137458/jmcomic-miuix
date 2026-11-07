@@ -65,5 +65,10 @@ internal fun UpdateStartupPrompt(onOpenUpdatePage: () -> Unit) {
             release = null
             scope.launch { Jm3Graph.settings.setIgnoredUpdateVersion(version) }
         },
+        onCancelDownload = { Jm3Graph.updateDownloader.cancel() },
+        onOpenUpdatePage = {
+            release = null
+            onOpenUpdatePage()
+        },
     )
 }

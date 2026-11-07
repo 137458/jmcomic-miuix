@@ -87,7 +87,7 @@ fun ForumScreen(
     onOpenAlbum: (albumId: String) -> Unit = {},
 ) {
     val user by Jm3Graph.account.user.collectAsState()
-    val pageMode = Jm3Graph.paginationMode
+    val pageMode = Jm3Graph.preferences.paginationMode
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
     val forumScope = ForumScope.entries[scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)]

@@ -119,7 +119,7 @@ fun HomeScreen(
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     // 分页模式是 Jm3Graph 的全局可观察状态，设置页切换后本页立即变更控件形态。
-    val clickPaging = Jm3Graph.paginationMode == PaginationMode.CLICK
+    val clickPaging = Jm3Graph.preferences.paginationMode == PaginationMode.CLICK
     val searching = isShowingSearchResults(activeQuery, results)
 
     /** 列表状态与会话缓存一起改：只改其一，切走再回来就会先闪上一份结果。 */

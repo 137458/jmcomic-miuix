@@ -1,7 +1,5 @@
 package com.jm3.app.miuix.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -10,12 +8,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
@@ -30,17 +26,12 @@ import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 服务端观看记录单页条数；接口不返回总数，用返回条数推断是否还有下一页。 */
 private const val WATCH_PAGE_SIZE = 20
@@ -61,7 +52,7 @@ fun WatchHistoryScreen(
     authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
-    val mode = Jm3Graph.paginationMode
+    val mode = Jm3Graph.preferences.paginationMode
     // 当前页码、是否还有下一页、追加在途与追加失败都由 PagedFeed 记；
     // 追加失败时 hasMore 保持原值，所以页脚一定留着重试入口，不会被误画成「已经到底」
     var feed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
@@ -69,7 +60,6 @@ fun WatchHistoryScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var deletingId by remember { mutableStateOf<String?>(null) }
-    val heroHost = LocalAlbumHeroHost.current
     val scope = rememberCoroutineScope()
 
     /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成去登录）。 */
@@ -203,27 +193,25 @@ fun WatchHistoryScreen(
                         contentPadding = innerPadding,
                     ) {
                         items(feed.items, key = { it.id }) { item ->
-                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                                BasicComponent(
-                                    title = item.title,
-                                    summary = listOf(
-                                        item.authors.joinToString(" "),
-                                        item.tags.joinToString(" "),
-                                    ).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { null },
-                                    startAction = { WatchCover(item.id, item.coverUrl) },
-                                    onClick = {
-                                        heroHost?.startForward(item.id, item.coverUrl, HERO_THUMB_CORNER_DP, item.title)
-                                        onOpenAlbum(item.id)
-                                    },
-                                    endActions = {
-                                        IconButton(
-                                            onClick = { delete(item) },
-                                            enabled = deletingId != item.id,
-                                        ) {
-                                            Icon(MiuixIcons.Delete, contentDescription = "删除记录")
-                                        }
-                                    },
-                                )
+                            WorkRowCard(
+                                coverUrl = item.coverUrl,
+                                title = item.title,
+                                onClick = { onOpenAlbum(item.id) },
+                                albumId = item.id,
+                                subtitle = item.authors.joinToString(" / ").ifBlank { null },
+                                category = item.category,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                textEndPadding = 4.dp,
+                                trailing = {
+                                    IconButton(
+                                        onClick = { delete(item) },
+                                        enabled = deletingId != item.id,
+                                    ) {
+                                        Icon(MiuixIcons.Delete, contentDescription = "删除记录")
+                                    }
+                                },
+                            ) {
+                                WorkCardMetaRow(tags = item.tags, albumCode = item.id)
                             }
                         }
                         item(key = "footer") {
@@ -232,13 +220,19 @@ fun WatchHistoryScreen(
                                 PagerBar(
                                     page = feed.page,
                                     hasMore = feed.hasMore,
-                                    onPageChange = { target -> fetch(target, replace = true, showLoading = false) },
+                                    onPageChange = { target ->
+                                        fetch(
+                                            pagerTargetPage(feed.page, target, feed.pageCount),
+                                            replace = true,
+                                            showLoading = false,
+                                        )
+                                    },
                                 )
                             } else {
                                 // 三态页脚与其他列表保持一致：加载中 / 失败重试 / 没有更多
                                 LoadMoreFooter(
                                     feed = feed,
-                                    onLoadMore = { fetch(feed.page + 1, replace = false, showLoading = false) },
+                                    onLoadMore = { fetch(pagerNextPage(feed.page, feed.pageCount ?: Int.MAX_VALUE), replace = false, showLoading = false) },
                                 )
                             }
                         }
@@ -247,10 +241,4 @@ fun WatchHistoryScreen(
             }
         }
     }
-}
-
-/** 观看记录封面：与其他作品行统一缩略图尺寸与圆角，缺失时留白保持行高。 */
-@Composable
-private fun WatchCover(albumId: String, url: String?) {
-    WorkThumbnail(url = url, albumId = albumId)
 }

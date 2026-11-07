@@ -58,6 +58,7 @@ import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
 import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.update.UpdateDownloader
+import com.jm3.core.paging.PaginationModePolicy
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.Jm3Log
 import com.jm3.core.runCatchingSuspending
@@ -374,7 +375,15 @@ fun Jm3App() {
         runCatchingSuspending {
             themeModeName = Jm3Graph.settings.themeMode().name
             dynamicColor = Jm3Graph.settings.dynamicColor()
-            Jm3Graph.paginationMode = Jm3Graph.settings.paginationMode()
+            // 分页模式：用户在本进程内已显式改过就保留内存值，否则用盘上值。
+            // 读盘发生在组合之后，盘上的旧值不该盖掉用户刚选的那个。
+            Jm3Graph.preferences.applyStartupPaginationMode(
+                PaginationModePolicy.resolveStartupPaginationMode(
+                    persisted = Jm3Graph.preferences.repository.paginationMode(),
+                    current = Jm3Graph.preferences.paginationMode,
+                    userModified = Jm3Graph.preferences.paginationModeUserModified,
+                )
+            )
             Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
         }.onFailure { failure ->
             Jm3Log.warn("Jm3App", "启动读盘失败（" + failure.javaClass.name + "），改用默认设置")
