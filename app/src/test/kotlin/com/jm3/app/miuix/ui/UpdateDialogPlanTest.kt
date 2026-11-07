@@ -3,6 +3,8 @@ package com.jm3.app.miuix.ui
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.ReleaseInfo
+import com.jm3.core.update.UpdateFailure
+import com.jm3.core.update.UpdateOutcome
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,6 +46,49 @@ class UpdateDialogPlanTest {
     @Test
     fun `summary merges version jump and publish date into one line`() {
         assertEquals("当前 1.1.0 → 最新 1.2.3 · 2026-03-04", updateDialogSummary("1.1.0", shortRelease))
+    }
+
+    @Test
+    fun `version jump names both sides without the date`() {
+        assertEquals("当前 1.1.0 → 最新 1.2.3", updateVersionJump("1.1.0", shortRelease))
+    }
+
+    @Test
+    fun `hero status reuses the dialog jump wording for new versions`() {
+        assertEquals(
+            "当前 1.1.0 → 最新 1.2.3",
+            updateStatusText("1.1.0", UpdateOutcome.Available(shortRelease, notify = true)),
+        )
+        assertEquals("正在检查更新…", updateStatusText("1.1.0", null))
+        assertEquals(
+            "已是最新版本（v1.1.0）",
+            updateStatusText("1.1.0", UpdateOutcome.UpToDate(shortRelease, localAhead = false)),
+        )
+        assertEquals(
+            "本地版本更高（远端 1.2.3）",
+            updateStatusText("1.1.0", UpdateOutcome.UpToDate(shortRelease, localAhead = true)),
+        )
+        assertEquals(
+            "检查更新失败",
+            updateStatusText(
+                "1.1.0",
+                UpdateOutcome.Failed(UpdateFailure.NETWORK, "网络请求失败：timeout"),
+            ),
+        )
+    }
+
+    @Test
+    fun `download failure offers the apk direct link, otherwise the release page`() {
+        assertEquals("https://example.invalid/app.apk", updateBrowserFallbackUrl(shortRelease))
+        assertEquals("https://example.invalid/r2", updateBrowserFallbackUrl(noApkRelease))
+    }
+
+    @Test
+    fun `dismiss reads later when idle and background while downloading`() {
+        assertEquals("稍后", updateDialogDismissText(UpdateDownloadState.Idle))
+        assertEquals("后台下载", updateDialogDismissText(downloading(87, 100)))
+        assertEquals("稍后", updateDialogDismissText(UpdateDownloadState.Done(File("/tmp/app.apk"))))
+        assertEquals("稍后", updateDialogDismissText(UpdateDownloadState.Failed("网络中断")))
     }
 
     @Test
@@ -140,6 +185,7 @@ class UpdateDialogPlanTest {
             canCancelDownload = false,
         )
         assertEquals("立即下载", plan.primaryText)
+        assertEquals("稍后", plan.dismissText)
         assertEquals("当前 1.1.0 → 最新 1.2.3 · 2026-03-04", plan.summary)
         assertFalse(plan.showProgress)
         assertNull(plan.progressFraction)
@@ -160,6 +206,7 @@ class UpdateDialogPlanTest {
             canCancelDownload = true,
         )
         assertEquals("下载中 87%", plan.primaryText)
+        assertEquals("后台下载", plan.dismissText)
         assertTrue(plan.showProgress)
         assertEquals(0.87f, plan.progressFraction)
         assertEquals("83.0 MB / 95.4 MB · 2.4 MB/s", plan.progressDetail)

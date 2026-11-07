@@ -38,11 +38,11 @@ internal fun UpdateStartupPrompt(deps: ScreenDeps, onOpenUpdatePage: () -> Unit)
             localVersion = currentVersion,
             prompt = UpdatePromptState(
                 ignoredVersion = deps.settings.ignoredUpdateVersion(),
-                promptedVersion = deps.settings.promptedUpdateVersion(),
+                promptedVersion = deps.updates.promptedVersion,
             ),
         ) ?: return@LaunchedEffect
-        // 先记账再弹窗：同版本在本次安装期内不再打扰，冷启动时由下一次检查决定
-        deps.settings.setPromptedUpdateVersion(pending.version)
+        // 先记账再弹窗：本次会话内不再重复弹。记录只在内存里，点「稍后」不会变成永久忽略。
+        deps.updates.promptedVersion = pending.version
         release = pending
     }
 

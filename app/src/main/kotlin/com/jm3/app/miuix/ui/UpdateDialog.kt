@@ -382,13 +382,13 @@ internal fun UpdateAvailableDialog(
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(
-                        text = "稍后",
+                        text = plan.dismissText,
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
                     )
                 }
             } else {
-                TextButton(text = "稍后", onClick = onDismiss, modifier = Modifier.fillMaxWidth())
+                TextButton(text = plan.dismissText, onClick = onDismiss, modifier = Modifier.fillMaxWidth())
             }
             if (plan.showIgnore) {
                 TextButton(

@@ -16,6 +16,14 @@ class UpdateDomain(context: Context, appScope: CoroutineScope) {
 
     private val appContext: Context = context.applicationContext
 
+    /**
+     * 本次进程内已经弹过窗的版本号。
+     *
+     * 只存在内存里而不是落盘：用户点「稍后」后，下次冷启动仍会收到提醒；真正不想再被提醒的版本
+     * 走「忽略此版本」的持久记录。也正因如此，启动期与更新页在同一个会话里不会对同一版本弹两次。
+     */
+    var promptedVersion: String? = null
+
     /** 更新下载器：同一进程只允许一个实例，否则两个入口各自维护进度。 */
     val downloader: UpdateDownloader by lazy { UpdateDownloader(appScope) }
 

@@ -125,15 +125,15 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
             localVersion = currentVersion,
             prompt = UpdatePromptState(
                 ignoredVersion = ignoredVersion,
-                promptedVersion = deps.settings.promptedUpdateVersion(),
+                promptedVersion = deps.updates.promptedVersion,
             ),
         )
         state = outcome
-        // 只有"该提醒"时才弹窗并记下已提示：与启动期检查共用同一条规则，
-        // 免得启动期弹过的版本进页面又被弹一次
+        // 只有"该提醒"时才弹窗并记下本次会话已提示：与启动期检查共用同一条规则，
+        // 免得启动期弹过的版本进页面又被弹一次。记录只存在内存里，下次冷启动仍会提醒。
         if (outcome is UpdateOutcome.Available && outcome.notify) {
             showDialog = true
-            deps.settings.setPromptedUpdateVersion(outcome.release.version)
+            deps.updates.promptedVersion = outcome.release.version
         }
     }
 
@@ -179,14 +179,7 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
     val latestVersion = latestRelease?.version
     val hasNewVersion = snapshot is UpdateOutcome.Available
     val checking = snapshot == null
-    val statusText = when (snapshot) {
-        null -> "正在检查更新…"
-        is UpdateOutcome.Available -> "发现新版本 ${snapshot.release.version}（当前 $currentVersion）"
-        is UpdateOutcome.UpToDate ->
-            if (snapshot.localAhead) "本地版本更高（远端 ${snapshot.release.version}）" else "已是最新版本（v$currentVersion）"
-
-        is UpdateOutcome.Failed -> "检查更新失败"
-    }
+    val statusText = updateStatusText(currentVersion, snapshot)
     val statusColor = when (snapshot) {
         is UpdateOutcome.Available -> MiuixTheme.colorScheme.primary
         is UpdateOutcome.Failed -> MiuixTheme.colorScheme.error
@@ -537,6 +530,12 @@ private fun DownloadArea(
             ) {
                 Text(text = "重试")
             }
+            // 应用内重试仍失败时留一个不依赖下载器的出口：直接开安装包直链或发布页
+            TextButton(
+                text = "用浏览器下载",
+                onClick = { onOpenRelease(updateBrowserFallbackUrl(release)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

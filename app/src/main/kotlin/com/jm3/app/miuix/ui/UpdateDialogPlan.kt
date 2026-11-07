@@ -2,6 +2,7 @@ package com.jm3.app.miuix.ui
 
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.ReleaseInfo
+import com.jm3.core.update.UpdateOutcome
 import com.jm3.core.update.UpdateProgress
 
 /** 折叠态只展示前几行，展开后整段说明放进弹窗自己的滚动区。 */
@@ -16,6 +17,7 @@ internal const val UPDATE_NOTES_PREVIEW_LINES = 12
 internal data class UpdateDialogPlan(
     val summary: String,
     val primaryText: String,
+    val dismissText: String,
     val showProgress: Boolean,
     val progressFraction: Float?,
     val progressDetail: String?,
@@ -33,9 +35,35 @@ internal data class UpdateDialogNotesState(val visibleMarkdown: String, val hidd
  * 合并后用户一眼就能看到版本跃迁，日期作为次要信息跟在后面。
  */
 internal fun updateDialogSummary(currentVersion: String, release: ReleaseInfo): String {
-    val base = "当前 $currentVersion → 最新 ${release.version}"
+    val base = updateVersionJump(currentVersion, release)
     return if (release.publishedDate.isNotBlank()) "$base · ${release.publishedDate}" else base
 }
+
+/** 版本跃迁：从哪个版本到哪个版本，弹窗摘要与更新页头部共用这一句。 */
+internal fun updateVersionJump(currentVersion: String, release: ReleaseInfo): String =
+    "当前 $currentVersion → 最新 ${release.version}"
+
+/** 更新页头部的状态行：有新版本时与弹窗摘要同口径。 */
+internal fun updateStatusText(currentVersion: String, outcome: UpdateOutcome?): String = when (outcome) {
+    null -> "正在检查更新…"
+    is UpdateOutcome.Available -> updateVersionJump(currentVersion, outcome.release)
+    is UpdateOutcome.UpToDate ->
+        if (outcome.localAhead) "本地版本更高（远端 ${outcome.release.version}）" else "已是最新版本（v$currentVersion）"
+
+    is UpdateOutcome.Failed -> "检查更新失败"
+}
+
+/**
+ * 下载中退场按钮写「后台下载」而不是「稍后」：下载已经在跑，用户需要知道关掉弹窗不会中断任务。
+ */
+internal fun updateDialogDismissText(downloadState: UpdateDownloadState): String =
+    if (downloadState is UpdateDownloadState.Downloading) "后台下载" else "稍后"
+
+/**
+ * 下载失败时的浏览器兜底：优先直接打开安装包直链（一次点击就能拿到文件），没有 apk 资产时退回发布页。
+ */
+internal fun updateBrowserFallbackUrl(release: ReleaseInfo): String =
+    release.apk?.downloadUrl ?: release.htmlUrl
 
 /** 折叠态取前 N 行；空白说明与短说明都不显示「展开全部」。 */
 internal fun updateDialogNotesState(markdown: String, expanded: Boolean, previewLines: Int): UpdateDialogNotesState {
@@ -93,6 +121,7 @@ internal fun buildUpdateDialogPlan(
     return UpdateDialogPlan(
         summary = updateDialogSummary(currentVersion, release),
         primaryText = updateDialogPrimaryText(hasApk = release.apk != null, downloadState = downloadState),
+        dismissText = updateDialogDismissText(downloadState),
         showProgress = downloading != null,
         progressFraction = downloading?.let(::updateDialogProgressFraction),
         progressDetail = downloading?.let(::updateDialogDownloadDetail),
