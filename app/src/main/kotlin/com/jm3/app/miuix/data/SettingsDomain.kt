@@ -8,6 +8,7 @@ import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.SettingsRepository
+import com.jm3.core.settings.WideScreenNavigation
 
 /**
  * 设置域：设置仓库与跨路由立即生效的界面态。
@@ -89,5 +90,22 @@ class SettingsDomain(context: Context) {
 
     internal fun applyStartupBottomBarForm(form: BottomBarForm?) {
         if (!bottomBarFormUserModified) bottomBarFormState = form
+    }
+
+    /** 宽屏导航：null 表示未显式设置，组合期默认按底栏解析。 */
+    private var wideScreenNavigationState by mutableStateOf<WideScreenNavigation?>(null)
+
+    internal var wideScreenNavigationUserModified: Boolean = false
+        private set
+
+    var wideScreenNavigation: WideScreenNavigation?
+        get() = wideScreenNavigationState
+        set(value) {
+            wideScreenNavigationState = value
+            wideScreenNavigationUserModified = true
+        }
+
+    internal fun applyStartupWideScreenNavigation(navigation: WideScreenNavigation?) {
+        if (!wideScreenNavigationUserModified) wideScreenNavigationState = navigation
     }
 }

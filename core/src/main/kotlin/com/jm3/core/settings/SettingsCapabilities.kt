@@ -66,6 +66,19 @@ interface BottomBarSettings : SettingsKeyStore {
     suspend fun setBottomBarForm(form: BottomBarForm) {
         writeString(SettingsKeys.BOTTOM_BAR_FORM, form.name)
     }
+
+    /** 宽屏导航：读回 null 表示未显式设置，调用方默认按底栏解析。 */
+    suspend fun wideScreenNavigationOrNull(): WideScreenNavigation? =
+        WideScreenNavigation.entries.firstOrNull { it.name == readString(SettingsKeys.WIDE_SCREEN_NAVIGATION) }
+
+    suspend fun setWideScreenNavigation(navigation: WideScreenNavigation) {
+        writeString(SettingsKeys.WIDE_SCREEN_NAVIGATION, navigation.name)
+    }
+
+    /** 清空显式选择，回到默认底栏。 */
+    suspend fun clearWideScreenNavigation() {
+        writeString(SettingsKeys.WIDE_SCREEN_NAVIGATION, null)
+    }
 }
 
 /**

@@ -43,6 +43,8 @@ import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
+import com.jm3.core.settings.BottomBarPreferencePolicy
+import com.jm3.core.settings.WideScreenNavigation
 import kotlin.math.roundToInt
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.activeDownloadCount
@@ -139,11 +141,15 @@ fun MainScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { _ ->
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // 宽屏改用 NavigationRail：底栏让位给侧栏，列表获得更宽的横向空间
+            // 宽屏默认仍渲染底栏；只有用户显式选侧栏才切成 NavigationRail
             val wideScreen = maxWidth >= WIDE_SCREEN_WIDTH
+            val widthDp = maxWidth.value.roundToInt()
+            // 宽屏导航偏好与底栏 token 同源：切换即时生效，未设置时按默认底栏解析
+            val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation) {
+                BottomBarPreferencePolicy.resolveWideScreenNavigation(deps.preferences.wideScreenNavigation)
+            }
             // 底栏尺寸/形态档在组合期一次性解析：未显式设置时按窗口宽度断点取默认值，
             // 切换偏好只会重建这份 token，不进入滚动或测量热路径。
-            val widthDp = maxWidth.value.roundToInt()
             val barTokens = remember(
                 deps.preferences.bottomBarSize,
                 deps.preferences.bottomBarForm,
@@ -155,11 +161,13 @@ fun MainScreen(
                     widthDp = widthDp,
                 )
             }
+            // 侧栏只占横向空间，底部净空留给系统栏；底栏（含宽屏）按 token 扣除
+            val useRail = wideScreen && wideScreenNavigation == WideScreenNavigation.RAIL
             // 底栏玻璃采样源：设备不支持 RuntimeShader 时返回 null，底栏自动降级为实色
             val backdrop = rememberBlurBackdrop()
-            // 主框架展示悬浮底栏时给列表提供底部净空，内容其余部分穿透底栏持续被采样
+            // 主框架展示底栏时给列表提供底部净空，内容其余部分穿透底栏持续被采样
             CompositionLocalProvider(
-                LocalFloatingBarContentPadding provides if (wideScreen) 0.dp else barTokens.contentPadding,
+                LocalFloatingBarContentPadding provides if (useRail) 0.dp else barTokens.contentPadding,
                 LocalGlassBottomBarTokens provides barTokens,
             ) {
                 Scaffold(
@@ -180,7 +188,7 @@ fun MainScreen(
                             .padding(tabContentPadding)
                             .consumeWindowInsets(tabContentPadding),
                     ) {
-                        if (wideScreen) {
+                        if (useRail) {
                             // 可展开/收起侧栏：展开宽度由库的连续动画驱动，收起时只留图标
                             val railState = rememberNavigationRailState()
                             NavigationRail(
@@ -287,7 +295,7 @@ fun MainScreen(
                 }
             }
             // 液态玻璃胶囊底栏：浮在内容之上以采样页面背景，宽度由内容与官方规范上限决定
-            if (!wideScreen) {
+            if (!useRail) {
                 IosLiquidGlassNavigationBar(
                     items = MainTab.entries.map { NavigationItem(label = it.label, icon = tabIcon(it)) },
                     selectedIndex = tab,

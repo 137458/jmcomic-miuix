@@ -12,6 +12,12 @@ enum class BottomBarForm(val label: String) {
     DOCKED("不悬浮"),
 }
 
+/** 宽屏导航：默认底栏，侧栏为可选。 */
+enum class WideScreenNavigation(val label: String) {
+    BOTTOM_BAR("底栏"),
+    RAIL("侧栏"),
+}
+
 /**
  * 底栏默认值解析：未显式设置时按窗口宽度断点判断，而不是写死某一档。
  *
@@ -39,4 +45,8 @@ object BottomBarPreferencePolicy {
 
     fun resolveForm(explicit: BottomBarForm?, widthDp: Int): BottomBarForm =
         explicit ?: defaultForm(isTablet(widthDp))
+
+    /** 宽屏导航默认底栏；用户显式选过侧栏才走 Rail。 */
+    fun resolveWideScreenNavigation(explicit: WideScreenNavigation?): WideScreenNavigation =
+        explicit ?: WideScreenNavigation.BOTTOM_BAR
 }

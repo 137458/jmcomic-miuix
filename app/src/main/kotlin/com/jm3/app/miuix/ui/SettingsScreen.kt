@@ -39,6 +39,7 @@ import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ThemeMode
+import com.jm3.core.settings.WideScreenNavigation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -126,6 +127,9 @@ fun SettingsScreen(
     val bottomBarSizeOption =
         if (deps.preferences.bottomBarSize == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
     val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.preferences.bottomBarForm, widthDp)
+    // 宽屏导航：未设置时默认底栏，用户显式选侧栏才切换
+    val wideScreenNavigation =
+        BottomBarPreferencePolicy.resolveWideScreenNavigation(deps.preferences.wideScreenNavigation)
     // 阅读器设置：与分页模式同卡片，读写沿用现有设置存储，不新建二级页
     var readerHorizontal by remember { mutableStateOf(false) }
     var volumeKeyPaging by remember { mutableStateOf(true) }
@@ -174,6 +178,12 @@ fun SettingsScreen(
         if (form == deps.preferences.bottomBarForm) return
         deps.preferences.bottomBarForm = form
         scope.launch { deps.preferences.repository.setBottomBarForm(form) }
+    }
+
+    fun applyWideScreenNavigation(navigation: WideScreenNavigation) {
+        if (navigation == deps.preferences.wideScreenNavigation) return
+        deps.preferences.wideScreenNavigation = navigation
+        scope.launch { deps.preferences.repository.setWideScreenNavigation(navigation) }
     }
 
     // 连点计数在窗口内归零，避免误触累计
@@ -357,6 +367,21 @@ fun SettingsScreen(
                     showValue = false,
                     onSelectedIndexChange = { index ->
                         BottomBarForm.entries.getOrNull(index)?.let { applyBottomBarForm(it) }
+                    },
+                )
+                OverlaySpinnerPreference(
+                    title = "宽屏导航",
+                    summary = when (wideScreenNavigation) {
+                        WideScreenNavigation.BOTTOM_BAR -> "宽屏同样显示底栏，与手机保持同一套样式"
+                        WideScreenNavigation.RAIL -> "宽屏改用可收起的侧栏，列表获得更宽横向空间"
+                    },
+                    items = WideScreenNavigation.entries.mapIndexed { index, navigation ->
+                        DropdownItem(text = navigation.label, selected = navigation == wideScreenNavigation)
+                    },
+                    selectedIndex = WideScreenNavigation.entries.indexOf(wideScreenNavigation),
+                    showValue = false,
+                    onSelectedIndexChange = { index ->
+                        WideScreenNavigation.entries.getOrNull(index)?.let { applyWideScreenNavigation(it) }
                     },
                 )
                 OverlaySpinnerPreference(
