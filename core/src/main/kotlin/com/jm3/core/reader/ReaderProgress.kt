@@ -27,12 +27,13 @@ fun decodeReaderProgress(raw: String?): ReaderPageProgress? {
 /**
  * 恢复页码判定。
  *
- * 没有历史进度、当前章节没有图片（总页数为 0）或历史页码非法时都不恢复；
+ * 没有历史进度、当前章节没有图片（总页数为 0）、历史页码或历史总页数非法时都不恢复；
  * 历史页码超出当前总页数时夹到最后一页 —— 本地下载页数与网络不一致时按实际总页数夹取。
  */
 fun resolveRestoredPage(saved: ReaderPageProgress?, totalPages: Int): Int? {
     if (saved == null) return null
     if (totalPages <= 0) return null
     if (saved.page < 1) return null
+    if (saved.total < 1) return null
     return if (saved.page > totalPages) totalPages else saved.page
 }

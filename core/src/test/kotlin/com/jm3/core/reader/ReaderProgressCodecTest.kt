@@ -92,4 +92,21 @@ class ReaderProgressCodecTest {
         assertEquals(ReaderPageProgress(page = 2, total = 10), s.readerLastPage("photo-2"))
         assertNull(s.readerLastPage("photo-3"))
     }
+
+    @Test
+    fun 历史总页数为零时视为损坏数据不恢复() = runTest {
+        assertNull(resolveRestoredPage(ReaderPageProgress(page = 5, total = 0), totalPages = 20))
+    }
+
+    @Test
+    fun 历史总页数为负时视为损坏数据不恢复() = runTest {
+        assertNull(resolveRestoredPage(ReaderPageProgress(page = 5, total = -1), totalPages = 20))
+    }
+
+    @Test
+    fun 章节页数变化时按当前总页数夹取且仍保留进度() = runTest {
+        assertEquals(8, resolveRestoredPage(ReaderPageProgress(page = 15, total = 20), totalPages = 8))
+        assertEquals(15, resolveRestoredPage(ReaderPageProgress(page = 15, total = 15), totalPages = 30))
+        assertEquals(5, resolveRestoredPage(ReaderPageProgress(page = 5, total = 20), totalPages = 20))
+    }
 }

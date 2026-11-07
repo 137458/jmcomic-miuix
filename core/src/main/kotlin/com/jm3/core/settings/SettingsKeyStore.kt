@@ -56,6 +56,6 @@ internal object SettingsKeys {
     /** 每部小说独立成键：避免每次读写都反序列化整张进度表。 */
     fun novelLastChapter(novelId: String): String = "novel_last_" + novelId
 
-    /** 每部漫画独立成键：保存该漫画上次读到的页码。 */
+    /** 每个章节独立成键：保存该章节上次读到的页码。 */
     fun readerLastPage(photoId: String): String = "reader_last_page_" + photoId
 }
