@@ -100,7 +100,6 @@ import top.yukonga.miuix.kmp.icon.extended.Weeks
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private const val COMMENT_MAX_LENGTH = 200
 /** 折叠态默认展示的回复条数；超出部分由「展开 N 条回复」控制。 */
 private const val COMMENT_VISIBLE_REPLIES = 2
 /** 回复缩进的最大层级：更深的回复不再追加缩进，否则正文宽度会被挤没。 */
@@ -878,7 +877,7 @@ internal fun CommentComposer(
                 TextField(
                     value = text,
                     onValueChange = onTextChange,
-                    label = "写下你的评论（最多 $COMMENT_MAX_LENGTH 字）",
+                    label = "写下你的评论（最多 $COMMENT_REPLY_MAX_LENGTH 字）",
                     minLines = 2,
                     maxLines = 5,
                     modifier = Modifier.fillMaxWidth(),
@@ -890,7 +889,7 @@ internal fun CommentComposer(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        text = "${text.length}/$COMMENT_MAX_LENGTH",
+                        text = "${text.length}/$COMMENT_REPLY_MAX_LENGTH",
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )

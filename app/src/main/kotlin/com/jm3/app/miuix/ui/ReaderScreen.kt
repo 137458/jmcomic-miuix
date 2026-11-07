@@ -131,8 +131,6 @@ import top.yukonga.miuix.kmp.utils.PagerGestureNestedScrollConnection
 import top.yukonga.miuix.kmp.utils.pagerGestureOverride
 import top.yukonga.miuix.kmp.utils.springAnimateToPage
 
-private const val COMMENT_MAX_LENGTH = 200
-
 /** 阅读进度落盘前的静置时长：翻页停下来才写，避免连滚时逐页写设置存储。 */
 private const val PROGRESS_SAVE_DEBOUNCE_MS = 400L
 private const val VOLUME_THROTTLE_MS = 150L
@@ -934,7 +932,7 @@ private fun ReaderPages(
                     loggedIn = user != null,
                     text = commentText,
                     busy = commentBusy,
-                    onTextChange = { if (it.length <= COMMENT_MAX_LENGTH) commentText = it },
+                    onTextChange = { if (it.length <= COMMENT_REPLY_MAX_LENGTH) commentText = it },
                     onLogin = onOpenLogin,
                     onSend = ::sendComment,
                 )
