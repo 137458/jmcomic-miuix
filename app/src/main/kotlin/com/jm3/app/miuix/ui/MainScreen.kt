@@ -76,9 +76,6 @@ private enum class MainTab(val label: String) {
     MINE("我的"),
 }
 
-/** 宽屏阈值：≥600dp 视为平板/折叠展开/桌面，主框架切为可折叠侧栏。 */
-private val WIDE_SCREEN_WIDTH = 600.dp
-
 private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
     MainTab.HOME -> MiuixIcons.Home
     MainTab.CATEGORY -> MiuixIcons.GridView
@@ -141,12 +138,14 @@ fun MainScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { _ ->
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // 宽屏默认仍渲染底栏；只有用户显式选侧栏才切成 NavigationRail
-            val wideScreen = maxWidth >= WIDE_SCREEN_WIDTH
             val widthDp = maxWidth.value.roundToInt()
-            // 宽屏导航偏好与底栏 token 同源：切换即时生效，未设置时按默认底栏解析
-            val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation) {
-                BottomBarPreferencePolicy.resolveWideScreenNavigation(deps.preferences.wideScreenNavigation)
+            // 宽屏导航偏好与底栏 token 同源：600dp 以下设置项不可见，布局一律按底栏渲染；
+            // 大屏未设置时默认底栏，用户显式选侧栏才切成 NavigationRail。
+            val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation, widthDp) {
+                BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
+                    deps.preferences.wideScreenNavigation,
+                    widthDp,
+                )
             }
             // 底栏尺寸/形态档在组合期一次性解析：未显式设置时按窗口宽度断点取默认值，
             // 切换偏好只会重建这份 token，不进入滚动或测量热路径。
@@ -162,7 +161,7 @@ fun MainScreen(
                 )
             }
             // 侧栏只占横向空间，底部净空留给系统栏；底栏（含宽屏）按 token 扣除
-            val useRail = wideScreen && wideScreenNavigation == WideScreenNavigation.RAIL
+            val useRail = wideScreenNavigation == WideScreenNavigation.RAIL
             // 底栏玻璃采样源：设备不支持 RuntimeShader 时返回 null，底栏自动降级为实色
             val backdrop = rememberBlurBackdrop()
             // 主框架展示底栏时给列表提供底部净空，内容其余部分穿透底栏持续被采样

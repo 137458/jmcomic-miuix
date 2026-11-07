@@ -82,6 +82,28 @@ class BottomBarTokensTest {
     }
 
     @Test
+    fun `形态档在手机上同样可选并按 token 计算净空`() {
+        // 形态档没有设备限制：手机同样可选贴底，净空按条高、无悬浮边距
+        val phoneDocked = resolveBottomBarTokens(
+            explicitSize = null,
+            explicitForm = BottomBarForm.DOCKED,
+            widthDp = 400,
+        )
+        assertEquals(BottomBarForm.DOCKED, phoneDocked.form)
+        assertEquals(64f, phoneDocked.height.value)
+        assertEquals(64f, phoneDocked.contentPadding.value)
+        assertEquals(0f, phoneDocked.horizontalMargin.value)
+
+        val phoneFloating = resolveBottomBarTokens(
+            explicitSize = null,
+            explicitForm = BottomBarForm.FLOATING,
+            widthDp = 400,
+        )
+        assertEquals(BottomBarForm.FLOATING, phoneFloating.form)
+        assertEquals(100f, phoneFloating.contentPadding.value)
+    }
+
+    @Test
     fun `液态玻璃折射参数与采样不变量不随档位变化`() {
         for (size in BottomBarSize.entries) for (form in BottomBarForm.entries) {
             val tokens = bottomBarTokens(size, form)

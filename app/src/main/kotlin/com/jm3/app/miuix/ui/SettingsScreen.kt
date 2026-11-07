@@ -127,9 +127,11 @@ fun SettingsScreen(
     val bottomBarSizeOption =
         if (deps.preferences.bottomBarSize == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
     val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.preferences.bottomBarForm, widthDp)
-    // 宽屏导航：未设置时默认底栏，用户显式选侧栏才切换
+    // 宽屏导航：未设置时默认底栏，用户显式选侧栏才切换；
+    // 该项只在 600dp 及以上（含小平板/折叠展开/分屏）渲染整行，其余设备完全隐藏。
     val wideScreenNavigation =
         BottomBarPreferencePolicy.resolveWideScreenNavigation(deps.preferences.wideScreenNavigation)
+    val showWideScreenNavigation = BottomBarPreferencePolicy.supportsWideScreenNavigation(widthDp)
     // 阅读器设置：与分页模式同卡片，读写沿用现有设置存储，不新建二级页
     var readerHorizontal by remember { mutableStateOf(false) }
     var volumeKeyPaging by remember { mutableStateOf(true) }
@@ -369,21 +371,23 @@ fun SettingsScreen(
                         BottomBarForm.entries.getOrNull(index)?.let { applyBottomBarForm(it) }
                     },
                 )
-                OverlaySpinnerPreference(
-                    title = "宽屏导航",
-                    summary = when (wideScreenNavigation) {
-                        WideScreenNavigation.BOTTOM_BAR -> "宽屏同样显示底栏，与手机保持同一套样式"
-                        WideScreenNavigation.RAIL -> "宽屏改用可收起的侧栏，列表获得更宽横向空间"
-                    },
-                    items = WideScreenNavigation.entries.mapIndexed { index, navigation ->
-                        DropdownItem(text = navigation.label, selected = navigation == wideScreenNavigation)
-                    },
-                    selectedIndex = WideScreenNavigation.entries.indexOf(wideScreenNavigation),
-                    showValue = false,
-                    onSelectedIndexChange = { index ->
-                        WideScreenNavigation.entries.getOrNull(index)?.let { applyWideScreenNavigation(it) }
-                    },
-                )
+                if (showWideScreenNavigation) {
+                    OverlaySpinnerPreference(
+                        title = "宽屏导航",
+                        summary = when (wideScreenNavigation) {
+                            WideScreenNavigation.BOTTOM_BAR -> "宽屏同样显示底栏，与手机保持同一套样式"
+                            WideScreenNavigation.RAIL -> "宽屏改用可收起的侧栏，列表获得更宽横向空间"
+                        },
+                        items = WideScreenNavigation.entries.mapIndexed { index, navigation ->
+                            DropdownItem(text = navigation.label, selected = navigation == wideScreenNavigation)
+                        },
+                        selectedIndex = WideScreenNavigation.entries.indexOf(wideScreenNavigation),
+                        showValue = false,
+                        onSelectedIndexChange = { index ->
+                            WideScreenNavigation.entries.getOrNull(index)?.let { applyWideScreenNavigation(it) }
+                        },
+                    )
+                }
                 OverlaySpinnerPreference(
                     title = "默认阅读方向",
                     summary = if (readerHorizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",

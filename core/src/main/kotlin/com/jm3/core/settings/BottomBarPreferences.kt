@@ -49,4 +49,21 @@ object BottomBarPreferencePolicy {
     /** 宽屏导航默认底栏；用户显式选过侧栏才走 Rail。 */
     fun resolveWideScreenNavigation(explicit: WideScreenNavigation?): WideScreenNavigation =
         explicit ?: WideScreenNavigation.BOTTOM_BAR
+
+    /**
+     * 宽屏导航设置项可见的窗口阈值：复用既有平板断点 [TABLET_MIN_WIDTH_DP]（600dp），
+     * 小平板也按平板处理并显示该项；阈值以下整行不渲染。
+     */
+    const val WIDE_SCREEN_NAVIGATION_MIN_WIDTH_DP = TABLET_MIN_WIDTH_DP
+
+    fun supportsWideScreenNavigation(widthDp: Int): Boolean =
+        widthDp >= WIDE_SCREEN_NAVIGATION_MIN_WIDTH_DP
+
+    /** 布局实际采用的导航：设置项不可见时一律底栏，即使盘上残留了侧栏的显式值。 */
+    fun resolveActiveWideScreenNavigation(explicit: WideScreenNavigation?, widthDp: Int): WideScreenNavigation =
+        if (supportsWideScreenNavigation(widthDp)) {
+            resolveWideScreenNavigation(explicit)
+        } else {
+            WideScreenNavigation.BOTTOM_BAR
+        }
 }
