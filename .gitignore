@@ -12,3 +12,5 @@ OPTIMIZATION_PLAN.md
 research/
 .screenshots/
 .scratch/
+# 上游 miuix KMP 源码摘录：仅本地参考，不参与构建，防止误提交
+androidMain/
