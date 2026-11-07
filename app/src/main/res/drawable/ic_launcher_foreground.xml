@@ -1,10 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 前景层：翻开的书页（阅读用途的唯一识别符号），纯白单色，不掺第二种颜色。
+     几何全部落在自适应图标安全圆内（108dp 画布以 54,54 为圆心、半径 33dp），
+     任何圆角/圆形/方形遮罩都不会切到笔画；只保留大块面与页缝，缩小后仍是清晰的书形。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M45,30 L55,30 L55,60 C55,66 59,69 64,67.5 L66.5,74 C57,77.5 45,73.5 45,62 Z" />
+
+    <!-- 左页 -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="1.06"
+        android:scaleY="1.06">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M53,42 C51,38.5 45.5,36 40,36 C35.5,36 30,37.6 30,42 L30,61 C30,65.4 35.5,67 40,67 C45.5,67 51,70.5 53,73 Z" />
+
+        <!-- 右页：与左页以 2dp 页缝镜像 -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M55,42 C57,38.5 62.5,36 68,36 C72.5,36 78,37.6 78,42 L78,61 C78,65.4 72.5,67 68,67 C62.5,67 57,70.5 55,73 Z" />
+    </group>
 </vector>

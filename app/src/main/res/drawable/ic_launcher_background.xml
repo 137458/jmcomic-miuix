@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标底色：完整铺满 108dp 画布，由 Miuix 主题的 primaryContainer(#5D9BFF) 过渡到 primary(#3482FF)，
+     左上角叠一层极淡的高光，避免大面积纯色显得扁平。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="18"
+                android:startY="6"
+                android:endX="96"
+                android:endY="104">
+                <item
+                    android:offset="0"
+                    android:color="#FF5D9BFF" />
+                <item
+                    android:offset="1"
+                    android:color="#FF3482FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="36"
+                android:centerY="28"
+                android:gradientRadius="72">
+                <item
+                    android:offset="0"
+                    android:color="#26FFFFFF" />
+                <item
+                    android:offset="1"
+                    android:color="#00FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
