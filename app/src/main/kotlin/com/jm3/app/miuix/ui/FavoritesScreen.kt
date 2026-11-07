@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -76,7 +77,7 @@ fun FavoritesScreen(
     val user by deps.account.user.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     // 0 = 收藏夹；1 = 标签收藏
-    var tabIndex by rememberSaveable { mutableStateOf(0) }
+    var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
 
     // null 表示首页还没落地（整屏 Loading）；在途与失败标记由 PagedFeed 自己记
@@ -86,7 +87,7 @@ fun FavoritesScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 收藏夹筛选：0 = 全部；切换后重新拉第一页。
-    var folderId by rememberSaveable { mutableStateOf(0) }
+    var folderId by rememberSaveable { mutableIntStateOf(0) }
     var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var showCreate by remember { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }

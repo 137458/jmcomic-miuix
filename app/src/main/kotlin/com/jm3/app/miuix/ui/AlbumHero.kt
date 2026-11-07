@@ -12,6 +12,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,7 +81,7 @@ class AlbumHeroHost {
     private var backwardFlightId by mutableStateOf<Int?>(null)
 
     /** 反向飞行进度：0 = 停在详情头图，1 = 落回列表卡片。只由能读到手势进度的详情页写入。 */
-    var backwardProgress by mutableStateOf(0f)
+    var backwardProgress by mutableFloatStateOf(0f)
         private set
 
     var state by mutableStateOf(HeroState())

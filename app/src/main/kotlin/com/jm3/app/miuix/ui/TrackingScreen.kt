@@ -43,11 +43,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import java.text.SimpleDateFormat
+import java.text.DateFormat
 import java.util.Date
-import java.util.Locale
-
-private val trackingDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
 private sealed interface TrackingUiState {
     data object Loading : TrackingUiState
@@ -279,12 +276,13 @@ fun TrackingScreen(
                         contentPadding = innerPadding,
                     ) {
                         items(feed.items, key = { it.id }) { item ->
+                            val dateFormat = rememberDateFormatter()
                             WorkRowCard(
                                 coverUrl = item.coverUrl,
                                 title = item.name,
                                 onClick = { onOpenAlbum(item.id) },
                                 albumId = item.id,
-                                subtitle = item.updateAt?.toReadableTime(),
+                                subtitle = item.updateAt?.toReadableTime(dateFormat),
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                                 textEndPadding = 4.dp,
                                 trailing = {
@@ -322,8 +320,8 @@ fun TrackingScreen(
 
 
 /** Unix 秒字符串转本地时间；非数字原样返回，避免吞掉服务端文案。 */
-private fun String.toReadableTime(): String =
-    toLongOrNull()?.let { trackingDateFormat.format(Date(it * 1000)) } ?: this
+private fun String.toReadableTime(dateFormat: DateFormat): String =
+    toLongOrNull()?.let { dateFormat.format(Date(it * 1000)) } ?: this
 
 /**
  * 会话失效全屏态：文案位置与排版同 [ErrorScreen]，但动作是「去登录」而不是「重试」——

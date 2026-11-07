@@ -30,9 +30,7 @@ import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.settings.PaginationMode
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -42,8 +40,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-
-private val historyDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
 private sealed interface HistoryListState {
     data object Loading : HistoryListState
@@ -289,12 +285,13 @@ private fun AlbumHistoryCard(
     onDelete: () -> Unit,
 ) {
     val heroHost = LocalAlbumHeroHost.current
+    val dateFormat = rememberDateFormatter()
     WorkRowCard(
         coverUrl = album.latest.coverUrl,
         title = album.latest.title,
         onClick = onResume,
         albumId = album.albumId,
-        subtitle = "共读 ${album.chapters} 话 · ${historyDateFormat.format(Date(album.latest.updatedAt))}",
+        subtitle = "共读 ${album.chapters} 话 · ${dateFormat.format(Date(album.latest.updatedAt))}",
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         textEndPadding = 4.dp,
         trailing = {
