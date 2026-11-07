@@ -28,7 +28,6 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
-import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
@@ -107,10 +106,6 @@ fun SettingsScreen(
     // 版本号连点进入隐藏诊断（原版 secret tap 进 /test）
     var diagnostics by remember { mutableStateOf(false) }
     var versionTapCount by remember { mutableIntStateOf(0) }
-    // 测试更新弹窗：只在本地预览弹窗外观，不检查远端
-    var showTestUpdateDialog by remember { mutableStateOf(false) }
-    var testRelease by remember { mutableStateOf(TEST_UPDATE_RELEASE) }
-    var testDownloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
 
     val versionName = remember {
         @Suppress("DEPRECATION")
@@ -380,33 +375,6 @@ fun SettingsScreen(
                     summary = "查看远端最新版本，支持应用内下载与安装",
                     onClick = onOpenUpdate,
                 )
-                ArrowPreference(
-                    title = "测试更新弹窗",
-                    summary = "用固定假数据预览弹窗排版，不访问网络",
-                    onClick = {
-                        testRelease = TEST_UPDATE_RELEASE
-                        testDownloadState = UpdateDownloadState.Idle
-                        showTestUpdateDialog = true
-                    },
-                )
-                ArrowPreference(
-                    title = "测试更新弹窗（下载中）",
-                    summary = "预览下载中的弹窗：进度条、速度与取消下载入口",
-                    onClick = {
-                        testRelease = TEST_UPDATE_RELEASE
-                        testDownloadState = TEST_DOWNLOADING_STATE
-                        showTestUpdateDialog = true
-                    },
-                )
-                ArrowPreference(
-                    title = "测试更新弹窗（长日志）",
-                    summary = "用 60 行以上的假更新说明验证折叠、展开与滚动排版",
-                    onClick = {
-                        testRelease = TEST_LONG_UPDATE_RELEASE
-                        testDownloadState = UpdateDownloadState.Idle
-                        showTestUpdateDialog = true
-                    },
-                )
                 BasicComponent(
                     title = "开源组件",
                     summary = "jmcomic-api (MIT) · Miuix (Apache-2.0) · Coil (Apache-2.0) · Jetpack Compose (Apache-2.0)",
@@ -507,32 +475,6 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             )
         }
-
-        // 设置里的"测试更新弹窗"：直接复用真实弹窗，只把数据换成固定假版本
-        UpdateAvailableDialog(
-            show = showTestUpdateDialog,
-            currentVersion = versionName,
-            release = testRelease,
-            downloadState = testDownloadState,
-            onDismiss = { showTestUpdateDialog = false },
-            // 不关弹窗：把假状态切成"下载中"，现场看进度条与主按钮怎么写进度
-            onDownload = {
-                testDownloadState = TEST_DOWNLOADING_STATE
-                scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会开始应用内下载") }
-            },
-            onOpenRelease = {
-                showTestUpdateDialog = false
-                scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会打开 Releases 页面") }
-            },
-            onIgnore = { version ->
-                showTestUpdateDialog = false
-                scope.launch { snackbarHostState.showSnackbar("测试弹窗：真实入口会把 $version 记为忽略版本") }
-            },
-            onCancelDownload = {
-                testDownloadState = UpdateDownloadState.Idle
-                scope.launch { snackbarHostState.showSnackbar("测试弹窗：已取消下载") }
-            },
-        )
     }
 }
 

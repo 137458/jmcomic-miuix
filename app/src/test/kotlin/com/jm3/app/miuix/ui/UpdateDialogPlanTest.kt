@@ -60,14 +60,6 @@ class UpdateDialogPlanTest {
     }
 
     @Test
-    fun `long fixture still collapses to a single version line`() {
-        assertEquals(
-            "当前 9.9.8 → 最新 9.9.9-test-long · 2026-06-18",
-            updateDialogSummary("9.9.8", TEST_LONG_UPDATE_RELEASE),
-        )
-    }
-
-    @Test
     fun `collapsed notes keep a bounded preview and count the rest`() {
         val all = "标题\n" + (1..20).joinToString("\n") { "第 " + it + " 行" }
         val state = updateDialogNotesState(all, expanded = false, previewLines = 5)
