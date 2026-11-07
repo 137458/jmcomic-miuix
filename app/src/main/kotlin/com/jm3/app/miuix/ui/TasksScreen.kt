@@ -2,6 +2,7 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,6 +35,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
@@ -100,12 +102,53 @@ fun TasksScreen(
     var filterIndex by rememberSaveable { mutableIntStateOf(0) }
     var state by remember { mutableStateOf<TasksUiState>(TasksUiState.Loading) }
     var refreshing by remember { mutableStateOf(false) }
+    // 佩戴状态以本地覆盖优先：切换成功后服务端已更新，但账号缓存不会立刻刷新
+    var equippedTitleOverride by remember { mutableStateOf<String?>(null) }
+    var equippedBadgeId by remember { mutableStateOf<String?>(null) }
+    var claimingId by remember { mutableStateOf<String?>(null) }
     val selectionHaptic = rememberSelectionHaptic()
     val scope = rememberCoroutineScope()
     val user by deps.account.user.collectAsState()
 
     val type = types[typeIndex]
     val filter = filters[filterIndex]
+
+    // 换账号后旧账号的佩戴覆盖不能留在界面上
+    LaunchedEffect(user?.uid) {
+        equippedTitleOverride = null
+        equippedBadgeId = null
+    }
+
+    /** 点选已获得的称号/勋章并切换佩戴；失败保留服务端提示，便于区分“没权限”和“网络错”。 */
+    fun claim(type: TaskType, item: TaskItem) {
+        val uid = user?.uid
+        if (uid.isNullOrBlank()) {
+            onOpenLogin()
+            return
+        }
+        if (claimingId != null) return
+        claimingId = item.id
+        scope.launch {
+            val outcome = authCall.call { deps.gateway.claimTask(type, uid, item.id) }
+            claimingId = null
+            val failure = when (outcome) {
+                is SessionOutcome.Ok -> outcome.value
+                SessionOutcome.Expired -> "登录已失效，请重新登录"
+                is SessionOutcome.Failed -> outcome.messageOr("请稍后重试")
+            }
+            if (outcome is SessionOutcome.Ok && failure == null) {
+                if (type == TaskType.TITLE) {
+                    equippedTitleOverride = item.content
+                } else {
+                    equippedBadgeId = item.id
+                }
+                selectionHaptic()
+                snackbarHostState.showSnackbar("已佩戴「${item.name}」")
+            } else {
+                snackbarHostState.showSnackbar("切换失败：$failure")
+            }
+        }
+    }
 
     // 快速切换页签时旧响应不能覆盖新条件的结果，慢网下否则会把 A 类型的结果画在 B 类型的格子位置
     var requestToken by remember { mutableIntStateOf(0) }
@@ -136,8 +179,10 @@ fun TasksScreen(
         val requestFilter = filter
         scope.launch {
             val outcome = authCall.call {
-                // 勋章图与 API 同域，域名解析失败时退化为不展示图片
-                val host = runCatching { deps.gateway.imageHost() }.getOrDefault("")
+                // 勋章图与 API 同域；封面域名未就绪时退回当前 API 域名，仍为空才不展示图片
+                val host = runCatching { deps.gateway.imageHost() }
+                    .getOrDefault("")
+                    .ifBlank { runCatching { deps.gateway.usedDomain() }.getOrNull().orEmpty() }
                 TasksUiState.Loaded(deps.gateway.tasks(requestType, requestFilter), host)
             }
             // 令牌已被更新的请求替换：这次响应属于旧条件，整体丢弃（含刷新态复位）
@@ -206,13 +251,16 @@ fun TasksScreen(
                     type = type,
                     page = s.page,
                     imageHost = s.imageHost,
-                    equippedTitle = user?.levelName,
+                    equippedTitle = equippedTitleOverride ?: user?.levelName,
+                    equippedBadgeId = equippedBadgeId,
+                    claimingId = claimingId,
                     contentPadding = innerPadding,
                     refreshing = refreshing,
                     onRefresh = {
                         refreshing = true
                         load(showLoading = false)
                     },
+                    onClaim = { item -> claim(type, item) },
                 )
             }
         }
@@ -225,9 +273,12 @@ private fun TaskGrid(
     page: TaskPage,
     imageHost: String,
     equippedTitle: String?,
+    equippedBadgeId: String?,
+    claimingId: String?,
     contentPadding: PaddingValues,
     refreshing: Boolean,
     onRefresh: () -> Unit,
+    onClaim: (TaskItem) -> Unit,
 ) {
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     GlassPullToRefresh(
@@ -270,11 +321,17 @@ private fun TaskGrid(
                 }
             }
             items(page.items, key = { it.id }) { item ->
+                val equipped = when (type) {
+                    TaskType.TITLE -> equippedTitle != null && item.content == equippedTitle
+                    TaskType.BADGE -> equippedBadgeId == item.id
+                }
                 TaskCell(
                     type = type,
                     item = item,
                     imageHost = imageHost,
-                    equipped = type == TaskType.TITLE && equippedTitle != null && item.content == equippedTitle,
+                    equipped = equipped,
+                    claimable = item.done && !equipped && claimingId == null,
+                    onClick = { onClaim(item) },
                 )
             }
         }
@@ -283,7 +340,14 @@ private fun TaskGrid(
 
 /** 单个成就格：称号显示称号名与获取条件，勋章显示图标与所需金币；未达成整格降为次级色。 */
 @Composable
-private fun TaskCell(type: TaskType, item: TaskItem, imageHost: String, equipped: Boolean) {
+private fun TaskCell(
+    type: TaskType,
+    item: TaskItem,
+    imageHost: String,
+    equipped: Boolean,
+    claimable: Boolean,
+    onClick: () -> Unit,
+) {
     val title = when (type) {
         TaskType.TITLE -> item.content.ifBlank { item.name }
         TaskType.BADGE -> item.name
@@ -301,6 +365,14 @@ private fun TaskCell(type: TaskType, item: TaskItem, imageHost: String, equipped
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // 已获得且未佩戴的格子可点选切换；未达成或佩戴中的格子不响应，避免误触
+            .then(
+                if (claimable) {
+                    Modifier.clickable(role = Role.Button, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
             // 只留最小高度：大字号下由内容自己撑开，同排高度取该排最高格，不会被截断
             .heightIn(min = TaskCellMinHeight)
             .border(1.dp, MiuixTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp))

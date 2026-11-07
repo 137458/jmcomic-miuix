@@ -132,6 +132,13 @@ interface Jm3Gateway : SessionAuth, PhotoSource {
     /** 成就/任务列表（type=称号/勋章，filter=我的/全部）。阻塞调用。 */
     fun tasks(type: TaskType, filter: TaskFilter): TaskPage
 
+    /**
+     * 切换当前佩戴的称号或勋章。成功返回 null，失败返回服务端提示。阻塞调用。
+     *
+     * 对应原版 POST tasks：`{ type, uid, task_id }`，称号与勋章共用同一入口。
+     */
+    fun claimTask(type: TaskType, uid: String, taskId: String): String?
+
     /** 图片域名（媒体与 API 同域），用于拼接勋章图等相对路径；未就绪时返回空串。阻塞调用。 */
     fun imageHost(): String
 
@@ -411,6 +418,17 @@ class Jm3GatewayImpl internal constructor(
     override fun tasks(type: TaskType, filter: TaskFilter): TaskPage =
         client.getTasks(type.apiValue, filter.apiValue).toTaskPage()
 
+    override fun claimTask(type: TaskType, uid: String, taskId: String): String? =
+        claimTaskFailure(
+            client.claimTask(
+                mapOf(
+                    "type" to type.apiValue,
+                    "uid" to uid,
+                    "task_id" to taskId,
+                ),
+            ),
+        )
+
     override fun imageHost(): String = domainControls.coverHost().orEmpty()
 
     override fun userProfile(uid: String): UserProfile = client.getUserProfile(uid).toUserProfile()
@@ -550,6 +568,18 @@ internal interface DomainControls {
 
 /** 取封面域名裁决用的占位本子号：只参与字符串拼接，不产生请求。 */
 private const val COVER_PROBE_ALBUM_ID = "1"
+
+/**
+ * 解析切换佩戴的响应：`status=ok` 视为成功，其余取服务端提示。
+ *
+ * 库已把响应的 `data` 解析成 Map；业务失败仍是 HTTP 200，只能靠 status 判定，
+ * 不能把"接口没报错"当成"佩戴成功"。
+ */
+internal fun claimTaskFailure(payload: Map<*, *>): String? {
+    if (payload["status"]?.toString() == "ok") return null
+    val message = payload["errorMsg"] ?: payload["msg"]
+    return message?.toString()?.takeIf { it.isNotBlank() } ?: "切换失败"
+}
 
 /** [DomainControls] 的生产实现：直接委托库客户端。 */
 private class LibraryDomainControls(private val client: AbstractJmClient) : DomainControls {
