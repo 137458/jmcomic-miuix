@@ -171,8 +171,12 @@ class DownloadService : Service() {
             // 通知被关闭时服务照常运行，只是不再发可见进度。
             if (!DownloadNotifier.canPostNotifications(app)) return
             val presentation = present(tasks) ?: return
-            NotificationManagerCompat.from(app)
-                .notify(DownloadNotifier.NOTIFICATION_ID, DownloadNotifier.build(app, presentation))
+            try {
+                NotificationManagerCompat.from(app)
+                    .notify(DownloadNotifier.NOTIFICATION_ID, DownloadNotifier.build(app, presentation))
+            } catch (_: SecurityException) {
+                // 权限在检查与投递之间被撤销：跳过本次进度刷新，服务继续运行
+            }
         }
     }
 }

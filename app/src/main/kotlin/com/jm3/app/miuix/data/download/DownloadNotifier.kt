@@ -1,15 +1,18 @@
 package com.jm3.app.miuix.data.download
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.jm3.app.miuix.MainActivity
 import com.jm3.app.miuix.R
 import com.jm3.core.download.DownloadMeter
@@ -61,9 +64,18 @@ internal object DownloadNotifier {
 
     /**
      * 用户关闭通知权限/渠道时不影响下载：前台服务照常运行，仅跳过可见通知的发布。
+     * Android 13+ 需显式校验 POST_NOTIFICATIONS；areNotificationsEnabled 只反映渠道总开关，
+     * 不覆盖运行时权限被撤销的情形。
      */
-    fun canPostNotifications(context: Context): Boolean =
-        NotificationManagerCompat.from(context).areNotificationsEnabled()
+    fun canPostNotifications(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
 
     fun cancel(context: Context) {
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
@@ -95,7 +107,11 @@ internal object DownloadNotifier {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(contentIntent(context))
             .build()
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PAUSED, notification)
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_PAUSED, notification)
+        } catch (_: SecurityException) {
+            // 权限在检查与投递之间被撤销：放弃这条提示，不影响下载流程
+        }
     }
 
     /**
