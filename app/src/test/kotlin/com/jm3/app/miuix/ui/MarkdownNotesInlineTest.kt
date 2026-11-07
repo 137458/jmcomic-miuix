@@ -1,9 +1,11 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.font.FontWeight
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 /** 更新说明的行内解析：链接必须变成可点击注解，未闭合标记必须保持原文。 */
 class MarkdownNotesInlineTest {
@@ -26,7 +28,9 @@ class MarkdownNotesInlineTest {
         assertEquals("见 更新页面", result.text)
         val links = result.getLinkAnnotations(0, result.length)
         assertEquals(1, links.size)
-        assertEquals("https://example.com/releases", links.single().item.url)
+        // getLinkAnnotations 的元素是基类 LinkAnnotation，url 只存在于 Url 子类型
+        val link = assertIs<LinkAnnotation.Url>(links.single().item)
+        assertEquals("https://example.com/releases", link.url)
     }
 
     @Test
