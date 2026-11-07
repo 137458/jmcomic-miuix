@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
@@ -303,6 +304,7 @@ internal fun UpdateAvailableDialog(
     }
     val downloading = downloadState is UpdateDownloadState.Downloading
     val scrollState = rememberScrollState()
+    val skin = LocalSkin.current
     // 只在还有内容的方向羽化：滚到顶或底时对应一侧恢复实心，避免"永远有雾"的假暗示
     val hasContentAbove by remember { derivedStateOf { scrollState.value > 0 } }
     val hasContentBelow by remember { derivedStateOf { scrollState.maxValue > scrollState.value } }
@@ -311,6 +313,7 @@ internal fun UpdateAvailableDialog(
         show = show,
         title = "发现新版本",
         summary = plan.summary,
+        cornerRadius = skin.shapes.dialogCorner,
         onDismissRequest = onDismiss,
     ) {
         // 水平内边距由弹窗的 insideMargin 提供，这里只负责限高、滚动与边缘羽化。
@@ -341,7 +344,7 @@ internal fun UpdateAvailableDialog(
             }
             if (plan.hasNotes) {
                 SmallTitle(text = "更新说明", insideMargin = DialogSectionMargin)
-                Card(modifier = Modifier.fillMaxWidth()) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(DialogCardPadding)) {
                         MarkdownNotes(
                             markdown = notesState.visibleMarkdown,

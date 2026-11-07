@@ -60,6 +60,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.AlbumPreviewPlan
 import com.jm3.core.ChapterLabels
 import com.jm3.core.Jm3Gateway
@@ -148,6 +149,7 @@ internal fun AlbumDetailScreen(
     val context = LocalContext.current
     val user by account.user.collectAsState()
     val scope = rememberCoroutineScope()
+    val skin = LocalSkin.current
     // 预览图与阅读页共用同一套图片加载器（含同一份缓存），避免再建第二个 loader
     val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles)
 
@@ -470,7 +472,7 @@ internal fun AlbumDetailScreen(
             }
             is CommentsUiState.Loaded -> {
                 item(key = "comments-card") {
-                    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                             if (cs.feed.items.isEmpty()) {
                                 Text(
@@ -630,9 +632,10 @@ internal fun AlbumDetailScreen(
                     OverlayBottomSheet(
                         show = uiState.showFolderSheet,
                         title = if (uiState.favorited) "移动收藏夹" else "选择收藏夹",
+                        cornerRadius = skin.shapes.sheetCorner,
                         onDismissRequest = stateHolder::closeFolderSheet,
                     ) {
-                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                             val allLabel = uiState.folders["0"] ?: "全部收藏"
                             BasicComponent(
                                 title = allLabel,
@@ -697,6 +700,7 @@ private fun DetailHeader(
 ) {
     val title = detail?.title?.trim()?.takeIf { it.isNotBlank() } ?: fallbackTitle?.trim().orEmpty()
     val coverUrl = detail?.coverUrl?.trim()?.takeIf { it.isNotBlank() } ?: fallbackCoverUrl?.trim()
+    val skin = LocalSkin.current
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -801,7 +805,7 @@ private fun DetailHeader(
             }
             Spacer(modifier = Modifier.height(8.dp))
             // 高频动作台：四等分胶囊卡，图标 + 短标签，状态用填充图标回显
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     ActionCell(
                         icon = if (favorited) MiuixIcons.FolderFill else MiuixIcons.Folder,
@@ -852,6 +856,7 @@ private fun DescriptionSection(
     onToggle: () -> Unit,
     onCopy: () -> Unit,
 ) {
+    val skin = LocalSkin.current
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -872,7 +877,7 @@ private fun DescriptionSection(
                 )
             }
         }
-        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Text(
                     text = text,
@@ -904,7 +909,8 @@ private fun AlbumInfoCard(
     val validWorks = detail.works.map { it.trim() }.filter { it.isNotBlank() }
     val validActors = detail.actors.map { it.trim() }.filter { it.isNotBlank() }
     val displayId = detail.id.trim().takeIf { it.isNotBlank() && it != "-1" } ?: albumId
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+    val skin = LocalSkin.current
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         if (validWorks.isNotEmpty()) {
             BasicComponent(
                 title = "作品",
@@ -960,7 +966,8 @@ private fun ChapterGroupCard(
         ChapterLabels.chapterTitle(chapter.title, startPosition + index)
     }
     val showToggle = shouldShowChapterGroupToggle(group.size)
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+    val skin = LocalSkin.current
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         if (showToggle) {
             BasicComponent(
                 title = ChapterLabels.groupTitle(group.map { it.title }, startPosition),
@@ -1017,7 +1024,8 @@ internal fun CommentComposer(
     onLogin: () -> Unit,
     onSend: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+    val skin = LocalSkin.current
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         if (!loggedIn) {
             BasicComponent(
                 title = "登录后发表评论",

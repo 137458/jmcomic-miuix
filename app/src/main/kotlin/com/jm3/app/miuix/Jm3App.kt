@@ -62,7 +62,10 @@ import com.jm3.app.miuix.ui.WideLayout
 import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.update.UpdateDownloader
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
+import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
 import com.jm3.app.miuix.ui.skin.LocalSkin
+import com.jm3.app.miuix.ui.skin.SkinMotion
+import com.jm3.app.miuix.ui.skin.navMotionOrDefault
 import com.jm3.app.miuix.ui.skin.skinTokensFor
 import com.jm3.core.paging.PaginationModePolicy
 import com.jm3.core.Jm3Gateway
@@ -345,22 +348,26 @@ private val albumDetailPageTransform: GraphicsLayerScope.(NavTransitionScope) ->
  *
  * 对应 eh 项目 Navigation Compose 的 enterTransition / popEnterTransition 写法；
  * Miuix Nav 没有 AnimatedContentTransitionScope，用 navDirectionalTransition 表达同一语义。
+ * 转场物理按皮肤取值：HyperOS 沿用 Miuix 默认，ColorOS 用自有时间曲线。
  */
-private val albumDetailTransition = navDirectionalTransition(
+private fun albumDetailTransitionFor(motion: SkinMotion) = navDirectionalTransition(
     navGraphicsTransition(
         opaqueDepth = 1f,
         dismissDirection = NavSwipeDirection.None,
         block = albumDetailPageTransform,
+        motion = motion.navMotionOrDefault(),
     ),
     navGraphicsTransition(
         opaqueDepth = 1f,
         dismissDirection = NavSwipeDirection.None,
         block = albumDetailPageTransform,
+        motion = motion.navMotionOrDefault(),
     ),
     navGraphicsTransition(
         opaqueDepth = 1f,
         dismissDirection = NavSwipeDirection.LeftToRight,
         block = albumDetailPageTransform,
+        motion = motion.navMotionOrDefault(),
     ),
 )
 
@@ -398,9 +405,12 @@ fun Jm3App() {
         UiSkin.entries.firstOrNull { it.name == uiSkinName } ?: UiSkin.HYPEROS
     }
     val skin = remember(uiSkin) { skinTokensFor(uiSkin) }
-    val controller = remember(themeMode, dynamicColor, skin) {
+    // 动态取色只在 HyperOS 生效；ColorOS 固定自有色板，盘上开关值保留以便切回恢复。
+    val effectiveDynamicColor = DynamicColorPolicy.effective(uiSkin, dynamicColor)
+    val albumDetailTransition = remember(skin) { albumDetailTransitionFor(skin.motion) }
+    val controller = remember(themeMode, effectiveDynamicColor, skin) {
         ThemeController(
-            colorSchemeMode = themeMode.toColorSchemeMode(dynamicColor),
+            colorSchemeMode = themeMode.toColorSchemeMode(effectiveDynamicColor),
             lightColors = skin.lightColors,
             darkColors = skin.darkColors,
         )
@@ -563,11 +573,12 @@ fun Jm3App() {
                                 themeModeName = mode.name
                                 scope.launch { Jm3Graph.settings.setThemeMode(mode) }
                             },
-                            dynamicColor = dynamicColor,
+                            dynamicColor = effectiveDynamicColor,
                             onDynamicColorChange = { enabled ->
                                 dynamicColor = enabled
                                 scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
                             },
+                            dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
                             uiSkin = uiSkin,
                             onUiSkinChange = { nextSkin ->
                                 uiSkinName = nextSkin.name

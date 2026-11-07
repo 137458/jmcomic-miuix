@@ -29,6 +29,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.reader.ReaderSpreadPolicy
 import com.jm3.core.session.AuthCall
@@ -97,6 +98,7 @@ fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     dynamicColor: Boolean,
     onDynamicColorChange: (Boolean) -> Unit,
+    dynamicColorSupported: Boolean,
     uiSkin: UiSkin,
     onUiSkinChange: (UiSkin) -> Unit,
     gateway: Jm3Gateway,
@@ -107,6 +109,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val skin = LocalSkin.current
 
     val domainsInput = rememberSaveable { mutableStateOf("") }
     var loadedSaved by rememberSaveable { mutableStateOf(false) }
@@ -298,7 +301,7 @@ fun SettingsScreen(
             // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样
             TopBarContentSpacer(paddingValues = innerPadding)
             SmallTitle(text = "主题")
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 BasicComponent(
                     title = "外观模式",
                     summary = when (themeMode) {
@@ -340,14 +343,19 @@ fun SettingsScreen(
                 )
                 SwitchPreference(
                     title = "动态取色",
-                    summary = "跟随壁纸生成配色（Android 12 及以上）",
+                    summary = if (dynamicColorSupported) {
+                        "跟随壁纸生成配色（Android 12 及以上）"
+                    } else {
+                        "ColorOS 皮肤固定自有色板，动态取色不生效"
+                    },
                     checked = dynamicColor,
                     onCheckedChange = onDynamicColorChange,
+                    enabled = dynamicColorSupported,
                 )
             }
 
             SmallTitle(text = "通用")
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 OverlaySpinnerPreference(
                     title = "分页模式",
                     summary = when (paginationMode) {
@@ -550,7 +558,7 @@ fun SettingsScreen(
             }
 
             SmallTitle(text = "线路")
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 // Card 内统一用 BasicComponent 行式布局承载诊断信息与操作，替代散落的小号正文与全宽按钮。
                 BasicComponent(
                     title = "当前线路",
@@ -623,7 +631,7 @@ fun SettingsScreen(
             }
 
             SmallTitle(text = "数据管理")
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ArrowPreference(
                     title = "清空阅读历史",
                     summary = "移除全部阅读记录",
@@ -637,7 +645,7 @@ fun SettingsScreen(
             }
 
             SmallTitle(text = "关于")
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 // 版本行兼作隐藏诊断入口：2 秒内连点 5 次打开诊断面板
                 BasicComponent(
                     title = "版本",
@@ -673,9 +681,10 @@ fun SettingsScreen(
         OverlayBottomSheet(
             show = diagnostics,
             title = "诊断信息",
+            cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = { diagnostics = false },
         ) {
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -710,6 +719,7 @@ fun SettingsScreen(
         OverlayDialog(
             show = confirmClear != null,
             title = if (clearingHistory) "清空阅读历史" else "清空下载",
+            cornerRadius = skin.shapes.dialogCorner,
             summary = if (clearingHistory) {
                 "将删除全部阅读记录，此操作不可撤销。"
             } else {
@@ -741,6 +751,7 @@ fun SettingsScreen(
         OverlayDialog(
             show = showDisclaimer,
             title = "免责声明",
+            cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = { showDisclaimer = false },
         ) {
             Text(

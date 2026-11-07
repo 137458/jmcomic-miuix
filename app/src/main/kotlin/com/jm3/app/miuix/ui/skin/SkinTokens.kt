@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui.skin
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
@@ -8,19 +9,25 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.glass.GlassStyle
 import com.jm3.core.settings.UiSkin
+import top.yukonga.miuix.kmp.nav.transition.NavMotion
+import top.yukonga.miuix.kmp.nav.transition.NavSettleSpec
 import top.yukonga.miuix.kmp.theme.Colors
 import top.yukonga.miuix.kmp.theme.TextStyles
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
-/** 页面骨架共用的形状 token；第一阶段只暴露契约，不 fork 现有圆角实现。 */
+/** 页面骨架共用的形状 token；消费点按皮肤取值，HyperOS 保持 Miuix 默认。 */
 @Immutable
 internal data class SkinShapes(
     val cardCorner: Dp = 16.dp,
     val controlCorner: Dp = 12.dp,
     val capsuleCorner: Dp = 999.dp,
     val useSquircle: Boolean = true,
+    /** 底部面板圆角；Miuix 默认 28dp。 */
+    val sheetCorner: Dp = 28.dp,
+    /** 弹窗圆角；null 交给 Miuix 按屏幕圆角推导，HyperOS 保持现状。 */
+    val dialogCorner: Dp? = null,
 )
 
 /** 动效 token；页面转场与组件动画从同一份弹簧参数取值。 */
@@ -29,6 +36,8 @@ internal data class SkinMotion(
     val springDamping: Float = 0.7f,
     val springStiffness: Float = 400f,
     val screenTransitionMs: Int = 300,
+    /** 导航转场物理；null 表示沿用 Miuix 默认，HyperOS 保持现状。 */
+    val navMotion: NavMotion? = null,
 )
 
 /**
@@ -55,6 +64,8 @@ private val HyperOsSkin = SkinTokens(
         controlCorner = 12.dp,
         capsuleCorner = 999.dp,
         useSquircle = true,
+        sheetCorner = 28.dp,
+        dialogCorner = null,
     ),
     motion = SkinMotion(
         springDamping = 0.7f,
@@ -164,11 +175,18 @@ private val ColorOsSkin = SkinTokens(
         controlCorner = 14.dp,
         capsuleCorner = 999.dp,
         useSquircle = true,
+        sheetCorner = 24.dp,
+        dialogCorner = 26.dp,
     ),
     motion = SkinMotion(
         springDamping = 0.78f,
         springStiffness = 460f,
         screenTransitionMs = 280,
+        navMotion = NavMotion(
+            commit = NavSettleSpec.Spring(1f, 460f),
+            cancel = NavSettleSpec.Spring(1f, 460f),
+            programmatic = NavSettleSpec.Tween(280, FastOutSlowInEasing),
+        ),
     ),
     glassStyle = GlassStyle.Frosted,
 )
