@@ -44,6 +44,7 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -237,6 +238,12 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
+                    // 默认背景与 Card 不同，会在卡片里露出一圈异色矩形；
+                    // 这里让轨道贴合卡片底色，选中格用同一色系的淡色区分。
+                    colors = TabRowDefaults.tabRowColors(
+                        backgroundColor = MiuixTheme.colorScheme.surfaceContainer,
+                        selectedBackgroundColor = MiuixTheme.colorScheme.surfaceContainerHigh,
+                    ),
                 )
                 SwitchPreference(
                     title = "动态取色",
