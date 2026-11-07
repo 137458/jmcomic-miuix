@@ -269,6 +269,8 @@ fun TrackingScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
+                    // 格式化器整页一份：放进行项内会让滚动进出反复构造 SimpleDateFormat
+                    val dateFormat = rememberDateFormatter()
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -276,7 +278,6 @@ fun TrackingScreen(
                         contentPadding = innerPadding,
                     ) {
                         items(feed.items, key = { it.id }) { item ->
-                            val dateFormat = rememberDateFormatter()
                             WorkRowCard(
                                 coverUrl = item.coverUrl,
                                 title = item.name,

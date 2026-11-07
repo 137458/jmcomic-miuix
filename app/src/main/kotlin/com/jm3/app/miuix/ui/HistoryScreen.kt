@@ -30,6 +30,7 @@ import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.settings.PaginationMode
+import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
@@ -214,6 +215,8 @@ fun HistoryScreen(
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
+                    // 格式化器整页一份：放进行项内会让滚动进出反复构造 SimpleDateFormat
+                    val dateFormat = rememberDateFormatter()
                     TrackedLazyColumn(
                         state = listState,
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
@@ -223,6 +226,7 @@ fun HistoryScreen(
                         items(albums, key = { it.albumId }) { album ->
                             AlbumHistoryCard(
                                 album = album,
+                                dateFormat = dateFormat,
                                 onResume = { onOpenReader(album.latest.photoId) },
                                 onOpenDetail = { onOpenAlbum(album.albumId) },
                                 onDelete = { removeAlbum(album.albumId) },
@@ -280,12 +284,12 @@ fun HistoryScreen(
 @Composable
 private fun AlbumHistoryCard(
     album: AlbumHistory,
+    dateFormat: DateFormat,
     onResume: () -> Unit,
     onOpenDetail: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val heroHost = LocalAlbumHeroHost.current
-    val dateFormat = rememberDateFormatter()
     WorkRowCard(
         coverUrl = album.latest.coverUrl,
         title = album.latest.title,
