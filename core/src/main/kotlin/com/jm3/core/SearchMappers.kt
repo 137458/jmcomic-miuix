@@ -40,6 +40,15 @@ fun SearchScope.toMainTag(): SearchMainTag = when (this) {
 fun BrowseTime.toTimeOption(): TimeOption =
     TimeOption.entries.firstOrNull { it.value == apiValue } ?: TimeOption.ALL
 
+/**
+ * 车号直达的唯一判定：去掉首尾空白后必须全部是半角数字。
+ *
+ * 全角数字送进接口取不到作品，因此不认；含章节后缀（`123456-1`）或内部空格的输入
+ * 按关键词搜索处理，避免截断后缀后跳到一个不相干的作品。
+ */
+fun albumCodeOf(input: String): String? =
+    input.trim().takeIf { it.isNotEmpty() && it.all { char -> char in '0'..'9' } }
+
 /** 关键词/标签搜索查询；mainTag 决定站内搜索或标签检索，time 由服务端过滤时间范围。 */
 fun searchQuery(
     text: String,

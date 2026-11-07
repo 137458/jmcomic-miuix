@@ -29,12 +29,15 @@ import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.squircle.squircleBackground
@@ -88,7 +91,20 @@ internal object WorkCardTokens {
 
     /** 作品网格的列间距与行间距。 */
     val GridSpacing: Dp = 8.dp
+
+    /**
+     * 卡内文字固定行高与字号之比。
+     *
+     * Miuix 的 textStyles 只声明字号、没有行高；行高缺省时按字形最大度量排版，
+     * 含日文假名、emoji 的标题每行会比普通标题高出一截，同排卡片于是高矮不齐。
+     * 按字号折算固定行高后，卡片高度只由字号与行数决定，与标题内容无关。
+     */
+    const val LineHeightRatio = 1.42f
 }
+
+/** 固定行高：样式已声明行高就沿用，否则按 [WorkCardTokens.LineHeightRatio] 从字号折算。 */
+internal fun TextStyle.pinnedLineHeight(): TextUnit =
+    if (lineHeight.isSpecified) lineHeight else fontSize * WorkCardTokens.LineHeightRatio
 
 /**
  * 作品封面：贴边封面（网格卡、行卡）与详情头图共用同一套解码与内存缓存。
@@ -168,12 +184,14 @@ internal fun WorkTagLine(
     maxTags: Int = 3,
     // 无标签时也占一行：同一行卡片要等高时传 true，否则有没有标签的卡片会差一行
     reserveLine: Boolean = false,
+    lineHeight: TextUnit = TextUnit.Unspecified,
 ) {
     if (tags.isEmpty() && !reserveLine) return
     Text(
         text = if (tags.isEmpty()) "\u00A0" else tags.take(maxTags).joinToString(" ") { "#" + it },
         style = MiuixTheme.textStyles.footnote2,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        lineHeight = lineHeight,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier.padding(top = WorkCardTokens.TextGap),
@@ -200,6 +218,7 @@ private fun WorkCardSubtitleText(
     authors: String?,
     category: String?,
     modifier: Modifier = Modifier,
+    lineHeight: TextUnit = TextUnit.Unspecified,
 ) {
     val authorText = authors?.trim()?.takeIf { it.isNotEmpty() }
     val categoryText = category?.trim()?.takeIf { it.isNotEmpty() }
@@ -214,6 +233,7 @@ private fun WorkCardSubtitleText(
         },
         style = MiuixTheme.textStyles.footnote1,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        lineHeight = lineHeight,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier.padding(top = WorkCardTokens.TextGap),
@@ -267,6 +287,8 @@ internal fun WorkCardMetaRow(
  * 次级信息 footnote1、角标走 [WorkCoverBadge]；不同场景只允许改宽度与标题行数。
  *
  * @param category 主分类标题，与作者同一行展示（主色）；为空时不占位。
+ * @param titleLineHeight 标题固定行高，缺省时由字体度量决定（需要同排卡片绝对等高时传入）。
+ * @param subtitleLineHeight 次级信息固定行高，语义同上。
  * @param badge 封面角标槽位，调用方用 `Modifier.align(...)` 决定落点。
  * @param footer 标题下方的附加行（作者、日期等），由调用方按需补充。
  */
@@ -281,6 +303,8 @@ internal fun WorkGridCard(
     subtitle: String? = null,
     category: String? = null,
     titleMaxLines: Int = 2,
+    titleLineHeight: TextUnit = TextUnit.Unspecified,
+    subtitleLineHeight: TextUnit = TextUnit.Unspecified,
     badge: (@Composable BoxScope.() -> Unit)? = null,
     footer: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
@@ -318,12 +342,13 @@ internal fun WorkGridCard(
                 style = MiuixTheme.textStyles.body2,
                 fontWeight = FontWeight.Medium,
                 color = MiuixTheme.colorScheme.onSurface,
+                lineHeight = titleLineHeight,
                 // 与标题行数对齐占位：同一行里单行/两行标题的卡片高度一致
                 minLines = titleMaxLines,
                 maxLines = titleMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
-            WorkCardSubtitleText(authors = subtitle, category = category)
+            WorkCardSubtitleText(authors = subtitle, category = category, lineHeight = subtitleLineHeight)
             footer?.invoke(this)
         }
     }

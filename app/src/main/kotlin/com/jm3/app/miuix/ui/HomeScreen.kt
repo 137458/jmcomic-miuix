@@ -48,6 +48,7 @@ import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.core.Jm3Gateway
+import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.SearchPage
@@ -228,9 +229,11 @@ fun HomeScreen(
 
     fun submitSearch() {
         val q = query.trim()
+        val code = albumCodeOf(q)
         when {
             q.isEmpty() -> Unit
-            q.all { it.isDigit() } -> openAlbum(q) // 车号直达
+            // 纯数字默认就是车号，和搜索栏既有的车号直达走同一套判定
+            code != null -> openAlbum(code)
             else -> runSearch(q, byTag = false, sort = order)
         }
     }
@@ -798,6 +801,11 @@ private fun InlineLoading() {
 /** 随机推荐卡：封面 + 两行标题，横向滑动浏览；外观走 [WorkGridCard] 的统一契约。 */
 @Composable
 private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
+    // 行高缺省时会按字形最大度量排版：日文假名、emoji 能让个别标题每行高出一点，
+    // 同排卡片便出现毫厘之差。三行文字都按字号折算固定行高，整卡高度只由行数决定。
+    val titleLineHeight = MiuixTheme.textStyles.body2.pinnedLineHeight()
+    val subtitleLineHeight = MiuixTheme.textStyles.footnote1.pinnedLineHeight()
+    val tagLineHeight = MiuixTheme.textStyles.footnote2.pinnedLineHeight()
     WorkGridCard(
         title = pick.title,
         coverUrl = pick.coverUrl,
@@ -807,8 +815,10 @@ private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
         // 缺作者/缺标签也占住对应行：随机推荐是等高卡片，少一行就会比同排卡片矮
         subtitle = pick.authors.joinToString(" / ").ifBlank { "未知作者" },
         category = pick.category,
+        titleLineHeight = titleLineHeight,
+        subtitleLineHeight = subtitleLineHeight,
         modifier = Modifier.width(WorkCardTokens.CompactWidth),
         badge = { WorkAlbumCodeBadge(pick.id) },
-        footer = { WorkTagLine(pick.tags, reserveLine = true) },
+        footer = { WorkTagLine(pick.tags, reserveLine = true, lineHeight = tagLineHeight) },
     )
 }
