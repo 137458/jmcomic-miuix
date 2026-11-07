@@ -233,6 +233,7 @@ fun FloatingBottomBar(
         hasBackdrop = backdrop != null,
         shaderSupported = isRuntimeShaderSupported(),
         requested = mode,
+        style = LocalGlassStyle.current,
     )
     val isLiquidGlassMode = tier == GlassTier.LiquidGlass
     val containerColor = if (isLiquidGlassMode) colors.containerColor.copy(alpha = 0.4f) else colors.containerColor

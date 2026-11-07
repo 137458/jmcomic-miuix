@@ -61,6 +61,9 @@ import com.jm3.app.miuix.ui.WeekScreen
 import com.jm3.app.miuix.ui.WideLayout
 import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.update.UpdateDownloader
+import com.jm3.app.miuix.ui.glass.LocalGlassStyle
+import com.jm3.app.miuix.ui.skin.LocalSkin
+import com.jm3.app.miuix.ui.skin.skinTokensFor
 import com.jm3.core.paging.PaginationModePolicy
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.Jm3Log
@@ -72,6 +75,7 @@ import com.jm3.core.session.AuthCall
 import com.jm3.core.settings.SettingsRepository
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
+import com.jm3.core.settings.UiSkin
 import com.jm3.core.model.SearchScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -388,8 +392,18 @@ fun Jm3App() {
         runCatching { ThemeMode.valueOf(themeModeName) }.getOrDefault(ThemeMode.SYSTEM)
     }
     var dynamicColor by rememberSaveable { mutableStateOf(false) }
-    val controller = remember(themeMode, dynamicColor) {
-        ThemeController(colorSchemeMode = themeMode.toColorSchemeMode(dynamicColor))
+    // 界面风格：null 表示从未选择，盘上不写键，展示按默认皮肤回落。
+    var uiSkinName by rememberSaveable { mutableStateOf(UiSkin.HYPEROS.name) }
+    val uiSkin = remember(uiSkinName) {
+        UiSkin.entries.firstOrNull { it.name == uiSkinName } ?: UiSkin.HYPEROS
+    }
+    val skin = remember(uiSkin) { skinTokensFor(uiSkin) }
+    val controller = remember(themeMode, dynamicColor, skin) {
+        ThemeController(
+            colorSchemeMode = themeMode.toColorSchemeMode(dynamicColor),
+            lightColors = skin.lightColors,
+            darkColors = skin.darkColors,
+        )
     }
     // 全局 Snackbar：各屏 Scaffold 的 snackbarHost 槽挂载同一个 host state
     val snackbarHostState = remember { SnackbarHostState() }
@@ -425,6 +439,8 @@ fun Jm3App() {
         runCatchingSuspending {
             themeModeName = Jm3Graph.settings.themeMode().name
             dynamicColor = Jm3Graph.settings.dynamicColor()
+            // 皮肤：盘上是 null 表示用户从未显式选择，保留默认且不回写键。
+            Jm3Graph.preferences.repository.uiSkinOrNull()?.let { uiSkinName = it.name }
             // 分页模式：用户在本进程内已显式改过就保留内存值，否则用盘上值。
             // 读盘发生在组合之后，盘上的旧值不该盖掉用户刚选的那个。
             Jm3Graph.preferences.applyStartupPaginationMode(
@@ -454,7 +470,9 @@ fun Jm3App() {
         WideLayout(widthDp = configuration.screenWidthDp, heightDp = configuration.screenHeightDp)
     }
 
-    MiuixTheme(controller = controller) {
+    // 皮肤只替换主题取值与 CompositionLocal，不切换宿主、不重建页面树：
+    // 换肤时导航栈、阅读器与下载任务状态原地保留（对齐 Eta 用根级 movableContentOf 保状态的结果）。
+    MiuixTheme(controller = controller, textStyles = skin.textStyles) {
         // edge-to-edge 下状态栏/导航栏图标明暗跟随应用内主题，而非系统夜间模式
         val view = LocalView.current
         val darkSurface = MiuixTheme.colorScheme.surface.luminance() < 0.5f
@@ -468,6 +486,8 @@ fun Jm3App() {
         // 转场特效：圆角裁剪贴合设备屏幕圆角，背景色补上浮层下露出的底色（HyperOS 浮动转场观感）
         val screenCornerRadius = rememberNavSystemCornerRadius()
         CompositionLocalProvider(
+            LocalSkin provides skin,
+            LocalGlassStyle provides skin.glassStyle,
             LocalAlbumHeroHost provides heroHost,
             LocalWideLayout provides wideLayout,
         ) {
@@ -547,6 +567,11 @@ fun Jm3App() {
                             onDynamicColorChange = { enabled ->
                                 dynamicColor = enabled
                                 scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
+                            },
+                            uiSkin = uiSkin,
+                            onUiSkinChange = { nextSkin ->
+                                uiSkinName = nextSkin.name
+                                scope.launch { Jm3Graph.preferences.repository.setUiSkin(nextSkin) }
                             },
                             gateway = Jm3Graph.gateway,
                             authCall = Jm3Graph.session.authCall,

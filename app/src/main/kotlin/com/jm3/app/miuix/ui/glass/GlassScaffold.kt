@@ -125,13 +125,16 @@ fun GlassScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val backdrop = rememberBlurBackdrop()
+    val glassStyle = LocalGlassStyle.current
     // 顶栏的磨砂由渐进模糊承担，这里只向角色表要「这一档要不要采样」与实色兜底不透明度。
     val topBarGlass = resolveGlassSurface(
         role = GlassRole.TopAppBar,
         tier = resolveGlassTier(
             hasBackdrop = backdrop != null,
             shaderSupported = isRuntimeShaderSupported(),
+            style = glassStyle,
         ),
+        style = glassStyle,
     )
     // 能画出玻璃才有模糊层；顺带把采样源收窄成非空，供模糊层直接用。
     val blurBackdrop = backdrop?.takeIf { topBarGlass.drawsBackdrop }

@@ -199,6 +199,26 @@ internal fun resolveGlassSurface(spec: GlassRoleSpec, tier: GlassTier): GlassSur
 internal fun resolveGlassSurface(role: GlassRole, tier: GlassTier): GlassSurfacePlan =
     resolveGlassSurface(glassRoleSpec(role), tier)
 
+/** 皮肤风格版：ColorOS 均匀磨砂只改配方，不改降级矩阵。 */
+internal fun glassRoleSpec(role: GlassRole, style: GlassStyle): GlassRoleSpec {
+    val spec = glassRoleSpec(role)
+    return when (style) {
+        GlassStyle.Liquid -> spec
+        GlassStyle.Frosted -> spec.copy(
+            liquidBlurDp = spec.blurTierBlurDp,
+            lensHeightDp = 0f,
+            lensAmountDp = 0f,
+            effectPaddingDp = 0f,
+            highlightAlpha = 0f,
+            liquidScrimAlpha = spec.blurScrimAlpha,
+            vibrancy = false,
+        )
+    }
+}
+
+internal fun resolveGlassSurface(role: GlassRole, tier: GlassTier, style: GlassStyle): GlassSurfacePlan =
+    resolveGlassSurface(glassRoleSpec(role, style), tier)
+
 /**
  * 把角色与降级结果铺成表面 Modifier：调用方只交出采样源、角色、底衬色与形状。
  *
@@ -224,12 +244,14 @@ internal fun glassSurface(
     borderColor: Color? = null,
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
 ): Modifier {
+    val style = LocalGlassStyle.current
     val tier = resolveGlassTier(
         hasBackdrop = backdrop != null,
         shaderSupported = isRuntimeShaderSupported(),
         requested = requested,
+        style = style,
     )
-    val plan = resolveGlassSurface(role, tier).let { resolved ->
+    val plan = resolveGlassSurface(role, tier, style).let { resolved ->
         if (liquidScrimAlpha != null && resolved.drawsBackdrop && resolved.lensRefractionAmountDp > 0f) {
             resolved.copy(scrimAlpha = liquidScrimAlpha)
         } else {

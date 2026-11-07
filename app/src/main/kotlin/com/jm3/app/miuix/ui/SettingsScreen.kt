@@ -41,6 +41,7 @@ import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ReaderSpreadMode
 import com.jm3.core.settings.ThemeMode
+import com.jm3.core.settings.UiSkin
 import com.jm3.core.settings.WideScreenNavigation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -96,6 +97,8 @@ fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     dynamicColor: Boolean,
     onDynamicColorChange: (Boolean) -> Unit,
+    uiSkin: UiSkin,
+    onUiSkinChange: (UiSkin) -> Unit,
     gateway: Jm3Gateway,
     authCall: AuthCall,
     onBack: () -> Unit,
@@ -319,6 +322,21 @@ fun SettingsScreen(
                         backgroundColor = MiuixTheme.colorScheme.surfaceContainer,
                         selectedBackgroundColor = MiuixTheme.colorScheme.surfaceContainerHigh,
                     ),
+                )
+                OverlaySpinnerPreference(
+                    title = "界面风格",
+                    summary = when (uiSkin) {
+                        UiSkin.HYPEROS -> "HyperOS：液态玻璃折射与饱和高光"
+                        UiSkin.COLOROS -> "ColorOS：均匀磨砂与材质混色"
+                    },
+                    items = UiSkin.entries.mapIndexed { index, skin ->
+                        DropdownItem(text = skin.label, selected = skin == uiSkin)
+                    },
+                    selectedIndex = UiSkin.entries.indexOf(uiSkin),
+                    showValue = false,
+                    onSelectedIndexChange = { index ->
+                        UiSkin.entries.getOrNull(index)?.takeIf { it != uiSkin }?.let(onUiSkinChange)
+                    },
                 )
                 SwitchPreference(
                     title = "动态取色",

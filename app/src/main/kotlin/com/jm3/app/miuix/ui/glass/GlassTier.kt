@@ -26,13 +26,16 @@ internal val GlassTier.drawsBackdrop: Boolean
  * @param hasBackdrop 是否拿到了采样源（[FloatingBottomBar] 的 backdrop、GlassScaffold 的 LocalGlassBackdrop）
  * @param shaderSupported 是否有运行时着色器
  * @param requested 调用方希望的形态：默认液态玻璃，降级由本函数决定
+ * @param style 皮肤玻璃配方：ColorOS 均匀磨砂不依赖运行时着色器
  */
 internal fun resolveGlassTier(
     hasBackdrop: Boolean,
     shaderSupported: Boolean,
     requested: FloatingBottomBarMode = FloatingBottomBarMode.LiquidGlass,
+    style: GlassStyle = GlassStyle.Liquid,
 ): GlassTier = when {
     !hasBackdrop -> GlassTier.Solid
+    style == GlassStyle.Frosted -> GlassTier.Blur
     requested == FloatingBottomBarMode.Blur -> GlassTier.Blur
     requested == FloatingBottomBarMode.LiquidGlass && shaderSupported -> GlassTier.LiquidGlass
     else -> GlassTier.Solid
