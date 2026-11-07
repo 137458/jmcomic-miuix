@@ -3,6 +3,8 @@ package com.jm3.app.miuix.update
 import android.content.Context
 import android.os.SystemClock
 import com.jm3.app.miuix.ui.formatUpdateSize
+import com.jm3.core.update.ApkDigest
+import com.jm3.core.update.DigestCheck
 import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.UpdateProgress
 import java.io.File
@@ -195,6 +197,19 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
                     token,
                     UpdateDownloadState.Failed(
                         "安装包不完整（已下载 ${formatUpdateSize(result.downloaded)} / 应为 ${formatUpdateSize(total)}）",
+                    ),
+                )
+                return
+            }
+            // 远端给了 sha256 就校验，没给就跳过：内容与发布信息不一致时删包，不能让安装器拿到坏文件。
+            // 校验在 IO 线程上流式读文件，不把安装包整体读进内存。
+            val digestCheck = ApkDigest.verify(target, asset.digest)
+            if (digestCheck is DigestCheck.Mismatched) {
+                target.delete()
+                publish(
+                    token,
+                    UpdateDownloadState.Failed(
+                        ApkDigest.mismatchMessage(digestCheck.expected, digestCheck.actual),
                     ),
                 )
                 return

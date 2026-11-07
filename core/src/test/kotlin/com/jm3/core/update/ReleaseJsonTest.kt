@@ -156,6 +156,39 @@ class ReleaseJsonTest {
     }
 
     @Test
+    fun assets保留sha256摘要原文() {
+        val digest = "sha256:" + "0123456789abcdef".repeat(4)
+        val release = ReleaseJson.parse(
+            """
+            {
+              "tag_name": "v1.0.0",
+              "html_url": "https://example.com/r",
+              "assets": [
+                {"name": "app.apk", "size": 6, "browser_download_url": "https://example.com/a.apk", "digest": "$digest"}
+              ]
+            }
+            """.trimIndent(),
+        )
+        assertEquals(digest, release.assets.single().digest)
+        assertEquals(digest, release.apk?.digest)
+    }
+
+    @Test
+    fun assets缺失或空digest时为null() {
+        val missing = ReleaseJson.parse(
+            """{"tag_name":"v1.0.0","html_url":"https://example.com/r","assets":[{"name":"a.apk","browser_download_url":"https://example.com/a.apk"}]}""",
+        )
+        assertNull(missing.assets.single().digest)
+
+        for (raw in listOf("null", "\"\"", "\"   \"", "123")) {
+            val release = ReleaseJson.parse(
+                """{"tag_name":"v1.0.0","html_url":"https://example.com/r","assets":[{"name":"a.apk","browser_download_url":"https://example.com/a.apk","digest":$raw}]}""",
+            )
+            assertNull(release.assets.single().digest, raw)
+        }
+    }
+
+    @Test
     fun assets元素size缺失或非数字时为0() {
         val release = ReleaseJson.parse(
             """

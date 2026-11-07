@@ -31,6 +31,13 @@ data class ReleaseAsset(
     val size: Long,
     /** 直链地址，取自 browser_download_url */
     val downloadUrl: String,
+    /**
+     * GitHub 给出的资产摘要原文（如 sha256:9f86d0…），缺失或为空时为 null。
+     *
+     * 保留原文而不是在这里解析：摘要算法由发布流程决定，解析与校验规则集中在 [ApkDigest]，
+     * 模型只负责把“远端说了什么”原样带出来。
+     */
+    val digest: String? = null,
 )
 
 /**

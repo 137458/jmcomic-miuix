@@ -76,6 +76,12 @@ object ReleaseJson {
         // 没有文件名或地址就没有可下载目标，直接丢弃该项
         if (name.isEmpty() || downloadUrl.isBlank()) return null
         val size = (item["size"] as? JsonPrimitive)?.longOrNull ?: 0L
-        return ReleaseAsset(name = name, size = size, downloadUrl = downloadUrl)
+        // digest 必须是字符串；数字、null、空串一律按“没有摘要”处理，解析细节交给 ApkDigest
+        val digest = (item["digest"] as? JsonPrimitive)
+            ?.takeIf { it.isString }
+            ?.contentOrNull
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        return ReleaseAsset(name = name, size = size, downloadUrl = downloadUrl, digest = digest)
     }
 }
