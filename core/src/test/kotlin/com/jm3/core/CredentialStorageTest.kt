@@ -72,6 +72,19 @@ class CredentialStorageTest {
     }
 
     @Test
+    fun `内存实现读回初始值、保存覆盖与清空`() = runBlocking {
+        val storage = InMemoryCredentialStorage(SavedCredentials("dave", "init"))
+
+        assertEquals(SavedCredentials("dave", "init"), storage.load())
+
+        storage.save(SavedCredentials("erin", "next"))
+        assertEquals(SavedCredentials("erin", "next"), storage.load())
+
+        storage.clear()
+        assertNull(storage.load())
+    }
+
+    @Test
     fun `凭据的 toString 不暴露密码`() {
         val text = SavedCredentials("carol", "top-secret").toString()
 
