@@ -2,6 +2,7 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,6 +41,9 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/** 分组标题的水平内边距与卡片对齐；垂直 8dp 与页面顶部额外留白相加后仍是 16dp。 */
+private val ProfileSectionTitleMargin = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
 
 /** 个人资料中需要下拉选择的字段：服务端只接受固定枚举值。 */
 private enum class ProfileSelector(val title: String, val field: String) {
@@ -204,13 +208,15 @@ fun ProfileScreen(
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState()),
             ) {
-                SmallTitle(text = "账号信息")
+                // SmallTitle 自带 8dp 上间距，再补 8dp 让首块内容的顶部留白与左右 16dp 一致
+                Spacer(modifier = Modifier.height(8.dp))
+                SmallTitle(text = "账号信息", insideMargin = ProfileSectionTitleMargin)
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     BasicComponent(title = "用户名", summary = profile?.username.orEmpty())
                     BasicComponent(title = "邮箱", summary = profile?.email.orEmpty())
                 }
 
-                SmallTitle(text = "基本信息")
+                SmallTitle(text = "基本信息", insideMargin = ProfileSectionTitleMargin)
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     FieldInput(fields, "nickname", "昵称")
                     FieldInput(fields, "lastName", "姓")
@@ -235,7 +241,7 @@ fun ProfileScreen(
                     FieldInput(fields, "website", "个人网站")
                 }
 
-                SmallTitle(text = "位置信息")
+                SmallTitle(text = "位置信息", insideMargin = ProfileSectionTitleMargin)
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     FieldInput(fields, "birthPlace", "出生地")
                     FieldInput(fields, "city", "城市")
@@ -245,7 +251,7 @@ fun ProfileScreen(
                     FieldInput(fields, "school", "学校")
                 }
 
-                SmallTitle(text = "其他信息")
+                SmallTitle(text = "其他信息", insideMargin = ProfileSectionTitleMargin)
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     FieldInput(fields, "aboutMe", "关于我", multiline = true)
                     FieldInput(fields, "infoHere", "其他信息", multiline = true)
@@ -272,7 +278,7 @@ fun ProfileScreen(
                         text = "正在提交…",
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     )
                 }
             }
