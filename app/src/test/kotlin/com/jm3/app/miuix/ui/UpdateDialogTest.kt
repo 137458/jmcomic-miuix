@@ -10,7 +10,8 @@ import kotlin.test.assertEquals
  *
  * 弹窗的显隐由页面管，这里只钉住一件用户能看见的事：主按钮这一格里到底写什么。两种维度参与
  * 决策——有没有安装包、下载到了哪一步；下载中要把百分比写进按钮，其它状态都要回到"立即下载"，
- * 否则下载失败后按钮会停在"下载中"，用户点不动也不知道该重试。
+ * 否则下载失败后按钮会停在"下载中"，用户点不动也不知道该重试。百分比与页面下载卡共用
+ * [updateProgressText]，两处只差前缀与是否带体积。
  */
 class UpdateDialogTest {
 
@@ -48,12 +49,25 @@ class UpdateDialogTest {
 
     @Test
     fun `unknown total length reports zero instead of jumping`() {
-        assertEquals("下载中 0%", updateDialogProgressText(downloading(4_096, 0)))
+        assertEquals(
+            "下载中 0%",
+            updateDialogPrimaryText(hasApk = true, downloadState = downloading(4_096, 0)),
+        )
     }
 
     @Test
     fun `progress is clamped to a hundred percent`() {
-        assertEquals("下载中 100%", updateDialogProgressText(downloading(3, 2)))
+        assertEquals(
+            "下载中 100%",
+            updateDialogPrimaryText(hasApk = true, downloadState = downloading(3, 2)),
+        )
+    }
+
+    @Test
+    fun `download card combines size with percent`() {
+        // 总长未知时退回已下字节，百分比同样带百分号
+        assertEquals("4.0 KB（0%）", updateProgressText(downloading(4_096, 0), withSize = true))
+        assertEquals("2 B（100%）", updateProgressText(downloading(3, 2), withSize = true))
     }
 
     @Test

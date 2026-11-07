@@ -77,6 +77,21 @@ internal fun updateDialogDownloadDetail(state: UpdateDownloadState.Downloading):
     }
 }
 
+/**
+ * 下载进度文案：页面下载卡与弹窗主按钮共用这一条规则。
+ *
+ * 百分比先夹紧到 0~1 再向下取整，服务器给的总长与实际字节差一点时 99.6% 不会显示成 100%，
+ * 越界数据夹到 100%；总长未知时进度恒为 0，报 0% 而不是乱跳。
+ * [withSize] 为 true 时前置体积（总长未知退回已下字节），供页面那行说明使用；弹窗按钮那一格
+ * 只放百分比，体积明细已经在下一行。
+ */
+internal fun updateProgressText(state: UpdateDownloadState.Downloading, withSize: Boolean = false): String {
+    val percent = UpdateProgress.percent(state.progress)
+    if (!withSize) return "$percent%"
+    val size = formatUpdateSize(if (state.total > 0L) state.total else state.downloaded)
+    return "$size（$percent%）"
+}
+
 /** 有回调才给对应操作；下载中把「忽略」禁掉，同时补上「取消下载」。 */
 internal fun buildUpdateDialogPlan(
     currentVersion: String,

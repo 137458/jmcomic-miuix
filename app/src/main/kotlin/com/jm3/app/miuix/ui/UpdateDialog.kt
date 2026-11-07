@@ -31,7 +31,6 @@ import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
 import com.jm3.core.update.ReleaseInfo
-import com.jm3.core.update.UpdateProgress
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -399,20 +398,8 @@ private fun dialogSummary(currentVersion: String, release: ReleaseInfo): String 
  */
 internal fun updateDialogPrimaryText(hasApk: Boolean, downloadState: UpdateDownloadState): String = when {
     !hasApk -> "前往 Releases 页面"
-    downloadState is UpdateDownloadState.Downloading -> updateDialogProgressText(downloadState)
+    downloadState is UpdateDownloadState.Downloading -> "下载中 ${updateProgressText(downloadState)}"
     else -> "立即下载"
-}
-
-/**
- * 下载进度文案。
- *
- * 先夹紧到 0~1 再截断取整：进度向下取整而不是四舍五入，免得服务器已给的长度与实际字节差一点
- * 就把 99.6% 显示成 100%，用户以为下完了却还在等；超界数据（已下载大于总长）也夹到 100%。
- * 总长未知时 [UpdateDownloadState.Downloading.progress] 恒为 0，显示"下载中 0%"而不是乱跳。
- */
-internal fun updateDialogProgressText(state: UpdateDownloadState.Downloading): String {
-    val percent = UpdateProgress.percent(state.progress)
-    return "下载中 $percent%"
 }
 
 /** 行内标记：只认粗体与内联代码两种，长度变化时两处扫描逻辑需同步。 */

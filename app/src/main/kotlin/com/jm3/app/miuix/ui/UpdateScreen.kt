@@ -57,7 +57,6 @@ import com.jm3.core.update.ReleaseInfo
 import com.jm3.core.update.UpdateCenter
 import com.jm3.core.update.UpdateChecker
 import com.jm3.core.update.UpdateOutcome
-import com.jm3.core.update.UpdateProgress
 import com.jm3.core.update.UpdatePrompt
 import com.jm3.core.update.UpdatePromptState
 import java.io.File
@@ -483,7 +482,7 @@ private fun DownloadArea(
 
         is UpdateDownloadState.Downloading -> {
             Text(
-                text = "正在下载 ${downloadProgressText(downloadState)}",
+                text = "正在下载 ${updateProgressText(downloadState, withSize = true)}",
                 style = MiuixTheme.textStyles.body2,
             )
             LinearProgressIndicator(
@@ -622,16 +621,6 @@ private fun changelogTitle(state: UpdateOutcome?): String = when (state) {
     is UpdateOutcome.Available -> "更新说明（${state.release.version}）"
     is UpdateOutcome.UpToDate -> "当前版本说明（${state.release.version}）"
     else -> "更新说明"
-}
-
-/** 下载进度文案：总长未知时只报已下字节，避免出现一直 0% 的观感。 */
-private fun downloadProgressText(state: UpdateDownloadState.Downloading): String {
-    val percent = UpdateProgress.percent(state.progress)
-    return if (state.total > 0L) {
-        "${formatUpdateSize(state.total)}（$percent）"
-    } else {
-        "${formatUpdateSize(state.downloaded)}（$percent）"
-    }
 }
 
 /** 滚动进度 [from]~[to] 区间的淡出系数：区间外分别为全显/全隐，中途线性过渡。 */
