@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -135,7 +136,7 @@ fun TasksScreen(
             val failure = when (outcome) {
                 is SessionOutcome.Ok -> outcome.value
                 SessionOutcome.Expired -> "登录已失效，请重新登录"
-                is SessionOutcome.Failed -> outcome.messageOr("请稍后重试")
+                is SessionOutcome.Failed -> failureCopy(outcome.cause, "请稍后重试")
             }
             if (outcome is SessionOutcome.Ok && failure == null) {
                 if (type == TaskType.TITLE) {

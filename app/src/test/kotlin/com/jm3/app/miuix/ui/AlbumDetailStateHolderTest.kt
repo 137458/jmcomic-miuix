@@ -160,7 +160,7 @@ class AlbumDetailStateHolderTest {
 
         val state = holder.uiState.value
         val albumFailed = state.albumState as AlbumUiState.Failed
-        assertEquals("网络连接异常", albumFailed.message)
+        assertEquals("详情加载失败", albumFailed.message)
 
         testScope.cancel()
     }
@@ -478,7 +478,7 @@ class AlbumDetailStateHolderTest {
         holder.like(isLoggedIn = true, onOpenLogin = {})
         advanceUntilIdle()
 
-        assertEquals("操作失败：boom", messages.lastOrNull())
+        assertEquals("操作失败：请稍后重试", messages.lastOrNull())
 
         testScope.cancel()
     }
@@ -515,7 +515,7 @@ class AlbumDetailStateHolderTest {
             holder.uiState.value.albumState is AlbumUiState.Loaded,
             "刷新失败不该把已加载的详情顶掉",
         )
-        assertEquals("刷新失败：boom", messages.lastOrNull())
+        assertEquals("刷新失败：详情加载失败", messages.lastOrNull())
 
         testScope.cancel()
     }

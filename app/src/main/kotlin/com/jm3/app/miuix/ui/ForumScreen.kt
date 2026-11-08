@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -201,7 +202,7 @@ fun ForumScreen(
 
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty())
 
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("回复失败：" + outcome.messageOr("请稍后重试"))
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("回复失败：" + failureCopy(outcome.cause, "请稍后重试"))
             }
         }
     }
@@ -224,7 +225,7 @@ fun ForumScreen(
 
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty())
 
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("发布失败：" + outcome.messageOr("请稍后重试"))
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("发布失败：" + failureCopy(outcome.cause, "请稍后重试"))
             }
         }
     }

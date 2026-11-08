@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -148,7 +149,7 @@ fun NotificationsScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "标记失败").message.orEmpty(),
                 )
 
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("标记失败：" + outcome.messageOr("请稍后重试"))
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("标记失败：" + failureCopy(outcome.cause, "请稍后重试"))
             }
         }
     }

@@ -28,6 +28,7 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.appendedBy
 import com.jm3.core.model.FavoriteFolderAction
@@ -260,7 +261,7 @@ fun FavoritesScreen(
                     onOpenLogin()
                 }
 
-                is SessionOutcome.Failed -> folderError = outcome.messageOr("操作失败")
+                is SessionOutcome.Failed -> folderError = failureCopy(outcome.cause, "操作失败")
             }
         }
     }
@@ -297,7 +298,7 @@ fun FavoritesScreen(
                     onOpenLogin()
                 }
 
-                is SessionOutcome.Failed -> moveError = outcome.messageOr("移动失败")
+                is SessionOutcome.Failed -> moveError = failureCopy(outcome.cause, "移动失败")
             }
         }
     }
@@ -315,7 +316,7 @@ fun FavoritesScreen(
                 is SessionOutcome.Ok -> tags = outcome.value
                 // 会话失效后用户会置空，标签页自动回落到上面的未登录引导，不必再留错误文案
                 SessionOutcome.Expired -> Unit
-                is SessionOutcome.Failed -> tagsError = outcome.messageOr("标签收藏加载失败")
+                is SessionOutcome.Failed -> tagsError = failureCopy(outcome.cause, "标签收藏加载失败")
             }
         }
     }
@@ -350,7 +351,7 @@ fun FavoritesScreen(
                     onOpenLogin()
                 }
 
-                is SessionOutcome.Failed -> tagError = outcome.messageOr("添加标签失败")
+                is SessionOutcome.Failed -> tagError = failureCopy(outcome.cause, "添加标签失败")
             }
         }
     }
@@ -375,7 +376,7 @@ fun FavoritesScreen(
                     onOpenLogin()
                 }
 
-                is SessionOutcome.Failed -> tagError = outcome.messageOr("删除标签失败")
+                is SessionOutcome.Failed -> tagError = failureCopy(outcome.cause, "删除标签失败")
             }
         }
     }
@@ -572,7 +573,7 @@ fun FavoritesScreen(
                                 title = result.title,
                                 onClick = { onOpenAlbum(result.id) },
                                 albumId = result.id,
-                                subtitle = result.authors.joinToString(" / ").ifBlank { null },
+                                subtitle = result.authors.authorNames(),
                                 category = result.category,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                                 textEndPadding = 4.dp,

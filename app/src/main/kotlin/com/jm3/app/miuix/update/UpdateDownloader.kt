@@ -4,6 +4,7 @@ import android.os.SystemClock
 import com.jm3.app.miuix.ui.formatUpdateSize
 import com.jm3.core.update.ApkDigest
 import com.jm3.core.update.DigestCheck
+import com.jm3.app.miuix.failureCopy
 import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.UpdateProgress
 import java.io.File
@@ -244,9 +245,8 @@ class UpdateDownloader(
             publish(token, UpdateDownloadState.Idle)
             throw cancelled
         } catch (error: Exception) {
-            // 异常信息可能为空或只有类名，统一兜底成一句可展示的中文
-            val reason = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
-            publish(token, UpdateDownloadState.Failed("下载失败：$reason"))
+            // 原文只进日志，屏上给可读中文；无法归类时退回"下载失败"
+            publish(token, UpdateDownloadState.Failed(failureCopy(error, "下载失败")))
         } finally {
             runCatching { partial.delete() }
             connection?.disconnect()

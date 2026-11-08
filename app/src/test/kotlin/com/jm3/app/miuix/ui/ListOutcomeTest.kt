@@ -27,10 +27,10 @@ class ListOutcomeTest {
     }
 
     @Test
-    fun 失败结局落列表错误态并保留原始消息() {
+    fun 失败结局落列表错误态并归类成可读文案() {
         val state = SessionOutcome.Failed("网络错误").asListState("加载失败")
 
-        assertEquals(ListState.Failed("网络错误"), state)
+        assertEquals(ListState.Failed("加载失败"), state)
     }
 
     @Test

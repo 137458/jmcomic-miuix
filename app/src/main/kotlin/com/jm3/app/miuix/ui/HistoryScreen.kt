@@ -23,6 +23,7 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.paging.PageSlice
@@ -103,7 +104,7 @@ fun HistoryScreen(
                     ) { entry -> entry.photoId }
                     state = HistoryListState.Loaded
                 }
-                .onFailure { state = HistoryListState.Failed(it.message ?: "历史加载失败") }
+                .onFailure { state = HistoryListState.Failed(failureCopy(it, "历史加载失败")) }
         }
     }
 
@@ -128,7 +129,7 @@ fun HistoryScreen(
                         state = HistoryListState.Loaded
                         listState.scrollToItem(0)
                     }
-                    .onFailure { state = HistoryListState.Failed(it.message ?: "历史加载失败") }
+                    .onFailure { state = HistoryListState.Failed(failureCopy(it, "历史加载失败")) }
             } finally {
                 pageBusy = false
             }

@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.app.miuix.failureCopy
 import com.jm3.core.session.SessionOutcome
 
 /** 一次加载结局在屏级状态上的落点。 */
@@ -43,7 +44,8 @@ internal fun planLoad(
     }
 
     is SessionOutcome.Failed -> {
-        val message = outcome.messageOr(failureMessage)
+        // 原文只进日志，屏上一律是可读中文；[failureMessage] 是归类失败时的兜底
+        val message = failureCopy(outcome, failureMessage)
         if (hasContent) {
             ScreenLoadPlan(
                 phase = ScreenLoadPhase.Content,
@@ -74,6 +76,6 @@ internal suspend fun SessionOutcome<*>.notifyAction(
             notify(SessionOutcome.Expired.message)
             onExpired()
         }
-        is SessionOutcome.Failed -> notify(failurePrefix + "：" + messageOr(fallback))
+        is SessionOutcome.Failed -> notify(failurePrefix + "：" + failureCopy(this, fallback))
     }
 }

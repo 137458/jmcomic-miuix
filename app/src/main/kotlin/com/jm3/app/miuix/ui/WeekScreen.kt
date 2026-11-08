@@ -169,7 +169,7 @@ fun WeekScreen(
                     )
                 } else {
                     ErrorScreen(
-                        message = "加载失败：${failure?.message.orEmpty()}",
+                        message = failure?.message.orEmpty(),
                         onRetry = ::loadPeriods,
                         modifier = Modifier.padding(innerPadding),
                     )
@@ -211,7 +211,7 @@ fun WeekScreen(
                                 } else {
                                     // 期数列表已成功，只有当期失败：保留下拉选择器重试
                                     ErrorScreen(
-                                        message = "加载失败：${failure?.message.orEmpty()}",
+                                        message = failure?.message.orEmpty(),
                                         onRetry = {
                                             loadDetail(periods[selected.coerceIn(0, periods.lastIndex)])
                                         },

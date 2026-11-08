@@ -291,7 +291,7 @@ fun NovelListScreen(
                 modifier = Modifier.padding(innerPadding),
             )
             failure != null -> ErrorScreen(
-                message = "加载失败：" + failure?.message.orEmpty(),
+                message = failure?.message.orEmpty(),
                 onRetry = { load(order.apiValue, appliedQuery, showLoading = true) },
                 modifier = Modifier.padding(innerPadding),
             )
@@ -569,7 +569,7 @@ fun NovelDetailScreen(
                 modifier = Modifier.padding(innerPadding),
             )
             failure != null -> ErrorScreen(
-                message = "加载失败：" + failure?.message.orEmpty(),
+                message = failure?.message.orEmpty(),
                 onRetry = ::load,
                 modifier = Modifier.padding(innerPadding),
             )
@@ -999,7 +999,7 @@ fun NovelReaderScreen(
                 modifier = Modifier.padding(innerPadding),
             )
             failure != null -> ErrorScreen(
-                message = "加载失败：" + failure?.message.orEmpty(),
+                message = failure?.message.orEmpty(),
                 onRetry = { loadChapter(currentId, lang, showLoading = true) },
                 modifier = Modifier.padding(innerPadding),
             )

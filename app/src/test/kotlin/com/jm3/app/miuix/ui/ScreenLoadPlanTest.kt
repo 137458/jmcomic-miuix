@@ -42,7 +42,7 @@ class ScreenLoadPlanTest {
     }
 
     @Test
-    fun 失败且无内容时整屏错误带原始消息() {
+    fun 失败且无内容时整屏错误用归类文案() {
         val plan = planLoad(
             SessionOutcome.Failed("网络错误"),
             hasContent = false,
@@ -50,7 +50,7 @@ class ScreenLoadPlanTest {
         )
 
         assertEquals(ScreenLoadPhase.Failed, plan.phase)
-        assertEquals("网络错误", plan.message)
+        assertEquals("信箱加载失败", plan.message)
         assertFalse(plan.keepContent)
     }
 
@@ -65,7 +65,7 @@ class ScreenLoadPlanTest {
 
         assertEquals(ScreenLoadPhase.Content, plan.phase)
         assertTrue(plan.keepContent)
-        assertEquals("加载失败：网络错误", plan.notice)
+        assertEquals("加载失败：论坛加载失败", plan.notice)
     }
 
     @Test
