@@ -170,6 +170,7 @@ class SessionCookiesTest {
         )
         val domainControls = object : DomainControls {
             override fun usedDomain(): String? = "18comic.vip"
+            override fun domainsReady(): Boolean = true
             override fun candidateDomains(): Set<String> = setOf(".18comic.vip", "18comic.org")
             override fun coverHost(): String? = "18comic.vip"
             override fun domainLatency(): Map<String, Int> = emptyMap()

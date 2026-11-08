@@ -2,8 +2,11 @@ package com.jm3.core
 
 import com.jm3.core.settings.Domains
 import io.github.jukomu.jmcomic.core.client.AbstractJmClient
+import io.github.jukomu.jmcomic.core.net.provider.DomainProbe
 import io.github.jukomu.jmcomic.core.net.provider.JmDomainManager
 import java.lang.reflect.Field
+import java.lang.reflect.Method
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -21,8 +24,16 @@ private val domainManagerField: Field by lazy {
     AbstractJmClient::class.java.getDeclaredField("domainManager").apply { isAccessible = true }
 }
 
-private fun domainManagerOf(client: AbstractJmClient): JmDomainManager =
+internal fun domainManagerOf(client: AbstractJmClient): JmDomainManager =
     domainManagerField.get(client) as JmDomainManager
+
+/** 库只在 protected 的 createDomainProbe 上暴露探活器，字段名变更时惰性失败而非拖垮类初始化。 */
+private val domainProbeMethod: Method by lazy {
+    AbstractJmClient::class.java.getDeclaredMethod("createDomainProbe").apply { isAccessible = true }
+}
+
+private fun domainProbeOf(client: AbstractJmClient): DomainProbe =
+    domainProbeMethod.invoke(client) as DomainProbe
 
 /** 首屏之后再补跑线路表刷新的延迟：留出首屏请求的窗口，避免探活抢首屏带宽。 */
 private const val DOMAIN_REFRESH_DELAY_MS = 3_000L
@@ -44,8 +55,7 @@ internal fun primeDomainManager(manager: JmDomainManager, pool: List<String>) {
  * 首屏之后刷新线路池：重新拉一次分发服务器下发的官方线路表，重新探活，并把结果交回调用方落盘。
  *
  * 库的 updateDomains 是 protected 且只在初始化链里调用，所以这里自己拉表（[officialApiDomains]）。
- * 覆盖域名池会同时清空失败计数，必须重新探活，否则已失效的线路又会被选中。
- * 拉表失败只影响线路新鲜度，当前可用的池保持不动。
+ * 拉表失败或探活全军覆没只影响线路新鲜度，当前可用的池保持不动。
  */
 internal fun refreshDomainPoolInBackground(
     client: AbstractJmClient,
@@ -60,18 +70,59 @@ internal fun refreshDomainPoolInBackground(
     scheduler.schedule({
         try {
             runCatching {
-                val official = fetchOfficial()
-                if (official.isEmpty()) return@runCatching
                 val manager = domainManagerOf(client)
-                val pool = Domains.normalize(custom + official + manager.domains.toList())
-                manager.updateDomains(pool)
-                client.reprobeDomains()
-                onPoolRefreshed(pool)
+                val pool = refreshDomainPool(
+                    manager = manager,
+                    custom = custom,
+                    fetchOfficial = fetchOfficial,
+                    probe = { candidate -> probeDomainPool(candidate, domainProbeOf(client)) },
+                )
+                if (pool != null) onPoolRefreshed(pool)
             }
         } finally {
             scheduler.shutdown()
         }
     }, delayMs, TimeUnit.MILLISECONDS)
+}
+
+/**
+ * 刷新一次线路池：先探活候选池，再把探得通的域名整体换进管理器。
+ *
+ * 旧实现先 updateDomains 再探活：替换会清空失败计数，探活期间池里全是 0 计数，
+ * 请求侧的 getBestDomain 就会选中已失效的线路。这里把探活挪到替换之前，替换一完成计数就是真实结果。
+ *
+ * @return 落盘的新池；拉表失败或全部探不通时返回 null，现有池与失败计数保持不动。
+ */
+internal fun refreshDomainPool(
+    manager: JmDomainManager,
+    custom: List<String>,
+    fetchOfficial: () -> List<String>,
+    probe: (List<String>) -> List<String>,
+): List<String>? {
+    val official = fetchOfficial()
+    if (official.isEmpty()) return null
+    val candidate = Domains.normalize(custom + official + manager.domains.toList())
+    val alive = probe(candidate)
+    if (alive.isEmpty()) return null
+    manager.updateDomains(alive)
+    return alive
+}
+
+/**
+ * 探活候选池，只留探得通的域名。
+ *
+ * 探活放在临时管理器上：库的 probeAllDomains 会直接改失败计数，放在真实管理器上就等价于先洗白再探活。
+ * 结果由探活回调自己记录 —— 临时管理器没有初始化，读 domainStates 会在 blockUntilInitialized 上永久挂起。
+ */
+internal fun probeDomainPool(candidate: List<String>, probe: DomainProbe): List<String> {
+    if (candidate.isEmpty()) return emptyList()
+    val reachable = ConcurrentHashMap.newKeySet<String>()
+    val tracking = object : DomainProbe {
+        override fun isReachable(domain: String): Boolean =
+            probe.isReachable(domain).also { ok -> if (ok) reachable.add(domain) }
+    }
+    JmDomainManager(candidate).probeAllDomains(tracking)
+    return candidate.filter { it in reachable }
 }
 
 /**

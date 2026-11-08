@@ -23,7 +23,13 @@ sealed interface SessionOutcome<out T> {
         val message: String = LOGIN_EXPIRED_MESSAGE
     }
 
-    data class Failed(val message: String?) : SessionOutcome<Nothing> {
+    /**
+     * 普通失败。
+     *
+     * [cause] 保留异常本身：库抛出的错误类型（网络、超时、初始化未就绪）与 message 一样是事实，
+     * 但 message 常常是英文原文。需要给用户可读文案的屏可以从类型归类，不必解析字符串。
+     */
+    data class Failed(val message: String?, val cause: Throwable? = null) : SessionOutcome<Nothing> {
         /** 失败原文可能为空（异常没带 message），这里给调用方一处统一兜底。 */
         fun messageOr(fallback: String): String = message ?: fallback
     }
@@ -47,6 +53,6 @@ fun classify(error: Throwable): SessionOutcome<Nothing> {
     return if (isSessionExpired(error.message)) {
         SessionOutcome.Expired
     } else {
-        SessionOutcome.Failed(error.message)
+        SessionOutcome.Failed(error.message, error)
     }
 }

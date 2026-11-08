@@ -55,6 +55,8 @@ class GatewayExtrasTest {
 
         override fun usedDomain(): String? = used
 
+        override fun domainsReady(): Boolean = true
+
         override fun candidateDomains(): Set<String> = domains
 
         override fun coverHost(): String? = cover

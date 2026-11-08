@@ -30,6 +30,7 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.data.download.DownloadManager
+import com.jm3.core.Jm3Log
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.runCatchingSuspending
@@ -117,7 +118,12 @@ fun MineScreen(
             // 启动恢复会先置登录态再注入 Cookie：AuthCall 的闸门保证注入完成前不发出请求
             checkInLoading = true
             checkInError = null
-            val outcome = authCall.call { deps.gateway.dailyCheckInStatus(uid) }
+            // 冷启动时域名管理器可能还在跑库的初始化链，先等 READY 再发，避免首个请求直接撞上初始化失败。
+            // 超时也照常发：真实网络错误必须显示出来，不能让卡片永远停在加载中。
+            awaitGatewayReady(ready = { runCatching { deps.gateway.domainsReady() }.getOrDefault(false) })
+            val outcome = retryCheckInLoad(
+                attempt = { authCall.call { deps.gateway.dailyCheckInStatus(uid) } },
+            )
             checkInLoading = false
             when (outcome) {
                 is SessionOutcome.Ok -> checkInStatus = outcome.value
@@ -125,9 +131,15 @@ fun MineScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败"),
                 )
 
-                is SessionOutcome.Failed -> applyCheckInPlan(
-                    planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败"),
-                )
+                is SessionOutcome.Failed -> {
+                    // 库侧失败此前完全不可见（异常被吞、slf4j 无绑定），这里至少留下类型与 message。
+                    Jm3Log.warn(
+                        "CheckIn",
+                        "签到状态加载失败（${outcome.cause?.javaClass?.name ?: "无异常"}）：${outcome.message.orEmpty()}",
+                        outcome.cause,
+                    )
+                    checkInError = checkInFailureCopy(outcome, "签到状态加载失败，请稍后重试")
+                }
             }
         }
     }
@@ -186,9 +198,7 @@ fun MineScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "签到失败，请重试"),
                 )
 
-                is SessionOutcome.Failed -> applyCheckInPlan(
-                    planLoad(outcome, hasContent = false, failureMessage = "签到失败，请重试"),
-                )
+                is SessionOutcome.Failed -> checkInError = checkInFailureCopy(outcome, "签到失败，请稍后重试")
             }
         }
     }

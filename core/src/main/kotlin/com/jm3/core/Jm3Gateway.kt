@@ -174,6 +174,9 @@ interface Jm3Gateway : SessionAuth, PhotoSource {
     /** 当前实际使用的 API 域名；域名未就绪时为 null。 */
     fun usedDomain(): String?
 
+    /** 域名管理器是否已就绪（READY）。未就绪时首个请求会阻塞在库的初始化链上，调用方应等待后再发。 */
+    fun domainsReady(): Boolean
+
     /** 各域名延迟（毫秒）；空表表示尚未探测。 */
     fun domainLatency(): Map<String, Int>
 
@@ -464,6 +467,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun usedDomain(): String? = domainControls.usedDomain()?.takeIf { it.isNotBlank() }
 
+    override fun domainsReady(): Boolean = domainControls.domainsReady()
+
     override fun domainLatency(): Map<String, Int> = domainControls.domainLatency()
 
     override fun reprobeDomains() = domainControls.reprobeDomains()
@@ -553,6 +558,9 @@ class Jm3GatewayImpl internal constructor(
 internal interface DomainControls {
     fun usedDomain(): String?
 
+    /** 域名管理器是否已进入 READY（初始化链跑完或由缓存池直接预置）。 */
+    fun domainsReady(): Boolean
+
     /** 当前线路候选域名；库初始化未完成时会阻塞到探活结束，调用方须在 IO 线程。 */
     fun candidateDomains(): Set<String>
 
@@ -585,6 +593,8 @@ internal fun claimTaskFailure(payload: Map<*, *>): String? {
 private class LibraryDomainControls(private val client: AbstractJmClient) : DomainControls {
 
     override fun usedDomain(): String? = client.usedDomain
+
+    override fun domainsReady(): Boolean = runCatching { domainManagerOf(client).isInitialized }.getOrDefault(false)
 
     /** 候选域名取库的线路表；初始化未完成时会阻塞到探活结束，调用方须在 IO 线程。 */
     override fun candidateDomains(): Set<String> = runCatching {

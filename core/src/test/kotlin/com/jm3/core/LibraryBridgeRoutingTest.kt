@@ -37,6 +37,7 @@ class LibraryBridgeRoutingTest {
 
     private class FakeDomainControls(private val domains: Set<String>) : DomainControls {
         override fun usedDomain(): String? = null
+        override fun domainsReady(): Boolean = true
         override fun candidateDomains(): Set<String> = domains
         override fun coverHost(): String? = null
         override fun domainLatency(): Map<String, Int> = emptyMap()

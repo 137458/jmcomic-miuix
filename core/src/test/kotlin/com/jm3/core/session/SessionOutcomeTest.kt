@@ -39,6 +39,16 @@ class SessionOutcomeTest {
     }
 
     @Test
+    fun 普通失败同时保留异常本身供调用方按类型归类() {
+        val error = java.net.SocketTimeoutException("read timed out")
+        val outcome = sessionOutcome { throw error }
+
+        assertTrue(outcome is SessionOutcome.Failed)
+        assertEquals(error, (outcome as SessionOutcome.Failed).cause)
+        assertEquals(error, classify(error).let { (it as SessionOutcome.Failed).cause })
+    }
+
+    @Test
     fun 失败没有原文时由调用方给兜底文案() {
         val outcome = sessionOutcome { throw IllegalStateException() }
 
