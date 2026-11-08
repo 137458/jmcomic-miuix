@@ -45,11 +45,11 @@ class RuntimeShaderCompat(
         }
     }
 
-    val brush: Brush
-        get() =
-            if (shader != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                ShaderBrush(shader)
-            } else {
-                SolidColor(Color.Transparent)
-            }
+    /** 画刷每次读取都来自缓存：painter 每帧读它，重复 new 会让绘制层持续失效。 */
+    val brush: Brush =
+        if (shader != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ShaderBrush(shader)
+        } else {
+            SolidColor(Color.Transparent)
+        }
 }
