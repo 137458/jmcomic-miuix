@@ -146,7 +146,7 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
 
     fun startDownload(release: ReleaseInfo) {
         val asset = release.apk ?: return
-        deps.updateDownloader.start(context, asset)
+        deps.updateDownloader.start(asset)
     }
 
     fun installApk(file: File) {

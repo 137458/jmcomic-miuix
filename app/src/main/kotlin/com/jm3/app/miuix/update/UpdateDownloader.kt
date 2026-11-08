@@ -1,6 +1,5 @@
 package com.jm3.app.miuix.update
 
-import android.content.Context
 import android.os.SystemClock
 import com.jm3.app.miuix.ui.formatUpdateSize
 import com.jm3.core.update.ApkDigest
@@ -13,6 +12,8 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -75,10 +76,28 @@ sealed interface UpdateDownloadState {
  * Job.cancel() 是异步的，旧协程可能在取消生效前已写出一帧进度；取消后立刻重新开始时，
  * 旧协程继续写就会冲掉新任务的进度，代际号让过期写入直接丢弃。
  */
-class UpdateDownloader(private val appScope: CoroutineScope) {
+class UpdateDownloader(
+    private val appScope: CoroutineScope,
+    /** 安装包落盘目录；由组装层按 cacheDir 传入，下载层不持有 Context。 */
+    private val downloadDirectory: File,
+    /**
+     * 连接工厂：默认直连 URL 并强转 [HttpURLConnection]。
+     *
+     * 只为单测替换网络出口：重定向、进度与取消逻辑都在本类内，测试用可控连接就能覆盖
+     * 「取消后立即重启」这类真实并发时序。
+     */
+    private val connectionFactory: (String) -> HttpURLConnection = { url ->
+        URL(url).openConnection() as HttpURLConnection
+    },
+) {
 
-    /** 下载目录名：必须与 res/xml/update_file_paths.xml 里暴露的 cache-path 一致 */
-    private val DOWNLOAD_DIR_NAME = "update"
+    companion object {
+        /** 下载目录名：必须与 res/xml/update_file_paths.xml 里暴露的 cache-path 一致 */
+        const val DOWNLOAD_DIR_NAME = "update"
+
+        /** 半成品后缀：只有校验通过、原子改名成功后才成为正式安装包 */
+        private const val PARTIAL_SUFFIX = ".part"
+    }
 
     /** 资产名不可用时的兜底文件名 */
     private val FALLBACK_FILE_NAME = "jm3-update.apk"
@@ -112,11 +131,10 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
     /**
      * 开始下载 [asset]。
      *
-     * [context] 只用来取 cacheDir，内部取 applicationContext 后持有，不会泄露 Activity。
      * 已在下载中直接返回：按钮可能被连点，重复启动会互相取消并反复删文件。
      */
     @Synchronized
-    fun start(context: Context, asset: ReleaseAsset) {
+    fun start(asset: ReleaseAsset) {
         if (_state.value is UpdateDownloadState.Downloading) return
         job?.cancel()
         val token = generation.incrementAndGet()
@@ -127,8 +145,7 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
             total = asset.size.coerceAtLeast(0L),
             speedBytesPerSec = 0L,
         )
-        val appContext = context.applicationContext ?: context
-        job = scope.launch { runDownload(appContext, asset, token) }
+        job = scope.launch { runDownload(asset, token) }
     }
 
     /** 取消下载并丢弃半成品，状态回到 [UpdateDownloadState.Idle]。 */
@@ -149,7 +166,7 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
         val current = _state.value
         if (current is UpdateDownloadState.Downloading) return
         if (current is UpdateDownloadState.Done) {
-            // 删除失败不影响状态复位：残留文件会在下次 start 时先被清掉
+            // 删除失败不影响状态复位：残留文件在下一次成功下载时会被原子替换
             runCatching { current.file.delete() }
         }
         job?.cancel()
@@ -158,14 +175,17 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
         _state.value = UpdateDownloadState.Idle
     }
 
-    /** 只有代际未变的协程才允许写状态，防止旧任务覆盖新任务。 */
-    private fun publish(token: Long, next: UpdateDownloadState) {
+    /** 只有代际未变的协程才允许写状态；校验与写入同锁，避免与 start/cancel 竞争。 */
+    private fun publish(token: Long, next: UpdateDownloadState) = synchronized(this) {
         if (generation.get() == token) _state.value = next
     }
 
-    private suspend fun runDownload(context: Context, asset: ReleaseAsset, token: Long) {
-        val directory = File(context.cacheDir, DOWNLOAD_DIR_NAME)
+    private suspend fun runDownload(asset: ReleaseAsset, token: Long) {
+        val directory = downloadDirectory
         val target = File(directory, safeFileName(asset.name))
+        // 每次启动使用带代际的独立半成品：取消后立即重启时新旧任务各写各的文件，
+        // 旧任务收尾只能删自己的半成品，绝不会删到新任务正在写或已写完的安装包。
+        val partial = File(directory, "${target.name}.$token$PARTIAL_SUFFIX")
         var connection: HttpURLConnection? = null
         try {
             // launch 到真正执行之间用户可能已经取消或重新开始，过期任务直接退出
@@ -173,10 +193,8 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
             if (!directory.exists() && !directory.mkdirs()) {
                 throw IOException("无法创建下载目录")
             }
-            // 上次失败的残留（例如进程被杀）先清掉，避免续写到旧字节后面
-            if (target.exists() && !target.delete()) {
-                throw IOException("无法清理旧的安装包")
-            }
+            // 历史进程遗留的半成品先清掉；本次任务的 partial 尚未创建，不会被误删
+            cleanupStalePartials(directory)
 
             val opened = openFollowingRedirects(asset.downloadUrl)
             connection = opened
@@ -184,15 +202,17 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
             if (total > 0L) publish(token, UpdateDownloadState.Downloading(0L, total, 0L))
 
             val result = opened.inputStream.use { input ->
-                target.outputStream().use { output ->
+                partial.outputStream().use { output ->
                     copyWithProgress(input, output, total, token)
                 }
             }
             // 收尾再报一帧，避免界面停在"差最后一段"
             publish(token, UpdateDownloadState.Downloading(result.downloaded, total, result.speedBytesPerSec))
 
+            // 已被取消或被新任务取代：结果作废，partial 交给 finally 清理，正式文件一律不碰
+            if (generation.get() != token) return
+
             if (total > 0L && result.downloaded != total) {
-                target.delete()
                 publish(
                     token,
                     UpdateDownloadState.Failed(
@@ -203,9 +223,8 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
             }
             // 远端给了 sha256 就校验，没给就跳过：内容与发布信息不一致时删包，不能让安装器拿到坏文件。
             // 校验在 IO 线程上流式读文件，不把安装包整体读进内存。
-            val digestCheck = ApkDigest.verify(target, asset.digest)
+            val digestCheck = ApkDigest.verify(partial, asset.digest)
             if (digestCheck is DigestCheck.Mismatched) {
-                target.delete()
                 publish(
                     token,
                     UpdateDownloadState.Failed(
@@ -214,20 +233,35 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
                 )
                 return
             }
-            publish(token, UpdateDownloadState.Done(target))
+            // 校验通过才落成正式文件名；与 start/cancel 同锁，避免旧任务在新任务启动后改名覆盖
+            synchronized(this) {
+                if (generation.get() != token) return
+                Files.move(partial.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                _state.value = UpdateDownloadState.Done(target)
+            }
         } catch (cancelled: CancellationException) {
-            runCatching { target.delete() }
             // 代际已变的取消（cancel/reset 已写好状态）不回写，避免盖掉新任务
             publish(token, UpdateDownloadState.Idle)
             throw cancelled
         } catch (error: Exception) {
-            runCatching { target.delete() }
             // 异常信息可能为空或只有类名，统一兜底成一句可展示的中文
             val reason = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
             publish(token, UpdateDownloadState.Failed("下载失败：$reason"))
         } finally {
+            runCatching { partial.delete() }
             connection?.disconnect()
         }
+    }
+
+    /**
+     * 清掉历史进程遗留的半成品。
+     *
+     * 本次任务的 partial 尚未创建，不会被误删；仍在写的旧任务即使文件被删，
+     * 也只会让它的改名失败，随后由它自己的 finally 收尾。
+     */
+    private fun cleanupStalePartials(directory: File) {
+        directory.listFiles { file -> file.isFile && file.name.endsWith(PARTIAL_SUFFIX) }
+            ?.forEach { runCatching { it.delete() } }
     }
 
     /**
@@ -241,7 +275,7 @@ class UpdateDownloader(private val appScope: CoroutineScope) {
         var currentUrl = url
         var hops = 0
         while (true) {
-            val connection = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+            val connection = connectionFactory(currentUrl).apply {
                 requestMethod = "GET"
                 instanceFollowRedirects = true
                 connectTimeout = CONNECT_TIMEOUT_MS

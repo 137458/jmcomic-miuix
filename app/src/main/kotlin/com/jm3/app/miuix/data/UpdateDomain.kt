@@ -25,7 +25,9 @@ class UpdateDomain(context: Context, appScope: CoroutineScope) {
     var promptedVersion: String? = null
 
     /** 更新下载器：同一进程只允许一个实例，否则两个入口各自维护进度。 */
-    val downloader: UpdateDownloader by lazy { UpdateDownloader(appScope) }
+    val downloader: UpdateDownloader by lazy {
+        UpdateDownloader(appScope, File(appContext.cacheDir, UpdateDownloader.DOWNLOAD_DIR_NAME))
+    }
 
     /**
      * 安装已下载的包，结果由调用方决定提示文案。

@@ -54,7 +54,7 @@ internal fun UpdateStartupPrompt(deps: ScreenDeps, onOpenUpdatePage: () -> Unit)
         onDismiss = { release = null },
         onDownload = {
             release = null
-            pending.apk?.let { asset -> deps.updateDownloader.start(context, asset) }
+            pending.apk?.let { asset -> deps.updateDownloader.start(asset) }
             onOpenUpdatePage()
         },
         onOpenRelease = {
