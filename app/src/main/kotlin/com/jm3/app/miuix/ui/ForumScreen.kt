@@ -45,6 +45,7 @@ import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.app.miuix.ui.skin.LocalSkin
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
@@ -108,6 +109,9 @@ fun ForumScreen(
     var composeBusy by remember { mutableStateOf(false) }
     var rulesExpanded by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // 每次发起请求自增：切换档位/刷新/翻页后，晚到的旧响应不得覆盖新状态
+    var loadToken by remember { mutableIntStateOf(0) }
+    var inFlightJob by remember { mutableStateOf<Job?>(null) }
 
     /** 总页数：接口 total 可用时按每页 10 条折算，否则退化为当前页。 */
     val totalPages = feed.pageCount ?: feed.page
@@ -137,8 +141,12 @@ fun ForumScreen(
         if (showLoading) state = ForumUiState.Loading
         // 追加请求要立刻进入加载态，页脚才能显示进度；置位同时充当在途守卫
         feed = requested
-        scope.launch {
+        // 新请求取代旧请求：先取消在途协程（省掉无用的网络等待），再用令牌挡住无法取消的晚到结果
+        inFlightJob?.cancel()
+        val token = ++loadToken
+        inFlightJob = scope.launch {
             val outcome = authCall.call { deps.gateway.forum(forumScope, targetPage) }
+            if (token != loadToken) return@launch
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
