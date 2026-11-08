@@ -691,7 +691,7 @@ fun CreatorWorkDetailScreen(
                             Text(
                                 text = body.contentText,
                                 modifier = Modifier.fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                    .padding(horizontal = SectionTextStartPadding, vertical = 12.dp),
                                 style = MiuixTheme.textStyles.body2,
                             )
                         }
@@ -700,7 +700,7 @@ fun CreatorWorkDetailScreen(
                         LibraryCover(
                             url = entry.value,
                             modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                .padding(horizontal = SectionHorizontalPadding, vertical = 4.dp)
                                 .squircleClip(10.dp)
                                 .aspectRatio(0.72f),
                             contentScale = ContentScale.Fit,

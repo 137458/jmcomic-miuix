@@ -150,7 +150,8 @@ fun WeekScreen(
                             text = topCurrent.time,
                             style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = SectionTextStartPadding, vertical = 4.dp),
                         )
                     }
                 }
