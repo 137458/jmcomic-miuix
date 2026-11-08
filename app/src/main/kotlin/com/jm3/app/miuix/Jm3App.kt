@@ -62,7 +62,9 @@ import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.app.miuix.update.UpdateDownloader
+import com.jm3.app.miuix.ui.coui.page.CouiAlbumDetailScreen
 import com.jm3.app.miuix.ui.coui.page.CouiMainScreen
+import com.jm3.app.miuix.ui.coui.page.CouiSettingsScreen
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
 import com.jm3.app.miuix.ui.route.SkinRoute
 import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
@@ -603,29 +605,55 @@ fun Jm3App() {
                         )
                     }
                     entry<Route.Settings>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                        SettingsScreen(
-                            deps = deps,
-                            themeMode = themeMode,
-                            onThemeModeChange = { mode ->
-                                themeModeName = mode.name
-                                scope.launch { Jm3Graph.settings.setThemeMode(mode) }
-                            },
-                            dynamicColor = effectiveDynamicColor,
-                            onDynamicColorChange = { enabled ->
-                                dynamicColor = enabled
-                                scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
-                            },
-                            dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
+                        val openUpdate: () -> Unit = { backStack.add(Route.Update) }
+                        val changeThemeMode: (ThemeMode) -> Unit = { mode ->
+                            themeModeName = mode.name
+                            scope.launch { Jm3Graph.settings.setThemeMode(mode) }
+                        }
+                        val changeDynamicColor: (Boolean) -> Unit = { enabled ->
+                            dynamicColor = enabled
+                            scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
+                        }
+                        val changeSkin: (UiSkin) -> Unit = { nextSkin ->
+                            uiSkinName = nextSkin.name
+                            scope.launch { Jm3Graph.preferences.repository.setUiSkin(nextSkin) }
+                        }
+                        SkinRoute(
                             uiSkin = uiSkin,
-                            onUiSkinChange = { nextSkin ->
-                                uiSkinName = nextSkin.name
-                                scope.launch { Jm3Graph.preferences.repository.setUiSkin(nextSkin) }
+                            hyperOs = {
+                                SettingsScreen(
+                                    deps = deps,
+                                    themeMode = themeMode,
+                                    onThemeModeChange = changeThemeMode,
+                                    dynamicColor = effectiveDynamicColor,
+                                    onDynamicColorChange = changeDynamicColor,
+                                    dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
+                                    uiSkin = uiSkin,
+                                    onUiSkinChange = changeSkin,
+                                    gateway = Jm3Graph.gateway,
+                                    authCall = Jm3Graph.session.authCall,
+                                    onBack = { backStack.removeLastOrNull() },
+                                    onOpenUpdate = openUpdate,
+                                    snackbarHostState = snackbarHostState,
+                                )
                             },
-                            gateway = Jm3Graph.gateway,
-                            authCall = Jm3Graph.session.authCall,
-                            onBack = { backStack.removeLastOrNull() },
-                            onOpenUpdate = { backStack.add(Route.Update) },
-                            snackbarHostState = snackbarHostState,
+                            colorOs = {
+                                CouiSettingsScreen(
+                                    deps = deps,
+                                    themeMode = themeMode,
+                                    onThemeModeChange = changeThemeMode,
+                                    dynamicColor = effectiveDynamicColor,
+                                    onDynamicColorChange = changeDynamicColor,
+                                    dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
+                                    uiSkin = uiSkin,
+                                    onUiSkinChange = changeSkin,
+                                    gateway = Jm3Graph.gateway,
+                                    authCall = Jm3Graph.session.authCall,
+                                    onBack = { backStack.removeLastOrNull() },
+                                    onOpenUpdate = openUpdate,
+                                    snackbarHostState = snackbarHostState,
+                                )
+                            },
                         )
                     }
                     entry<Route.Update>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -706,25 +734,52 @@ fun Jm3App() {
                         transition = albumDetailTransition,
                         swipeDismiss = NavSwipeDirection.LeftToRight,
                     ) { route ->
-                        AlbumDetailScreen(
-                            albumId = route.albumId,
-                            initialTitle = route.initialTitle,
-                            initialCoverUrl = route.initialCoverUrl,
-                            onBack = popBack,
-                            onOpenReader = { photoId, startPage ->
-                                backStack.add(Route.Reader(photoId, startPage))
+                        SkinRoute(
+                            uiSkin = uiSkin,
+                            hyperOs = {
+                                AlbumDetailScreen(
+                                    albumId = route.albumId,
+                                    initialTitle = route.initialTitle,
+                                    initialCoverUrl = route.initialCoverUrl,
+                                    onBack = popBack,
+                                    onOpenReader = { photoId, startPage ->
+                                        backStack.add(Route.Reader(photoId, startPage))
+                                    },
+                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                                    onOpenLogin = { backStack.add(Route.Login) },
+                                    snackbarHostState = snackbarHostState,
+                                    gateway = Jm3Graph.api.gateway,
+                                    authCall = Jm3Graph.session.authCall,
+                                    history = Jm3Graph.library.history,
+                                    downloadManager = Jm3Graph.downloads.manager,
+                                    downloadFiles = Jm3Graph.downloads.files,
+                                    account = Jm3Graph.session.account,
+                                    sessionCache = Jm3Graph.sessionCache,
+                                )
                             },
-                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                            onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                            onOpenLogin = { backStack.add(Route.Login) },
-                            snackbarHostState = snackbarHostState,
-                            gateway = Jm3Graph.api.gateway,
-                            authCall = Jm3Graph.session.authCall,
-                            history = Jm3Graph.library.history,
-                            downloadManager = Jm3Graph.downloads.manager,
-                            downloadFiles = Jm3Graph.downloads.files,
-                            account = Jm3Graph.session.account,
-                            sessionCache = Jm3Graph.sessionCache,
+                            colorOs = {
+                                CouiAlbumDetailScreen(
+                                    albumId = route.albumId,
+                                    initialTitle = route.initialTitle,
+                                    initialCoverUrl = route.initialCoverUrl,
+                                    onBack = popBack,
+                                    onOpenReader = { photoId, startPage ->
+                                        backStack.add(Route.Reader(photoId, startPage))
+                                    },
+                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                                    onOpenLogin = { backStack.add(Route.Login) },
+                                    snackbarHostState = snackbarHostState,
+                                    gateway = Jm3Graph.api.gateway,
+                                    authCall = Jm3Graph.session.authCall,
+                                    history = Jm3Graph.library.history,
+                                    downloadManager = Jm3Graph.downloads.manager,
+                                    downloadFiles = Jm3Graph.downloads.files,
+                                    account = Jm3Graph.session.account,
+                                    sessionCache = Jm3Graph.sessionCache,
+                                )
+                            },
                         )
                     }
                     entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
