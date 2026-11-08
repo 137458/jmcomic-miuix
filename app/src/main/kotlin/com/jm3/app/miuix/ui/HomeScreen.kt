@@ -675,7 +675,8 @@ fun HomeScreen(
                 BasicComponent(title = "全彩 +人妻", summary = "两个关键词都必须包含")
                 BasicComponent(title = "全彩 -人妻", summary = "包含「全彩」，排除「人妻」")
             }
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+            // 水平内边距由弹窗自带，这里只补垂直间距，避免左右变成 48dp
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 TextButton(
                     text = "知道了",
                     onClick = { showSearchHelp = false },

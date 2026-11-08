@@ -257,7 +257,8 @@ fun HistoryScreen(
             cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = { showClearConfirm = false },
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+            // 水平内边距由弹窗自带，这里只补垂直间距，避免左右变成 48dp
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Text(
                     text = "将删除本机全部阅读记录，已下载的章节不受影响。",
                     style = MiuixTheme.textStyles.body2,

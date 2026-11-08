@@ -653,7 +653,8 @@ internal fun AlbumDetailScreen(
                                 }
                         }
                         if (uiState.favorited) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+                            // 水平内边距由抽屉自带，这里只补垂直间距
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                                 TextButton(
                                     text = "取消收藏",
                                     onClick = stateHolder::cancelFavorite,

@@ -1071,7 +1071,8 @@ private fun ReaderPages(
                     goToPage(pickerValue)
                 },
                 colors = ButtonDefaults.buttonColorsPrimary(),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+                // 水平内边距由抽屉自带，这里只留垂直间距
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
             ) {
                 Text(text = "跳转到第 $pickerValue 页")
             }
@@ -1087,7 +1088,7 @@ private fun ReaderPages(
                 Text(
                     text = "暂无章节信息",
                     style = MiuixTheme.textStyles.body2,
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                 )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
@@ -1131,7 +1132,7 @@ private fun ReaderPages(
                         text = "还没有评论，来抢沙发吧",
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                     )
 
                     else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
@@ -1173,7 +1174,8 @@ private fun ReaderPages(
             cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = { closeTrackPrompt() },
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+            // 水平内边距由弹窗自带，这里只补垂直间距，避免左右变成 48dp
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Text(
                     text = "随时追踪最新连载漫画更新，不错过每一集精彩内容",
                     style = MiuixTheme.textStyles.body2,

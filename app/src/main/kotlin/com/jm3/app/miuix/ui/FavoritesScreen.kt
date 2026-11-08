@@ -814,7 +814,8 @@ fun FavoritesScreen(
                 }
             },
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+            // 水平内边距由弹窗自带，这里只补垂直间距，避免左右变成 48dp
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 TextField(
                     value = tagInput,
                     onValueChange = { tagInput = it.take(20) },
@@ -861,8 +862,9 @@ fun FavoritesScreen(
                 }
             },
         ) {
+            // 同上：按钮列只留垂直间距，水平留给弹窗自身
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 tagError?.let { message ->
