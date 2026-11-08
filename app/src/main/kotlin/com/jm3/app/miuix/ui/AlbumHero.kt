@@ -41,7 +41,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.snapshotFlow
 import kotlin.math.roundToInt
-import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.squircle.squircleClip
 
 /**
@@ -383,15 +382,12 @@ fun AlbumCoverImage(
     )
 }
 
-/**
- * 作品卡圆角契约：全部作品卡（网格卡、行卡、缩略图、角标）的圆角只从皮肤或本文件的常量取，
- * 调用点禁止写 dp 字面量，否则不同作品的卡会重新长出各自的曲率。
- *
- * 卡片外圆角：Miuix Card 的内边距为 0，封面贴满卡片，裁出来的就是 Card 自身圆角。
- * 运行期列表卡与详情头图一律取皮肤 cardCorner（ColorOS 18dp），本常量只是 HyperOS 档
- * 与 Miuix 默认值的同源校验基准，不参与实际布局。
- */
-val HERO_CARD_CORNER_DP: Float = CardDefaults.CornerRadius.value
+// 作品卡圆角契约：全部作品卡（网格卡、行卡、缩略图、角标）的圆角只从皮肤或本文件的常量取，
+// 调用点禁止写 dp 字面量，否则不同作品的卡会重新长出各自的曲率。
+//
+// 卡片外圆角：Miuix Card 的内边距为 0，封面贴满卡片，裁出来的就是 Card 自身圆角。
+// 运行期列表卡与详情头图一律取 LocalSkin.current.shapes.cardCorner（HyperOS 16dp、
+// ColorOS 18dp），不保留单独的卡片圆角常量入口，避免调用点回退到固定默认值。
 
 /** 卡内缩略封面（历史、收藏、追更的 48x64 小图）：比卡片外圆角小，避免小图被裁成胶囊。 */
 const val HERO_THUMB_CORNER_DP = 8f

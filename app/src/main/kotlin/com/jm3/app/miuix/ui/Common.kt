@@ -97,6 +97,14 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 internal val SectionHorizontalPadding: Dp = 12.dp
 
+/**
+ * 纯文字分区头的水平起点：与 [SmallTitle] 内建的 28dp 文字基线对齐。
+ *
+ * 卡片正文的起点是 [SectionHorizontalPadding] 12dp + 卡片内建 16dp = 28dp；
+ * 没有卡片内衬的裸文字头必须直接取本值，不能再按 12dp 排。
+ */
+internal val SectionTextStartPadding: Dp = SectionHorizontalPadding + 16.dp
+
 /** 评论回复面板：显示被回复作者、200 字上限与发送状态；换目标时清空草稿。 */
 @Composable
 fun CommentReplySheet(

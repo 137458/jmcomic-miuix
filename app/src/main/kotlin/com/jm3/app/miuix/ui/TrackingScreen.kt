@@ -43,8 +43,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import java.text.DateFormat
-import java.util.Date
+import java.time.format.DateTimeFormatter
 
 private sealed interface TrackingUiState {
     data object Loading : TrackingUiState
@@ -269,7 +268,7 @@ fun TrackingScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
-                    // 格式化器整页一份：放进行项内会让滚动进出反复构造 SimpleDateFormat
+                    // 格式化器整页一份：放进行项内会让滚动进出反复构造 DateTimeFormatter
                     val dateFormat = rememberDateFormatter()
                     LazyColumn(
                         state = listState,
@@ -321,8 +320,8 @@ fun TrackingScreen(
 
 
 /** Unix 秒字符串转本地时间；非数字原样返回，避免吞掉服务端文案。 */
-private fun String.toReadableTime(dateFormat: DateFormat): String =
-    toLongOrNull()?.let { dateFormat.format(Date(it * 1000)) } ?: this
+private fun String.toReadableTime(dateFormat: DateTimeFormatter): String =
+    toLongOrNull()?.let { formatEpochSeconds(it, dateFormat).ifBlank { this } } ?: this
 
 /**
  * 会话失效全屏态：文案位置与排版同 [ErrorScreen]，但动作是「去登录」而不是「重试」——

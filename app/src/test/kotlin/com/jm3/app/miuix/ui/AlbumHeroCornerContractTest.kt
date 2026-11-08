@@ -5,28 +5,40 @@ import com.jm3.core.settings.UiSkin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import top.yukonga.miuix.kmp.basic.CardDefaults
 
 class AlbumHeroCornerContractTest {
 
     @Test
-    fun testHeroCornerConstantsContract() {
-        // 常量只是 HyperOS 档与 Miuix Card 默认值的同源基准，运行期两端都取皮肤 cardCorner
-        assertEquals(CardDefaults.CornerRadius.value, HERO_CARD_CORNER_DP)
-        assertEquals(skinTokensFor(UiSkin.HYPEROS).shapes.cardCorner.value, HERO_CARD_CORNER_DP)
-        // ColorOS 皮肤与其他卡片一致改为 18dp，飞行两端必须跟着皮肤取值才不会错位
-        assertNotEquals(skinTokensFor(UiSkin.COLOROS).shapes.cardCorner.value, HERO_CARD_CORNER_DP)
-        // 卡内缩略图圆角小于各皮肤卡片外圆角，否则小图会被裁成胶囊
-        assertEquals(8f, HERO_THUMB_CORNER_DP)
-        assertEquals(6f, HERO_BADGE_CORNER_DP)
+    fun 卡片圆角只由皮肤提供且HyperOS与库默认值同源() {
+        val hyperOs = skinTokensFor(UiSkin.HYPEROS).shapes.cardCorner.value
+        val colorOs = skinTokensFor(UiSkin.COLOROS).shapes.cardCorner.value
+        assertEquals(CardDefaults.CornerRadius.value, hyperOs)
+        assertNotEquals(hyperOs, colorOs)
+        // ColorOS 更圆；飞行两端必须跟着皮肤取值，不能有任何一端回退到 16dp
+        assertTrue(colorOs > hyperOs)
     }
 
     @Test
-    fun testThumbCornerIsSmallerThanCardCorner() {
+    fun 旧的固定卡片圆角常量入口已删除() {
+        // 运行期只允许从 LocalSkin.current.shapes.cardCorner 取角；保留公开常量会给回退留后门
+        val oldGetter = runCatching {
+            Class.forName("com.jm3.app.miuix.ui.AlbumHeroKt")
+                .getDeclaredMethod("getHERO_CARD_CORNER_DP")
+        }.getOrNull()
+        assertNull(oldGetter)
+    }
+
+    @Test
+    fun 缩略图与角标圆角始终小于各皮肤卡片外圆角() {
+        assertEquals(8f, HERO_THUMB_CORNER_DP)
+        assertEquals(6f, HERO_BADGE_CORNER_DP)
         listOf(UiSkin.HYPEROS, UiSkin.COLOROS).forEach { skin ->
             val cardCorner = skinTokensFor(skin).shapes.cardCorner.value
-            assertEquals(true, HERO_THUMB_CORNER_DP < cardCorner)
-            assertEquals(true, HERO_BADGE_CORNER_DP <= HERO_THUMB_CORNER_DP)
+            assertTrue(HERO_THUMB_CORNER_DP < cardCorner)
+            assertTrue(HERO_BADGE_CORNER_DP <= HERO_THUMB_CORNER_DP)
         }
     }
 }

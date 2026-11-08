@@ -129,7 +129,7 @@ fun SettingsScreen(
     val paginationMode = deps.preferences.paginationMode
     // 底栏尺寸/形态：偏好存 null 表示未显式设置，展示与生效都按同一处窗口断点解析
     val windowDp = rememberWindowDpSize()
-    val widthDp = windowDp.width.value.roundToInt()
+    val widthDp = windowDp.width.toLayoutDpInt()
     val bottomBarSize = BottomBarPreferencePolicy.resolveSize(deps.preferences.bottomBarSize, widthDp)
     // 尺寸档只有「偏大」是强制选择；「普通」与未设置同义，都表示按设备自适应
     val bottomBarSizeOption =
@@ -146,7 +146,7 @@ fun SettingsScreen(
     // 双页只在 600dp 以上横屏可见；其它窗口尺寸整行不渲染，阅读器也会自动回落到单页
     val readerSpreadAllowed = ReaderSpreadPolicy.supportsSpread(
         widthDp,
-        windowDp.height.value.roundToInt(),
+        windowDp.height.toLayoutDpInt(),
     )
     var volumeKeyPaging by remember { mutableStateOf(true) }
     var keepScreenOn by remember { mutableStateOf(true) }

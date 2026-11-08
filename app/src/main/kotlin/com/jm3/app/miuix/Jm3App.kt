@@ -60,6 +60,7 @@ import com.jm3.app.miuix.ui.WeekScreen
 import com.jm3.app.miuix.ui.WideLayout
 import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.ui.rememberWindowDpSize
+import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.app.miuix.update.UpdateDownloader
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
 import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
@@ -86,7 +87,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
@@ -479,8 +479,8 @@ fun Jm3App() {
     val windowSize = rememberWindowDpSize()
     val wideLayout = remember(windowSize) {
         WideLayout(
-            widthDp = windowSize.width.value.roundToInt(),
-            heightDp = windowSize.height.value.roundToInt(),
+            widthDp = windowSize.width.toLayoutDpInt(),
+            heightDp = windowSize.height.toLayoutDpInt(),
         )
     }
 

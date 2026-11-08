@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
@@ -762,12 +763,20 @@ fun CreatorWorkDetailScreen(
 }
 
 /**
- * 封面压白字的统一暗度：列表入口、详情头图的模糊层与无模糊回退共用同一个值。
- * 分开取值会让不支持模糊的设备在进入详情时明显变暗，这里宁可让模糊路径与列表一致。
+ * 无模糊回退的整块暗度：列表入口与详情头图共用，保证不支持模糊的设备进入详情不跳变。
  */
 private const val CreatorCoverScrimAlpha = 0.45f
 
-/** 封面内头像与文字的水平内边距：列表入口与详情头图统一，不再 14/20 各取一套。 */
+/**
+ * 支持模糊时的顶部暗度：底部模糊最强处仍用 [CreatorCoverScrimAlpha]，
+ * 往上随模糊强度递减到本值，避免整块暗色把模糊的通透感压掉。
+ */
+private const val CreatorCoverBlurTopScrimAlpha = 0.18f
+
+/**
+ * 封面内头像与文字的水平内衬：列表卡内部与详情头图内部统一为 16dp。
+ * 列表卡另有 16dp 外边距，屏幕级起点因此比详情头图多 16dp。
+ */
 private val CreatorCoverInset = 16.dp
 
 /** 创作者行：背景图 + 暗色蒙版 + 头像 + 名称/更新时间。 */
@@ -900,7 +909,7 @@ private fun CreatorHero(author: CreatorAuthorWorks) {
             contentScale = ContentScale.Crop,
         )
         if (backdrop != null) {
-            // 从下往上由实到虚：底部文字压在模糊带上，比整块暗色蒙版更通透
+            // 从下往上由实到虚：底部模糊最强处用整块暗度，向上随模糊减弱而变浅，保留模糊的通透感
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -910,7 +919,12 @@ private fun CreatorHero(author: CreatorAuthorWorks) {
                         blurRadius = 26f,
                         gradient = ProgressiveBlur.Bottom,
                     )
-                    .background(Color.Black.copy(alpha = CreatorCoverScrimAlpha)),
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = CreatorCoverBlurTopScrimAlpha),
+                            1f to Color.Black.copy(alpha = CreatorCoverScrimAlpha),
+                        ),
+                    ),
             )
         } else {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = CreatorCoverScrimAlpha)))

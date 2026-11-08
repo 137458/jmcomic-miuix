@@ -797,7 +797,7 @@ private fun SearchResultHeader(
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = SectionHorizontalPadding, vertical = 12.dp),
+            .padding(horizontal = SectionTextStartPadding, vertical = 12.dp),
     )
 }
 

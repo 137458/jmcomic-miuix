@@ -30,8 +30,7 @@ import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.settings.PaginationMode
-import java.text.DateFormat
-import java.util.Date
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -215,7 +214,7 @@ fun HistoryScreen(
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
-                    // 格式化器整页一份：放进行项内会让滚动进出反复构造 SimpleDateFormat
+                    // 格式化器整页一份：放进行项内会让滚动进出反复构造 DateTimeFormatter
                     val dateFormat = rememberDateFormatter()
                     TrackedLazyColumn(
                         state = listState,
@@ -285,7 +284,7 @@ fun HistoryScreen(
 @Composable
 private fun AlbumHistoryCard(
     album: AlbumHistory,
-    dateFormat: DateFormat,
+    dateFormat: DateTimeFormatter,
     onResume: () -> Unit,
     onOpenDetail: () -> Unit,
     onDelete: () -> Unit,
@@ -297,7 +296,7 @@ private fun AlbumHistoryCard(
         title = album.latest.title,
         onClick = onResume,
         albumId = album.albumId,
-        subtitle = "共读 ${album.chapters} 话 · ${dateFormat.format(Date(album.latest.updatedAt))}",
+        subtitle = "共读 ${album.chapters} 话 · ${formatEpochMillis(album.latest.updatedAt, dateFormat)}",
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         textEndPadding = 4.dp,
         trailing = {

@@ -3,15 +3,14 @@ package com.jm3.app.miuix.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.jm3.core.layout.WideLayoutPolicy
+import kotlin.math.floor
 
 /**
  * 当前窗口的宽高（dp）及其派生布局参数。
@@ -41,22 +40,20 @@ val LocalWideLayout = staticCompositionLocalOf { WideLayout(widthDp = 0, heightD
 /**
  * 当前窗口尺寸（dp）：断点判定只允许读这一处。
  *
- * 取 [LocalWindowInfo] 的容器像素尺寸并按当前 density 折算，不用
- * `Configuration.screenWidthDp/screenHeightDp`：后者按 targetSdk 追加或剔除系统栏留白，
+ * 直接取 [LocalWindowInfo] 已折算好的 [androidx.compose.ui.platform.WindowInfo.containerDpSize]，
+ * 不用 `Configuration.screenWidthDp/screenHeightDp`：后者按 targetSdk 追加或剔除系统栏留白，
  * 分屏、自由窗口与折叠屏展开态下与真实窗口不一致，600/840dp 断点会误判。
  * 容器尺寸是可观察状态，分屏、旋转与折叠展开后自动重组。
  */
 @Composable
-fun rememberWindowDpSize(): DpSize {
-    val container = LocalWindowInfo.current.containerSize
-    val density = LocalDensity.current
-    return remember(container, density) {
-        DpSize(
-            width = with(density) { container.width.toDp() },
-            height = with(density) { container.height.toDp() },
-        )
-    }
-}
+fun rememberWindowDpSize(): DpSize = LocalWindowInfo.current.containerDpSize
+
+/**
+ * 断点比较用的整数 dp：向下取整。
+ *
+ * 600/840dp 是「至少这么宽」的下限，599.6dp 不能被四舍五入成 600 提前进入大屏布局。
+ */
+internal fun Dp.toLayoutDpInt(): Int = floor(value).toInt().coerceAtLeast(0)
 
 /**
  * 单栏内容限宽：大屏通过左右对称留白把内容收进可读宽度并居中，手机断点以下留白为 0。

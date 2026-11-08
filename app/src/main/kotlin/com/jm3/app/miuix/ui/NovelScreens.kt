@@ -68,6 +68,7 @@ import com.jm3.core.replacedBy
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.SettingsRepository
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
@@ -141,6 +142,8 @@ fun NovelListScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val searchCollapse = rememberCollapsibleSearchState(listState = listState)
+    // 列表层只建一份格式化器，行级 Composable 不再各自持有
+    val dateFormat = rememberDateFormatter("yyyy-MM-dd")
 
     fun load(orderValue: String, keyword: String, showLoading: Boolean) {
         loadToken++
@@ -317,6 +320,7 @@ fun NovelListScreen(
                     items(items, key = { it.id }) { item ->
                         NovelListRow(
                             item = item,
+                            dateFormat = dateFormat,
                             busy = busyId == item.id,
                             onClick = { onOpenNovel(item.id) },
                             onLike = { like(item) },
@@ -333,6 +337,7 @@ fun NovelListScreen(
 @Composable
 private fun NovelListRow(
     item: NovelMeta,
+    dateFormat: DateTimeFormatter,
     busy: Boolean,
     onClick: () -> Unit,
     onLike: () -> Unit,
@@ -376,7 +381,7 @@ private fun NovelListRow(
                     )
                 }
                 Text(
-                    text = formatUnixSeconds(item.updateAt),
+                    text = formatEpochSeconds(item.updateAt, dateFormat),
                     style = MiuixTheme.textStyles.footnote2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     maxLines = 1,
@@ -449,6 +454,8 @@ fun NovelDetailScreen(
     var descriptionExpanded by rememberSaveable { mutableStateOf(false) }
     var actionBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // 详情页只建一份格式化器，头部与相关作品行共用
+    val dateFormat = rememberDateFormatter("yyyy-MM-dd")
 
     fun load() {
         loading = true
@@ -583,6 +590,7 @@ fun NovelDetailScreen(
                         item(key = "header") {
                             NovelDetailHeader(
                                 detail = current,
+                                dateFormat = dateFormat,
                                 savedChapter = savedChapter,
                                 descriptionExpanded = descriptionExpanded,
                                 onToggleDescription = { descriptionExpanded = !descriptionExpanded },
@@ -647,6 +655,7 @@ fun NovelDetailScreen(
                                     items(current.related, key = { it.id }) { related ->
                                         NovelListRow(
                                             item = related,
+                                            dateFormat = dateFormat,
                                             busy = false,
                                             onClick = { onOpenNovel(related.id) },
                                             onLike = {},
@@ -677,6 +686,7 @@ fun NovelDetailScreen(
 @Composable
 private fun NovelDetailHeader(
     detail: NovelDetail,
+    dateFormat: DateTimeFormatter,
     savedChapter: String?,
     descriptionExpanded: Boolean,
     onToggleDescription: () -> Unit,
@@ -717,7 +727,7 @@ private fun NovelDetailHeader(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = buildString {
-                        val added = formatUnixSeconds(detail.addtime)
+                        val added = formatEpochSeconds(detail.addtime, dateFormat)
                         if (added.isNotBlank()) append("上架 $added")
                         detail.totalViews?.let { append(" · 阅 $it") }
                         detail.likes?.let { append(" · ♥ $it") }
@@ -1361,19 +1371,4 @@ private fun NovelCover(url: String?, width: Dp, height: Dp) {
             )
         }
     }
-}
-
-/**
- * 秒级时间戳 → yyyy-MM-dd；0/负值按空串（不展示）。
- *
- * 走 [rememberDateFormatter]，与 HistoryScreen/TrackingScreen 同一口径：按组合期
- * locale 排版，切系统语言后自动重建，不再捕获进程级默认 locale/zone。
- */
-@Composable
-private fun formatUnixSeconds(seconds: Long): String {
-    if (seconds <= 0L) return ""
-    val dateFormat = rememberDateFormatter("yyyy-MM-dd")
-    return runCatching {
-        dateFormat.format(java.util.Date(seconds * 1000L))
-    }.getOrDefault("")
 }
