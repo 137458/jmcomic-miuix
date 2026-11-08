@@ -168,6 +168,30 @@ class DownloadQueueTest {
     }
 
     @Test
+    fun `暂停后立即继续 旧 worker 的失败不得把已接管的 run 置为失败`() = runTest {
+        val fetcher = FakeFetcher()
+        fetcher.gates[2] = CompletableDeferred() // 新旧 worker 一起挂在这一页
+        fetcher.failures["p1" to 2] = 1 // 只有旧 worker 那次取数失败
+        val store = FakeStore()
+        val queue = DownloadQueue(fetcher, store, maxConcurrent = 2, maxRetries = 0)
+        queue.start(this)
+        queue.enqueue(task("p1", total = 3))
+        queue.enqueue(task("p2", total = 1)) // 占住第二个 worker，让它在 p2 完成后可以接管 p1
+        runCurrent() // p1 卡在页 2；p2 已完成
+        queue.pause("p1")
+        queue.resume("p1") // 立即恢复：新 run 由第二个 worker 接管
+        runCurrent()
+        fetcher.gates.getValue(2).complete(Unit)
+        advanceUntilIdle()
+        // 旧 run 的失败必须按代际丢弃，否则接管后的 run 永远完成不了
+        assertEquals(DONE, queue.updates.value.getValue("p1").status)
+        assertEquals(listOf(1, 2, 3), store.files("p1"))
+
+        queue.shutdown()
+        advanceUntilIdle()
+    }
+
+    @Test
     fun `cancel removes task`() = runTest {
         val fetcher = FakeFetcher()
         fetcher.gates[1] = CompletableDeferred()

@@ -108,13 +108,49 @@ class FileDownloadStoreTest {
     fun `写入失败时不留临时文件`() {
         val store = store()
         val dir = File(root, "p").apply { mkdirs() }
-        // 让写临时文件这一步必然失败（同名路径已被目录占住），验证失败分支也守"不留临时文件"的契约。
-        val blocked = File(dir, "00001.jpg.tmp").apply { mkdirs() }
+        // 让最后一步替换目标必然失败：目标路径被非空目录占住，文件无法替换目录。
+        File(dir, "00001.jpg").apply { mkdirs() }
+        File(dir, "00001.jpg/keep").writeText("x")
 
         assertFailsWith<IllegalStateException> { store.write("p", 1, byteArrayOf(1, 2, 3)) }
-        assertFalse(blocked.exists(), "写入失败后不许留下临时路径")
+        val leftovers = dir.listFiles().orEmpty().filter { it.name.endsWith(".tmp") }
+        assertEquals(emptyList(), leftovers.map { it.name }, "写入失败后不许留下临时文件")
         assertFalse(store.exists("p", 1), "失败时不得把半截内容当成已落盘")
         assertEquals(emptyList<Int>(), store.files("p"))
+    }
+
+    @Test
+    fun `同页并发写不会因临时文件冲突失败或写出混合内容`() {
+        val store = store()
+        val first = ByteArray(1 shl 20) { 1 }
+        val second = ByteArray(1 shl 20) { 2 }
+        val errors = java.util.Collections.synchronizedList(mutableListOf<Throwable>())
+
+        repeat(10) {
+            val barrier = java.util.concurrent.CyclicBarrier(2)
+            val workers = listOf(first, second).map { payload ->
+                Thread {
+                    try {
+                        barrier.await()
+                        store.write("p", 1, payload)
+                    } catch (error: Throwable) {
+                        errors += error
+                    }
+                }.apply { start() }
+            }
+            workers.forEach { it.join() }
+
+            val stored = store.read("p", 1)
+            assertTrue(stored != null, "并发写后页文件必须存在")
+            assertEquals(first.size, stored!!.size, "并发写不得产生被截断的页文件")
+            assertTrue(
+                stored.contentEquals(first) || stored.contentEquals(second),
+                "并发写结果必须是完整的一份内容，不能互相截断成混合字节",
+            )
+            assertEquals(listOf(1), store.files("p"))
+            assertEquals(emptyList(), File(root, "p").listFiles().orEmpty().filter { it.name.endsWith(".tmp") }.map { it.name })
+        }
+        assertEquals(emptyList(), errors.map { it.toString() }, "同页并发写不应抛错")
     }
 
     @Test
