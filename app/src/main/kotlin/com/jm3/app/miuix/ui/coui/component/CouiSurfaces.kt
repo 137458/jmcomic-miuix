@@ -46,41 +46,40 @@ import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
 import top.yukonga.miuix.kmp.squircle.squircleClip
 
 /**
- * 按压反馈：97% 缩放 + 68%/6% 的浅深反转覆盖层。
- *
- * 覆盖层在内容之后绘制，因此不会盖住图标与文字的可读性；只作用于整卡，不参与滚动测量。
+ * 按压缩放必须放在卡片最外层，才能连背景与投影一起缩小；
+ * 覆盖层单独追加在内容之后，由卡片自身的 squircle 裁剪限制在圆角内。
  */
 @Composable
-private fun Modifier.couiPressFeedback(
-    interaction: MutableInteractionSource,
-    shapeRadiusDp: Float,
-): Modifier {
-    val colors = LocalCouiColors.current
+private fun Modifier.couiPressScale(interaction: MutableInteractionSource): Modifier {
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.97f else 1f,
         animationSpec = CouiMotion.PressSpring,
         label = "couiPressScale",
     )
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
+}
+
+@Composable
+private fun Modifier.couiPressOverlay(interaction: MutableInteractionSource): Modifier {
+    val colors = LocalCouiColors.current
+    val pressed by interaction.collectIsPressedAsState()
     val overlay by animateFloatAsState(
         targetValue = if (pressed) 0.06f else 0f,
         animationSpec = CouiMotion.PressSpring,
         label = "couiPressOverlay",
     )
-    return this
-        .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
+    return drawWithContent {
+        drawContent()
+        if (overlay > 0f) {
+            drawRect(
+                if (colors.isDark) Color.White.copy(alpha = overlay) else Color.Black.copy(alpha = overlay),
+            )
         }
-        .clip(RoundedCornerShape(shapeRadiusDp.dp))
-        .drawWithContent {
-            drawContent()
-            if (overlay > 0f) {
-                drawRect(
-                    if (colors.isDark) Color.White.copy(alpha = overlay) else Color.Black.copy(alpha = overlay),
-                )
-            }
-        }
+    }
 }
 
 /**
@@ -96,18 +95,11 @@ fun CouiCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = LocalCouiColors.current
-    val radius = CouiShapes.cardRadius.value
     val shape = RoundedCornerShape(CouiShapes.cardRadius)
     val interaction = remember { MutableInteractionSource() }
-    val clickableModifier = if (onClick != null) {
-        Modifier
-            .couiPressFeedback(interaction, radius)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-    } else {
-        Modifier
-    }
     Column(
         modifier = modifier
+            .then(if (onClick != null) Modifier.couiPressScale(interaction) else Modifier)
             .then(if (colors.isDark) Modifier else Modifier.shadow(
                 elevation = 10.dp,
                 shape = shape,
@@ -118,7 +110,12 @@ fun CouiCard(
             .squircleClip(CouiShapes.cardRadius)
             .background(colors.card)
             .then(if (colors.isDark) Modifier.border(1.dp, colors.cardBorder, shape) else Modifier)
-            .then(clickableModifier)
+            .then(if (onClick != null) Modifier.clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick,
+            ) else Modifier)
+            .then(if (onClick != null) Modifier.couiPressOverlay(interaction) else Modifier)
             .padding(contentPadding),
         content = content,
     )
@@ -214,6 +211,80 @@ fun CouiDialogOverlay(
             content = content,
         )
     }
+}
+
+/** COUI 主按钮：44dp 高、12dp 曲率、绿色填充；绿色只用于这一个明确动作。 */
+@Composable
+fun CouiButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalCouiColors.current
+    val shape = RoundedCornerShape(CouiShapes.controlRadius)
+    Box(
+        modifier = modifier
+            .height(44.dp)
+            .clip(shape)
+            .background(colors.accent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(text = text, style = CouiType.button.copy(color = colors.onAccent))
+    }
+}
+
+/** COUI 文字按钮：用于「取消 / 清除 / 更多」这类不占主视觉的动作。 */
+@Composable
+fun CouiTextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalCouiColors.current
+    BasicText(
+        text = text,
+        style = CouiType.button.copy(color = colors.accent),
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    )
+}
+
+/** COUI 胶囊标签：热门标签与筛选复用，选中态用绿色容器而不是整块绿色填充。 */
+@Composable
+fun CouiChip(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+) {
+    val colors = LocalCouiColors.current
+    val shape = RoundedCornerShape(CouiShapes.pillRadius)
+    BasicText(
+        text = text,
+        style = CouiType.caption.copy(color = if (selected) colors.accent else colors.textSecondary),
+        modifier = modifier
+            .clip(shape)
+            .background(if (selected) colors.accentContainer else colors.card)
+            .border(1.dp, if (selected) colors.accent.copy(alpha = 0.25f) else colors.cardBorder, shape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 /** COUI 底部面板：顶部 28dp 圆角 + 32×4 拖拽条，300ms 级弹簧入场。 */

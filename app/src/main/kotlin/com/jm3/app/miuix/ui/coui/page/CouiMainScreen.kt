@@ -174,10 +174,11 @@ fun CouiMainScreen(
                                 ) { currentTab ->
                                     saveableStateHolder.SaveableStateProvider(currentTab) {
                                         when (currentTab) {
-                                            0 -> HomeScreen(
+                                            0 -> CouiHomeScreen(
                                                 deps = deps,
                                                 gateway = gateway,
                                                 authCall = authCall,
+                                                backdrop = backdrop,
                                                 onOpenAlbum = onOpenAlbum,
                                                 onOpenWeek = onOpenWeek,
                                             )
