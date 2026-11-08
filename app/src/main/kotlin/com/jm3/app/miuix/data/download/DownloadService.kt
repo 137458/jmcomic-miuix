@@ -138,6 +138,8 @@ class DownloadService : Service() {
                 .onFailure { e ->
                     // 后台启动被拒（ForegroundServiceStartNotAllowedException）时界面毫无反馈，至少留痕。
                     Log.w(TAG, "启动下载前台服务失败", e)
+                    // 回滚活动数快照，让退避窗口结束后的下一次队列更新还能再次尝试拉起
+                    policy.onStartFailed()
                 }
         }
 

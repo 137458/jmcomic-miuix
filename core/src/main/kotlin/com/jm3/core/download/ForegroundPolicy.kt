@@ -51,6 +51,14 @@ class ForegroundPolicy(
     /** 上次拉起尝试的时间：只用于压同一次任务数变化内的抖动。 */
     private var lastStartAttemptAt = 0L
 
+    /**
+     * 上次拉起失败的时间：失败后即使活动任务数不变，也要在退避窗口外按时间再试一次。
+     *
+     * 只记录失败时间、不依赖「下一次任务数变化」，否则队列静止时服务会一直起不来。
+     */
+    @Volatile
+    private var lastStartFailedAt = 0L
+
     /** 上一次活动任务快照：用来识别终态跃迁。 */
     private var previous: Map<String, DownloadTask> = emptyMap()
 
@@ -59,11 +67,24 @@ class ForegroundPolicy(
     /** 服务已进前台（onStartCommand 里 startForeground 成功）。 */
     fun onServiceForeground() {
         running = true
+        lastStartFailedAt = 0L
     }
 
     /** 服务已退出前台（onDestroy、启动失败或超时退场）。 */
     fun onServiceStopped() {
         running = false
+    }
+
+    /**
+     * 拉起被系统拒绝：记下失败时间并回滚活动数快照。
+     *
+     * 只记失败时间不够——[onTasks] 在活动数不变时不会再发 Start；只回滚计数也不够——
+     * 若队列静止就没有下一次更新。两者一起做：下一次队列更新到来时，无论计数是否变化，
+     * 只要退避窗口（[startRetryIntervalMs]）已过就重新尝试。
+     */
+    fun onStartFailed() {
+        lastActiveCount = -1
+        lastStartFailedAt = clock()
     }
 
     /**
@@ -78,7 +99,7 @@ class ForegroundPolicy(
         lastActiveCount = active
 
         if (active > 0) {
-            if (!running && countChanged && canAttemptStart()) actions += ForegroundAction.Start
+            if (!running && shouldStart(countChanged) && canAttemptStart()) actions += ForegroundAction.Start
             if (running) {
                 val immediate = countChanged || tasks.hasTerminalTransitionFrom(previous)
                 if (throttle.shouldEmit(clock(), immediate)) {
@@ -98,6 +119,13 @@ class ForegroundPolicy(
     /** 补发窗口到期：服务还在前台才发，否则这条进度已经没有意义。 */
     fun onFlushDue(tasks: Map<String, DownloadTask>): ForegroundAction? =
         if (running) ForegroundAction.Publish(tasks) else null
+
+    /** 活动数变化才拉起；上一次拉起失败的话，退避窗口过后按时间补一次。 */
+    private fun shouldStart(countChanged: Boolean): Boolean {
+        if (countChanged) return true
+        val failedAt = lastStartFailedAt
+        return failedAt != 0L && clock() - failedAt >= startRetryIntervalMs
+    }
 
     private fun canAttemptStart(): Boolean {
         val now = clock()

@@ -144,6 +144,22 @@ class ForegroundPolicyTest {
     }
 
     @Test
+    fun 拉起被拒后回滚计数并在退避窗口外重试() {
+        val policy = policy()
+        val tasks = mapOf("a" to task("a", DownloadStatus.RUNNING))
+        assertEquals(listOf(ForegroundAction.Start), policy.onTasks(tasks))
+
+        policy.onStartFailed()
+        // 退避窗口内即使有新的队列更新也不再拉起
+        now += 1_000
+        assertEquals(emptyList(), policy.onTasks(tasks))
+
+        // 窗口结束后，同一批任务的计数已回滚，能够再次尝试拉起
+        now += 4_000
+        assertEquals(listOf(ForegroundAction.Start), policy.onTasks(tasks))
+    }
+
+    @Test
     fun 补发到期且服务仍在跑时发布进度() {
         val policy = policy()
         policy.onTasks(mapOf("a" to task("a", DownloadStatus.RUNNING)))
