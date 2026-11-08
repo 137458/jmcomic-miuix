@@ -761,6 +761,15 @@ fun CreatorWorkDetailScreen(
     }
 }
 
+/**
+ * 封面压白字的统一暗度：列表入口、详情头图的模糊层与无模糊回退共用同一个值。
+ * 分开取值会让不支持模糊的设备在进入详情时明显变暗，这里宁可让模糊路径与列表一致。
+ */
+private const val CreatorCoverScrimAlpha = 0.45f
+
+/** 封面内头像与文字的水平内边距：列表入口与详情头图统一，不再 14/20 各取一套。 */
+private val CreatorCoverInset = 16.dp
+
 /** 创作者行：背景图 + 暗色蒙版 + 头像 + 名称/更新时间。 */
 @Composable
 private fun CreatorRow(creator: CreatorMeta, onClick: () -> Unit) {
@@ -779,9 +788,9 @@ private fun CreatorRow(creator: CreatorMeta, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = CreatorCoverScrimAlpha)))
             Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = CreatorCoverInset),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 LibraryCover(
@@ -901,13 +910,13 @@ private fun CreatorHero(author: CreatorAuthorWorks) {
                         blurRadius = 26f,
                         gradient = ProgressiveBlur.Bottom,
                     )
-                    .background(Color.Black.copy(alpha = 0.28f)),
+                    .background(Color.Black.copy(alpha = CreatorCoverScrimAlpha)),
             )
         } else {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)))
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = CreatorCoverScrimAlpha)))
         }
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = CreatorCoverInset),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LibraryCover(
