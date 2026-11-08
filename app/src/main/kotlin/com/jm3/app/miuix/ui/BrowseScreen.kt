@@ -114,6 +114,9 @@ fun BrowseScreen(
     var categoryTree by remember { mutableStateOf<CategoryTree?>(null) }
     var hotTags by remember { mutableStateOf<List<String>>(emptyList()) }
     var weeklyFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
+    // 周更区块的三态：空列表既可能是「还没回来」也可能是「回来 0 条」，必须分开
+    var weeklyLoading by remember { mutableStateOf(true) }
+    var weeklyFailure by remember { mutableStateOf<String?>(null) }
     // 子分类/标签点击后的检索词；非空时页面切换为标签结果，返回即恢复分类浏览。
     var tagKeyword by remember { mutableStateOf<String?>(null) }
     var showMoreSheet by remember { mutableStateOf(false) }
@@ -207,15 +210,30 @@ fun BrowseScreen(
         }
     }
 
-    // 三个增强区块并行加载；失败或会话失效只隐藏自身，不影响主列表与整屏错误态。
+    /** 周更首屏/重试：成功给列表、失效与失败给可重试的失败态，空结果不等于加载中。 */
+    fun loadWeekly() {
+        weeklyLoading = true
+        weeklyFailure = null
+        scope.launch {
+            val outcome = authCall.call { gateway.serialization(1) }
+            weeklyLoading = false
+            weeklyFailure = planLoad(
+                outcome = outcome,
+                hasContent = false,
+                failureMessage = "每周更新加载失败",
+            ).message
+            weeklyFeed = (outcome as? SessionOutcome.Ok)?.value?.toFeed() ?: weeklyFeed
+        }
+    }
+
+    // 三个增强区块并行加载；失败或会话失效只影响各自区域，不影响主列表与整屏错误态。
     LaunchedEffect(gateway, authCall) {
+        loadWeekly()
         coroutineScope {
             val treeRequest = async { authCall.call { gateway.categoriesList() } }
             val tagsRequest = async { authCall.call { gateway.hotTags() } }
-            val weeklyRequest = async { authCall.call { gateway.serialization(1) } }
             categoryTree = treeRequest.await().orDegrade<CategoryTree?>(null)
             hotTags = tagsRequest.await().orDegrade(emptyList())
-            weeklyFeed = weeklyRequest.await().orDegrade<com.jm3.core.model.SearchPage?>(null)?.toFeed() ?: PagedFeed()
         }
     }
 
@@ -254,15 +272,13 @@ fun BrowseScreen(
                             modifier = Modifier.size(24.dp),
                         )
                     }
-                    // 连载更新无数据（接口失败或为空）时不展示入口
-                    if (weeklyFeed.items.isNotEmpty()) {
-                        IconButton(onClick = { showWeeklySheet = true }) {
-                            Icon(
-                                imageVector = MiuixIcons.Weeks,
-                                contentDescription = "每周连载更新",
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
+                    // 入口常驻：加载中/失败/空都在弹窗内有独立形态，不能拿「有没有数据」决定能否打开
+                    IconButton(onClick = { showWeeklySheet = true }) {
+                        Icon(
+                            imageVector = MiuixIcons.Weeks,
+                            contentDescription = "每周连载更新",
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
                 },
                 // 筛选条常驻玻璃顶栏：与内容同处玻璃采样区，列表滚动时玻璃背景随之实时更新
@@ -441,7 +457,7 @@ fun BrowseScreen(
                         }
                         is ListState.Failed -> item(key = "error") {
                             ErrorScreen(
-                                message = "加载失败：${s.message}",
+                                message = s.message,
                                 onRetry = ::refresh,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
@@ -482,15 +498,9 @@ fun BrowseScreen(
             onDismissRequest = { showWeeklySheet = false },
         ) {
             val feed = weeklyFeed
-            if (feed.items.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    InfiniteProgressIndicator()
-                }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
+            val failure = weeklyFailure
+            when {
+                feed.items.isNotEmpty() -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
                     items(feed.items, key = { it.id }) { result ->
                         WorkRowCard(
                             coverUrl = result.coverUrl,
@@ -500,7 +510,7 @@ fun BrowseScreen(
                                 onOpenAlbum(result.id)
                             },
                             albumId = result.id,
-                            subtitle = result.authors.joinToString(" / ").ifBlank { null },
+                            subtitle = result.authors.authorNames(),
                             category = result.category,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                         ) {
@@ -513,6 +523,28 @@ fun BrowseScreen(
                         }
                     }
                     item(key = "weekly-gap") { Spacer(modifier = Modifier.height(12.dp)) }
+                }
+
+                weeklyLoading -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    InfiniteProgressIndicator()
+                }
+
+                failure != null -> Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(text = failure)
+                    TextButton(text = "重试", onClick = ::loadWeekly)
+                }
+
+                else -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "暂无每周更新")
                 }
             }
         }
@@ -645,7 +677,7 @@ private fun TagResultSection(
                 }
                 is ListState.Failed -> item(key = "tag-error") {
                     ErrorScreen(
-                        message = "加载失败：${s.message}",
+                        message = s.message,
                         onRetry = ::load,
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                     )
@@ -726,7 +758,7 @@ private fun RankResultGrid(
             }
             is ListState.Failed -> item(key = "rank-error", span = StaggeredGridItemSpan.FullLine) {
                 ErrorScreen(
-                    message = "加载失败：${state.message}",
+                    message = state.message,
                     onRetry = onRetry,
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                 )

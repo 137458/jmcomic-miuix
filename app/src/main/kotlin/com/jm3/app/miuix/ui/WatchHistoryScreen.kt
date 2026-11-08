@@ -201,7 +201,7 @@ fun WatchHistoryScreen(
                                 title = item.title,
                                 onClick = { onOpenAlbum(item.id) },
                                 albumId = item.id,
-                                subtitle = item.authors.joinToString(" / ").ifBlank { null },
+                                subtitle = item.authors.authorNames(),
                                 category = item.category,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                                 textEndPadding = 4.dp,
