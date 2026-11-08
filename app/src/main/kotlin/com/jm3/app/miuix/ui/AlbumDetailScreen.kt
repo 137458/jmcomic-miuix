@@ -705,11 +705,12 @@ private fun DetailHeader(
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
             if (!coverUrl.isNullOrBlank()) {
-                // 头图是「列表卡片 → 详情页」形变飞行的落点：卡片内封面被裁成 16dp 圆角，这里对齐同一个值
+                // 头图是「列表卡片 → 详情页」形变飞行的落点：与列表卡片共用皮肤 cardCorner，飞行两端圆角一致
                 Card(
+                    cornerRadius = skin.shapes.cardCorner,
                     modifier = Modifier
                         .size(width = 144.dp, height = 192.dp)
-                        .albumHeroHeader(albumId, coverUrl, HERO_CARD_CORNER_DP)
+                        .albumHeroHeader(albumId, coverUrl, skin.shapes.cardCorner.value)
                 ) {
                     // 与列表卡片、飞行覆盖层共用同一个 Coil 内存缓存条目（显式 key + 固定 144x192dp 解码尺寸），
                     // 命中即首帧出图；crossfade 会在命中后仍淡入一次，正是“封面闪一下”的来源之一。

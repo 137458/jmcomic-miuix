@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.squircle.squircleBackground
@@ -46,7 +47,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 作品卡的统一尺寸令牌：所有作品卡（网格卡、行卡、缩略图）只从这里取尺寸，
- * 圆角一律走 [HERO_CARD_CORNER_DP] 等 AlbumHero 常量，调用点禁止再写 dp 字面量。
+ * 外圆角一律走皮肤 cardCorner（HyperOS 与 Miuix 默认 16dp 同源），
+ * 卡内缩略图与角标走 [HERO_THUMB_CORNER_DP] / [HERO_BADGE_CORNER_DP]，调用点禁止再写 dp 字面量。
  *
  * 封面比例固定 3:4：[HERO_COVER_WIDTH_DP] / [HERO_COVER_HEIGHT_DP] 就是按 3:4 解码的，
  * 卡片用同一比例才不会额外裁切，列表、覆盖层、详情头图才能共用同一张缓存 Bitmap。
@@ -113,15 +115,16 @@ internal fun TextStyle.pinnedLineHeight(): TextUnit =
  * 自己再 clip 一次只会多一层裁剪；卡内缩略图请用 [WorkThumbnail]。
  *
  * @param albumId 传入时注册共享元素矩形，卡片点击才能播封面飞行；不参与飞行时传 null。
+ * @param cornerDp 卡片实际裁切圆角（取自皮肤 cardCorner），飞行两端必须用同一个值。
  */
 @Composable
 internal fun WorkCover(
     url: String?,
+    cornerDp: Float,
     modifier: Modifier = Modifier,
     albumId: String? = null,
     title: String? = null,
     contentDescription: String? = null,
-    cornerDp: Float = HERO_CARD_CORNER_DP,
     contentScale: ContentScale = ContentScale.Crop,
 ) {
     Box(modifier = modifier) {
@@ -283,8 +286,8 @@ internal fun WorkCardMetaRow(
 /**
  * 竖版作品卡：封面顶满卡片宽度，下方是标题、次级信息与可选的附加行。
  *
- * 外观契约与 [WorkRowCard] 一致：圆角来自 [HERO_CARD_CORNER_DP]、标题 body1/body2 加粗、
- * 次级信息 footnote1、角标走 [WorkCoverBadge]；不同场景只允许改宽度与标题行数。
+ * 外观契约与 [WorkRowCard] 一致：圆角取自皮肤 cardCorner（HyperOS 16dp / ColorOS 18dp）、
+ * 标题 body1/body2 加粗、次级信息 footnote1、角标走 [WorkCoverBadge]；不同场景只允许改宽度与标题行数。
  *
  * @param category 主分类标题，与作者同一行展示（主色）；为空时不占位。
  * @param titleLineHeight 标题固定行高，缺省时由字体度量决定（需要同排卡片绝对等高时传入）。
@@ -309,12 +312,14 @@ internal fun WorkGridCard(
     footer: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val heroHost = LocalAlbumHeroHost.current
+    val cardCorner = LocalSkin.current.shapes.cardCorner
     Card(
         modifier = modifier.pressScale(),
+        cornerRadius = cardCorner,
         insideMargin = PaddingValues(0.dp),
         onClick = {
             if (albumId != null) {
-                heroHost?.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP, title)
+                heroHost?.startForward(albumId, coverUrl, cardCorner.value, title)
             }
             onClick()
         },
@@ -322,6 +327,7 @@ internal fun WorkGridCard(
         Box(modifier = Modifier.fillMaxWidth()) {
             WorkCover(
                 url = coverUrl,
+                cornerDp = cardCorner.value,
                 albumId = albumId,
                 title = title,
                 contentDescription = coverContentDescription,
@@ -380,12 +386,14 @@ internal fun WorkRowCard(
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val heroHost = LocalAlbumHeroHost.current
+    val cardCorner = LocalSkin.current.shapes.cardCorner
     Card(
         modifier = modifier.pressScale(),
+        cornerRadius = cardCorner,
         insideMargin = PaddingValues(0.dp),
         onClick = {
             if (albumId != null) {
-                heroHost?.startForward(albumId, coverUrl, HERO_CARD_CORNER_DP, title)
+                heroHost?.startForward(albumId, coverUrl, cardCorner.value, title)
             }
             onClick()
         },
@@ -394,6 +402,7 @@ internal fun WorkRowCard(
             leading?.invoke(this)
             WorkCover(
                 url = coverUrl,
+                cornerDp = cardCorner.value,
                 albumId = albumId,
                 title = title,
                 contentDescription = coverContentDescription,

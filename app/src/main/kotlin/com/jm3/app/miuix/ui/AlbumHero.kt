@@ -384,11 +384,12 @@ fun AlbumCoverImage(
 }
 
 /**
- * 作品卡圆角契约：全部作品卡（网格卡、行卡、缩略图、角标）的圆角只从这里取，
+ * 作品卡圆角契约：全部作品卡（网格卡、行卡、缩略图、角标）的圆角只从皮肤或本文件的常量取，
  * 调用点禁止写 dp 字面量，否则不同作品的卡会重新长出各自的曲率。
  *
- * 卡片外圆角：Miuix Card 的内边距为 0，封面贴满卡片，裁出来的就是 Card 自身圆角，
- * 所以这里直接取 CardDefaults.CornerRadius，库升级改默认值时卡片与飞行端不会错位。
+ * 卡片外圆角：Miuix Card 的内边距为 0，封面贴满卡片，裁出来的就是 Card 自身圆角。
+ * 运行期列表卡与详情头图一律取皮肤 cardCorner（ColorOS 18dp），本常量只是 HyperOS 档
+ * 与 Miuix 默认值的同源校验基准，不参与实际布局。
  */
 val HERO_CARD_CORNER_DP: Float = CardDefaults.CornerRadius.value
 

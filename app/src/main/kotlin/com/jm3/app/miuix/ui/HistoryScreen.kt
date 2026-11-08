@@ -290,6 +290,7 @@ private fun AlbumHistoryCard(
     onDelete: () -> Unit,
 ) {
     val heroHost = LocalAlbumHeroHost.current
+    val cardCorner = LocalSkin.current.shapes.cardCorner
     WorkRowCard(
         coverUrl = album.latest.coverUrl,
         title = album.latest.title,
@@ -314,7 +315,7 @@ private fun AlbumHistoryCard(
             TextButton(
                 text = "详情",
                 onClick = {
-                    heroHost?.startForward(album.albumId, album.latest.coverUrl, HERO_CARD_CORNER_DP)
+                    heroHost?.startForward(album.albumId, album.latest.coverUrl, cardCorner.value)
                     onOpenDetail()
                 },
                 minWidth = 0.dp,
