@@ -606,7 +606,8 @@ fun NovelDetailScreen(
                             0 -> {
                                 item(key = "sort") {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                            .padding(horizontal = SectionTextStartPadding, vertical = 2.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                     ) {
