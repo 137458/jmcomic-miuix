@@ -47,6 +47,8 @@ import com.jm3.app.miuix.ui.coui.component.rememberCouiBlurBackdrop
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
+import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
+import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.session.AccountManager
@@ -150,9 +152,26 @@ fun CouiMainScreen(
                     )
                 }
                 val useRail = wideScreenNavigation == WideScreenNavigation.RAIL
-                val floatingBarClearance = 56.dp + navBarHeight + 12.dp
+                // 与 HyperOS 主框架同源解析尺寸/形态档：切换偏好只重建 token，底栏几何全部由它给出
+                val barTokens = remember(
+                    deps.preferences.bottomBarSize,
+                    deps.preferences.bottomBarForm,
+                    widthDp,
+                ) {
+                    resolveBottomBarTokens(
+                        explicitSize = deps.preferences.bottomBarSize,
+                        explicitForm = deps.preferences.bottomBarForm,
+                        widthDp = widthDp,
+                    )
+                }
+                // 净空按 token 推导：条高 + 悬浮档与导航条之间的 8dp 间隙 + 4dp 呼吸位 + 导航条 inset
+                val floatingBarClearance = barTokens.height +
+                    (if (barTokens.floating) 8.dp else 0.dp) +
+                    navBarHeight +
+                    4.dp
                 CompositionLocalProvider(
                     LocalFloatingBarContentPadding provides if (useRail) 0.dp else floatingBarClearance,
+                    LocalGlassBottomBarTokens provides barTokens,
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Box(

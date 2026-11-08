@@ -55,12 +55,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.CouiShapes
 import com.jm3.app.miuix.ui.coui.theme.CouiType
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
+import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.blur
@@ -150,10 +152,11 @@ data class CouiNavItem(val label: String, val icon: ImageVector)
 data class CouiBadge(val count: Int? = null, val dot: Boolean = false)
 
 /**
- * COUI 底栏：贴底 56dp + 导航栏 inset，16dp 均匀磨砂 + 78% 表面色 + 1dp 8% 分隔线。
+ * COUI 底栏：几何尺寸与形态完全取自 [LocalGlassBottomBarTokens]。
  *
- * 不做折射、不做边缘白高光——这是与 HyperOS 液态玻璃的核心差异，也是验收口径
- * “底栏均匀磨砂 + 分隔线 + 轻投影、无折射白边”的落点。
+ * 悬浮档是 20dp 圆角胶囊 + 横向 24dp 边距 + 轻投影；贴底档横向撑满、顶部 1dp 8% 分隔线、无投影。
+ * 两种形态都不做折射与边缘白高光——这是与 HyperOS 液态玻璃的核心差异。
+ * 高度、图标与字号随「普通/偏大」档变化，不再写死 56dp。
  */
 @Composable
 fun CouiBottomBar(
@@ -162,17 +165,18 @@ fun CouiBottomBar(
     onItemClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
     backdrop: LayerBackdrop? = null,
-    floating: Boolean = false,
     badge: (Int) -> CouiBadge? = { null },
 ) {
     val colors = LocalCouiColors.current
+    val tokens = LocalGlassBottomBarTokens.current
     val barColor = colors.barSurface.copy(alpha = 0.78f)
-    if (floating) {
+    val shadowAlpha = if (colors.isDark) tokens.shadowAlphaDark else tokens.shadowAlphaLight
+    if (tokens.floating) {
         Box(
             modifier = modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = tokens.horizontalMargin, vertical = 8.dp),
         ) {
             val shape = RoundedCornerShape(CouiShapes.cardRadius)
             val backgroundModifier = if (backdrop != null) {
@@ -188,19 +192,19 @@ fun CouiBottomBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
+                    .height(tokens.height)
                     .shadow(
                         elevation = 8.dp,
                         shape = shape,
                         clip = false,
-                        ambientColor = Color.Black.copy(alpha = 0.10f),
-                        spotColor = Color.Black.copy(alpha = 0.10f),
+                        ambientColor = Color.Black.copy(alpha = shadowAlpha),
+                        spotColor = Color.Black.copy(alpha = shadowAlpha),
                     )
                     .clip(shape)
                     .then(backgroundModifier),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                NavItems(items, selectedIndex, onItemClick, badge)
+                NavItems(items, selectedIndex, onItemClick, badge, tokens.iconSize, tokens.labelSize)
             }
         }
         return
@@ -234,10 +238,10 @@ fun CouiBottomBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(tokens.height),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                NavItems(items, selectedIndex, onItemClick, badge)
+                NavItems(items, selectedIndex, onItemClick, badge, tokens.iconSize, tokens.labelSize)
             }
         }
     }
@@ -249,6 +253,8 @@ private fun RowScope.NavItems(
     selectedIndex: Int,
     onItemClick: (Int) -> Unit,
     badge: (Int) -> CouiBadge?,
+    iconSize: Dp,
+    labelSize: TextUnit,
 ) {
     items.forEachIndexed { index, item ->
         val colors = LocalCouiColors.current
@@ -279,28 +285,31 @@ private fun RowScope.NavItems(
             Box(contentAlignment = Alignment.Center) {
                 Box(
                     modifier = Modifier
-                        .widthIn(min = 48.dp)
-                        .height(32.dp)
+                        .widthIn(min = iconSize + 24.dp)
+                        .height(iconSize + 8.dp)
                         .squirclePill(pillAlpha),
                 )
                 Icon(
                     imageVector = item.icon,
                     contentDescription = item.label,
                     tint = iconTint,
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(iconSize),
                 )
                 BadgeMark(itemBadge, Modifier.align(Alignment.TopEnd))
             }
             BasicText(
                 text = item.label,
-                style = CouiType.tab.copy(color = if (selected) colors.textPrimary else colors.textSecondary),
+                style = CouiType.tab.copy(
+                    fontSize = labelSize,
+                    color = if (selected) colors.textPrimary else colors.textSecondary,
+                ),
                 modifier = Modifier.padding(top = 1.dp),
             )
         }
     }
 }
 
-/** 选中胶囊：32dp 高、绿色 10%，随页签 spring 淡入淡出。 */
+/** 选中胶囊：图标高 + 8dp、绿色 10%，随页签 spring 淡入淡出。 */
 @Composable
 private fun Modifier.squirclePill(alpha: Float): Modifier {
     val colors = LocalCouiColors.current

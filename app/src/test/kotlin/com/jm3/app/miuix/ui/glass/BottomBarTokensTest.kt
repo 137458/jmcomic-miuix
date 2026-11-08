@@ -32,18 +32,50 @@ class BottomBarTokensTest {
     }
 
     @Test
-    fun `偏大档映射方案一数值`() {
+    fun `偏大档数值与普通档拉开可感知差距`() {
+        val standard = bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.FLOATING)
         val tokens = bottomBarTokens(BottomBarSize.GENEROUS, BottomBarForm.FLOATING)
-        assertEquals(68f, tokens.height.value)
-        assertEquals(26f, tokens.iconSize.value)
-        assertEquals(12f, tokens.labelSize.value)
-        assertEquals(60f, tokens.indicatorHeight.value)
+        assertEquals(72f, tokens.height.value)
+        assertEquals(28f, tokens.iconSize.value)
+        assertEquals(13f, tokens.labelSize.value)
+        assertEquals(64f, tokens.indicatorHeight.value)
         assertEquals(0.14f, tokens.shadowAlphaLight)
         assertEquals(0.26f, tokens.shadowAlphaDark)
-        assertEquals(104f, tokens.contentPadding.value)
+        assertEquals(108f, tokens.contentPadding.value)
+        // 与普通档必须拉开肉眼可辨的差距；普通档自身数值不受影响
+        assertTrue(tokens.height.value - standard.height.value >= 8f)
+        assertTrue(tokens.iconSize.value - standard.iconSize.value >= 4f)
+        assertTrue(tokens.labelSize.value - standard.labelSize.value >= 2f)
         val (topLeft, bottomLeft) = cornerRadii(tokens)
         assertEquals(50f, topLeft)
         assertEquals(50f, bottomLeft)
+    }
+
+    @Test
+    fun `四种组合逐一可区分`() {
+        val combos = BottomBarSize.entries.flatMap { size ->
+            BottomBarForm.entries.map { form -> bottomBarTokens(size, form) }
+        }
+        // 尺寸档：同一形态下条高、图标、字号逐项不同
+        for (form in BottomBarForm.entries) {
+            val standard = bottomBarTokens(BottomBarSize.STANDARD, form)
+            val generous = bottomBarTokens(BottomBarSize.GENEROUS, form)
+            assertTrue(generous.height.value > standard.height.value)
+            assertTrue(generous.iconSize.value > standard.iconSize.value)
+            assertTrue(generous.labelSize.value > standard.labelSize.value)
+        }
+        // 形态档：悬浮有横向边距与投影，贴底没有；净空也随形态不同
+        for (size in BottomBarSize.entries) {
+            val floating = bottomBarTokens(size, BottomBarForm.FLOATING)
+            val docked = bottomBarTokens(size, BottomBarForm.DOCKED)
+            assertTrue(floating.horizontalMargin.value > docked.horizontalMargin.value)
+            assertTrue(floating.shadowAlphaLight > docked.shadowAlphaLight)
+            assertTrue(floating.shadowAlphaDark > docked.shadowAlphaDark)
+            assertEquals(floating.height, docked.height)
+            assertTrue(floating.contentPadding.value > docked.contentPadding.value)
+        }
+        // 四份 token 必须各互不相同，避免两档退化成同一套几何
+        assertEquals(4, combos.toSet().size)
     }
 
     @Test

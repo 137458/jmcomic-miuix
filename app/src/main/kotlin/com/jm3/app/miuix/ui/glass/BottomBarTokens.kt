@@ -52,18 +52,20 @@ private val StandardFloating = GlassBottomBarTokens(
     contentPadding = 100.dp,
 )
 
+// 「偏大」档与「普通」档必须拉开可感知的差距：8dp 条高、4dp 图标、2sp 字号。
+// 「普通」档数值保持不变，避免已验收的默认观感回退。
 private val GenerousFloating = GlassBottomBarTokens(
     size = BottomBarSize.GENEROUS,
     form = BottomBarForm.FLOATING,
-    height = 68.dp,
-    iconSize = 26.dp,
-    labelSize = 12.sp,
-    indicatorHeight = 60.dp,
+    height = 72.dp,
+    iconSize = 28.dp,
+    labelSize = 13.sp,
+    indicatorHeight = 64.dp,
     horizontalMargin = 24.dp,
     innerPadding = 4.dp,
     shadowAlphaLight = 0.14f,
     shadowAlphaDark = 0.26f,
-    contentPadding = 104.dp,
+    contentPadding = 108.dp,
 )
 
 /** 贴底通栏：横向撑满、无悬浮间隙与投影；净空只留条高（导航栏 inset 由外层 Scaffold 计入）。 */

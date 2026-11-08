@@ -292,17 +292,19 @@ fun MainScreen(
                         }
                     }
                 }
-            }
-            // 液态玻璃胶囊底栏：浮在内容之上以采样页面背景，宽度由内容与官方规范上限决定
-            if (!useRail) {
-                IosLiquidGlassNavigationBar(
-                    items = MainTab.entries.map { NavigationItem(label = it.label, icon = tabIcon(it)) },
-                    selectedIndex = tab,
-                    onItemClick = { tab = it },
-                    backdrop = backdrop,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    badge = { index -> MainTab.entries.getOrNull(index)?.let(::badgeFor) },
-                )
+                // 液态玻璃胶囊底栏：浮在内容之上以采样页面背景，宽度由内容与官方规范上限决定。
+                // 必须与内容同处 token provider：三层渲染与图标字号都读 LocalGlassBottomBarTokens，
+                // 放到 provider 之外只会永远拿到默认 StandardFloating，尺寸/形态档全部失效。
+                if (!useRail) {
+                    IosLiquidGlassNavigationBar(
+                        items = MainTab.entries.map { NavigationItem(label = it.label, icon = tabIcon(it)) },
+                        selectedIndex = tab,
+                        onItemClick = { tab = it },
+                        backdrop = backdrop,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        badge = { index -> MainTab.entries.getOrNull(index)?.let(::badgeFor) },
+                    )
+                }
             }
         }
     }
