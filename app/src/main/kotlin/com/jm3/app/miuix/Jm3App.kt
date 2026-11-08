@@ -62,7 +62,9 @@ import com.jm3.app.miuix.ui.NotificationsScreen
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.app.miuix.update.UpdateDownloader
+import com.jm3.app.miuix.ui.coui.page.CouiMainScreen
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
+import com.jm3.app.miuix.ui.route.SkinRoute
 import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.ui.skin.SkinMotion
@@ -515,29 +517,60 @@ fun Jm3App() {
                     ),
                 ) {
                     entry<Route.Main> {
-                        MainScreen(
-                            deps = deps,
-                            gateway = Jm3Graph.api.gateway,
-                            account = Jm3Graph.session.account,
-                            downloadManager = Jm3Graph.downloads.manager,
-                            unreadBadge = Jm3Graph.session.unread,
-                            authCall = Jm3Graph.session.authCall,
-                            snackbarHostState = snackbarHostState,
-                            onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                            onOpenLogin = { backStack.add(Route.Login) },
-                            onOpenFavorites = { backStack.add(Route.Favorites) },
-                            onOpenHistory = { backStack.add(Route.History) },
-                            onOpenShelf = { backStack.add(Route.Shelf) },
-                            onOpenSettings = { backStack.add(Route.Settings) },
-                            onOpenWeek = { backStack.add(Route.Week) },
-                            onOpenNotifications = { backStack.add(Route.Notifications) },
-                            onOpenTracking = { backStack.add(Route.Tracking) },
-                            onOpenProfile = { backStack.add(Route.Profile) },
-                            onOpenTasks = { backStack.add(Route.Tasks) },
-                            onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
-                            onOpenForum = { backStack.add(Route.Forum) },
-                            onOpenNovel = { backStack.add(Route.Novel) },
-                            onOpenLibrary = { backStack.add(Route.Library) },
+                        SkinRoute(
+                            uiSkin = uiSkin,
+                            hyperOs = {
+                                MainScreen(
+                                    deps = deps,
+                                    gateway = Jm3Graph.api.gateway,
+                                    account = Jm3Graph.session.account,
+                                    downloadManager = Jm3Graph.downloads.manager,
+                                    unreadBadge = Jm3Graph.session.unread,
+                                    authCall = Jm3Graph.session.authCall,
+                                    snackbarHostState = snackbarHostState,
+                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                    onOpenLogin = { backStack.add(Route.Login) },
+                                    onOpenFavorites = { backStack.add(Route.Favorites) },
+                                    onOpenHistory = { backStack.add(Route.History) },
+                                    onOpenShelf = { backStack.add(Route.Shelf) },
+                                    onOpenSettings = { backStack.add(Route.Settings) },
+                                    onOpenWeek = { backStack.add(Route.Week) },
+                                    onOpenNotifications = { backStack.add(Route.Notifications) },
+                                    onOpenTracking = { backStack.add(Route.Tracking) },
+                                    onOpenProfile = { backStack.add(Route.Profile) },
+                                    onOpenTasks = { backStack.add(Route.Tasks) },
+                                    onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
+                                    onOpenForum = { backStack.add(Route.Forum) },
+                                    onOpenNovel = { backStack.add(Route.Novel) },
+                                    onOpenLibrary = { backStack.add(Route.Library) },
+                                )
+                            },
+                            colorOs = {
+                                CouiMainScreen(
+                                    deps = deps,
+                                    gateway = Jm3Graph.api.gateway,
+                                    account = Jm3Graph.session.account,
+                                    downloadManager = Jm3Graph.downloads.manager,
+                                    unreadBadge = Jm3Graph.session.unread,
+                                    authCall = Jm3Graph.session.authCall,
+                                    snackbarHostState = snackbarHostState,
+                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                    onOpenLogin = { backStack.add(Route.Login) },
+                                    onOpenFavorites = { backStack.add(Route.Favorites) },
+                                    onOpenHistory = { backStack.add(Route.History) },
+                                    onOpenShelf = { backStack.add(Route.Shelf) },
+                                    onOpenSettings = { backStack.add(Route.Settings) },
+                                    onOpenWeek = { backStack.add(Route.Week) },
+                                    onOpenNotifications = { backStack.add(Route.Notifications) },
+                                    onOpenTracking = { backStack.add(Route.Tracking) },
+                                    onOpenProfile = { backStack.add(Route.Profile) },
+                                    onOpenTasks = { backStack.add(Route.Tasks) },
+                                    onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
+                                    onOpenForum = { backStack.add(Route.Forum) },
+                                    onOpenNovel = { backStack.add(Route.Novel) },
+                                    onOpenLibrary = { backStack.add(Route.Library) },
+                                )
+                            },
                         )
                     }
                     entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
