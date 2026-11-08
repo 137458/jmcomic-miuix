@@ -215,7 +215,7 @@ fun LibraryScreen(
     val activeFeed: PagedFeed<*> = if (tab == 0) creatorFeed else workFeed
     val itemCount = activeFeed.items.size
     val total = activeFeed.total ?: 0
-    val totalPages = ((total + LIBRARY_PAGE_SIZE - 1) / LIBRARY_PAGE_SIZE).coerceAtLeast(1)
+    val totalPages = libraryPageCount(total)
 
     GlassScaffold(
         topBar = {
@@ -305,7 +305,7 @@ fun LibraryScreen(
                     )
                 } else {
                     ErrorScreen(
-                        message = "加载失败：${planned?.message.orEmpty()}",
+                        message = planned?.message.orEmpty(),
                         onRetry = { load(activeFeed.page.coerceAtLeast(1), append = false) },
                         modifier = Modifier.padding(innerPadding),
                     )
@@ -484,7 +484,7 @@ fun CreatorWorksScreen(
                     )
                 } else {
                     ErrorScreen(
-                        message = "加载失败：${planned?.message.orEmpty()}",
+                        message = planned?.message.orEmpty(),
                         onRetry = { load(showLoading = true) },
                         modifier = Modifier.padding(innerPadding),
                     )
@@ -668,7 +668,7 @@ fun CreatorWorkDetailScreen(
                     )
                 } else {
                     ErrorScreen(
-                        message = "加载失败：${planned?.message.orEmpty()}",
+                        message = planned?.message.orEmpty(),
                         onRetry = ::load,
                         modifier = Modifier.padding(innerPadding),
                     )
@@ -1026,9 +1026,13 @@ private fun LibraryFooter(
     }
 }
 
+/** 总数 → 总页数：书库所有位置的页码换算都走这一份，避免向上取整写错一边。 */
+internal fun libraryPageCount(total: Int): Int =
+    ((total + LIBRARY_PAGE_SIZE - 1) / LIBRARY_PAGE_SIZE).coerceAtLeast(1)
+
 /** 把书库接口的一页折算成 PagedFeed 切片：末页判据用页码，条目数不参与。 */
 private fun <T> librarySlice(items: List<T>, total: Int, page: Int): PageSlice<T> {
-    val pageCount = ((total + LIBRARY_PAGE_SIZE - 1) / LIBRARY_PAGE_SIZE).coerceAtLeast(1)
+    val pageCount = libraryPageCount(total)
     return PageSlice(items = items, hasMore = page < pageCount, total = total, page = page)
 }
 
