@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,6 +29,7 @@ import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadRow
 import com.jm3.core.download.presentRow
 import com.jm3.core.session.AuthCall
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -50,6 +52,7 @@ fun ShelfScreen(
 ) {
     var records by remember { mutableStateOf<List<DownloadRecord>>(emptyList()) }
     var imageHost by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     // 初次加载 + 队列进度驱动刷新
     LaunchedEffect(Unit) {
@@ -145,8 +148,10 @@ fun ShelfScreen(
                             }
                             IconButton(
                                 onClick = {
-                                    deps.downloadManager.remove(record.photoId)
-                                    records = records.filterNot { it.photoId == record.photoId }
+                                    scope.launch {
+                                        deps.downloadManager.remove(record.photoId)
+                                        records = records.filterNot { it.photoId == record.photoId }
+                                    }
                                 },
                             ) {
                                 Icon(

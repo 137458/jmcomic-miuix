@@ -10,7 +10,9 @@ import com.jm3.core.download.toResumeTask
 import com.jm3.core.runCatchingSuspending
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 下载门面：启动队列、把队列接上台账、提供 UI 动作。
@@ -71,20 +73,28 @@ class DownloadManager(
         return queue.restore(record.toResumeTask())
     }
 
-    /** 删除：取消任务 + 清文件 + 清记录。 */
-    fun remove(photoId: String) {
+    /**
+     * 删除：取消任务 + 清文件 + 清记录。
+     *
+     * 递归删章节目录是阻塞 IO，必须切到 IO 线程，不能拖住点击所在的主线程。
+     */
+    suspend fun remove(photoId: String) {
         queue.cancel(photoId)
-        fileStore.delete(photoId)
-        appScope.launch { ledger.delete(photoId) }
+        withContext(Dispatchers.IO) {
+            fileStore.delete(photoId)
+            ledger.delete(photoId)
+        }
     }
 
     /** 清空全部下载：取消在途任务 + 删文件 + 删记录（文件与记录双清）。 */
     suspend fun clearAll() {
         val all = ledger.all()
         all.forEach { queue.cancel(it.photoId) }
-        all.forEach { record ->
-            fileStore.delete(record.photoId)
-            ledger.delete(record.photoId)
+        withContext(Dispatchers.IO) {
+            all.forEach { record ->
+                fileStore.delete(record.photoId)
+                ledger.delete(record.photoId)
+            }
         }
     }
 
