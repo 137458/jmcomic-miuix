@@ -103,6 +103,7 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.glassSurface
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.app.miuix.ui.skin.LocalSkin
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -208,46 +209,60 @@ fun ReaderScreen(
 ) {
     var state by remember(photoId) { mutableStateOf<ReaderUiState>(ReaderUiState.Loading) }
     val scope = rememberCoroutineScope()
+    // 首载与重试共享一次去重：新一次加载先取消上一次，结局写回前校验代际，
+    // 避免连点重试并行发出多个 gateway.photo，旧响应覆盖新状态。
+    val loadGate = remember(photoId) { ReaderLoadGate() }
+    var loadJob by remember(photoId) { mutableStateOf<Job?>(null) }
 
-    // 优先读已下载落盘数据，缺失时回退网关；供首载与失败重试复用
-    fun load() {
-        state = ReaderUiState.Loading
-        scope.launch {
-            // 落盘页是本地文件，不经网关
-            val saved = runCatchingSuspending { downloadManager.find(photoId) }.getOrNull()
-            val local = saved
-                ?.takeIf { it.record.status == DownloadStatus.DONE }
-                ?.pagesJson
-                ?.let { decodePhotoPages(it) }
-                ?.takeIf { it.images.isNotEmpty() }
-            val outcome: SessionOutcome<PhotoPages> = if (local != null) {
-                SessionOutcome.Ok(local)
-            } else {
-                authCall.call { gateway.photo(photoId) }
+    // 优先读已下载落盘数据，缺失时回退网关；首载与失败重试复用同一段请求
+    suspend fun loadContent() {
+        val token = loadGate.start()
+        // 落盘页是本地文件，不经网关
+        val saved = runCatchingSuspending { downloadManager.find(photoId) }.getOrNull()
+        val local = saved
+            ?.takeIf { it.record.status == DownloadStatus.DONE }
+            ?.pagesJson
+            ?.let { decodePhotoPages(it) }
+            ?.takeIf { it.images.isNotEmpty() }
+        val outcome: SessionOutcome<PhotoPages> = if (local != null) {
+            SessionOutcome.Ok(local)
+        } else {
+            authCall.call { gateway.photo(photoId) }
+        }
+        when (outcome) {
+            is SessionOutcome.Ok -> {
+                val photo = outcome.value
+                // 离线页的 albumId 未落盘，用下载记录的 albumId 补章节列表与收藏/点赞状态
+                val albumId = saved?.record?.albumId ?: photo.albumId
+                // 详情仅用于章节列表与收藏/点赞状态；失败不阻塞阅读
+                val detail = (authCall.call { gateway.album(albumId) } as? SessionOutcome.Ok)?.value
+                // 期间又发起了新的加载：本次结局作废，不覆盖新状态
+                if (!loadGate.isLatest(token)) return
+                state = ReaderUiState.Loaded(
+                    photo = photo,
+                    chapters = detail?.chapters.orEmpty(),
+                    chapterIndex = detail?.chapters?.indexOfFirst { it.id == photo.photoId } ?: -1,
+                    favorited = detail?.favorited == true,
+                    liked = detail?.liked == true,
+                )
             }
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val photo = outcome.value
-                    // 离线页的 albumId 未落盘，用下载记录的 albumId 补章节列表与收藏/点赞状态
-                    val albumId = saved?.record?.albumId ?: photo.albumId
-                    // 详情仅用于章节列表与收藏/点赞状态；失败不阻塞阅读
-                    val detail = (authCall.call { gateway.album(albumId) } as? SessionOutcome.Ok)?.value
-                    state = ReaderUiState.Loaded(
-                        photo = photo,
-                        chapters = detail?.chapters.orEmpty(),
-                        chapterIndex = detail?.chapters?.indexOfFirst { it.id == photo.photoId } ?: -1,
-                        favorited = detail?.favorited == true,
-                        liked = detail?.liked == true,
-                    )
-                }
 
-                else -> readerLoadFailure(outcome)?.let { state = it }
+            else -> {
+                if (!loadGate.isLatest(token)) return
+                readerLoadFailure(outcome)?.let { state = it }
             }
         }
     }
 
+    /** 失败重试入口：先取消在途加载，避免连点并行。 */
+    fun load() {
+        loadJob?.cancel()
+        state = ReaderUiState.Loading
+        loadJob = scope.launch { loadContent() }
+    }
+
     LaunchedEffect(photoId) {
-        load()
+        loadContent()
     }
 
     when (val s = state) {
@@ -1226,7 +1241,8 @@ private fun ReaderPages(
     LaunchedEffect(
         listState,
         pagerState,
-        photo.images,
+        photo.photoId,
+        photo.images.size,
         imageLoader,
         pageWidthPx,
         screenSize,
