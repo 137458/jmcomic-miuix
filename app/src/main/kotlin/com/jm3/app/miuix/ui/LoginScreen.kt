@@ -34,7 +34,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
     val skin = LocalSkin.current
     var username by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
