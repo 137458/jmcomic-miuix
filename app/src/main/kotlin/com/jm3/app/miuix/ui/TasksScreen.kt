@@ -45,6 +45,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.CoverLocator
 import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
@@ -352,6 +353,7 @@ private fun TaskCell(
         TaskType.TITLE -> item.content.ifBlank { item.name }
         TaskType.BADGE -> item.name
     }
+    val skin = LocalSkin.current
     val subtitle = when (type) {
         TaskType.TITLE -> item.name.takeIf { it.isNotBlank() && it != item.content }
         // 勋章的金币是购买价：原版确认弹窗文案为「花费 N J coin 购买」
@@ -375,7 +377,7 @@ private fun TaskCell(
             )
             // 只留最小高度：大字号下由内容自己撑开，同排高度取该排最高格，不会被截断
             .heightIn(min = TaskCellMinHeight)
-            .border(1.dp, MiuixTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp))
+            .border(1.dp, MiuixTheme.colorScheme.dividerLine, RoundedCornerShape(skin.shapes.controlCorner))
             .semantics { stateDescription = if (item.done) TASK_STATE_DONE else TASK_STATE_UNDONE }
             .padding(horizontal = 6.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -423,7 +425,7 @@ private fun TaskCell(
                 style = MiuixTheme.textStyles.footnote2,
                 color = MiuixTheme.colorScheme.primary,
                 modifier = Modifier
-                    .background(MiuixTheme.colorScheme.surfaceContainer, RoundedCornerShape(6.dp))
+                    .background(MiuixTheme.colorScheme.surfaceContainer, RoundedCornerShape(HERO_BADGE_CORNER_DP.dp))
                     .padding(horizontal = 4.dp, vertical = 1.dp),
             )
         }
