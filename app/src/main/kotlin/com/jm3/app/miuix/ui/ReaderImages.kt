@@ -15,15 +15,19 @@ import android.graphics.Bitmap
 import coil3.request.ImageRequest
 import coil3.request.Options
 import coil3.request.bitmapConfig
+import com.jm3.app.miuix.failureCopy
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.PageNumbers
 import com.jm3.core.model.PageImage
+import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import java.io.IOException
 
 /** 阅读页图片模型直接复用 PageImage；键 = photoId/index，翻回旧页可命中内存缓存。 */
 class ReaderKeyer : Keyer<PageImage> {
@@ -39,6 +43,11 @@ class ReaderKeyer : Keyer<PageImage> {
 class ReaderFetcherFactory(
     private val gateway: Jm3Gateway,
     private val store: DownloadStore?,
+    /**
+     * 在线取图也必须经 [AuthCall]：启动闸门与会话失效处置不能因为走图片通道就绕过去。
+     * 未接入的调用方暂传 null 保持旧行为，接入后网络失败与失效会与其它网关调用一致。
+     */
+    private val authCall: AuthCall? = null,
 ) : Fetcher.Factory<PageImage> {
     override fun create(data: PageImage, options: Options, imageLoader: ImageLoader): Fetcher = Fetcher {
         // 字节来源只有一处：磁盘缓存命中就直接复用，命中不到再取。
@@ -58,7 +67,7 @@ class ReaderFetcherFactory(
         val local = store
             ?.takeIf { it.exists(data.photoId, pageNo) }
             ?.let { withContext(Dispatchers.IO) { it.read(data.photoId, pageNo) } }
-        val bytes = local ?: withContext(Dispatchers.IO) { gateway.imageBytes(data) }
+        val bytes = local ?: fetchRemote(data)
         val dataSource = if (local != null) DataSource.DISK else DataSource.NETWORK
         // 无磁盘缓存（例如页面误用了不带缓存的 ImageLoader）时退回内存流
         val editor = diskCache?.openEditor(cacheKey)
@@ -90,6 +99,19 @@ class ReaderFetcherFactory(
             throw t
         }
     }
+
+    /**
+     * 在线取图：接了 [AuthCall] 就走与其它网关调用相同的一道闸门；
+     * 结局翻译成异常交给 Coil，页内仍按图片加载失败处理并提供重试。
+     */
+    private suspend fun fetchRemote(data: PageImage): ByteArray {
+        val call = authCall ?: return withContext(Dispatchers.IO) { gateway.imageBytes(data) }
+        return when (val outcome = call.call { gateway.imageBytes(data) }) {
+            is SessionOutcome.Ok -> outcome.value
+            SessionOutcome.Expired -> throw IOException(SessionOutcome.Expired.message)
+            is SessionOutcome.Failed -> throw IOException(failureCopy(outcome.cause, "图片加载失败"))
+        }
+    }
 }
 
 // 进程级共享的阅读器 ImageLoader。Coil3 对同一磁盘目录只保留一个 DiskCache 实例，
@@ -102,14 +124,15 @@ private val sharedLoaderLock = Any()
 private var sharedLoader: ImageLoader? = null
 
 @Volatile
-private var sharedLoaderKey: Pair<Jm3Gateway, DownloadStore?>? = null
+private var sharedLoaderKey: Triple<Jm3Gateway, DownloadStore?, AuthCall?>? = null
 
 private fun acquireReaderImageLoader(
     gateway: Jm3Gateway,
     store: DownloadStore?,
+    authCall: AuthCall?,
     build: () -> ImageLoader,
 ): ImageLoader = synchronized(sharedLoaderLock) {
-    val key = gateway to store
+    val key = Triple(gateway, store, authCall)
     val existing = sharedLoader
     if (existing != null && sharedLoaderKey == key) {
         existing
@@ -129,16 +152,17 @@ private fun acquireReaderImageLoader(
 fun rememberReaderImageLoader(
     gateway: Jm3Gateway,
     store: DownloadStore? = null,
+    authCall: AuthCall? = null,
 ): ImageLoader {
     val context = LocalPlatformContext.current
     // remember 保证 composition 内稳定返回同一实例；真正跨屏复用的是上面的进程级缓存
-    return remember(gateway, store) {
-        acquireReaderImageLoader(gateway, store) {
+    return remember(gateway, store, authCall) {
+        acquireReaderImageLoader(gateway, store, authCall) {
             ImageLoader.Builder(context)
                 .components(
                     ComponentRegistry.Builder()
                         .add(ReaderKeyer())
-                        .add(ReaderFetcherFactory(gateway, store))
+                        .add(ReaderFetcherFactory(gateway, store, authCall))
                         .build(),
                 )
                 // 阅读器的分块超采样（telephoto）只能从磁盘缓存快照构造分段位图，

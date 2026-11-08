@@ -66,6 +66,7 @@ import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.size.Size
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
@@ -185,7 +186,7 @@ sealed interface ReaderUiState {
 internal fun readerLoadFailure(outcome: SessionOutcome<*>): ReaderUiState.Failed? = when (outcome) {
     is SessionOutcome.Ok -> null
     SessionOutcome.Expired -> ReaderUiState.Failed(SessionOutcome.Expired.message, sessionExpired = true)
-    is SessionOutcome.Failed -> ReaderUiState.Failed(outcome.messageOr("章节加载失败"))
+    is SessionOutcome.Failed -> ReaderUiState.Failed(failureCopy(outcome, "章节加载失败"))
 }
 
 @Composable
@@ -342,7 +343,7 @@ private fun ReaderPages(
     snackbarHostState: SnackbarHostState,
 ) {
     val skin = LocalSkin.current
-    val imageLoader = rememberReaderImageLoader(gateway, downloadFiles)
+    val imageLoader = rememberReaderImageLoader(gateway, downloadFiles, authCall)
     val listState = rememberLazyListState()
     val context = LocalPlatformContext.current
     // 亮度与常亮直接作用在宿主 Activity 的窗口上
@@ -767,6 +768,20 @@ private fun ReaderPages(
     // 音量键翻页：150ms 节流，与原生桥一致。
     // ReaderVolumeKeys.handler 是进程级单值，换章时新旧屏会短暂同时挂载，
     // 所以必须记住自己写入的实例，否则旧屏 onDispose 会把新屏刚写进去的 handler 清成 null。
+    // 翻页动作走 rememberUpdatedState：DisposableEffect 只注册一次，闭包里的 spreadActive/
+    // photo 若直接捕获会在页内切换方向或换章后过期，音量键就会走进错误分支。
+    val onVolumeStep by rememberUpdatedState(
+        newValue = { delta: Int ->
+            // 双页下按屏步进：音量键一次翻一屏，不会因为锚点相同而卡住
+            goToPage(
+                if (spreadActive) {
+                    ReaderSpreadPolicy.stepAnchor(pagePlan.currentPage, delta, photo.images.size)
+                } else {
+                    stepPages(pagePlan, delta)
+                },
+            )
+        },
+    )
     DisposableEffect(volumeKeyPaging) {
         // 关闭音量键翻页时直接不注册：按键回到系统，恢复音量调节
         if (!volumeKeyPaging) return@DisposableEffect onDispose {}
@@ -785,14 +800,7 @@ private fun ReaderPages(
                     val now = System.currentTimeMillis()
                     if (now - lastVolumeAt >= VOLUME_THROTTLE_MS) {
                         lastVolumeAt = now
-                        // 双页下按屏步进：音量键一次翻一屏，不会因为锚点相同而卡住
-                        goToPage(
-                            if (spreadActive) {
-                                ReaderSpreadPolicy.stepAnchor(pagePlan.currentPage, delta, photo.images.size)
-                            } else {
-                                stepPages(pagePlan, delta)
-                            },
-                        )
+                        onVolumeStep(delta)
                     }
                     true
                 }

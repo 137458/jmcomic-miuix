@@ -24,11 +24,11 @@ class ReaderLoadFailureTest {
     }
 
     @Test
-    fun 普通失败给出原因且保留重试() {
+    fun 普通失败给出归类文案且保留重试() {
         val failed = readerLoadFailure(SessionOutcome.Failed("boom"))
 
         assertFalse(failed!!.sessionExpired)
-        assertEquals("boom", failed.message)
+        assertEquals("章节加载失败", failed.message)
     }
 
     @Test
