@@ -588,7 +588,7 @@ fun HomeScreen(
                             if (serialUpdates.isNotEmpty()) {
                                 SmallTitle(text = "连载更新")
                                 LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     items(serialUpdates, key = { it.id }) { update ->
@@ -613,6 +613,7 @@ fun HomeScreen(
                                         )
                                     }
                                 }
+                                // 卡内 FlowRow 自带 12dp：外缘保持 16dp，标签胶囊与标题同在 28dp
                                 Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                                     HotTagFlow(
                                         tags = hotTags,
@@ -627,7 +628,7 @@ fun HomeScreen(
                             if (randomPicks.isNotEmpty()) {
                                 SmallTitle(text = "随便看看")
                                 LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     items(randomPicks, key = { it.id }) { pick ->
@@ -694,7 +695,7 @@ private fun SearchHistoryCard(
     onClear: () -> Unit,
 ) {
     val skin = LocalSkin.current
-    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -795,7 +796,7 @@ private fun SearchResultHeader(
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = SectionHorizontalPadding, vertical = 12.dp),
     )
 }
 

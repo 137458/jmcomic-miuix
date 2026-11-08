@@ -393,7 +393,7 @@ fun BrowseScreen(
                                 if (subCategories.isNotEmpty()) {
                                     LazyRow(
                                         modifier = Modifier.fillMaxWidth(),
-                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         items(subCategories) { sub ->
@@ -411,7 +411,7 @@ fun BrowseScreen(
                                     Spacer(modifier = Modifier.height(4.dp))
                                     SmallTitle(text = "热门标签")
                                     LazyRow(
-                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         items(hotTags.take(12)) { tag ->
@@ -532,7 +532,7 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
         LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
             items(blocks) { block ->
                 SmallTitle(text = block.title)
-                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 4.dp)) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -215,7 +215,7 @@ fun MineScreen(
             // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样
             TopBarContentSpacer(paddingValues = innerPadding)
             SmallTitle(text = "账号")
-            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 val u = user
                 if (u == null) {
                     BasicComponent(title = "未登录", summary = "点击登录账号", onClick = onOpenLogin)
@@ -233,7 +233,7 @@ fun MineScreen(
             }
             if (user != null || checkInExpiredMessage != null) {
                 SmallTitle(text = "每日签到")
-                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                     val status = checkInStatus
                     when {
                         // 会话失效：文案与其它页面一致，动作只能是去登录
@@ -354,7 +354,7 @@ fun MineScreen(
                 }
             }
             SmallTitle(text = "我的内容")
-            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 ArrowPreference(title = "我的收藏", onClick = onOpenFavorites)
                 ArrowPreference(title = "阅读历史", onClick = onOpenHistory)
                 ArrowPreference(
@@ -395,7 +395,7 @@ fun MineScreen(
                 )
             }
             SmallTitle(text = "成就与服务")
-            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 ArrowPreference(
                     title = "成就任务",
                     summary = "称号与勋章",

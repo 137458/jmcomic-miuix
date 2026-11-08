@@ -60,6 +60,11 @@ private val DialogBodyFade = 40.dp
 /** 弹窗底部：内容到按键区、按键之间各留一档，按键边界才分得清。 */
 private val DialogButtonsTopSpacing = 12.dp
 private val DialogButtonGap = 8.dp
+
+/**
+ * 弹窗内容已由 WindowDialog 内建水平内边距，卡片贴齐内容区；标题同样按 0 对齐卡外缘。
+ * 不用页面的 28dp 基线：弹窗内没有第二层缩进空间，套用后标题会比上方的进度说明再右移 28dp。
+ */
 private val DialogSectionMargin = PaddingValues(horizontal = 0.dp, vertical = 6.dp)
 private val DialogCardPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
 

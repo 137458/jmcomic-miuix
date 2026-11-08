@@ -395,7 +395,7 @@ internal fun AlbumDetailScreen(
             item(key = "tags") {
                 LazyRow(
                     modifier = Modifier.padding(bottom = 6.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(validTags) { tag ->
@@ -424,7 +424,7 @@ internal fun AlbumDetailScreen(
             item(key = "related-title") { SmallTitle(text = "更多相关") }
             item(key = "related") {
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(detail.related, key = { it.id }) { related ->
@@ -472,6 +472,7 @@ internal fun AlbumDetailScreen(
             }
             is CommentsUiState.Loaded -> {
                 item(key = "comments-card") {
+                    // 卡内 CommentRow 自带 12dp：外缘保持 16dp，评论正文与标题同在 28dp
                     Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                             if (cs.feed.items.isEmpty()) {
@@ -479,7 +480,7 @@ internal fun AlbumDetailScreen(
                                     text = "暂无评论，来抢沙发",
                                     style = MiuixTheme.textStyles.footnote1,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 16.dp),
                                 )
                             }
                             for (comment in cs.feed.items) {
@@ -868,7 +869,7 @@ private fun DescriptionSection(
                 onClick = onCopy,
                 minWidth = 32.dp,
                 minHeight = 32.dp,
-                modifier = Modifier.padding(end = 16.dp),
+                modifier = Modifier.padding(end = SectionHorizontalPadding),
             ) {
                 Icon(
                     imageVector = MiuixIcons.Copy,
@@ -878,7 +879,7 @@ private fun DescriptionSection(
                 )
             }
         }
-        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Text(
                     text = text,
@@ -911,7 +912,7 @@ private fun AlbumInfoCard(
     val validActors = detail.actors.map { it.trim() }.filter { it.isNotBlank() }
     val displayId = detail.id.trim().takeIf { it.isNotBlank() && it != "-1" } ?: albumId
     val skin = LocalSkin.current
-    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 6.dp)) {
         if (validWorks.isNotEmpty()) {
             BasicComponent(
                 title = "作品",
@@ -968,7 +969,7 @@ private fun ChapterGroupCard(
     }
     val showToggle = shouldShowChapterGroupToggle(group.size)
     val skin = LocalSkin.current
-    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 6.dp)) {
         if (showToggle) {
             BasicComponent(
                 title = ChapterLabels.groupTitle(group.map { it.title }, startPosition),
@@ -1026,7 +1027,7 @@ internal fun CommentComposer(
     onSend: () -> Unit,
 ) {
     val skin = LocalSkin.current
-    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+    Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 6.dp)) {
         if (!loggedIn) {
             BasicComponent(
                 title = "登录后发表评论",
@@ -1260,7 +1261,7 @@ private fun AlbumPreviewRow(
     val placeholderColor = MiuixTheme.colorScheme.surfaceContainerHigh
     LazyRow(
         modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(plan.pages, key = { it.index }) { page ->

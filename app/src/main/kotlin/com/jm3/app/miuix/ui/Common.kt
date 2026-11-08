@@ -88,7 +88,14 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-
+/**
+ * 分组内容（卡片、横滑轨道、结果行）的水平外留白。
+ *
+ * Miuix 的 SmallTitle 内建 28dp 水平内边距，卡片内部组件自带 16dp；外缘取 12dp 时
+ * 标题文字与卡内文字同处 28dp。卡内留白不是 16dp 的内容（标签流、评论行）不套用本值，
+ * 否则卡内文字会比标题再偏左 4dp。
+ */
+internal val SectionHorizontalPadding: Dp = 12.dp
 
 /** 评论回复面板：显示被回复作者、200 字上限与发送状态；换目标时清空草稿。 */
 @Composable
@@ -461,7 +468,7 @@ private fun SearchResultCard(
         albumId = result.id,
         subtitle = authors,
         category = result.category,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 6.dp),
         leading = if (rank == null) {
             null
         } else {

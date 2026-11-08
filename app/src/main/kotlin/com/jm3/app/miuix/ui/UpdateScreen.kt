@@ -371,7 +371,7 @@ private fun UpdateChangelogSection(
     val skin = LocalSkin.current
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(text = changelogTitle(state))
-        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -556,7 +556,7 @@ private fun UpdateSettingsSection(
     val ignored = latestVersion != null && UpdatePrompt.isIgnored(ignoredVersion, latestVersion)
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(text = "更新设置")
-        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
             SwitchPreference(
                 title = "自动检查更新",
                 summary = "每次启动应用时自动检查最新版本",
@@ -592,7 +592,7 @@ private fun UpdateActionsSection(
     val skin = LocalSkin.current
     Column(modifier = Modifier.fillMaxWidth()) {
         SmallTitle(text = "版本与操作")
-        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
             BasicComponent(
                 title = "手动检查更新",
                 summary = if (checking) "正在检索远端版本信息…" else "点击从 GitHub Releases 检索最新版本",

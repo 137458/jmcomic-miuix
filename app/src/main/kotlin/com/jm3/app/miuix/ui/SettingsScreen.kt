@@ -301,7 +301,7 @@ fun SettingsScreen(
             // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样
             TopBarContentSpacer(paddingValues = innerPadding)
             SmallTitle(text = "主题")
-            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 BasicComponent(
                     title = "外观模式",
                     summary = when (themeMode) {
@@ -355,7 +355,7 @@ fun SettingsScreen(
             }
 
             SmallTitle(text = "通用")
-            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 OverlaySpinnerPreference(
                     title = "分页模式",
                     summary = when (paginationMode) {
@@ -558,7 +558,7 @@ fun SettingsScreen(
             }
 
             SmallTitle(text = "线路")
-            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 // Card 内统一用 BasicComponent 行式布局承载诊断信息与操作，替代散落的小号正文与全宽按钮。
                 BasicComponent(
                     title = "当前线路",
@@ -631,7 +631,7 @@ fun SettingsScreen(
             }
 
             SmallTitle(text = "数据管理")
-            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 ArrowPreference(
                     title = "清空阅读历史",
                     summary = "移除全部阅读记录",
@@ -645,7 +645,7 @@ fun SettingsScreen(
             }
 
             SmallTitle(text = "关于")
-            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 // 版本行兼作隐藏诊断入口：2 秒内连点 5 次打开诊断面板
                 BasicComponent(
                     title = "版本",
