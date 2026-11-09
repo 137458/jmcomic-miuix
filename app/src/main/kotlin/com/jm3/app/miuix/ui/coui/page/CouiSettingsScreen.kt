@@ -141,10 +141,11 @@ fun CouiSettingsScreen(
         var reprobeBusy by remember { mutableStateOf(false) }
         var diagError by remember { mutableStateOf<String?>(null) }
 
-        // 破坏性操作二次确认：3 秒未确认自动复位。
-        var confirmClear by remember { mutableStateOf<String?>(null) }
-        var showDisclaimer by remember { mutableStateOf(false) }
-        var showSkinPicker by remember { mutableStateOf(false) }
+        // 破坏性操作二次确认：3 秒未确认自动复位；清空执行中不自动关，等任务结束。
+        var clearTarget by rememberSaveable { mutableStateOf<ClearTarget?>(null) }
+        var clearing by remember { mutableStateOf(false) }
+        var showDisclaimer by rememberSaveable { mutableStateOf(false) }
+        var showSkinPicker by rememberSaveable { mutableStateOf(false) }
 
         // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
         val paginationMode = deps.preferences.paginationMode
@@ -303,14 +304,12 @@ fun CouiSettingsScreen(
             loadDomainsDiagnostics()
         }
 
-        LaunchedEffect(confirmClear) {
-            if (confirmClear != null) {
+        LaunchedEffect(clearTarget, clearing) {
+            if (clearTarget != null && !clearing) {
                 delay(3000)
-                confirmClear = null
+                clearTarget = null
             }
         }
-
-        val clearingHistory = confirmClear == "history"
         val scrollState = rememberScrollState()
         val scrolled by remember(scrollState) {
             derivedStateOf { scrollState.value > 8 }
@@ -351,7 +350,9 @@ fun CouiSettingsScreen(
                             options = ThemeMode.entries.map { it.couiLabel() },
                             selectedIndex = ThemeMode.entries.indexOf(themeMode),
                             onSelect = { index ->
-                                ThemeMode.entries.getOrNull(index)?.let(onThemeModeChange)
+                                ThemeMode.entries.getOrNull(index)
+                                    ?.takeIf { it != themeMode }
+                                    ?.let(onThemeModeChange)
                             },
                             modifier = Modifier.padding(top = 10.dp),
                         )
@@ -525,12 +526,12 @@ fun CouiSettingsScreen(
                     ArrowPreference(
                         title = "清空阅读历史",
                         summary = "移除全部阅读记录",
-                        onClick = { confirmClear = "history" },
+                        onClick = { clearTarget = ClearTarget.HISTORY },
                     )
                     ArrowPreference(
                         title = "清空下载",
                         summary = "清除下载任务与已下载文件",
-                        onClick = { confirmClear = "downloads" },
+                        onClick = { clearTarget = ClearTarget.DOWNLOADS },
                     )
                 }
 
@@ -663,53 +664,56 @@ fun CouiSettingsScreen(
                 }
             }
 
+            val pendingClear = clearTarget
             CouiDialogOverlay(
-                visible = confirmClear != null,
-                onDismiss = { confirmClear = null },
+                visible = pendingClear != null,
+                onDismiss = { if (!clearing) clearTarget = null },
             ) {
-                BasicText(
-                    text = if (clearingHistory) "清空阅读历史" else "清空下载",
-                    style = CouiType.title.copy(color = colors.textPrimary),
-                )
-                BasicText(
-                    text = if (clearingHistory) {
-                        "将删除全部阅读记录，此操作不可撤销。"
-                    } else {
-                        "将删除全部下载任务并清除已下载文件，此操作不可撤销。"
-                    },
-                    style = CouiType.body.copy(color = colors.textSecondary),
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        CouiTextButton(
-                            text = "取消",
-                            onClick = { confirmClear = null },
+                if (pendingClear != null) {
+                    BasicText(
+                        text = pendingClear.title,
+                        style = CouiType.title.copy(color = colors.textPrimary),
+                    )
+                    BasicText(
+                        text = pendingClear.description,
+                        style = CouiType.body.copy(color = colors.textSecondary),
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            CouiTextButton(
+                                text = "取消",
+                                onClick = { if (!clearing) clearTarget = null },
+                            )
+                        }
+                        CouiButton(
+                            text = if (clearing) "清空中…" else "确认清空",
+                            onClick = {
+                                if (!clearing) {
+                                    clearing = true
+                                    scope.launch {
+                                        try {
+                                            when (pendingClear) {
+                                                ClearTarget.HISTORY -> deps.history.clear()
+                                                ClearTarget.DOWNLOADS -> deps.downloadManager.clearAll()
+                                            }
+                                            snackbarHostState.showSnackbar(pendingClear.doneMessage)
+                                        } finally {
+                                            clearing = false
+                                            clearTarget = null
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
                         )
                     }
-                    CouiButton(
-                        text = "确认清空",
-                        onClick = {
-                            val target = confirmClear
-                            confirmClear = null
-                            scope.launch {
-                                when (target) {
-                                    "history" -> deps.history.clear()
-                                    "downloads" -> deps.downloadManager.clearAll()
-                                }
-                                snackbarHostState.showSnackbar(
-                                    if (target == "history") "已清空阅读历史" else "已清空下载",
-                                )
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
                 }
             }
 
@@ -873,6 +877,12 @@ private fun CouiDiagnosticRow(label: String, value: String) {
             modifier = Modifier.padding(top = 1.dp),
         )
     }
+}
+
+/** 数据管理里的破坏性清空目标：文案与执行动作绑在同一处，避免魔法串分叉。 */
+private enum class ClearTarget(val title: String, val description: String, val doneMessage: String) {
+    HISTORY("清空阅读历史", "将删除全部阅读记录，此操作不可撤销。", "已清空阅读历史"),
+    DOWNLOADS("清空下载", "将删除全部下载任务并清除已下载文件，此操作不可撤销。", "已清空下载"),
 }
 
 
