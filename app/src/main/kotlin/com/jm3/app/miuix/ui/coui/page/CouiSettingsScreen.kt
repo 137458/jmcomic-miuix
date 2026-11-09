@@ -592,7 +592,7 @@ fun CouiSettingsScreen(
                 scrolled = scrolled,
                 modifier = Modifier.align(Alignment.TopCenter),
                 backdrop = backdrop,
-                navigation = { BackButton(onBack = onBack) },
+                onBack = onBack,
             )
 
             GlassSnackbarHost(

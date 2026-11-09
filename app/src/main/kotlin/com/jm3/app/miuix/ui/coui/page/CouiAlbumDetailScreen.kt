@@ -83,10 +83,13 @@ import com.jm3.app.miuix.ui.coui.component.CouiBottomSheet
 import com.jm3.app.miuix.ui.coui.component.CouiButton
 import com.jm3.app.miuix.ui.coui.component.CouiCard
 import com.jm3.app.miuix.ui.coui.component.CouiChip
+import com.jm3.app.miuix.ui.coui.component.CouiCompactWorkCard
 import com.jm3.app.miuix.ui.coui.component.CouiNestedCard
 import com.jm3.app.miuix.ui.coui.component.CouiNoticeCard
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitle
+import com.jm3.app.miuix.ui.coui.component.CouiSettingsRow
 import com.jm3.app.miuix.ui.coui.component.CouiSurfaceBackground
+import com.jm3.app.miuix.ui.coui.component.CouiTagFlow
 import com.jm3.app.miuix.ui.coui.component.CouiTextButton
 import com.jm3.app.miuix.ui.coui.component.CouiTextField
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
@@ -486,7 +489,13 @@ private fun CouiThemeBody(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(detail.related, key = { it.id }) { related ->
-                        CouiRelatedCard(related = related, onClick = { onOpenAlbum(related.id) })
+                        CouiCompactWorkCard(
+                            title = related.title,
+                            coverUrl = related.coverUrl,
+                            subtitle = related.authors.joinToString(" / ").ifBlank { null },
+                            modifier = Modifier.width(104.dp),
+                            onClick = { onOpenAlbum(related.id) },
+                        )
                     }
                 }
             }
@@ -605,19 +614,11 @@ private fun CouiThemeBody(
             }
 
             CouiTopBar(
-                    title = currentTitle,
-                    scrolled = scrolled,
-                    backdrop = backdrop,
-                    navigation = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = MiuixIcons.Back,
-                                contentDescription = "返回",
-                                tint = colors.textPrimary,
-                            )
-                        }
-                    },
-                    actions = {
+                title = currentTitle,
+                scrolled = scrolled,
+                backdrop = backdrop,
+                onBack = onBack,
+                actions = {
                         if (loadedDetail != null) {
                             IconButton(onClick = { share(loadedDetail) }) {
                                 Icon(
@@ -812,6 +813,7 @@ private fun CouiDetailHeader(
                         },
                         onClick = onTrack,
                         selected = tracking == true,
+                        enabled = !trackingBusy,
                     )
                 }
                 if (onDownloadAll != null) {
@@ -861,7 +863,6 @@ private fun CouiDescriptionCard(
 }
 
 /** 标签：可点进标签检索的胶囊集合。 */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CouiTagsCard(tags: List<String>, onClick: (String) -> Unit) {
     CouiCard(
@@ -870,12 +871,7 @@ private fun CouiTagsCard(tags: List<String>, onClick: (String) -> Unit) {
             .padding(horizontal = CouiPagePadding, vertical = 6.dp),
         contentPadding = PaddingValues(12.dp),
     ) {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            tags.forEach { tag -> CouiChip(text = tag, onClick = { onClick(tag) }) }
-        }
+        CouiTagFlow(tags = tags, onClick = onClick)
     }
 }
 
@@ -1083,51 +1079,6 @@ private fun CouiChapterRow(
                     contentDescription = "下载",
                     tint = colors.textSecondary,
                     modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-    }
-}
-
-/** 更多相关作品卡片：封面 + 两行标题。 */
-@Composable
-private fun CouiRelatedCard(related: SearchResult, onClick: () -> Unit) {
-    val colors = LocalCouiColors.current
-    CouiCard(
-        onClick = onClick,
-        modifier = Modifier.width(104.dp),
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.75f)
-                .background(colors.accentContainer),
-        ) {
-            if (related.coverUrl != null) {
-                AsyncImage(
-                    model = related.coverUrl,
-                    contentDescription = related.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-            BasicText(
-                text = related.title,
-                style = CouiType.caption.copy(color = colors.textPrimary),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val subtitle = related.authors.joinToString(" / ").ifBlank { null }
-            if (subtitle != null) {
-                BasicText(
-                    text = subtitle,
-                    style = CouiType.caption.copy(color = colors.textTertiary),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }
@@ -1421,19 +1372,39 @@ private fun CouiFolderSheet(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
         val allLabel = folders["0"] ?: "全部收藏"
-        CouiSheetRow(
+        CouiSettingsRow(
             title = allLabel,
             summary = "默认收藏夹",
             onClick = { onPick("0") },
+            modifier = Modifier.padding(horizontal = 20.dp),
+            trailing = {
+                BasicText(
+                    text = "选择",
+                    style = CouiType.caption.copy(color = colors.accent),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            },
         )
         folders.entries
             .filter { it.key != "0" }
             .forEach { (id, name) ->
-                CouiSheetRow(title = name, onClick = { onPick(id) })
+                CouiSettingsRow(
+                    title = name,
+                    onClick = { onPick(id) },
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                    trailing = {
+                        BasicText(
+                            text = "选择",
+                            style = CouiType.caption.copy(color = colors.accent),
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    },
+                )
             }
         if (favorited) {
             CouiTextButton(
                 text = "取消收藏",
+                color = colors.error,
                 onClick = onCancelFavorite,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1476,43 +1447,6 @@ private fun CouiReplySheet(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             enabled = !busy && replyText.isNotBlank(),
-        )
-    }
-}
-
-@Composable
-private fun CouiSheetRow(
-    title: String,
-    summary: String? = null,
-    onClick: () -> Unit,
-) {
-    val colors = LocalCouiColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .couiClickable(onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            BasicText(
-                text = title,
-                style = CouiType.body.copy(color = colors.textPrimary),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (summary != null) {
-                BasicText(
-                    text = summary,
-                    style = CouiType.caption.copy(color = colors.textSecondary),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        BasicText(
-            text = "选择",
-            style = CouiType.caption.copy(color = colors.accent),
-            modifier = Modifier.padding(start = 8.dp),
         )
     }
 }

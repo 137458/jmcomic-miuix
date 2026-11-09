@@ -4,6 +4,8 @@ package com.jm3.app.miuix.ui.coui.component
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -18,11 +20,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +38,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
@@ -42,9 +49,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,19 +62,31 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.CouiType
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import kotlin.math.roundToInt
+
+internal fun couiVisibleTags(
+    tags: List<String>,
+    expanded: Boolean,
+    collapsedLimit: Int?,
+): List<String> = if (collapsedLimit != null && !expanded) tags.take(collapsedLimit) else tags
+
 
 /**
  * 按压缩放必须放在卡片最外层，才能连背景与投影一起缩小；
@@ -107,19 +126,50 @@ private fun Modifier.couiPressOverlay(interaction: MutableInteractionSource): Mo
 }
 
 /**
+ * 卡片级点击修饰符：按压缩放 + 按压覆盖层 + 点击语义。
+ * 抽离为统一修饰符，避免 [CouiCard] 与 [CouiNestedCard] 重复实现或出现条件式 Composable 调用。
+ */
+@Composable
+fun Modifier.couiCardClickable(
+    onClick: (() -> Unit)?,
+    enabled: Boolean = true,
+    role: Role = Role.Button,
+): Modifier {
+    if (onClick == null) return this
+    val interaction = remember { MutableInteractionSource() }
+    return this
+        .then(if (enabled) Modifier.couiPressScale(interaction) else Modifier)
+        .clickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            role = role,
+            onClick = onClick,
+        )
+        .then(if (enabled) Modifier.couiPressOverlay(interaction) else Modifier)
+}
+
+/**
  * 行级点击：补到 48dp 最小触摸目标，按压用 6% 覆盖层反馈，不画涟漪。
  *
  * 行是整宽文本行，按下不做缩放，避免文字随整行一起缩窄。
  */
 @Composable
-fun Modifier.couiClickable(onClick: () -> Unit, ensureMinTouchTarget: Boolean = true): Modifier {
+fun Modifier.couiClickable(
+    onClick: () -> Unit,
+    ensureMinTouchTarget: Boolean = true,
+    enabled: Boolean = true,
+    role: Role? = null,
+): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val base = if (ensureMinTouchTarget) defaultMinSize(minHeight = 48.dp) else this
     return base
-        .couiPressOverlay(interaction)
+        .then(if (enabled) Modifier.couiPressOverlay(interaction) else Modifier)
         .clickable(
             interactionSource = interaction,
             indication = null,
+            enabled = enabled,
+            role = role,
             onClick = onClick,
         )
 }
@@ -132,16 +182,18 @@ fun Modifier.couiSelectable(
     selected: Boolean,
     onClick: () -> Unit,
     role: Role = Role.RadioButton,
+    enabled: Boolean = true,
     ensureMinTouchTarget: Boolean = true,
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
     val base = if (ensureMinTouchTarget) defaultMinSize(minHeight = 48.dp) else this
     return base
-        .couiPressOverlay(interaction)
+        .then(if (enabled) Modifier.couiPressOverlay(interaction) else Modifier)
         .selectable(
             selected = selected,
             interactionSource = interaction,
             indication = null,
+            enabled = enabled,
             role = role,
             onClick = onClick,
         )
@@ -156,36 +208,29 @@ fun Modifier.couiSelectable(
 fun CouiCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
     contentPadding: PaddingValues = PaddingValues(16.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = LocalCouiColors.current
     val shapes = LocalCouiShapes.current
     val shape = RoundedCornerShape(shapes.card)
-    val clickModifier = if (onClick != null) {
-        val interaction = remember { MutableInteractionSource() }
-        Modifier
-            .couiPressScale(interaction)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .couiPressOverlay(interaction)
-    } else {
-        Modifier
-    }
     Column(
         modifier = modifier
-            .then(if (onClick != null) clickModifier else Modifier)
-            .then(if (colors.isDark) Modifier else Modifier.shadow(
-                elevation = 10.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.10f),
-                spotColor = Color.Black.copy(alpha = 0.12f),
-            ))
+            .couiCardClickable(onClick = onClick, enabled = enabled)
+            .then(
+                if (colors.isDark) {
+                    Modifier
+                } else {
+                    Modifier.shadow(
+                        elevation = 10.dp,
+                        shape = shape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.10f),
+                        spotColor = Color.Black.copy(alpha = 0.12f),
+                    )
+                },
+            )
             .squircleClip(shapes.card)
             .background(colors.card)
             .then(if (colors.isDark) Modifier.border(1.dp, colors.cardBorder, shape) else Modifier)
@@ -194,10 +239,12 @@ fun CouiCard(
     )
 }
 
-/** COUI 嵌套卡片：皮肤控件曲率 + 1dp 边框，用于主卡片里的分组行。 */
+/** COUI 嵌套卡片：皮肤控件曲率 + 1dp 边框，用于主卡片里的分组行；支持可选点击与禁用态。 */
 @Composable
 fun CouiNestedCard(
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -206,6 +253,7 @@ fun CouiNestedCard(
     val shape = RoundedCornerShape(shapes.nested)
     Column(
         modifier = modifier
+            .couiCardClickable(onClick = onClick, enabled = enabled)
             .squircleClip(shapes.nested)
             .background(colors.nestedCard)
             .border(1.dp, colors.cardBorder, shape)
@@ -278,6 +326,7 @@ fun CouiDialogOverlay(
                     )
                     .squircleClip(dialogRadius)
                     .background(colors.card)
+                    .then(if (colors.isDark) Modifier.border(1.dp, colors.cardBorder, shape) else Modifier)
                     .clickable(
                         interactionSource = consumeInteraction,
                         indication = null,
@@ -324,12 +373,14 @@ fun CouiButton(
     }
 }
 
-/** COUI 文字按钮：用于「取消 / 清除 / 更多」这类不占主视觉的动作。 */
+/** COUI 文字按钮：用于「取消 / 清除 / 更多」这类不占主视觉的动作；支持颜色定制与禁用态。 */
 @Composable
 fun CouiTextButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    color: Color = LocalCouiColors.current.accent,
 ) {
     val colors = LocalCouiColors.current
     val interaction = remember { MutableInteractionSource() }
@@ -340,51 +391,88 @@ fun CouiTextButton(
             .clickable(
                 interactionSource = interaction,
                 indication = null,
+                enabled = enabled,
                 role = Role.Button,
                 onClick = onClick,
             )
-            .couiPressOverlay(interaction)
+            .then(if (enabled) Modifier.couiPressOverlay(interaction) else Modifier)
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        BasicText(text = text, style = CouiType.button.copy(color = colors.accent))
+        BasicText(
+            text = text,
+            style = CouiType.button.copy(color = if (enabled) color else colors.textTertiary),
+        )
     }
 }
 
-/** COUI 胶囊标签：热门标签与筛选复用，选中态用绿色容器而不是整块绿色填充。 */
+/** COUI 胶囊标签：热门标签与筛选复用，选中态用绿色容器，支持按压反馈、可选前导图标与禁用态。 */
 @Composable
 fun CouiChip(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    enabled: Boolean = true,
+    leadingIcon: ImageVector? = null,
 ) {
     val colors = LocalCouiColors.current
     val shape = RoundedCornerShape(LocalCouiShapes.current.pill)
-    BasicText(
-        text = text,
-        style = CouiType.caption.copy(color = if (selected) colors.accent else colors.textSecondary),
+    val interaction = remember { MutableInteractionSource() }
+    Row(
         modifier = modifier
+            .then(if (enabled) Modifier.couiPressScale(interaction) else Modifier)
             .clip(shape)
-            .background(if (selected) colors.accentContainer else colors.card)
-            .border(1.dp, if (selected) colors.accent.copy(alpha = 0.25f) else colors.cardBorder, shape)
+            .background(
+                if (!enabled) colors.card.copy(alpha = 0.5f)
+                else if (selected) colors.accentContainer
+                else colors.card,
+            )
+            .border(
+                1.dp,
+                if (!enabled) colors.cardBorder.copy(alpha = 0.5f)
+                else if (selected) colors.accent.copy(alpha = 0.25f)
+                else colors.cardBorder,
+                shape,
+            )
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
+                enabled = enabled,
                 role = Role.Button,
                 onClick = onClick,
             )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    )
+            .then(if (enabled) Modifier.couiPressOverlay(interaction) else Modifier)
+            .padding(horizontal = if (leadingIcon != null) 10.dp else 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        if (leadingIcon != null) {
+            Icon(
+                imageVector = leadingIcon,
+                contentDescription = null,
+                tint = if (!enabled) colors.textTertiary else if (selected) colors.accent else colors.textSecondary,
+                modifier = Modifier.size(16.dp).padding(end = 4.dp),
+            )
+        }
+        BasicText(
+            text = text,
+            style = CouiType.caption.copy(
+                color = if (!enabled) colors.textTertiary else if (selected) colors.accent else colors.textSecondary,
+            ),
+        )
+    }
 }
 
 /**
- * COUI 底部面板：顶部取皮肤面板曲率 + 32×4 拖拽条，支持双向滑动进退场动画与拖拽条垂直手势下拉收起。
+ * COUI 底部面板：顶部取皮肤面板曲率 + 32×4 拖拽条，支持双向滑动进退场动画与平滑弹簧回弹。
+ * 针对大屏与横屏增加最大宽度收口（封顶 560dp 居中），避免横向过度拉伸。
  */
 @Composable
 fun CouiBottomSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     AnimatedVisibility(
@@ -396,7 +484,8 @@ fun CouiBottomSheet(
         val colors = LocalCouiColors.current
         val sheetShape = LocalCouiShapes.current.sheet
         val consumeInteraction = remember { MutableInteractionSource() }
-        var offsetY by remember { mutableFloatStateOf(0f) }
+        val offsetY = remember { Animatable(0f) }
+        val scope = rememberCoroutineScope()
         val density = LocalDensity.current
 
         Box(
@@ -411,7 +500,7 @@ fun CouiBottomSheet(
             contentAlignment = Alignment.BottomCenter,
         ) {
             Column(
-                modifier = Modifier
+                modifier = modifier
                     .animateEnterExit(
                         enter = slideInVertically(
                             initialOffsetY = { it },
@@ -422,8 +511,9 @@ fun CouiBottomSheet(
                             animationSpec = tween(180, easing = CouiMotion.PushEasing),
                         ),
                     )
-                    .offset { IntOffset(0, offsetY.roundToInt()) }
+                    .offset { IntOffset(0, offsetY.value.roundToInt()) }
                     .fillMaxWidth()
+                    .widthIn(max = 560.dp)
                     .clip(RoundedCornerShape(topStart = sheetShape, topEnd = sheetShape))
                     .background(colors.card)
                     .clickable(
@@ -440,16 +530,23 @@ fun CouiBottomSheet(
                         .pointerInput(Unit) {
                             detectVerticalDragGestures(
                                 onDragEnd = {
-                                    if (offsetY > with(density) { 60.dp.toPx() }) {
+                                    val threshold = with(density) { 60.dp.toPx() }
+                                    if (offsetY.value > threshold) {
                                         onDismiss()
                                     }
-                                    offsetY = 0f
+                                    scope.launch {
+                                        offsetY.animateTo(0f, animationSpec = CouiMotion.SheetSpring)
+                                    }
                                 },
                                 onDragCancel = {
-                                    offsetY = 0f
+                                    scope.launch {
+                                        offsetY.animateTo(0f, animationSpec = CouiMotion.SheetSpring)
+                                    }
                                 },
                                 onVerticalDrag = { _, dragAmount ->
-                                    offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                    scope.launch {
+                                        offsetY.snapTo((offsetY.value + dragAmount).coerceAtLeast(0f))
+                                    }
                                 },
                             )
                         }
@@ -525,11 +622,12 @@ fun CouiTextField(
     }
 }
 
-/** 页内提示卡：错误/空态/失效共用；包含说明文字与可选操作按钮。 */
+/** 页内提示卡：错误/空态/失效共用；包含说明文字与可选操作按钮与可选图标。 */
 @Composable
 fun CouiNoticeCard(
     message: String,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
     actionText: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
@@ -539,10 +637,21 @@ fun CouiNoticeCard(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        BasicText(
-            text = message,
-            style = CouiType.body.copy(color = colors.textSecondary),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = colors.accent,
+                    modifier = Modifier.size(20.dp).padding(end = 8.dp),
+                )
+            }
+            BasicText(
+                text = message,
+                style = CouiType.body.copy(color = colors.textSecondary),
+                modifier = Modifier.weight(1f),
+            )
+        }
         if (actionText != null && onAction != null) {
             CouiTextButton(
                 text = actionText,
@@ -595,8 +704,8 @@ fun CouiSettingsRow(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (onClick != null && enabled) {
-                    Modifier.couiClickable(onClick)
+                if (onClick != null) {
+                    Modifier.couiClickable(onClick = onClick, enabled = enabled)
                 } else {
                     Modifier
                 },
@@ -627,5 +736,102 @@ fun CouiSettingsRow(
             )
         }
         trailing?.invoke()
+    }
+}
+
+/**
+ * COUI 分隔线：默认高度 1dp，取主题分隔线色。
+ */
+@Composable
+fun CouiDivider(
+    modifier: Modifier = Modifier,
+    color: Color = LocalCouiColors.current.divider,
+    thickness: Dp = 1.dp,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(thickness)
+            .background(color),
+    )
+}
+
+/**
+ * COUI 紧凑作品卡片：3:4 比例封面 + 2 行标题 + 1 行副标题/作者。
+ * 供首页连载更新、随便看看与详情页相关作品推荐复用。
+ */
+@Composable
+fun CouiCompactWorkCard(
+    title: String,
+    coverUrl: String?,
+    subtitle: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier.width(112.dp),
+) {
+    val colors = LocalCouiColors.current
+    CouiCard(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.75f)
+                .background(colors.accentContainer),
+        ) {
+            if (coverUrl != null) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+            BasicText(
+                text = title,
+                style = CouiType.cardTitle.copy(color = colors.textPrimary),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                BasicText(
+                    text = subtitle,
+                    style = CouiType.captionMeta.copy(color = colors.textSecondary),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * COUI 标签流：自动换行排列的胶囊集合，支持展开/收起过渡动画。
+ * 供首页热门标签与详情页作品标签复用。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CouiTagFlow(
+    tags: List<String>,
+    onClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    collapsedLimit: Int? = null,
+    expanded: Boolean = true,
+) {
+    val visibleTags = couiVisibleTags(tags, expanded, collapsedLimit)
+    FlowRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(animationSpec = CouiMotion.ListSizeSpring),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        visibleTags.forEach { tag ->
+            CouiChip(text = tag, onClick = { onClick(tag) })
+        }
     }
 }

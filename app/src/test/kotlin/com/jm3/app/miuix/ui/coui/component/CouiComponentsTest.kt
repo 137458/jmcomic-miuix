@@ -23,6 +23,10 @@ class CouiComponentsTest {
         assertEquals(800f, CouiMotion.PressSpring.stiffness)
         assertEquals(0.78f, CouiMotion.TabSpring.dampingRatio)
         assertEquals(560f, CouiMotion.TabSpring.stiffness)
+        assertEquals(0.78f, CouiMotion.TabColorSpring.dampingRatio)
+        assertEquals(560f, CouiMotion.TabColorSpring.stiffness)
+        assertEquals(0.85f, CouiMotion.ListSizeSpring.dampingRatio)
+        assertEquals(400f, CouiMotion.ListSizeSpring.stiffness)
         assertEquals(0.8f, CouiMotion.DialogSpring.dampingRatio)
         assertEquals(500f, CouiMotion.DialogSpring.stiffness)
         assertEquals(0.85f, CouiMotion.SheetSpring.dampingRatio)
@@ -40,6 +44,24 @@ class CouiComponentsTest {
         val dotBadge = CouiBadge(dot = true)
         assertNull(dotBadge.count)
         assertTrue(dotBadge.dot)
+    }
+
+    @Test
+    fun `CouiBadge 正确格式化角标文本`() {
+        assertEquals("5", CouiBadge(count = 5).displayText)
+        assertEquals("99+", CouiBadge(count = 100).displayText)
+        assertEquals("99+", CouiBadge(count = 999).displayText)
+        assertNull(CouiBadge(dot = true).displayText)
+        assertNull(CouiBadge().displayText)
+    }
+
+    @Test
+    fun `couiVisibleTags 正确按折叠限制截断或展开标签`() {
+        val tags = listOf("A", "B", "C", "D", "E")
+        assertEquals(listOf("A", "B", "C"), couiVisibleTags(tags, expanded = false, collapsedLimit = 3))
+        assertEquals(tags, couiVisibleTags(tags, expanded = true, collapsedLimit = 3))
+        assertEquals(tags, couiVisibleTags(tags, expanded = false, collapsedLimit = null))
+        assertEquals(tags, couiVisibleTags(tags, expanded = false, collapsedLimit = 10))
     }
 
     @Test

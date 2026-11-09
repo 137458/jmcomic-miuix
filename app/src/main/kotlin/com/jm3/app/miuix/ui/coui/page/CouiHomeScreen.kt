@@ -65,11 +65,13 @@ import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.coui.component.CouiButton
 import com.jm3.app.miuix.ui.coui.component.CouiCard
 import com.jm3.app.miuix.ui.coui.component.CouiChip
+import com.jm3.app.miuix.ui.coui.component.CouiCompactWorkCard
 import com.jm3.app.miuix.ui.coui.component.CouiDialogOverlay
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiSearchField
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitle
 import com.jm3.app.miuix.ui.coui.component.CouiSegmented
+import com.jm3.app.miuix.ui.coui.component.CouiTagFlow
 import com.jm3.app.miuix.ui.coui.component.CouiTextButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
@@ -439,7 +441,8 @@ fun CouiHomeScreen(
                                     ) {
                                         items(serialUpdates, key = { it.id }) { update ->
                                             CouiCompactWorkCard(
-                                                result = update,
+                                                title = update.title,
+                                                coverUrl = update.coverUrl,
                                                 subtitle = update.authors.joinToString(" / ").ifBlank { "未知作者" },
                                                 onClick = { openAlbum(update.id) },
                                             )
@@ -470,6 +473,7 @@ fun CouiHomeScreen(
                                     ) {
                                         CouiTagFlow(
                                             tags = hotTags,
+                                            collapsedLimit = HOT_TAG_COLLAPSED,
                                             expanded = showAllTags,
                                             onClick = { tag ->
                                                 query = tag
@@ -486,7 +490,8 @@ fun CouiHomeScreen(
                                     ) {
                                         items(randomPicks, key = { it.id }) { pick ->
                                             CouiCompactWorkCard(
-                                                result = pick,
+                                                title = pick.title,
+                                                coverUrl = pick.coverUrl,
                                                 subtitle = pick.authors.joinToString(" / ").ifBlank { "未知作者" },
                                                 onClick = { openAlbum(pick.id) },
                                             )
@@ -681,64 +686,6 @@ private fun CouiSearchHistoryCard(
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CouiTagFlow(tags: List<String>, expanded: Boolean, onClick: (String) -> Unit) {
-    val visible = if (expanded) tags else tags.take(HOT_TAG_COLLAPSED)
-    FlowRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(animationSpec = spring(dampingRatio = 0.8f, stiffness = 700f)),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        visible.forEach { tag ->
-            CouiChip(text = tag, onClick = { onClick(tag) })
-        }
-    }
-}
-
-@Composable
-private fun CouiCompactWorkCard(result: SearchResult, subtitle: String, onClick: () -> Unit) {
-    val colors = LocalCouiColors.current
-    CouiCard(
-        onClick = onClick,
-        modifier = Modifier.width(112.dp),
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.75f)
-                .background(colors.accentContainer),
-        ) {
-            if (result.coverUrl != null) {
-                AsyncImage(
-                    model = result.coverUrl,
-                    contentDescription = result.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-            BasicText(
-                text = result.title,
-                style = CouiType.cardTitle.copy(color = colors.textPrimary),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            BasicText(
-                text = subtitle,
-                style = CouiType.captionMeta.copy(color = colors.textSecondary),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp),
-            )
         }
     }
 }

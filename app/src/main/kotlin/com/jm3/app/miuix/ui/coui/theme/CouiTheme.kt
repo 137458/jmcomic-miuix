@@ -16,6 +16,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.ui.skin.SkinShapes
@@ -177,7 +178,9 @@ object CouiMotion {
     val PushEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
     val PressSpring: SpringSpec<Float> = spring(dampingRatio = 0.55f, stiffness = 800f)
     val TabSpring: SpringSpec<Float> = spring(dampingRatio = 0.78f, stiffness = 560f)
+    val TabColorSpring: SpringSpec<Color> = spring(dampingRatio = 0.78f, stiffness = 560f)
     val ListSpring: SpringSpec<Float> = spring(dampingRatio = 0.85f, stiffness = 400f)
+    val ListSizeSpring: SpringSpec<IntSize> = spring(dampingRatio = 0.85f, stiffness = 400f)
     val DialogSpring: SpringSpec<Float> = spring(dampingRatio = 0.8f, stiffness = 500f)
     val SheetSpring: SpringSpec<Float> = spring(dampingRatio = 0.85f, stiffness = 450f)
     val SheetOffsetSpring: SpringSpec<IntOffset> = spring(dampingRatio = 0.85f, stiffness = 450f)

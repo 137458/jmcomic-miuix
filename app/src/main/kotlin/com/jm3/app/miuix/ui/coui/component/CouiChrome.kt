@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jm3.app.miuix.ui.BackButton
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import com.jm3.app.miuix.ui.coui.theme.CouiType
@@ -78,6 +79,7 @@ import top.yukonga.miuix.kmp.squircle.squircleClip
  *
  * 未滚动时完全透明，让内容（封面/大标题）直接透到状态栏；滚动后才淡入 24dp 模糊与
  * 82% 表面色，并出现 1dp 6% 分隔线。这一条对应验收口径“顶栏仅滚动后模糊”。
+ * 支持传入 [onBack] 快捷提供返回导航键。
  */
 @Composable
 fun CouiTopBar(
@@ -85,7 +87,8 @@ fun CouiTopBar(
     scrolled: Boolean,
     modifier: Modifier = Modifier,
     backdrop: LayerBackdrop? = null,
-    navigation: (@Composable () -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
+    navigation: (@Composable () -> Unit)? = if (onBack != null) { { BackButton(onBack = onBack) } } else null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = LocalCouiColors.current
@@ -154,7 +157,14 @@ fun CouiTopBar(
 
 data class CouiNavItem(val label: String, val icon: ImageVector)
 
-data class CouiBadge(val count: Int? = null, val dot: Boolean = false)
+data class CouiBadge(val count: Int? = null, val dot: Boolean = false) {
+    val displayText: String?
+        get() = when {
+            count == null -> null
+            count > 99 -> "99+"
+            else -> count.toString()
+        }
+}
 
 /** 悬浮底栏大屏封顶宽度；与 HyperOS 侧液态玻璃底栏保持同一档。 */
 private val CouiFloatingBarMaxWidth = 540.dp
@@ -278,8 +288,13 @@ private fun RowScope.NavItems(
         )
         val iconTint by animateColorAsState(
             targetValue = if (selected) colors.accent else colors.textSecondary,
-            animationSpec = spring(dampingRatio = 0.78f, stiffness = 560f),
+            animationSpec = CouiMotion.TabColorSpring,
             label = "couiNavTint",
+        )
+        val textColor by animateColorAsState(
+            targetValue = if (selected) colors.textPrimary else colors.textSecondary,
+            animationSpec = CouiMotion.TabColorSpring,
+            label = "couiNavText",
         )
         Column(
             modifier = Modifier
@@ -314,7 +329,7 @@ private fun RowScope.NavItems(
                 text = item.label,
                 style = CouiType.tab.copy(
                     fontSize = labelSize,
-                    color = if (selected) colors.textPrimary else colors.textSecondary,
+                    color = textColor,
                 ),
                 modifier = Modifier.padding(top = 1.dp),
             )
@@ -336,7 +351,8 @@ private fun Modifier.squirclePill(alpha: Float): Modifier {
 private fun BadgeMark(badge: CouiBadge?, modifier: Modifier = Modifier) {
     if (badge == null) return
     val colors = LocalCouiColors.current
-    if (badge.count != null) {
+    val text = badge.displayText
+    if (text != null) {
         Box(
             modifier = modifier
                 .offset(x = 5.dp, y = (-3).dp)
@@ -344,7 +360,7 @@ private fun BadgeMark(badge: CouiBadge?, modifier: Modifier = Modifier) {
                 .padding(horizontal = 4.dp, vertical = 1.dp),
         ) {
             BasicText(
-                text = if (badge.count > 99) "99+" else badge.count.toString(),
+                text = text,
                 style = CouiType.tab.copy(fontSize = 10.sp, color = colors.onAccent),
             )
         }
@@ -441,6 +457,7 @@ fun CouiSearchField(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         role = Role.Button,
+                        onClickLabel = "清除输入",
                         onClick = { onValueChange("") },
                     ),
                 contentAlignment = Alignment.Center,
@@ -456,7 +473,7 @@ fun CouiSearchField(
 
 /**
  * COUI 分段控件：主题模式与搜索排序共用。
- * 选中胶囊用 spring(.78,560) 换色，不做滑块位移，避免长文案下宽度抖动。
+ * 选中胶囊与文字颜色双向 spring(0.78,560) 渐变换色，不做滑块位移，避免长文案下宽度抖动。
  */
 @Composable
 fun CouiSegmented(
@@ -478,8 +495,13 @@ fun CouiSegmented(
             val selected = index == selectedIndex
             val background by animateColorAsState(
                 targetValue = if (selected) colors.accent else Color.Transparent,
-                animationSpec = spring(dampingRatio = 0.78f, stiffness = 560f),
-                label = "couiSegment",
+                animationSpec = CouiMotion.TabColorSpring,
+                label = "couiSegmentBackground",
+            )
+            val textColor by animateColorAsState(
+                targetValue = if (selected) colors.onAccent else colors.textSecondary,
+                animationSpec = CouiMotion.TabColorSpring,
+                label = "couiSegmentTextColor",
             )
             Box(
                 modifier = Modifier
@@ -499,7 +521,7 @@ fun CouiSegmented(
                 BasicText(
                     text = label,
                     style = CouiType.button.copy(
-                        color = if (selected) colors.onAccent else colors.textSecondary,
+                        color = textColor,
                     ),
                 )
             }

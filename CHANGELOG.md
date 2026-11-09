@@ -18,6 +18,7 @@
 
 ### 优化
 
+- 优化了 COUI 核心组件体系与交互细节：`CouiCard` 与 `CouiNestedCard` 抽离统一的 `Modifier.couiCardClickable` 修饰符，修复条件式 Composable 调用隐患，并为嵌套卡补齐点击与禁用能力；`CouiChip` 补充弹簧按压微缩、覆盖层反馈、禁用态与前导图标支持；`CouiTextButton` 增加禁用态与自定义颜色，详情页取消收藏等操作对齐告警语义；`CouiBottomSheet` 改用 `Animatable` 弹簧物理平滑回弹并增加大屏 560dp 最大宽度收口；`CouiDialogOverlay` 补充深色模式卡片描边；`CouiSegmented` 与 `CouiBottomBar` 补充文字颜色平滑过渡；沉淀公共 `CouiCompactWorkCard`、`CouiTagFlow` 与 `CouiDivider`，收敛消除首页与详情页的重复实现。
 - 优化了 COUI 组件体系与使用架构：将散落在各业务页面的 `CouiFab`、`CouiTextField`、`CouiNoticeCard`、`CouiSettingsGroup` 与 `CouiSettingsRow` 统一沉淀为公共核心组件；淘汰业务内私有实现的 `clickableRow`，统一收敛至带 48dp 最小触摸范围与覆盖层反馈的 `Modifier.couiClickable`；设置页线路域名输入框统一采用 `CouiTextField` 聚焦绿环规范，消除与 Miuix 输入框的风格撕裂。
 - 优化了 COUI 弹窗与底部面板的动效与手势体验：`CouiDialogOverlay` 与 `CouiBottomSheet` 重构为基于 `AnimatedVisibility` 的双向进退场弹簧与滑动曲线，消除关闭时瞬间闪退的硬切问题；为底部面板顶部 handle 区域追加垂直拖拽手势监听，支持手势下拉跟手位移与越界（>60dp）自动释放收起，并消除面板首帧未测量时的闪烁；主按钮 `CouiButton` 增加弹簧微缩与按压遮罩，底栏项补充 `Role.Tab` 与选中态语义。
 - 优化了 COUI 背景渲染与首页下拉刷新定位：`CouiSurfaceBackground` 氛围光斑重构为在 Draw 阶段直接响应漂移状态，消除 30 秒漂移引发的全屏 Composable 频繁重组；首页向下拉刷新容器提供显式展开净空，修复下拉刷新指示器被固定顶栏与搜索框遮挡的问题。
