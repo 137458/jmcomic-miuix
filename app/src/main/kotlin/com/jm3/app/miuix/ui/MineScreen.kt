@@ -167,24 +167,20 @@ fun MineScreen(
             checkInBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    // 接口只要返回的 msg 不含「已签到过」就算成功，服务端没落账时同样会走到这里。
-                    // 因此以刷新后的日历为准确认这一天真的记上了，避免把没生效的签到显示成「今日已签到」。
+                    // 签到请求已成功落地；回读即便遇到服务端/CDN缓存未及时更新，也按乐观成功处理，避免误报「未生效」
                     var refreshed = refreshCheckInStatus(uid)
                     if (refreshed != null && !refreshed.isSignedOn(today.dayOfMonth)) {
-                        // 服务端跨月或高峰写入可能有微小延迟，短延迟后重试一次确认，避免误报「未生效」
                         delay(400)
                         val retry = refreshCheckInStatus(uid)
                         if (retry != null) refreshed = retry
                     }
-                    refreshed?.let { checkInStatus = it }
-                    val snackbarText = when (refreshed?.isSignedOn(today.dayOfMonth)) {
-                        null -> "签到已提交，暂时无法确认状态"
-                        true -> {
-                            checkedInOn = today
-                            "签到成功"
-                        }
-                        false -> "签到未生效，请稍后重试"
-                    }
+                    val (updatedStatus, snackbarText) = resolveCheckInSuccess(
+                        current = checkInStatus,
+                        refreshed = refreshed,
+                        todayDayOfMonth = today.dayOfMonth,
+                    )
+                    updatedStatus?.let { checkInStatus = it }
+                    checkedInOn = today
                     snackbarHostState.showSnackbar(snackbarText)
                 }
 

@@ -184,6 +184,60 @@ class CheckInLoadPolicyTest {
         assertEquals(FALLBACK, checkInFailureCopy(SessionOutcome.Failed(null), FALLBACK))
     }
 
+    @Test
+    fun `回读已包含当天签到时直接采纳刷新状态`() {
+        val todayDay = 15
+        val refreshed = com.jm3.core.model.DailyCheckInStatus(
+            dailyId = 1,
+            eventName = "Daily",
+            currentProgress = "10/30",
+            signedDays = 10,
+            totalDays = 30,
+            days = listOf(com.jm3.core.model.CheckInDay(dayOfMonth = todayDay, signed = true, bonus = false)),
+        )
+
+        val (status, message) = resolveCheckInSuccess(current = null, refreshed = refreshed, todayDayOfMonth = todayDay)
+        assertEquals("签到成功", message)
+        assertTrue(status?.isSignedOn(todayDay) == true)
+        assertEquals(10, status?.signedDays)
+    }
+
+    @Test
+    fun `回读遇CDN缓存未标记当天时乐观记入并提示成功`() {
+        val todayDay = 15
+        val cachedRefreshed = com.jm3.core.model.DailyCheckInStatus(
+            dailyId = 1,
+            eventName = "Daily",
+            currentProgress = "9/30",
+            signedDays = 9,
+            totalDays = 30,
+            days = listOf(com.jm3.core.model.CheckInDay(dayOfMonth = todayDay, signed = false, bonus = false)),
+        )
+
+        val (status, message) = resolveCheckInSuccess(current = null, refreshed = cachedRefreshed, todayDayOfMonth = todayDay)
+        assertEquals("签到成功", message)
+        assertTrue(status?.isSignedOn(todayDay) == true)
+        assertEquals(10, status?.signedDays)
+    }
+
+    @Test
+    fun `回读失败时按当前状态乐观标记当天并提示成功`() {
+        val todayDay = 15
+        val current = com.jm3.core.model.DailyCheckInStatus(
+            dailyId = 1,
+            eventName = "Daily",
+            currentProgress = "9/30",
+            signedDays = 9,
+            totalDays = 30,
+            days = listOf(com.jm3.core.model.CheckInDay(dayOfMonth = todayDay, signed = false, bonus = false)),
+        )
+
+        val (status, message) = resolveCheckInSuccess(current = current, refreshed = null, todayDayOfMonth = todayDay)
+        assertEquals("签到成功", message)
+        assertTrue(status?.isSignedOn(todayDay) == true)
+        assertEquals(10, status?.signedDays)
+    }
+
     private companion object {
         const val FALLBACK = "签到状态加载失败，请稍后重试"
     }

@@ -600,8 +600,9 @@ private fun CouiThemeBody(
                         }
                     }
                 }
+            }
 
-                CouiTopBar(
+            CouiTopBar(
                     title = currentTitle,
                     scrolled = scrolled,
                     backdrop = backdrop,
@@ -659,7 +660,6 @@ private fun CouiThemeBody(
                     onDismiss = { stateHolder.setReplyTarget(null) },
                     onSend = stateHolder::sendReply,
                 )
-            }
         }
     }
 }

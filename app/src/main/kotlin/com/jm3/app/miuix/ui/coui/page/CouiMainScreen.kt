@@ -187,7 +187,6 @@ fun CouiMainScreen(
                                         when (currentTab) {
                                             0 -> CouiHomeScreen(
                                                 deps = deps,
-                                                backdrop = backdrop,
                                                 onOpenAlbum = onOpenAlbum,
                                                 onOpenWeek = onOpenWeek,
                                             )

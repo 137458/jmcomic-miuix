@@ -13,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
@@ -70,6 +71,7 @@ internal fun BottomBarBaseLayer(
     CompositionLocalProvider(LocalFloatingBottomBarContentColor provides colors.contentColor) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .selectableGroup()
                 .onSizeChanged(onSizeChanged)
                 .graphicsLayer { translationX = panelOffsetState.value }
@@ -144,6 +146,7 @@ internal fun BottomBarActiveTabsLayer(
         ) {
             Row(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .clearAndSetSemantics {}
                     .alpha(0f)
                     .layerBackdrop(tabsBackdrop)

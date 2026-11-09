@@ -70,7 +70,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiSectionTitle
 import com.jm3.app.miuix.ui.coui.component.CouiSegmented
 import com.jm3.app.miuix.ui.coui.component.CouiTextButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
+import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
 import com.jm3.app.miuix.ui.coui.component.couiTopBarHeight
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBlurBackdrop
 import com.jm3.app.miuix.ui.coui.theme.CouiType
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
@@ -118,10 +120,10 @@ private val SectionHorizontalPadding = 16.dp
 @Composable
 fun CouiHomeScreen(
     deps: ScreenDeps,
-    backdrop: LayerBackdrop?,
     onOpenAlbum: (String) -> Unit,
     onOpenWeek: () -> Unit,
 ) {
+    val topBarBackdrop = rememberCouiBlurBackdrop()
     // 网关与鉴权统一从 ScreenDeps 取，不再额外收一份同源参数
     val gateway = deps.gateway
     val authCall = deps.authCall
@@ -367,7 +369,9 @@ fun CouiHomeScreen(
         GlassPullToRefresh(
             isRefreshing = refreshing,
             onRefresh = { refresh(byPull = true) },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .couiBackdropSource(topBarBackdrop),
             pullToRefreshState = refreshState,
             contentPadding = PaddingValues(top = contentTop, bottom = contentBottom),
         ) {
@@ -515,7 +519,7 @@ fun CouiHomeScreen(
             CouiTopBar(
                 title = "JM3",
                 scrolled = scrolled,
-                backdrop = backdrop,
+                backdrop = topBarBackdrop,
                 actions = {
                     IconButton(onClick = { showSearchHelp = true }) {
                         Icon(imageVector = MiuixIcons.Help, contentDescription = "搜索语法帮助")
@@ -539,7 +543,7 @@ fun CouiHomeScreen(
                     },
                     placeholder = "搜索 / 车号",
                     modifier = Modifier.weight(1f),
-                    backdrop = backdrop,
+                    backdrop = topBarBackdrop,
                     leadingIcon = MiuixIcons.Search,
                     onSearch = { submitSearch() },
                 )

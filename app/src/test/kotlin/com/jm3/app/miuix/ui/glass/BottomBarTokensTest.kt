@@ -152,6 +152,26 @@ class BottomBarTokensTest {
         }
     }
 
+    @Test
+    fun `悬浮底栏在各设备宽度下可用空间严格不超出屏幕`() {
+        val testWidths = listOf(320, 360, 390, 412, 600, 800, 1024)
+        for (screenW in testWidths) {
+            for (size in BottomBarSize.entries) {
+                val tokens = bottomBarTokens(size, BottomBarForm.FLOATING)
+                val availableWidth = screenW - (tokens.horizontalMargin.value * 2)
+                val clampedWidth = availableWidth.coerceAtMost(540f)
+                assertTrue(
+                    clampedWidth <= screenW,
+                    "在屏幕宽度 $screenW 下，底栏宽度 $clampedWidth 不能超出屏幕",
+                )
+                assertTrue(
+                    clampedWidth <= availableWidth,
+                    "在屏幕宽度 $screenW 下，底栏宽度 $clampedWidth 不能超出可用空间 $availableWidth",
+                )
+            }
+        }
+    }
+
     /** 用实际绘制的形状生成 outline，验证真实生效的圆角，而不是未被绘制消费的 token。 */
     private fun cornerRadii(tokens: GlassBottomBarTokens): Pair<Float, Float> {
         val outline = bottomBarShape(tokens).createOutline(

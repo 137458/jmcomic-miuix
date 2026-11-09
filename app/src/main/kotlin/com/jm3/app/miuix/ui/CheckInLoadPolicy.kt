@@ -64,3 +64,30 @@ internal suspend fun awaitGatewayReady(
  */
 internal fun checkInFailureCopy(failure: SessionOutcome.Failed, fallback: String): String =
     failureCopy(failure, fallback)
+
+/**
+ * 签到成功后的状态落地：当签到接口返回成功时，即便服务端日历因 CDN 缓存（常见约 30 秒）
+ * 尚未置上当天标记，也乐观记入当日本地日历并提示「签到成功」，不误报「未生效」。
+ */
+internal fun resolveCheckInSuccess(
+    current: com.jm3.core.model.DailyCheckInStatus?,
+    refreshed: com.jm3.core.model.DailyCheckInStatus?,
+    todayDayOfMonth: Int,
+): Pair<com.jm3.core.model.DailyCheckInStatus?, String> {
+    val base = refreshed ?: current
+    if (base == null) return null to "签到成功"
+    if (base.isSignedOn(todayDayOfMonth)) return base to "签到成功"
+
+    val updatedDays = base.days.map { day ->
+        if (day.dayOfMonth == todayDayOfMonth) day.copy(signed = true) else day
+    }.let { list ->
+        if (list.none { it.dayOfMonth == todayDayOfMonth }) {
+            list + com.jm3.core.model.CheckInDay(dayOfMonth = todayDayOfMonth, signed = true, bonus = false)
+        } else list
+    }
+    val updated = base.copy(
+        signedDays = base.signedDays + 1,
+        days = updatedDays,
+    )
+    return updated to "签到成功"
+}

@@ -364,9 +364,13 @@ fun FloatingBottomBar(
     }
 
     Box(
-        // 悬浮档按内容宽度收口，贴底档需要横向撑满整屏；Tab 项已用 weight 均分，宽度由外层约束决定
+        // 悬浮档与贴底档均受外层最大宽度约束；悬浮档封顶 540dp 并居中，小屏贴紧设备安全边界，绝不超出屏幕
         modifier = modifier.then(
-            if (tokens.floating) Modifier.width(IntrinsicSize.Min) else Modifier.fillMaxWidth(),
+            if (tokens.floating) {
+                Modifier.fillMaxWidth().widthIn(max = FLOATING_BAR_MAX_WIDTH)
+            } else {
+                Modifier.fillMaxWidth()
+            },
         ),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -465,7 +469,7 @@ fun IosLiquidGlassNavigationBar(
         // 悬浮档按内容收紧，大屏封顶 540dp 后水平居中；贴底档横向撑满。
         Box(
             modifier = if (tokens.floating) {
-                Modifier.widthIn(max = FLOATING_BAR_MAX_WIDTH)
+                Modifier.fillMaxWidth().widthIn(max = FLOATING_BAR_MAX_WIDTH)
             } else {
                 Modifier.fillMaxWidth()
             },

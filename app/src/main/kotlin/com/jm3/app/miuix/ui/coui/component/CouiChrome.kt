@@ -199,9 +199,9 @@ fun CouiBottomBar(
             }
             Row(
                 modifier = Modifier
-                    // 悬浮档按内容收口：weight 均分的页签在最小固有宽度下等分，大屏封顶后居中
+                    // 悬浮档封顶 540dp 并居中；在可用宽度内均分，绝不超出设备显示区域
+                    .fillMaxWidth()
                     .widthIn(max = CouiFloatingBarMaxWidth)
-                    .width(IntrinsicSize.Min)
                     .height(tokens.height)
                     .shadow(
                         elevation = 8.dp,

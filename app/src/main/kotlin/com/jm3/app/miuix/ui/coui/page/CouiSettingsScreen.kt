@@ -324,17 +324,24 @@ fun CouiSettingsScreen(
             derivedStateOf { scrollState.value > 8 }
         }
 
-        Box(modifier = Modifier.fillMaxSize().couiBackdropSource(backdrop)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             CouiSurfaceBackground(modifier = Modifier.fillMaxSize())
 
-            // 大屏把设置内容收进可读宽度并居中；顶栏是浮层，内容从顶栏下沿起排
-            Column(
+            // 仅滚动内容与背景作为采样源：顶栏、提示条与浮层绝不能放进采样源内部，
+            // 否则 HWUI 树在 prepareTreeImpl 会把采样与被采样循环嵌套，引发 512 帧栈溢出崩溃。
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .readableWidth()
-                    .verticalScroll(scrollState),
+                    .couiBackdropSource(backdrop),
             ) {
-                Spacer(modifier = Modifier.height(couiTopBarHeight()))
+                // 大屏把设置内容收进可读宽度并居中；顶栏是浮层，内容从顶栏下沿起排
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .readableWidth()
+                        .verticalScroll(scrollState),
+                ) {
+                    Spacer(modifier = Modifier.height(couiTopBarHeight()))
 
                 CouiSettingsGroup(title = "主题") {
                     Column(
@@ -575,6 +582,7 @@ fun CouiSettingsScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
             }
+        }
 
             CouiTopBar(
                 title = "设置",
