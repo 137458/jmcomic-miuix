@@ -22,7 +22,8 @@ android {
 
     defaultConfig {
         applicationId = "com.jm3.app.miuix"
-        minSdk = 26
+        // COUI-Kit 要求 Android 12（API 31）；浮动材质组件（底栏/FAB/ChipTab）需 API 34，低版本走兼容分支。
+        minSdk = 31
         targetSdk = 36
         versionCode = 10100
         versionName = "1.1.0"
@@ -103,6 +104,9 @@ dependencies {
     implementation(libs.miuix.preference)
     implementation(libs.miuix.blur)
     implementation(libs.miuix.squircle)
+
+    implementation(libs.coui)
+    implementation(libs.coui.icons)
 
     // 无 AWT 的 Android 环境必须提供 ImageProcessor SPI 实现
     implementation(libs.jmcomic.android.support) {
