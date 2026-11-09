@@ -70,8 +70,9 @@ internal class AlbumDetailStateHolder(
     private val scope: CoroutineScope,
     private val showMessage: (String) -> Unit,
     private val onOpenLogin: () -> Unit,
-    // 与阅读页共享的喜欢状态；默认独立实例只用于单测隔离，生产须传 SessionCache.engagement。
-    private val engagement: AlbumEngagementStore = AlbumEngagementStore(),
+    // 与阅读页共享的喜欢状态。不给默认值：默认 new 一个独立实例会让详情页的喜欢与阅读页脱钩，
+    // 生产必须传 SessionCache.engagement，单测显式传自己的实例。
+    private val engagement: AlbumEngagementStore,
 ) {
     private val _uiState = MutableStateFlow(AlbumDetailViewState())
     val uiState: StateFlow<AlbumDetailViewState> = _uiState.asStateFlow()

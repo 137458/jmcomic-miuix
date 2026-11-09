@@ -119,6 +119,7 @@ class AlbumDetailStateHolderTest {
             showMessage = { messages.add(it) },
             authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.loadAll(userUid = "user_1")
@@ -153,6 +154,7 @@ class AlbumDetailStateHolderTest {
             showMessage = {},
             authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.loadAll(userUid = null)
@@ -177,6 +179,7 @@ class AlbumDetailStateHolderTest {
             showMessage = {},
             authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.onFavoriteClick(isLoggedIn = false, onOpenLogin = { loginOpened++ })
@@ -205,6 +208,7 @@ class AlbumDetailStateHolderTest {
             showMessage = { messages.add(it) },
             authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.like(isLoggedIn = true, onOpenLogin = {})
@@ -285,6 +289,7 @@ class AlbumDetailStateHolderTest {
             showMessage = { messages.add(it) },
             authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.setCommentText("精彩作品！")
@@ -330,6 +335,7 @@ class AlbumDetailStateHolderTest {
             showMessage = {},
             authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.loadAll(userUid = null)
@@ -372,6 +378,7 @@ class AlbumDetailStateHolderTest {
             showMessage = {},
             authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.loadAll(userUid = null)
@@ -400,6 +407,7 @@ class AlbumDetailStateHolderTest {
             scope = testScope,
             showMessage = {},
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.loadDetail()
@@ -424,6 +432,7 @@ class AlbumDetailStateHolderTest {
             scope = testScope,
             showMessage = {},
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.loadComments()
@@ -449,6 +458,7 @@ class AlbumDetailStateHolderTest {
             scope = testScope,
             showMessage = { messages.add(it) },
             onOpenLogin = { loginOpened++ },
+            engagement = AlbumEngagementStore(),
         )
 
         holder.like(isLoggedIn = true, onOpenLogin = { loginOpened++ })
@@ -473,6 +483,7 @@ class AlbumDetailStateHolderTest {
             scope = testScope,
             showMessage = { messages.add(it) },
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.like(isLoggedIn = true, onOpenLogin = {})
@@ -500,6 +511,7 @@ class AlbumDetailStateHolderTest {
             scope = testScope,
             showMessage = { messages.add(it) },
             onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
         )
 
         holder.loadDetail()

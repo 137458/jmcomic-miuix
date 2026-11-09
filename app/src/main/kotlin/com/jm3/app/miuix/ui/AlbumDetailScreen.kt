@@ -21,8 +21,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -61,6 +61,7 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.skin.LocalSkin
+import com.jm3.app.miuix.ui.skin.SkinShapes
 import com.jm3.core.AlbumPreviewPlan
 import com.jm3.core.ChapterLabels
 import com.jm3.core.Jm3Gateway
@@ -709,10 +710,10 @@ private fun DetailHeader(
             if (!coverUrl.isNullOrBlank()) {
                 // 头图是「列表卡片 → 详情页」形变飞行的落点：与列表卡片共用皮肤 cardCorner，飞行两端圆角一致
                 Card(
-                    cornerRadius = skin.shapes.cardCorner,
+                    cornerRadius = albumCardCorner(skin.shapes),
                     modifier = Modifier
                         .size(width = 144.dp, height = 192.dp)
-                        .albumHeroHeader(albumId, coverUrl, skin.shapes.cardCorner.value)
+                        .albumHeroHeader(albumId, coverUrl, albumCardCorner(skin.shapes).value)
                 ) {
                     // 与列表卡片、飞行覆盖层共用同一个 Coil 内存缓存条目（显式 key + 固定 144x192dp 解码尺寸），
                     // 命中即首帧出图；crossfade 会在命中后仍淡入一次，正是“封面闪一下”的来源之一。
@@ -1251,6 +1252,18 @@ private fun CommentBody(item: CommentItem, onOpenAlbum: ((albumId: String) -> Un
     }
 }
 
+/**
+ * 详情页卡片与头图的圆角：与列表卡片、封面飞行共用皮肤契约的 cardCorner，
+ * 「列表 → 详情」形变两端才能圆角一致。抽成纯函数是为了让这条来源约束能被 JVM 单测钉住。
+ */
+internal fun albumCardCorner(shapes: SkinShapes): Dp = shapes.cardCorner
+
+/**
+ * 详情页预览条小缩略图的圆角：取皮肤契约的 controlCorner，比卡片圆角小一档，
+ * 112x150 的小图不会被切得过圆，也保持「行内小图用控件圆角」这一口径。
+ */
+internal fun albumThumbCorner(shapes: SkinShapes): Dp = shapes.controlCorner
+
 /** 详情页预览条：首章前几页缩略图，点第 i 张直达阅读器第 i 页。 */
 @Composable
 private fun AlbumPreviewRow(
@@ -1260,6 +1273,7 @@ private fun AlbumPreviewRow(
 ) {
     // 加载中与失败都露出灰底占位，不出现白块或高度跳动
     val placeholderColor = MiuixTheme.colorScheme.surfaceContainerHigh
+    val thumbCorner = albumThumbCorner(LocalSkin.current.shapes)
     LazyRow(
         modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
         contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
@@ -1273,9 +1287,14 @@ private fun AlbumPreviewRow(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(width = 112.dp, height = 150.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .squircleClip(thumbCorner)
                     .background(placeholderColor)
-                    .clickable { onOpenPage(page.index + 1) },
+                    // 缩略图本身是画面，按压水波纹只会盖住图：只留点击反馈，不要 indication
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onOpenPage(page.index + 1) },
+                    ),
             )
         }
     }

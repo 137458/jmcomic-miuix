@@ -82,6 +82,15 @@ class UpdateDownloader(
     /** 安装包落盘目录；由组装层按 cacheDir 传入，下载层不持有 Context。 */
     private val downloadDirectory: File,
     /**
+     * 单调时钟：默认取 [SystemClock.elapsedRealtime]，单测可换假时钟。
+     *
+     * 进度节流与速度 EMA 都以它为时间基准。JVM 单测里 android.os.SystemClock 是返回默认值的桩，
+     * 结果恒为 0，节流分支永远进不去、速度永远是 0，只能靠注入假时钟覆盖。
+     *
+     * 位置在 [connectionFactory] 之前：后者是尾随 lambda 的落点，必须保持构造参数的最后一个。
+     */
+    private val clock: () -> Long = { SystemClock.elapsedRealtime() },
+    /**
      * 连接工厂：默认直连 URL 并强转 [HttpURLConnection]。
      *
      * 只为单测替换网络出口：重定向、进度与取消逻辑都在本类内，测试用可控连接就能覆盖
@@ -306,6 +315,9 @@ class UpdateDownloader(
      *
      * 每次写盘前后都检查协程存活：HttpURLConnection 的阻塞 read 无法被 interrupt，
      * 取消只能在读完当前 buffer 后生效，这也是取消延迟的上限。
+     *
+     * 节流与速度平滑交给 [UpdateProgressThrottle]：时钟从构造注入，生产行为不变，
+     * 单测能用假时钟走到"到点上报"与 EMA 两条分支。
      */
     private suspend fun copyWithProgress(
         input: InputStream,
@@ -315,28 +327,18 @@ class UpdateDownloader(
     ): TransferResult {
         val buffer = ByteArray(BUFFER_SIZE)
         var downloaded = 0L
-        var speed = 0L
-        var lastReportAt = SystemClock.elapsedRealtime()
-        var lastReportedBytes = 0L
+        val throttle = UpdateProgressThrottle(clock, PROGRESS_INTERVAL_MS)
         while (true) {
             currentCoroutineContext().ensureActive()
             val read = input.read(buffer)
             if (read < 0) break
             output.write(buffer, 0, read)
             downloaded += read
-            val now = SystemClock.elapsedRealtime()
-            val elapsed = now - lastReportAt
-            if (elapsed >= PROGRESS_INTERVAL_MS) {
-                val instant = (downloaded - lastReportedBytes) * 1000L / elapsed.coerceAtLeast(1L)
-                // 指数滑动平均：历史 0.7、本次 0.3，单次抖动不会让数字跳变
-                speed = (speed * 7 + instant * 3) / 10
-                publish(token, UpdateDownloadState.Downloading(downloaded, total, speed))
-                lastReportAt = now
-                lastReportedBytes = downloaded
-            }
+            val speed = throttle.onBytes(downloaded) ?: continue
+            publish(token, UpdateDownloadState.Downloading(downloaded, total, speed))
         }
         output.flush()
-        return TransferResult(downloaded, speed)
+        return TransferResult(downloaded, throttle.speedBytesPerSec)
     }
 
     /**
@@ -355,3 +357,44 @@ class UpdateDownloader(
 
 /** 一次传输的结果：实际字节数与最后一次平滑速度，供收尾上报使用。 */
 private class TransferResult(val downloaded: Long, val speedBytesPerSec: Long)
+
+/**
+ * 进度上报的节流与平滑速度。
+ *
+ * 抽出成独立类是为了让"未到间隔不上报"与 EMA 公式能被普通 JVM 单测直接断言：
+ * 留在 [UpdateDownloader] 的拷贝循环里就只能靠真实 IO 线程时序去猜，
+ * 而 android.os.SystemClock 在单测里恒为 0，两条分支都不可达。
+ * 时钟与间隔都由调用方注入，生产仍走 [SystemClock.elapsedRealtime] 与 400ms。
+ */
+internal class UpdateProgressThrottle(
+    private val clock: () -> Long,
+    private val intervalMs: Long,
+) {
+
+    /** 上次上报的时刻；以对象创建时刻为起点，等价于原实现的"循环开始时间" */
+    private var lastReportAt = clock()
+
+    /** 上次上报时的累计字节数 */
+    private var lastReportedBytes = 0L
+
+    /** 最近一次上报的平滑速度；尚未上报过时为 0 */
+    var speedBytesPerSec = 0L
+        private set
+
+    /**
+     * 记下本次已写入的累计字节数 [downloaded]。
+     *
+     * 未到上报间隔返回 null，调用方不上报；到点则按"本次间隔内新增字节 / 间隔时长"算瞬时速度，
+     * 再与历史做 7:3 的指数滑动平均（单次抖动不让界面数字跳变），返回平滑后的速度。
+     */
+    fun onBytes(downloaded: Long): Long? {
+        val now = clock()
+        val elapsed = now - lastReportAt
+        if (elapsed < intervalMs) return null
+        val instant = (downloaded - lastReportedBytes) * 1000L / elapsed.coerceAtLeast(1L)
+        speedBytesPerSec = (speedBytesPerSec * 7 + instant * 3) / 10
+        lastReportAt = now
+        lastReportedBytes = downloaded
+        return speedBytesPerSec
+    }
+}

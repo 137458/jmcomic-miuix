@@ -294,13 +294,17 @@ internal fun UpdateAvailableDialog(
     onIgnore: ((version: String) -> Unit)? = null,
     onCancelDownload: (() -> Unit)? = null,
 ) {
-    val plan = remember(currentVersion, release, downloadState, onIgnore, onCancelDownload) {
+    // remember 的 key 只能放稳定值：onIgnore / onCancelDownload 是函数引用，父级每次重组都可能是新
+    // lambda，拿它们当 key 会让 plan 在每次重组时白算一遍。plan 真正需要的只是两个布尔。
+    val canIgnore = onIgnore != null
+    val canCancelDownload = onCancelDownload != null
+    val plan = remember(currentVersion, release, downloadState, canIgnore, canCancelDownload) {
         buildUpdateDialogPlan(
             currentVersion = currentVersion,
             release = release,
             downloadState = downloadState,
-            canIgnore = onIgnore != null,
-            canCancelDownload = onCancelDownload != null,
+            canIgnore = canIgnore,
+            canCancelDownload = canCancelDownload,
         )
     }
     var notesExpanded by remember(show, release.tagName) { mutableStateOf(false) }

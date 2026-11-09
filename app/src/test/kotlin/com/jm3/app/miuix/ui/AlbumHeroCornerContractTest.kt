@@ -5,7 +5,6 @@ import com.jm3.core.settings.UiSkin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import top.yukonga.miuix.kmp.basic.CardDefaults
 
@@ -22,13 +21,19 @@ class AlbumHeroCornerContractTest {
     }
 
     @Test
-    fun 旧的固定卡片圆角常量入口已删除() {
-        // 运行期只允许从 LocalSkin.current.shapes.cardCorner 取角；保留公开常量会给回退留后门
-        val oldGetter = runCatching {
-            Class.forName("com.jm3.app.miuix.ui.AlbumHeroKt")
-                .getDeclaredMethod("getHERO_CARD_CORNER_DP")
-        }.getOrNull()
-        assertNull(oldGetter)
+    fun 详情页圆角只从皮肤契约取且小缩略图小一档() {
+        // 头图与卡片走 albumCardCorner(cardCorner)，预览条小缩略图走 albumThumbCorner(controlCorner)，
+        // 两者都只读 LocalSkin.current.shapes。这里钉住两套皮肤的真实取值：实现里改回任何字面量
+        // （例如写死 16dp 或 8dp）时，ColorOS 那一行必然红灯，而不是靠"某个符号不存在"来证明。
+        assertEquals(16f, albumCardCorner(skinTokensFor(UiSkin.HYPEROS).shapes).value)
+        assertEquals(18f, albumCardCorner(skinTokensFor(UiSkin.COLOROS).shapes).value)
+        assertEquals(12f, albumThumbCorner(skinTokensFor(UiSkin.HYPEROS).shapes).value)
+        assertEquals(14f, albumThumbCorner(skinTokensFor(UiSkin.COLOROS).shapes).value)
+        listOf(UiSkin.HYPEROS, UiSkin.COLOROS).forEach { skin ->
+            val shapes = skinTokensFor(skin).shapes
+            // 小缩略图必须比卡片小一档：按卡片圆角切 112x150 的图会切掉画面四角
+            assertTrue(albumThumbCorner(shapes) < albumCardCorner(shapes))
+        }
     }
 
     @Test
