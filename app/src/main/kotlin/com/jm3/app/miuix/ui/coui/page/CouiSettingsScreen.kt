@@ -102,6 +102,9 @@ private fun UiSkin.couiSummary(): String = when (this) {
 private const val DIAGNOSTIC_TAPS = 5
 private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
 
+/** 清空确认留着自动收起的时长：太短会在用户读文案时就消失。 */
+private const val CLEAR_CONFIRM_TIMEOUT_MS = 5000L
+
 /**
  * COUI 设置页：外壳、分组、顶栏按 COUI 重做，设置项语义与存储完全沿用现有实现。
  *
@@ -312,7 +315,7 @@ fun CouiSettingsScreen(
 
         LaunchedEffect(clearTarget, clearing) {
             if (clearTarget != null && !clearing) {
-                delay(3000)
+                delay(CLEAR_CONFIRM_TIMEOUT_MS)
                 clearTarget = null
             }
         }
