@@ -268,18 +268,22 @@ fun CouiTextButton(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalCouiColors.current
-    BasicText(
-        text = text,
-        style = CouiType.button.copy(color = colors.accent),
+    val interaction = remember { MutableInteractionSource() }
+    Box(
         modifier = modifier
+            .height(44.dp)
             .squircleClip(LocalCouiShapes.current.control)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 onClick = onClick,
             )
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-    )
+            .couiPressOverlay(interaction)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(text = text, style = CouiType.button.copy(color = colors.accent))
+    }
 }
 
 /** COUI 胶囊标签：热门标签与筛选复用，选中态用绿色容器而不是整块绿色填充。 */
