@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -21,6 +22,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import android.content.Context
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -402,6 +404,29 @@ const val HERO_BADGE_CORNER_DP = 6f
 internal const val HERO_COVER_WIDTH_DP = 144f
 internal const val HERO_COVER_HEIGHT_DP = 192f
 
+/** 覆盖层的绘制期变换：以落点矩形为固定尺寸时，把图层还原成插值矩形所需的缩放与平移。 */
+internal data class HeroOverlayTransform(
+    val scale: Float,
+    val translationX: Float,
+    val translationY: Float,
+)
+
+/**
+ * 算出绘制期缩放与平移，替代在组合期逐帧重算尺寸与偏移。
+ *
+ * 两端同为 3:4，等比缩放就能精确复现 [lerpHeroRect] 的插值矩形：进度 0 落回起点矩形，
+ * 进度 1 时缩放为 1、位移为 0，与终态完全重合；中间帧的宽度与左上角与逐帧尺寸一致。
+ */
+internal fun heroOverlayTransform(from: HeroRect, to: HeroRect, fraction: Float): HeroOverlayTransform {
+    val rect = lerpHeroRect(from, to, fraction)
+    val scale = if (to.width > 0f) rect.width / to.width else 1f
+    return HeroOverlayTransform(
+        scale = scale,
+        translationX = rect.left - to.left,
+        translationY = rect.top - to.top,
+    )
+}
+
 /** 覆盖层：画在 NavDisplay 之上，按进度插值矩形与圆角。 */
 @Composable
 fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
@@ -419,10 +444,14 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
     // 正向飞行自己播 tween；反向飞行的进度由详情页按返回手势写入，同一段形变正反两向。
     val backward = host.isBackwardFlight(flight.id)
     val progress = remember(flight.id) { Animatable(0f) }
-    val fraction = if (backward) host.backwardProgress else progress.value
+    // 组合期只读「是否参与绘制」这个布尔：只在进出 0 时翻转一次，进度本身全部留给绘制期读取，
+    // 反向手势逐帧变化时不会再触发覆盖层重组。
+    val drawn by remember(flight.id, backward) {
+        derivedStateOf { (if (backward) host.backwardProgress else progress.value) > 0f }
+    }
     // 反向飞行只在离开起点后才参与绘制：进度 0 时覆盖层与详情头图完全重合，由头图自己显示即可。
     // 静止或回弹结束后覆盖层彻底退场，既不残留画面也不拦截触摸。
-    if (backward && fraction <= 0f) return
+    if (backward && !drawn) return
     LaunchedEffect(flight.id, backward) {
         if (backward) return@LaunchedEffect
         progress.animateTo(
@@ -436,23 +465,34 @@ fun AlbumHeroOverlay(host: AlbumHeroHost, modifier: Modifier = Modifier) {
         host.finishFlight(flight.id)
     }
 
+    // 反向飞行的收场时机由返回手势决定：取消时详情页直接 finishFlight，提交时页面销毁时收场
     val density = LocalDensity.current
     val title = host.albumTitle(flight.albumId)
-    // 反向飞行的收场时机由返回手势决定：取消时详情页直接 finishFlight，提交时页面销毁时收场
-    val rect = lerpHeroRect(flight.from, flight.to, fraction)
-    val corner = lerpHeroCorner(flight.cornerFromDp, flight.cornerToDp, fraction)
+    // 固定落在落点矩形上：飞行结束时覆盖层与详情头图完全重合，两端不必各用一份尺寸。
+    // 圆角固定取落点值、由图层缩放带着走，圆角随进度收缩的量与尺寸收缩同源。
+    val base = flight.to
     Box(modifier = modifier.fillMaxSize()) {
         // 覆盖层自己做形变，所以不叠 Coil 淡入（默认即关闭），否则会出现半透明重影
         AlbumCoverImage(
             url = flight.url,
             contentDescription = title,
             modifier = Modifier
-                .offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
+                .offset { IntOffset(base.left.roundToInt(), base.top.roundToInt()) }
                 .size(
-                    width = with(density) { rect.width.toDp() },
-                    height = with(density) { rect.height.toDp() },
+                    width = with(density) { base.width.toDp() },
+                    height = with(density) { base.height.toDp() },
                 )
-                .squircleClip(corner.dp),
+                .graphicsLayer {
+                    // 在图层里读进度：逐帧只失效图层属性，组合与布局都不再参与
+                    val fraction = if (backward) host.backwardProgress else progress.value
+                    val transform = heroOverlayTransform(flight.from, flight.to, fraction)
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    scaleX = transform.scale
+                    scaleY = transform.scale
+                    translationX = transform.translationX
+                    translationY = transform.translationY
+                }
+                .squircleClip(flight.cornerToDp.dp),
             // 形变过程自己会放大缩小，再叠一次淡入会出现半透明重影
             crossfade = false,
             // 首帧画出后才允许两端封面让位，避免"覆盖层空白 + 两端已隐藏"的空洞帧

@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
@@ -67,16 +68,12 @@ import coil3.request.ImageRequest
 import coil3.size.Size
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
-import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.download.DownloadStatus
-import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryEntry
-import com.jm3.core.history.HistoryRepository
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
@@ -90,13 +87,12 @@ import com.jm3.core.reader.jumpTo
 import com.jm3.core.reader.readerProgressOnExit
 import com.jm3.core.reader.resolveInitialPage
 import com.jm3.core.reader.settleJump
+import com.jm3.core.reader.shouldClearReaderProgress
 import com.jm3.core.reader.stepPages
 import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ReaderSettings
 import com.jm3.core.settings.ReaderSpreadMode
-import com.jm3.core.session.AccountManager
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.app.miuix.ui.glass.GlassRole
 import com.jm3.app.miuix.ui.glass.GlassScaffold
@@ -195,13 +191,7 @@ fun ReaderScreen(
     deps: ScreenDeps,
     photoId: String,
     startPage: Int? = null,
-    authCall: AuthCall,
-    gateway: Jm3Gateway,
-    downloadManager: DownloadManager,
     settings: ReaderSettings,
-    history: HistoryRepository,
-    downloadFiles: DownloadStore,
-    account: AccountManager,
     onBack: () -> Unit,
     onOpenChapter: (String) -> Unit,
     onOpenLogin: () -> Unit,
@@ -218,7 +208,7 @@ fun ReaderScreen(
     suspend fun loadContent() {
         val token = loadGate.start()
         // 落盘页是本地文件，不经网关
-        val saved = runCatchingSuspending { downloadManager.find(photoId) }.getOrNull()
+        val saved = runCatchingSuspending { deps.downloadManager.find(photoId) }.getOrNull()
         val local = saved
             ?.takeIf { it.record.status == DownloadStatus.DONE }
             ?.pagesJson
@@ -227,7 +217,7 @@ fun ReaderScreen(
         val outcome: SessionOutcome<PhotoPages> = if (local != null) {
             SessionOutcome.Ok(local)
         } else {
-            authCall.call { gateway.photo(photoId) }
+            deps.authCall.call { deps.gateway.photo(photoId) }
         }
         when (outcome) {
             is SessionOutcome.Ok -> {
@@ -235,7 +225,7 @@ fun ReaderScreen(
                 // 离线页的 albumId 未落盘，用下载记录的 albumId 补章节列表与收藏/点赞状态
                 val albumId = saved?.record?.albumId ?: photo.albumId
                 // 详情仅用于章节列表与收藏/点赞状态；失败不阻塞阅读
-                val detail = (authCall.call { gateway.album(albumId) } as? SessionOutcome.Ok)?.value
+                val detail = (deps.authCall.call { deps.gateway.album(albumId) } as? SessionOutcome.Ok)?.value
                 // 期间又发起了新的加载：本次结局作废，不覆盖新状态
                 if (!loadGate.isLatest(token)) return
                 state = ReaderUiState.Loaded(
@@ -262,7 +252,8 @@ fun ReaderScreen(
     }
 
     LaunchedEffect(photoId) {
-        loadContent()
+        // 首载也要登记 Job：失败重试入口靠它取消在途加载，注释与实现才一致
+        loadJob = scope.launch { loadContent() }
     }
 
     when (val s = state) {
@@ -301,9 +292,9 @@ fun ReaderScreen(
         }
         is ReaderUiState.Loaded -> {
             LaunchedEffect(s.photo.photoId) {
-                val coverUrl = (authCall.call { gateway.coverUrl(s.photo.albumId) } as? SessionOutcome.Ok)?.value
+                val coverUrl = (deps.authCall.call { deps.gateway.coverUrl(s.photo.albumId) } as? SessionOutcome.Ok)?.value
                 runCatchingSuspending {
-                    history.upsert(
+                    deps.history.upsert(
                         HistoryEntry(
                             photoId = s.photo.photoId,
                             albumId = s.photo.albumId,
@@ -322,11 +313,7 @@ fun ReaderScreen(
                 chapterIndex = s.chapterIndex,
                 favoritedInit = s.favorited,
                 likedInit = s.liked,
-                authCall = authCall,
-                gateway = gateway,
                 settings = settings,
-                downloadFiles = downloadFiles,
-                account = account,
                 onBack = onBack,
                 onOpenChapter = onOpenChapter,
                 onOpenLogin = onOpenLogin,
@@ -347,18 +334,14 @@ private fun ReaderPages(
     chapterIndex: Int,
     favoritedInit: Boolean,
     likedInit: Boolean,
-    authCall: AuthCall,
-    gateway: Jm3Gateway,
     settings: ReaderSettings,
-    downloadFiles: DownloadStore,
-    account: AccountManager,
     onBack: () -> Unit,
     onOpenChapter: (String) -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
     val skin = LocalSkin.current
-    val imageLoader = rememberReaderImageLoader(gateway, downloadFiles, authCall)
+    val imageLoader = rememberReaderImageLoader(deps.gateway, deps.downloadFiles, deps.authCall)
     val listState = rememberLazyListState()
     val context = LocalPlatformContext.current
     // 亮度与常亮直接作用在宿主 Activity 的窗口上
@@ -366,7 +349,7 @@ private fun ReaderPages(
     val activity = remember(activityContext) { activityContext.findActivity() }
     val windowSize = LocalWindowInfo.current.containerSize
     val scope = rememberCoroutineScope()
-    val user by account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     // 页宽固定为容器宽；解码尺寸不再写死 3:4，而是按这一页的真实宽高比推算，
     // 否则 800x20000 的长条图会被解成 58x1440 再拉满整宽，放大十几倍必然发糊。
     val pageWidthPx = windowSize.width.coerceAtLeast(1)
@@ -529,6 +512,19 @@ private fun ReaderPages(
         }
     }
 
+    /**
+     * 边界拖拽翻页的唯一出口：按方向取相邻页，夹进 pager 有效范围后起 Spring 动画。
+     * 双页与单页两条编排共用，避免一处夹取、另一处漏夹取而落到不存在的页。
+     * 目标页在松手时定下（与旧编排一致），惯性复核通过后才真的翻。
+     */
+    fun turnPage(turn: EdgePageTurn, stillPinned: suspend () -> Boolean) {
+        val target = pagerState.currentPage + if (turn == EdgePageTurn.Next) 1 else -1
+        scope.launch {
+            if (!stillPinned()) return@launch
+            pagerState.springAnimateToPage(clampPagerTarget(target, pagerPageCount))
+        }
+    }
+
     /** 跳页：先让计划进入“跳页中”，再驱动 pager 或列表；落地后才恢复可见页回写。 */
     fun goToPage(page: Int) {
         // 双页下把目标换算成所在跨页的锚点：进度、页码与跳页都用同一个单页坐标，
@@ -549,7 +545,7 @@ private fun ReaderPages(
                 target - 1
             }
             scope.launch {
-                pagerState.springAnimateToPage(pagerTarget.coerceIn(0, (pagerPageCount - 1).coerceAtLeast(0)))
+                pagerState.springAnimateToPage(clampPagerTarget(pagerTarget, pagerPageCount))
                 pagePlan = settleJump(pagePlan, target)
             }
         } else {
@@ -591,15 +587,21 @@ private fun ReaderPages(
         }
     }
 
-    // 页码一变就记进度：读到最后一页同样落盘。
+    /** 记进度：已读到末页说明本章读完，清键；否则写键。 */
+    suspend fun persistProgress(progress: ReaderPageProgress) {
+        if (shouldClearReaderProgress(progress)) {
+            settings.clearReaderLastPage(photo.photoId)
+        } else {
+            settings.setReaderLastPage(photo.photoId, progress)
+        }
+    }
+
+    // 页码一变就记进度：读到最后一页改为清掉进度键，未读完才落盘。
     // 落盘前等一下翻页停下来，避免长图连滚时把每一页都写一遍设置存储
     LaunchedEffect(pagePlan.currentPage, photo.images.size, progressRestored) {
         if (!progressRestored || photo.images.isEmpty()) return@LaunchedEffect
         delay(PROGRESS_SAVE_DEBOUNCE_MS)
-        settings.setReaderLastPage(
-            photo.photoId,
-            ReaderPageProgress(page = pagePlan.currentPage, total = photo.images.size),
-        )
+        persistProgress(ReaderPageProgress(page = pagePlan.currentPage, total = photo.images.size))
     }
 
     // 离开阅读器时补记当前页：此时协程作用域已取消，挂在进程作用域上才写得完。
@@ -612,7 +614,7 @@ private fun ReaderPages(
                 total = photo.images.size,
             ) ?: return@onDispose
             deps.appScope.launch {
-                settings.setReaderLastPage(photo.photoId, progress)
+                persistProgress(progress)
             }
         }
     }
@@ -673,7 +675,7 @@ private fun ReaderPages(
         if (!requireLogin() || engagementBusy) return
         engagementBusy = true
         scope.launch {
-            val outcome = authCall.call { gateway.toggleFavorite(photo.albumId) }
+            val outcome = deps.authCall.call { deps.gateway.toggleFavorite(photo.albumId) }
             engagementBusy = false
             if (outcome is SessionOutcome.Ok) {
                 favorited = !favorited
@@ -689,7 +691,7 @@ private fun ReaderPages(
         val next = !liked
         engagementBusy = true
         scope.launch {
-            val outcome = authCall.call { gateway.toggleLike(photo.albumId) }
+            val outcome = deps.authCall.call { deps.gateway.toggleLike(photo.albumId) }
             engagementBusy = false
             if (outcome is SessionOutcome.Ok) {
                 liked = next
@@ -705,7 +707,7 @@ private fun ReaderPages(
         commentsLoading = true
         commentsFailed = false
         scope.launch {
-            val outcome = authCall.call { gateway.comments(photo.albumId) }
+            val outcome = deps.authCall.call { deps.gateway.comments(photo.albumId) }
             commentsLoading = false
             when (outcome) {
                 is SessionOutcome.Ok -> comments = outcome.value
@@ -726,7 +728,7 @@ private fun ReaderPages(
         commentBusy = true
         val text = commentText.trim()
         scope.launch {
-            val outcome = authCall.call { gateway.postComment(photo.albumId, text) }
+            val outcome = deps.authCall.call { deps.gateway.postComment(photo.albumId, text) }
             commentBusy = false
             if (outcome is SessionOutcome.Ok) {
                 commentText = ""
@@ -743,7 +745,7 @@ private fun ReaderPages(
         if (text.isBlank() || replyBusy) return
         replyBusy = true
         scope.launch {
-            val outcome = authCall.call { gateway.replyComment(photo.albumId, text, target.id) }
+            val outcome = deps.authCall.call { deps.gateway.replyComment(photo.albumId, text, target.id) }
             replyBusy = false
             if (outcome is SessionOutcome.Ok) {
                 replyTarget = null
@@ -769,7 +771,7 @@ private fun ReaderPages(
         if (!requireLogin() || trackBusy) return
         trackBusy = true
         scope.launch {
-            val outcome = authCall.call { gateway.setTracking(photo.albumId) }
+            val outcome = deps.authCall.call { deps.gateway.setTracking(photo.albumId) }
             trackBusy = false
             if (outcome is SessionOutcome.Ok) {
                 snackbarHostState.showSnackbar("已追踪连载")
@@ -921,20 +923,7 @@ private fun ReaderPages(
                                         currentPage = pagerState.currentPage,
                                         pageCount = pagerPageCount,
                                     )
-                                    if (turn != EdgePageTurn.None) {
-                                        val target = if (turn == EdgePageTurn.Next) {
-                                            pagerState.currentPage + 1
-                                        } else {
-                                            pagerState.currentPage - 1
-                                        }
-                                        scope.launch {
-                                            if (stillPinned()) {
-                                                pagerState.springAnimateToPage(
-                                                    target.coerceIn(0, (pagerPageCount - 1).coerceAtLeast(0)),
-                                                )
-                                            }
-                                        }
-                                    }
+                                    if (turn != EdgePageTurn.None) turnPage(turn, stillPinned)
                                 }
                             } else {
                                 null
@@ -963,17 +952,7 @@ private fun ReaderPages(
                                         currentPage = pagerState.currentPage,
                                         pageCount = photo.images.size,
                                     )
-                                    if (turn != EdgePageTurn.None) {
-                                        val target = if (turn == EdgePageTurn.Next) {
-                                            pagerState.currentPage + 1
-                                        } else {
-                                            pagerState.currentPage - 1
-                                        }
-                                        // 惯性带不走内容才算真的贴边，否则这次手势只是在平移
-                                        scope.launch {
-                                            if (stillPinned()) pagerState.springAnimateToPage(target)
-                                        }
-                                    }
+                                    if (turn != EdgePageTurn.None) turnPage(turn, stillPinned)
                                 }
                             } else {
                                 null
@@ -1363,6 +1342,50 @@ private fun ReaderToolbar(
 /** 纯函数算出的解码像素转成 Coil 的 Size；预取与展示共用这一处，内存缓存键才一致。 */
 private fun IntSize.toCoilSize(): Size = Size(width, height)
 
+/** pager 目标页夹取：越界目标一律落到端点页，空 pager 退化为 0。 */
+internal fun clampPagerTarget(target: Int, pageCount: Int): Int =
+    target.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+
+/**
+ * 边界空拖采集：telephoto 越过触摸阈值后会无条件消费全部位移，内容到边界之后也不放手，
+ * 父节点在 Main pass 只能看到「已消费」。这里在 Initial pass 抢读原始位移，
+ * 再用内容偏移判断内容是否还在跟随手势：内容停下后累计的位移才算边界空拖。
+ * 双页与单页两条缩放路径共用这一段，判定与复核时机不会各写一份而漂移。
+ */
+private suspend fun PointerInputScope.collectHorizontalEdgeDrag(
+    contentOffsetX: () -> Float,
+    onEdgeDrag: (dragX: Float, stillPinned: suspend () -> Boolean) -> Unit,
+) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val edgeTracker = EdgeDragTracker()
+            .apply { start(contentOffsetX()) }
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            // 多指是捏合缩放，不参与翻页判定
+            if (event.changes.size > 1) break
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            edgeTracker.onDrag(
+                deltaX = change.positionChange().x,
+                offsetX = contentOffsetX(),
+            )
+            if (!change.pressed) {
+                val pinnedDragX = edgeTracker.pinnedDragX()
+                if (pinnedDragX != 0f) {
+                    // 快甩时 telephoto 要等松手后才用惯性把内容带走，拖动期间内容几乎不动，
+                    // 会把整段位移误算成空拖：把复核推迟到惯性起步之后。
+                    val offsetAtRelease = contentOffsetX()
+                    onEdgeDrag(pinnedDragX) {
+                        kotlinx.coroutines.delay(EDGE_CONFIRM_DELAY_MS)
+                        kotlin.math.abs(contentOffsetX() - offsetAtRelease) < EDGE_CONFIRM_MOVE_PX
+                    }
+                }
+                break
+            }
+        }
+    }
+}
+
 /**
  * 双页阅读的一屏：两页共用一个缩放层，整屏同步缩放。
  *
@@ -1403,34 +1426,10 @@ private fun ReaderSpreadPage(
             modifier
                 .zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
                 .pointerInput(zoomableState) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val edgeTracker = EdgeDragTracker()
-                            .apply { start(zoomableState.contentTransformation.offset.x) }
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            // 多指是捏合缩放，不参与翻页判定
-                            if (event.changes.size > 1) break
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            edgeTracker.onDrag(
-                                deltaX = change.positionChange().x,
-                                offsetX = zoomableState.contentTransformation.offset.x,
-                            )
-                            if (!change.pressed) {
-                                val pinnedDragX = edgeTracker.pinnedDragX()
-                                if (pinnedDragX != 0f) {
-                                    val offsetAtRelease = zoomableState.contentTransformation.offset.x
-                                    edgeDrag.value?.invoke(pinnedDragX) {
-                                        kotlinx.coroutines.delay(EDGE_CONFIRM_DELAY_MS)
-                                        kotlin.math.abs(
-                                            zoomableState.contentTransformation.offset.x - offsetAtRelease,
-                                        ) < EDGE_CONFIRM_MOVE_PX
-                                    }
-                                }
-                                break
-                            }
-                        }
-                    }
+                    collectHorizontalEdgeDrag(
+                        contentOffsetX = { zoomableState.contentTransformation.offset.x },
+                        onEdgeDrag = { dragX, stillPinned -> edgeDrag.value?.invoke(dragX, stillPinned) },
+                    )
                 }
         } else {
             modifier.zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
@@ -1526,37 +1525,11 @@ private fun ReaderPage(
         Box(
             modifier = if (onHorizontalEdgeDrag != null) {
                 modifier.pointerInput(zoomableState) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val zoomable = zoomableState.zoomableState
-                        val edgeTracker = EdgeDragTracker()
-                            .apply { start(zoomable.contentTransformation.offset.x) }
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            // 多指是捏合缩放，不参与翻页判定
-                            if (event.changes.size > 1) break
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            edgeTracker.onDrag(
-                                deltaX = change.positionChange().x,
-                                offsetX = zoomable.contentTransformation.offset.x,
-                            )
-                            if (!change.pressed) {
-                                val pinnedDragX = edgeTracker.pinnedDragX()
-                                if (pinnedDragX != 0f) {
-                                    // 快甩时 telephoto 要等松手后才用惯性把内容带走，拖动期间内容
-                                    // 几乎不动，会把整段位移误算成空拖。这里把复核推迟到惯性起步之后。
-                                    val offsetAtRelease = zoomable.contentTransformation.offset.x
-                                    edgeDrag.value?.invoke(pinnedDragX) {
-                                        kotlinx.coroutines.delay(EDGE_CONFIRM_DELAY_MS)
-                                        kotlin.math.abs(
-                                            zoomable.contentTransformation.offset.x - offsetAtRelease,
-                                        ) < EDGE_CONFIRM_MOVE_PX
-                                    }
-                                }
-                                break
-                            }
-                        }
-                    }
+                    // 单页的缩放状态套了一层 rememberZoomableImageState，内容偏移在内层
+                    collectHorizontalEdgeDrag(
+                        contentOffsetX = { zoomableState.zoomableState.contentTransformation.offset.x },
+                        onEdgeDrag = { dragX, stillPinned -> edgeDrag.value?.invoke(dragX, stillPinned) },
+                    )
                 }
             } else {
                 modifier

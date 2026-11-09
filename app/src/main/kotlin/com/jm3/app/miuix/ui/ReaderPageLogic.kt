@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.ui.unit.IntSize
+import com.jm3.core.settings.ReaderImageQuality
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -20,13 +21,13 @@ import kotlin.math.sqrt
 internal const val DEFAULT_PAGE_ASPECT_RATIO = 3f / 4f
 
 /**
- * 单页解码的像素预算默认值：4.0 MP（标准质量档）。
+ * 单页解码的像素预算默认值：取标准质量档的预算（[ReaderImageQuality.STANDARD]），core 是唯一真源，4.0 MP。
  * 在 ARGB_8888 下约 16 MB，在 RGB_565 下约 8 MB。
  * 跟随真实比例后超长条幅的高度会失控（1080 宽、1:25 的条幅约 27000 px，原图直解要 116 MB），
  * 这里按面积等比收敛，宁可牺牲长条图的细节也不让单页位图突破预算。
  * 实际预算由设置里的质量档给出，预取与展示必须传同一档。
  */
-internal const val MAX_PAGE_DECODE_PIXELS = 4_000_000
+internal val MAX_PAGE_DECODE_PIXELS = ReaderImageQuality.STANDARD.maxDecodePixels
 
 /** 解码位图的单边上限：8192 已覆盖 4K 屏整页需求，再大在部分解码器与纹理上传上不安全。 */
 internal const val MAX_PAGE_DECODE_EDGE_PX = 8_192

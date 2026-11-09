@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import coil3.ComponentRegistry
 import coil3.ImageLoader
@@ -19,6 +20,7 @@ import com.jm3.app.miuix.failureCopy
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.PageNumbers
+import com.jm3.core.download.PhotoSource
 import com.jm3.core.model.PageImage
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
@@ -45,9 +47,11 @@ class ReaderFetcherFactory(
     private val store: DownloadStore?,
     /**
      * 在线取图也必须经 [AuthCall]：启动闸门与会话失效处置不能因为走图片通道就绕过去。
-     * 未接入的调用方暂传 null 保持旧行为，接入后网络失败与失效会与其它网关调用一致。
+     * 传取值函数而不是实例：共享 loader 只建一次，接线的会话通道要在取图那一刻再读，
+     * 因此详情页省略 [AuthCall]、或会话通道后接线，都不会触发 loader 重建。
+     * 未接入时取到 null，保持旧的直连行为。
      */
-    private val authCall: AuthCall? = null,
+    private val authCall: () -> AuthCall? = { null },
 ) : Fetcher.Factory<PageImage> {
     override fun create(data: PageImage, options: Options, imageLoader: ImageLoader): Fetcher = Fetcher {
         // 字节来源只有一处：磁盘缓存命中就直接复用，命中不到再取。
@@ -105,7 +109,7 @@ class ReaderFetcherFactory(
      * 结局翻译成异常交给 Coil，页内仍按图片加载失败处理并提供重试。
      */
     private suspend fun fetchRemote(data: PageImage): ByteArray {
-        val call = authCall ?: return withContext(Dispatchers.IO) { gateway.imageBytes(data) }
+        val call = authCall() ?: return withContext(Dispatchers.IO) { gateway.imageBytes(data) }
         return when (val outcome = call.call { gateway.imageBytes(data) }) {
             is SessionOutcome.Ok -> outcome.value
             SessionOutcome.Expired -> throw IOException(SessionOutcome.Expired.message)
@@ -124,17 +128,48 @@ private val sharedLoaderLock = Any()
 private var sharedLoader: ImageLoader? = null
 
 @Volatile
-private var sharedLoaderKey: Triple<Jm3Gateway, DownloadStore?, AuthCall?>? = null
+private var sharedLoaderKey: ReaderLoaderKey? = null
+
+/**
+ * 共享实例的判等键：只由网关与下载源决定。
+ *
+ * 会话通道（[AuthCall]）不参与判等：详情页调用入口没有接线，若它参与比较，
+ * 每次进出详情页都会因键不等而 shutdown 重建，阅读器磁盘缓存（reader_images）随之清空；
+ * 反向切回阅读器时 remember 键未变，却仍持有已被关掉的实例。
+ * 网关取 [PhotoSource]（[Jm3Gateway] 的超接口）：键只关心图片通道身份，测试也能用两方法的假实现穿透。
+ */
+internal data class ReaderLoaderKey(val gateway: PhotoSource, val store: DownloadStore?)
+
+internal fun readerLoaderKeyOf(gateway: PhotoSource, store: DownloadStore?): ReaderLoaderKey =
+    ReaderLoaderKey(gateway, store)
+
+/** 复用判定：键相同才复用；没有实例时必须重建。 */
+internal fun shouldReuseReaderLoader(held: ReaderLoaderKey?, next: ReaderLoaderKey): Boolean =
+    held != null && held == next
+
+/**
+ * 会话通道的运行期引用：共享 loader 只建一次，所以不能在构建时把 [AuthCall] 固定进取图工厂，
+ * 否则后接线的调用方永远读不到新值。
+ */
+internal class ReaderAuthChannel(private var authCall: AuthCall? = null) {
+    /** 只接受接线：省略参数的调用方传 null，不许清掉别处已经接好的会话闸门。 */
+    fun wire(authCall: AuthCall?) {
+        if (authCall != null) this.authCall = authCall
+    }
+
+    fun current(): AuthCall? = authCall
+}
+
+private val readerAuthChannel = ReaderAuthChannel()
 
 private fun acquireReaderImageLoader(
     gateway: Jm3Gateway,
     store: DownloadStore?,
-    authCall: AuthCall?,
     build: () -> ImageLoader,
 ): ImageLoader = synchronized(sharedLoaderLock) {
-    val key = Triple(gateway, store, authCall)
+    val key = readerLoaderKeyOf(gateway, store)
     val existing = sharedLoader
-    if (existing != null && sharedLoaderKey == key) {
+    if (existing != null && shouldReuseReaderLoader(sharedLoaderKey, key)) {
         existing
     } else {
         // 先摘引用再关旧实例：构建失败时不会留下指向已关闭实例的缓存
@@ -155,14 +190,16 @@ fun rememberReaderImageLoader(
     authCall: AuthCall? = null,
 ): ImageLoader {
     val context = LocalPlatformContext.current
-    // remember 保证 composition 内稳定返回同一实例；真正跨屏复用的是上面的进程级缓存
-    return remember(gateway, store, authCall) {
-        acquireReaderImageLoader(gateway, store, authCall) {
+    // 会话通道在落地后写入进程级引用：loader 只建一次，值变化不需要也不应该触发重建
+    SideEffect { readerAuthChannel.wire(authCall) }
+    // remember 只认网关与下载源：会话通道变化不再命中重建；跨屏复用的仍是上面的进程级缓存
+    return remember(gateway, store) {
+        acquireReaderImageLoader(gateway, store) {
             ImageLoader.Builder(context)
                 .components(
                     ComponentRegistry.Builder()
                         .add(ReaderKeyer())
-                        .add(ReaderFetcherFactory(gateway, store, authCall))
+                        .add(ReaderFetcherFactory(gateway, store) { readerAuthChannel.current() })
                         .build(),
                 )
                 // 阅读器的分块超采样（telephoto）只能从磁盘缓存快照构造分段位图，
