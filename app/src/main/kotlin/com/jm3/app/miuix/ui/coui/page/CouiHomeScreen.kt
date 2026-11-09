@@ -43,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -351,10 +353,11 @@ fun CouiHomeScreen(
         derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 100 }
     }
     val barClearance = LocalFloatingBarContentPadding.current
-    val topBarHeight = couiTopBarHeight()
-    val searchRowHeight = 56.dp
-    val sortRowHeight = if (searching) 48.dp else 0.dp
-    val contentTop = topBarHeight + searchRowHeight + sortRowHeight
+    val density = LocalDensity.current
+    // 覆盖层实测前先按设计高度估一帧，之后一律用实测值，避免字体放大时压住首项
+    val estimatedHeaderHeight = couiTopBarHeight() + 56.dp + if (searching) 48.dp else 0.dp
+    var measuredHeaderHeight by remember { mutableStateOf(0.dp) }
+    val contentTop = if (measuredHeaderHeight > 0.dp) measuredHeaderHeight else estimatedHeaderHeight
     val contentBottom = if (barClearance == 0.dp) 16.dp else barClearance + 8.dp
 
     fun openRandom() {
@@ -505,7 +508,12 @@ fun CouiHomeScreen(
             }
         }
 
-        Column(modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .onSizeChanged { measuredHeaderHeight = with(density) { it.height.toDp() } },
+        ) {
             CouiTopBar(
                 title = "JM3",
                 scrolled = scrolled,
