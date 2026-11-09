@@ -58,12 +58,9 @@ import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
-import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
@@ -161,10 +158,7 @@ fun HomeScreen(
     /** 搜索历史读写都在 IO 线程，写入后重新读取，UI 只拿最新快照。 */
     fun mutateHistory(block: suspend () -> Unit) {
         scope.launch {
-            withContext(Dispatchers.IO) { runCatchingSuspending { block() } }
-            searchHistory = withContext(Dispatchers.IO) {
-                runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(searchHistory)
-            }
+            searchHistory = mutateSearchHistory(deps.settings, { searchHistory }) { block() }
         }
     }
 
@@ -342,18 +336,14 @@ fun HomeScreen(
                     ?.take(SERIAL_CAROUSEL_LIMIT)
                     .orEmpty()
                 // 搜索历史是本地 DataStore，不走网关，因此不进 AuthCall，直接留在 IO 线程读。
-                val storedHistory = withContext(Dispatchers.IO) {
-                    runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(emptyList())
-                }
+                val storedHistory = readSearchHistory(deps.settings) { emptyList() }
                 rememberSide(tags = tags, updates = updates, picks = picks)
                 searchHistory = storedHistory
             }
         } else {
             scope.launch {
                 // 同上：本地历史读取与网关无关，仍在 IO 线程读取并保留取消传播。
-                searchHistory = withContext(Dispatchers.IO) {
-                    runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(searchHistory)
-                }
+                searchHistory = readSearchHistory(deps.settings) { searchHistory }
             }
         }
     }

@@ -36,7 +36,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.glass.IosLiquidGlassNavigationBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
@@ -47,7 +46,6 @@ import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.WideScreenNavigation
 import kotlin.math.roundToInt
 import com.jm3.core.download.activeDownloadCount
-import com.jm3.core.session.AccountManager
 import com.jm3.core.session.UnreadBadge
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Icon
@@ -84,8 +82,6 @@ private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
 @Composable
 fun MainScreen(
     deps: ScreenDeps,
-    account: AccountManager,
-    downloadManager: DownloadManager,
     unreadBadge: UnreadBadge,
     snackbarHostState: SnackbarHostState,
     onOpenAlbum: (String) -> Unit,
@@ -106,11 +102,11 @@ fun MainScreen(
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     // 启动即恢复下载队列（中断任务收敛为暂停态），底栏角标才能反映在途任务
-    LaunchedEffect(Unit) { downloadManager.ensureStarted() }
+    LaunchedEffect(Unit) { deps.downloadManager.ensureStarted() }
     // 下载队列进度在“我的”页可见，底栏用角标提示在途任务；在途判定只由 :core 的状态语义给出
-    val downloads by downloadManager.queue.updates.collectAsState()
+    val downloads by deps.downloadManager.queue.updates.collectAsState()
     val activeDownloads = downloads.activeDownloadCount()
-    val user by account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     val unread by unreadBadge.count.collectAsState()
     // 登录态变化后重算未读；登出时 refresh 内部会归零
     LaunchedEffect(user?.uid) { unreadBadge.refresh(user != null) }
@@ -256,9 +252,7 @@ fun MainScreen(
                                             )
                                             else -> MineScreen(
                                                 deps = deps,
-                                                account = account,
                                                 unreadBadge = unreadBadge,
-                                                downloadManager = downloadManager,
                                                 snackbarHostState = snackbarHostState,
                                                 onOpenLogin = onOpenLogin,
                                                 onOpenFavorites = onOpenFavorites,

@@ -29,12 +29,10 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.core.Jm3Log
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.runCatchingSuspending
-import com.jm3.core.session.AccountManager
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.UnreadBadge
 import kotlinx.coroutines.delay
@@ -61,9 +59,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun MineScreen(
     deps: ScreenDeps,
-    account: AccountManager,
     unreadBadge: UnreadBadge,
-    downloadManager: DownloadManager,
     snackbarHostState: SnackbarHostState,
     onOpenLogin: () -> Unit,
     onOpenFavorites: () -> Unit,
@@ -80,9 +76,9 @@ fun MineScreen(
     onOpenLibrary: () -> Unit,
 ) {
     val skin = LocalSkin.current
-    val user by account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     val unread by unreadBadge.count.collectAsState()
-    val downloads by downloadManager.queue.updates.collectAsState()
+    val downloads by deps.downloadManager.queue.updates.collectAsState()
     val activeDownloads = downloads.activeDownloadCount()
     val scope = rememberCoroutineScope()
 
@@ -435,7 +431,7 @@ fun MineScreen(
                 onPrimary = {
                     confirmLogout = false
                     scope.launch {
-                        account.logout()
+                        deps.account.logout()
                         snackbarHostState.showSnackbar("已退出登录")
                     }
                 },

@@ -32,7 +32,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.BrowseMode
 import com.jm3.app.miuix.ui.BrowseScreen
 import com.jm3.app.miuix.ui.GlassSnackbarHost
@@ -50,7 +49,6 @@ import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.core.download.activeDownloadCount
-import com.jm3.core.session.AccountManager
 import com.jm3.core.session.UnreadBadge
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.WideScreenNavigation
@@ -96,8 +94,6 @@ private fun couiTabIcon(tab: CouiMainTab): ImageVector = when (tab) {
 @Composable
 fun CouiMainScreen(
     deps: ScreenDeps,
-    account: AccountManager,
-    downloadManager: DownloadManager,
     unreadBadge: UnreadBadge,
     snackbarHostState: SnackbarHostState,
     onOpenAlbum: (String) -> Unit,
@@ -118,10 +114,10 @@ fun CouiMainScreen(
 ) {
     CouiTheme {
         var tab by rememberSaveable { mutableIntStateOf(0) }
-        LaunchedEffect(Unit) { downloadManager.ensureStarted() }
-        val downloads by downloadManager.queue.updates.collectAsState()
+        LaunchedEffect(Unit) { deps.downloadManager.ensureStarted() }
+        val downloads by deps.downloadManager.queue.updates.collectAsState()
         val activeDownloads = downloads.activeDownloadCount()
-        val user by account.user.collectAsState()
+        val user by deps.account.user.collectAsState()
         val unread by unreadBadge.count.collectAsState()
         LaunchedEffect(user?.uid) { unreadBadge.refresh(user != null) }
         val backdrop = rememberCouiBlurBackdrop()
@@ -207,9 +203,7 @@ fun CouiMainScreen(
                                             )
                                             else -> MineScreen(
                                                 deps = deps,
-                                                account = account,
                                                 unreadBadge = unreadBadge,
-                                                downloadManager = downloadManager,
                                                 snackbarHostState = snackbarHostState,
                                                 onOpenLogin = onOpenLogin,
                                                 onOpenFavorites = onOpenFavorites,

@@ -524,8 +524,6 @@ fun Jm3App() {
                             hyperOs = {
                                 MainScreen(
                                     deps = deps,
-                                    account = Jm3Graph.session.account,
-                                    downloadManager = Jm3Graph.downloads.manager,
                                     unreadBadge = Jm3Graph.session.unread,
                                     snackbarHostState = snackbarHostState,
                                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
@@ -548,8 +546,6 @@ fun Jm3App() {
                             colorOs = {
                                 CouiMainScreen(
                                     deps = deps,
-                                    account = Jm3Graph.session.account,
-                                    downloadManager = Jm3Graph.downloads.manager,
                                     unreadBadge = Jm3Graph.session.unread,
                                     snackbarHostState = snackbarHostState,
                                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },

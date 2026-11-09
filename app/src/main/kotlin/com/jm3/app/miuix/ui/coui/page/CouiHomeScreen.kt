@@ -77,7 +77,9 @@ import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.isShowingSearchResults
+import com.jm3.app.miuix.ui.mutateSearchHistory
 import com.jm3.app.miuix.ui.orDegrade
+import com.jm3.app.miuix.ui.readSearchHistory
 import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
@@ -85,12 +87,9 @@ import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
-import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -174,10 +173,7 @@ fun CouiHomeScreen(
 
     fun mutateHistory(block: suspend () -> Unit) {
         scope.launch {
-            withContext(Dispatchers.IO) { runCatchingSuspending { block() } }
-            searchHistory = withContext(Dispatchers.IO) {
-                runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(searchHistory)
-            }
+            searchHistory = mutateSearchHistory(deps.settings, { searchHistory }) { block() }
         }
     }
 
@@ -325,17 +321,13 @@ fun CouiHomeScreen(
                     ?.items
                     ?.take(SERIAL_CAROUSEL_LIMIT)
                     .orEmpty()
-                val storedHistory = withContext(Dispatchers.IO) {
-                    runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(emptyList())
-                }
+                val storedHistory = readSearchHistory(deps.settings) { emptyList() }
                 rememberSide(tags = tags, updates = updates, picks = picks)
                 searchHistory = storedHistory
             }
         } else {
             scope.launch {
-                searchHistory = withContext(Dispatchers.IO) {
-                    runCatchingSuspending { deps.settings.searchHistory() }.getOrDefault(searchHistory)
-                }
+                searchHistory = readSearchHistory(deps.settings) { searchHistory }
             }
         }
     }
