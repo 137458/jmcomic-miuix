@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
@@ -82,7 +81,6 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private fun ThemeMode.couiLabel(): String = when (this) {
     ThemeMode.SYSTEM -> "跟随系统"
@@ -339,10 +337,7 @@ fun CouiSettingsScreen(
                     ) {
                         BasicText(
                             text = "外观模式",
-                            style = CouiType.body.copy(
-                                color = colors.textPrimary,
-                                fontWeight = FontWeight.Medium,
-                            ),
+                            style = CouiType.bodyEmphasis.copy(color = colors.textPrimary),
                         )
                         BasicText(
                             text = when (themeMode) {
@@ -479,7 +474,7 @@ fun CouiSettingsScreen(
                     diagError?.let { message ->
                         BasicText(
                             text = "线路诊断失败：$message",
-                            style = CouiType.caption.copy(color = MiuixTheme.colorScheme.error),
+                            style = CouiType.caption.copy(color = colors.error),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 6.dp),
@@ -503,10 +498,7 @@ fun CouiSettingsScreen(
                     ) {
                         BasicText(
                             text = "自定义线路",
-                            style = CouiType.body.copy(
-                                color = colors.textPrimary,
-                                fontWeight = FontWeight.Medium,
-                            ),
+                            style = CouiType.bodyEmphasis.copy(color = colors.textPrimary),
                         )
                         BasicText(
                             text = "每行一个域名，留空恢复默认",
@@ -805,10 +797,7 @@ private fun CouiSettingsRow(
         Column(modifier = Modifier.weight(1f)) {
             BasicText(
                 text = title,
-                style = CouiType.body.copy(
-                    color = titleColor,
-                    fontWeight = FontWeight.Medium,
-                ),
+                style = CouiType.bodyEmphasis.copy(color = titleColor),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -852,10 +841,7 @@ private fun CouiSkinOption(
         Column(modifier = Modifier.weight(1f)) {
             BasicText(
                 text = skin.label,
-                style = CouiType.body.copy(
-                    color = if (selected) colors.accent else colors.textPrimary,
-                    fontWeight = FontWeight.Medium,
-                ),
+                style = CouiType.bodyEmphasis.copy(color = if (selected) colors.accent else colors.textPrimary),
             )
             BasicText(
                 text = skin.couiSummary(),

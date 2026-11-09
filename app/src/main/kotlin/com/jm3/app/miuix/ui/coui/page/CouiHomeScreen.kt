@@ -47,10 +47,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.ErrorScreen
@@ -718,18 +716,13 @@ private fun CouiCompactWorkCard(result: SearchResult, subtitle: String, onClick:
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
             BasicText(
                 text = result.title,
-                style = CouiType.body.copy(
-                    color = colors.textPrimary,
-                    fontSize = 13.sp,
-                    lineHeight = 17.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
+                style = CouiType.cardTitle.copy(color = colors.textPrimary),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             BasicText(
                 text = subtitle,
-                style = CouiType.caption.copy(color = colors.textSecondary, fontSize = 11.sp),
+                style = CouiType.captionMeta.copy(color = colors.textSecondary),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp),
@@ -768,10 +761,7 @@ private fun CouiResultRow(result: SearchResult, onClick: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 BasicText(
                     text = result.title,
-                    style = CouiType.body.copy(
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.Medium,
-                    ),
+                    style = CouiType.bodyEmphasis.copy(color = colors.textPrimary),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -785,7 +775,7 @@ private fun CouiResultRow(result: SearchResult, onClick: () -> Unit) {
                 if (result.tags.isNotEmpty()) {
                     BasicText(
                         text = result.tags.take(3).joinToString(" · "),
-                        style = CouiType.caption.copy(color = colors.textTertiary, fontSize = 11.sp),
+                        style = CouiType.captionMeta.copy(color = colors.textTertiary),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp),
@@ -863,7 +853,7 @@ private fun CouiFab(
 private fun CouiSyntaxRow(title: String, summary: String) {
     val colors = LocalCouiColors.current
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        BasicText(text = title, style = CouiType.body.copy(color = colors.textPrimary, fontWeight = FontWeight.Medium))
+        BasicText(text = title, style = CouiType.bodyEmphasis.copy(color = colors.textPrimary))
         BasicText(
             text = summary,
             style = CouiType.caption.copy(color = colors.textSecondary),

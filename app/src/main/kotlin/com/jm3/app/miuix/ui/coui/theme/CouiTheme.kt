@@ -41,6 +41,7 @@ data class CouiColors(
     val textPrimary: Color,
     val textSecondary: Color,
     val textTertiary: Color,
+    val error: Color,
     val accent: Color,
     val accentContainer: Color,
     val onAccent: Color,
@@ -71,6 +72,7 @@ internal fun couiColorsOf(skinColors: Colors, isDark: Boolean): CouiColors = Cou
     textPrimary = skinColors.onSurface,
     textSecondary = skinColors.onBackgroundVariant,
     textTertiary = skinColors.onSurfaceVariantActions,
+    error = skinColors.error,
     accent = skinColors.primary,
     accentContainer = skinColors.tertiaryContainer,
     onAccent = skinColors.onPrimary,
@@ -126,6 +128,15 @@ object CouiType {
         fontWeight = FontWeight.Medium,
     )
     val number = body.copy(fontFeatureSettings = "tnum")
+
+    /** 卡内标题：列表卡固定 13/17 中粗，页面不再写字面量。 */
+    val cardTitle = body.copy(fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium)
+
+    /** 强调正文：字阶不变，只加粗一档。 */
+    val bodyEmphasis = body.copy(fontWeight = FontWeight.Medium)
+
+    /** 细则：卡内副标题、标签这类 11sp 小字。 */
+    val captionMeta = caption.copy(fontSize = 11.sp)
 }
 
 /**

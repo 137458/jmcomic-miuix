@@ -48,6 +48,7 @@ class CouiThemeTest {
         assertEquals(skin.lightColors.tertiaryContainer, light.accentContainer)
         assertEquals(skin.lightColors.onSurface, light.textPrimary)
         assertEquals(skin.lightColors.dividerLine, light.divider)
+        assertEquals(skin.lightColors.error, light.error)
         assertFalse(light.isDark)
 
         val dark = couiColorsOf(skin.darkColors, isDark = true)
