@@ -63,6 +63,7 @@ import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.resolvePaginationSelection
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.reader.ReaderSpreadPolicy
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
@@ -271,17 +272,27 @@ fun CouiSettingsScreen(
             if (applying.value) return
             applying.value = true
             scope.launch {
-                // 写入即归一（去协议头/路径/空白项并去重），读回的就是真正生效的线路表。
-                deps.settings.setApiDomains(domainsInput.value.split("\n"))
-                val applied = deps.settings.apiDomains()
-                deps.applyDomains(applied)
-                activeDomains.value = applied.joinToString("、")
+                // 写入即归一（去协议头/路径/空白项并去重），读回的就是真正生效的线路表；
+                // 失败也必须解锁按钮，否则本页会永久停在「应用中…」。
+                val result = runCatchingSuspending {
+                    deps.settings.setApiDomains(domainsInput.value.split("\n"))
+                    val applied = deps.settings.apiDomains()
+                    deps.applyDomains(applied)
+                    applied
+                }
                 applying.value = false
-                // 网关已重建，诊断数据属于旧实例，重新读取。
-                loadDomainsDiagnostics()
-                snackbarHostState.showSnackbar(
-                    if (applied.isEmpty()) "已恢复默认线路" else "已应用 ${applied.size} 个线路域名",
-                )
+                result.onSuccess { applied ->
+                    activeDomains.value = applied.joinToString("、")
+                    // 归一后的结果回填输入框，让用户看到真正生效的线路，而不是带协议头的原文。
+                    domainsInput.value = applied.joinToString("\n")
+                    // 网关已重建，诊断数据属于旧实例，重新读取。
+                    loadDomainsDiagnostics()
+                    snackbarHostState.showSnackbar(
+                        if (applied.isEmpty()) "已恢复默认线路" else "已应用 ${applied.size} 个线路域名",
+                    )
+                }.onFailure { error ->
+                    snackbarHostState.showSnackbar("线路应用失败：${error.message ?: "未知错误"}")
+                }
             }
         }
 
