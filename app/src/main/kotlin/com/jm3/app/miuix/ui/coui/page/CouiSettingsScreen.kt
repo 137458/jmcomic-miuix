@@ -172,6 +172,8 @@ fun CouiSettingsScreen(
         // 版本号连点进入隐藏诊断
         var diagnostics by remember { mutableStateOf(false) }
         var versionTapCount by remember { mutableIntStateOf(0) }
+        // 诊断读取的代号：进页、探活、应用线路都会触发，只让最后一次写的旧结果落不到界面
+        var diagnosticsRequest by remember { mutableIntStateOf(0) }
 
         val versionName = remember {
             @Suppress("DEPRECATION")
@@ -228,6 +230,7 @@ fun CouiSettingsScreen(
 
         /** 读一次线路诊断；调用方在协程内等到读完，避免旧数据先回到界面。 */
         suspend fun loadDomainsDiagnostics() {
+            val request = ++diagnosticsRequest
             diagError = null
             // 两个网关查询合成一次结局：等待会话恢复、切 IO、判失效都在 AuthCall 内完成。
             val result = authCall.call {
@@ -236,6 +239,8 @@ fun CouiSettingsScreen(
                         .sortedBy { it.value }
                         .map { it.key to it.value }
             }
+            // 探活与应用线路都可能并发触发读取，只有后发起的那次代表最新线路表
+            if (request != diagnosticsRequest) return
             when (result) {
                 is SessionOutcome.Ok -> {
                     usedDomain = result.value.first
