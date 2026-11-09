@@ -4,8 +4,6 @@ package com.jm3.app.miuix.ui.coui.page
 
 import android.os.Build
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +48,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiSurfaceBackground
 import com.jm3.app.miuix.ui.coui.component.CouiTextButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
+import com.jm3.app.miuix.ui.coui.component.couiClickable
 import com.jm3.app.miuix.ui.coui.component.couiTopBarHeight
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBlurBackdrop
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -786,7 +785,7 @@ private fun CouiSettingsRow(
             .fillMaxWidth()
             .then(
                 if (onClick != null && enabled) {
-                    Modifier.couiRowClickable(onClick)
+                    Modifier.couiClickable(onClick)
                 } else {
                     Modifier
                 },
@@ -834,7 +833,7 @@ private fun CouiSkinOption(
             .padding(vertical = 2.dp)
             .squircleClip(LocalCouiShapes.current.control)
             .background(if (selected) colors.accentContainer else Color.Transparent)
-            .couiRowClickable(onClick)
+            .couiClickable(onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -876,11 +875,4 @@ private fun CouiDiagnosticRow(label: String, value: String) {
     }
 }
 
-/** 行级点击：不画涟漪，只保留最小触摸目标。 */
-@Composable
-private fun Modifier.couiRowClickable(onClick: () -> Unit): Modifier =
-    this.clickable(
-        interactionSource = remember { MutableInteractionSource() },
-        indication = null,
-        onClick = onClick,
-    )
+

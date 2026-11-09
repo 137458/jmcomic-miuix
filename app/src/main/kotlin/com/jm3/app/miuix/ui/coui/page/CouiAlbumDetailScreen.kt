@@ -9,7 +9,6 @@ import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,6 +89,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiSurfaceBackground
 import com.jm3.app.miuix.ui.coui.component.CouiTextButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
+import com.jm3.app.miuix.ui.coui.component.couiClickable
 import com.jm3.app.miuix.ui.coui.component.couiTopBarHeight
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBlurBackdrop
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -738,7 +738,7 @@ private fun CouiDetailHeader(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(colors.accentContainer)
-                            .couiRowClickable { onOpenSearch(validAuthors.first(), SearchScope.AUTHOR) }
+                            .couiClickable(ensureMinTouchTarget = false, onClick = { onOpenSearch(validAuthors.first(), SearchScope.AUTHOR) })
                             .padding(horizontal = 8.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -940,7 +940,7 @@ private fun CouiInfoRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.couiRowClickable(onClick) else Modifier)
+            .then(if (onClick != null) Modifier.couiClickable(onClick) else Modifier)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -990,7 +990,7 @@ private fun CouiChapterGroupCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .couiRowClickable(onToggle)
+                    .couiClickable(onToggle)
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1055,7 +1055,7 @@ private fun CouiChapterRow(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .couiRowClickable(onRead)
+                    .couiClickable(onRead)
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1154,7 +1154,7 @@ private fun CouiPreviewRow(
                     .size(width = 104.dp, height = 140.dp)
                     .squircleClip(LocalCouiShapes.current.control)
                     .background(colors.accentContainer)
-                    .couiRowClickable { onOpenPage(page.index + 1) },
+                    .couiClickable(ensureMinTouchTarget = false, onClick = { onOpenPage(page.index + 1) }),
             )
         }
     }
@@ -1180,7 +1180,7 @@ private fun CouiCommentComposer(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .couiRowClickable(onLogin)
+                    .couiClickable(onLogin)
                     .padding(vertical = 6.dp),
             ) {
                 BasicText(
@@ -1485,7 +1485,7 @@ private fun CouiSheetRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .couiRowClickable(onClick)
+            .couiClickable(onClick)
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1576,13 +1576,4 @@ private fun CouiNoticeCard(
     }
 }
 
-/** 行级点击：不画涟漪，只保留最小触摸目标；圆角取皮肤控件曲率。 */
-@Composable
-private fun Modifier.couiRowClickable(onClick: () -> Unit): Modifier =
-    this
-        .squircleClip(LocalCouiShapes.current.control)
-        .clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClick,
-        )
+

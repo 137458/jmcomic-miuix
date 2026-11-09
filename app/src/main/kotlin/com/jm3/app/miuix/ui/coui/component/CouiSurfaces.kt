@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -80,6 +81,24 @@ private fun Modifier.couiPressOverlay(interaction: MutableInteractionSource): Mo
             )
         }
     }
+}
+
+/**
+ * 行级点击：补到 48dp 最小触摸目标，按压用 6% 覆盖层反馈，不画涟漪。
+ *
+ * 行是整宽文本行，按下不做缩放，避免文字随整行一起缩窄。
+ */
+@Composable
+fun Modifier.couiClickable(onClick: () -> Unit, ensureMinTouchTarget: Boolean = true): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val base = if (ensureMinTouchTarget) defaultMinSize(minHeight = 48.dp) else this
+    return base
+        .couiPressOverlay(interaction)
+        .clickable(
+            interactionSource = interaction,
+            indication = null,
+            onClick = onClick,
+        )
 }
 
 /**
