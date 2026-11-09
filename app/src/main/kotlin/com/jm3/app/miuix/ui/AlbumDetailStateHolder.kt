@@ -100,7 +100,8 @@ internal class AlbumDetailStateHolder(
         )
         when (outcome) {
             is SessionOutcome.Ok -> _uiState.update { current ->
-                val detail = outcome.value
+                // 接口目录顺序不保证按排序号，先归一，分组、首章与下载都按它走
+                val detail = outcome.value.copy(chapters = outcome.value.chapters.sortedBy { it.sortOrder })
                 // 组身份随章节走：刷新后仍存在的组保持展开，全都不存在时回落到首组
                 val groups = ChapterGroups.of(detail.chapters, Chapter::id)
                 val knownIds = groups.mapTo(HashSet()) { it.id }

@@ -343,7 +343,7 @@ private fun CouiThemeBody(
     val loadedDetail = (uiState.albumState as? AlbumUiState.Loaded)?.detail
     // 详情页预览：登录且详情就绪后取首章前几页；未登录、无章节、请求失败一律隐藏整块
     var previewPages by remember(albumId) { mutableStateOf<List<PageImage>>(emptyList()) }
-    val firstChapterId = loadedDetail?.chapters?.sortedBy { it.sortOrder }?.firstOrNull()?.id
+    val firstChapterId = loadedDetail?.chapters?.firstOrNull()?.id
     LaunchedEffect(albumId, user?.uid, firstChapterId) {
         previewPages = emptyList()
         if (user == null || firstChapterId == null) return@LaunchedEffect

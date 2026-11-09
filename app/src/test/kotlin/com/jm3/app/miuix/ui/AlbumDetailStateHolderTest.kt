@@ -91,6 +91,38 @@ class AlbumDetailStateHolderTest {
     )
 
     @Test
+    fun 章节按排序号进状态() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val shuffled = sampleAlbum().copy(
+            chapters = listOf(
+                Chapter(id = "p3", title = "第 3 话", sortOrder = 3),
+                Chapter(id = "p1", title = "第 1 话", sortOrder = 1),
+                Chapter(id = "p2", title = "第 2 话", sortOrder = 2),
+            ),
+        )
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = fakeGateway(onAlbum = { shuffled }),
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = {},
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
+        )
+
+        holder.loadDetail()
+        advanceUntilIdle()
+
+        val loaded = holder.uiState.value.albumState as AlbumUiState.Loaded
+        assertEquals(listOf("p1", "p2", "p3"), loaded.detail.chapters.map { it.id })
+        // 展开组按排序后的目录切分，首组身份是真正首章
+        assertEquals(setOf("p1"), holder.uiState.value.expandedGroups)
+
+        testScope.cancel()
+    }
+
+    @Test
     fun 初始加载成功更新相册详情与章节展开组() = runTest {
         val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val messages = mutableListOf<String>()
