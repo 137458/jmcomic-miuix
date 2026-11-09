@@ -40,7 +40,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
-import com.jm3.app.miuix.ui.coui.theme.CouiShapes
+import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import com.jm3.app.miuix.ui.coui.theme.CouiType
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
 import top.yukonga.miuix.kmp.squircle.squircleClip
@@ -83,7 +83,7 @@ private fun Modifier.couiPressOverlay(interaction: MutableInteractionSource): Mo
 }
 
 /**
- * COUI 主卡片：20dp 连续曲率、浅色双层投影、深色 1dp 描边。
+ * COUI 主卡片：皮肤卡片曲率的连续曲率、浅色双层投影、深色 1dp 描边。
  *
  * 不投影时仍靠描边与底色差保持层次，这是验收口径“无投影仍有层次”的落点。
  */
@@ -95,7 +95,8 @@ fun CouiCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = LocalCouiColors.current
-    val shape = RoundedCornerShape(CouiShapes.cardRadius)
+    val shapes = LocalCouiShapes.current
+    val shape = RoundedCornerShape(shapes.card)
     val interaction = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
@@ -107,7 +108,7 @@ fun CouiCard(
                 ambientColor = Color.Black.copy(alpha = 0.10f),
                 spotColor = Color.Black.copy(alpha = 0.12f),
             ))
-            .squircleClip(CouiShapes.cardRadius)
+            .squircleClip(shapes.card)
             .background(colors.card)
             .then(if (colors.isDark) Modifier.border(1.dp, colors.cardBorder, shape) else Modifier)
             .then(if (onClick != null) Modifier.clickable(
@@ -121,7 +122,7 @@ fun CouiCard(
     )
 }
 
-/** COUI 嵌套卡片：16dp 曲率 + 1dp 边框，用于主卡片里的分组行。 */
+/** COUI 嵌套卡片：皮肤控件曲率 + 1dp 边框，用于主卡片里的分组行。 */
 @Composable
 fun CouiNestedCard(
     modifier: Modifier = Modifier,
@@ -129,10 +130,11 @@ fun CouiNestedCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = LocalCouiColors.current
-    val shape = RoundedCornerShape(CouiShapes.nestedCardRadius)
+    val shapes = LocalCouiShapes.current
+    val shape = RoundedCornerShape(shapes.nested)
     Column(
         modifier = modifier
-            .squircleClip(CouiShapes.nestedCardRadius)
+            .squircleClip(shapes.nested)
             .background(colors.nestedCard)
             .border(1.dp, colors.cardBorder, shape)
             .padding(contentPadding),
@@ -170,7 +172,8 @@ fun CouiDialogOverlay(
     val colors = LocalCouiColors.current
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) { progress.animateTo(1f, CouiMotion.DialogSpring) }
-    val shape = RoundedCornerShape(CouiShapes.dialogRadius)
+    val dialogRadius = LocalCouiShapes.current.dialog
+    val shape = RoundedCornerShape(dialogRadius)
     val consumeInteraction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
@@ -200,7 +203,7 @@ fun CouiDialogOverlay(
                     ambientColor = Color.Black.copy(alpha = 0.12f),
                     spotColor = Color.Black.copy(alpha = 0.14f),
                 )
-                .squircleClip(CouiShapes.dialogRadius)
+                .squircleClip(dialogRadius)
                 .background(colors.card)
                 .clickable(
                     interactionSource = consumeInteraction,
@@ -213,7 +216,7 @@ fun CouiDialogOverlay(
     }
 }
 
-/** COUI 主按钮：44dp 高、12dp 曲率、绿色填充；绿色只用于这一个明确动作。 */
+/** COUI 主按钮：44dp 高、皮肤控件曲率、绿色填充；绿色只用于这一个明确动作。 */
 @Composable
 fun CouiButton(
     text: String,
@@ -221,11 +224,10 @@ fun CouiButton(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalCouiColors.current
-    val shape = RoundedCornerShape(CouiShapes.controlRadius)
     Box(
         modifier = modifier
             .height(44.dp)
-            .clip(shape)
+            .squircleClip(LocalCouiShapes.current.control)
             .background(colors.accent)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -251,7 +253,7 @@ fun CouiTextButton(
         text = text,
         style = CouiType.button.copy(color = colors.accent),
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .squircleClip(LocalCouiShapes.current.control)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -270,7 +272,7 @@ fun CouiChip(
     selected: Boolean = false,
 ) {
     val colors = LocalCouiColors.current
-    val shape = RoundedCornerShape(CouiShapes.pillRadius)
+    val shape = RoundedCornerShape(LocalCouiShapes.current.pill)
     BasicText(
         text = text,
         style = CouiType.caption.copy(color = if (selected) colors.accent else colors.textSecondary),
@@ -287,7 +289,7 @@ fun CouiChip(
     )
 }
 
-/** COUI 底部面板：顶部 28dp 圆角 + 32×4 拖拽条，300ms 级弹簧入场。 */
+/** COUI 底部面板：顶部取皮肤面板曲率 + 32×4 拖拽条，300ms 级弹簧入场。 */
 @Composable
 fun CouiBottomSheet(
     visible: Boolean,
@@ -297,6 +299,7 @@ fun CouiBottomSheet(
     if (!visible) return
     BackHandler(onBack = onDismiss)
     val colors = LocalCouiColors.current
+    val sheetShape = LocalCouiShapes.current.sheet
     val progress = remember { Animatable(0f) }
     var sheetHeight by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { progress.animateTo(1f, CouiMotion.SheetSpring) }
@@ -319,7 +322,7 @@ fun CouiBottomSheet(
                 .graphicsLayer {
                     translationY = (1f - progress.value) * sheetHeight
                 }
-                .clip(RoundedCornerShape(topStart = CouiShapes.sheetRadius, topEnd = CouiShapes.sheetRadius))
+                .clip(RoundedCornerShape(topStart = sheetShape, topEnd = sheetShape))
                 .background(colors.card)
                 .clickable(
                     interactionSource = consumeInteraction,

@@ -5,6 +5,7 @@ import com.jm3.core.settings.UiSkin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertSame
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import top.yukonga.miuix.kmp.theme.lightColorScheme
@@ -46,7 +47,7 @@ class SkinTokensTest {
 
     @Test
     fun `同一档位重复取值返回同一实例`() {
-        assertEquals(skinTokensFor(UiSkin.HYPEROS), skinTokensFor(UiSkin.HYPEROS))
-        assertEquals(skinTokensFor(UiSkin.COLOROS), skinTokensFor(UiSkin.COLOROS))
+        assertSame(skinTokensFor(UiSkin.HYPEROS), skinTokensFor(UiSkin.HYPEROS))
+        assertSame(skinTokensFor(UiSkin.COLOROS), skinTokensFor(UiSkin.COLOROS))
     }
 }

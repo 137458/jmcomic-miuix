@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -59,7 +60,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
-import com.jm3.app.miuix.ui.coui.theme.CouiShapes
+import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import com.jm3.app.miuix.ui.coui.theme.CouiType
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
 import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
@@ -67,6 +68,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
+import top.yukonga.miuix.kmp.squircle.squircleClip
 
 /**
  * COUI 顶栏：56dp 内容区 + 状态栏 inset。
@@ -151,10 +153,14 @@ data class CouiNavItem(val label: String, val icon: ImageVector)
 
 data class CouiBadge(val count: Int? = null, val dot: Boolean = false)
 
+/** 悬浮底栏大屏封顶宽度；与 HyperOS 侧液态玻璃底栏保持同一档。 */
+private val CouiFloatingBarMaxWidth = 540.dp
+
 /**
  * COUI 底栏：几何尺寸与形态完全取自 [LocalGlassBottomBarTokens]。
  *
- * 悬浮档是 20dp 圆角胶囊 + 横向 24dp 边距 + 轻投影；贴底档横向撑满、顶部 1dp 8% 分隔线、无投影。
+ * 悬浮档按内容宽度收口（大屏封顶 540dp 居中）+ 皮肤卡片曲率 + 横向边距 + 轻投影；
+ * 贴底档横向撑满、顶部 1dp 8% 分隔线、无投影。
  * 两种形态都不做折射与边缘白高光——这是与 HyperOS 液态玻璃的核心差异。
  * 高度、图标与字号随「普通/偏大」档变化，不再写死 56dp。
  */
@@ -177,8 +183,9 @@ fun CouiBottomBar(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(horizontal = tokens.horizontalMargin, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            val shape = RoundedCornerShape(CouiShapes.cardRadius)
+            val shape = RoundedCornerShape(LocalCouiShapes.current.card)
             val backgroundModifier = if (backdrop != null) {
                 Modifier.drawBackdrop(
                     backdrop = backdrop,
@@ -191,7 +198,9 @@ fun CouiBottomBar(
             }
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    // 悬浮档按内容收口：weight 均分的页签在最小固有宽度下等分，大屏封顶后居中
+                    .widthIn(max = CouiFloatingBarMaxWidth)
+                    .width(IntrinsicSize.Min)
                     .height(tokens.height)
                     .shadow(
                         elevation = 8.dp,
@@ -315,7 +324,7 @@ private fun Modifier.squirclePill(alpha: Float): Modifier {
     val colors = LocalCouiColors.current
     return this
         .graphicsLayer { this.alpha = alpha }
-        .clip(RoundedCornerShape(CouiShapes.pillRadius))
+        .squircleClip(LocalCouiShapes.current.pill)
         .background(colors.accent.copy(alpha = 0.10f))
 }
 
@@ -346,7 +355,7 @@ private fun BadgeMark(badge: CouiBadge?, modifier: Modifier = Modifier) {
 }
 
 /**
- * COUI 搜索框：40dp 高、20dp 圆角、白 92% + 16dp 模糊、1dp 描边、聚焦 2dp 绿 40%。
+ * COUI 搜索框：40dp 高、皮肤卡片曲率、92% 表面色 + 16dp 模糊、1dp 描边、聚焦 2dp 绿 40%。
  * 只有一层模糊，内部不再叠任何玻璃层。
  */
 @Composable
@@ -361,7 +370,8 @@ fun CouiSearchField(
 ) {
     val colors = LocalCouiColors.current
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(CouiShapes.searchRadius)
+    val searchRadius = LocalCouiShapes.current.search
+    val shape = RoundedCornerShape(searchRadius)
     val fillColor = colors.searchField.copy(alpha = 0.92f)
     val backgroundModifier = if (backdrop != null) {
         Modifier.drawBackdrop(
@@ -377,7 +387,7 @@ fun CouiSearchField(
         modifier = modifier
             .fillMaxWidth()
             .height(40.dp)
-            .squircleClipSearch()
+            .squircleClip(searchRadius)
             .then(backgroundModifier)
             .border(
                 width = if (focused) 2.dp else 1.dp,
@@ -424,17 +434,16 @@ fun CouiSearchField(
                 style = CouiType.body.copy(color = colors.textSecondary, fontSize = 18.sp),
                 modifier = Modifier
                     .clip(CircleShape)
-                    .clickable { onValueChange("") }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onValueChange("") },
+                    )
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
     }
 }
-
-/** 搜索框用 20dp 连续曲率裁切；与 squircle 卡片同一套圆角语言。 */
-@Composable
-private fun Modifier.squircleClipSearch(): Modifier =
-    this.clip(RoundedCornerShape(CouiShapes.searchRadius))
 
 /**
  * COUI 分段控件：主题模式与搜索排序共用。
@@ -448,10 +457,11 @@ fun CouiSegmented(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalCouiColors.current
+    val shapes = LocalCouiShapes.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(CouiShapes.controlRadius))
+            .squircleClip(shapes.control)
             .background(colors.accentContainer.copy(alpha = if (colors.isDark) 1f else 0.7f))
             .padding(4.dp),
     ) {
@@ -465,7 +475,7 @@ fun CouiSegmented(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
+                    .squircleClip(shapes.control)
                     .background(background)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },

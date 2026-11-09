@@ -72,6 +72,8 @@ import com.jm3.app.miuix.ui.AlbumUiState
 import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.CommentsUiState
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.LoadMoreFooter
+import com.jm3.app.miuix.ui.LoadingScreen
 import com.jm3.app.miuix.ui.LocalAlbumDetailRootCoordinates
 import com.jm3.app.miuix.ui.LocalAlbumHeroHost
 import com.jm3.app.miuix.ui.LocalWideLayout
@@ -90,10 +92,10 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
 import com.jm3.app.miuix.ui.coui.component.couiTopBarHeight
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBlurBackdrop
-import com.jm3.app.miuix.ui.coui.theme.CouiShapes
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.coui.theme.CouiType
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
+import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberReaderImageLoader
 import com.jm3.core.AlbumPreviewPlan
@@ -119,7 +121,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -504,7 +505,7 @@ private fun CouiThemeBody(
         }
         when (val cs = uiState.commentsState) {
             is CommentsUiState.Loading -> item(key = "comments-loading") {
-                CouiLoadingRow()
+                LoadingScreen(modifier = Modifier.padding(vertical = 40.dp))
             }
 
             is CommentsUiState.Failed -> item(key = "comments-failed") {
@@ -578,7 +579,7 @@ private fun CouiThemeBody(
 
                         when (val s = uiState.albumState) {
                             is AlbumUiState.Loading -> item(key = "detail-loading") {
-                                CouiLoadingRow()
+                                LoadingScreen(modifier = Modifier.padding(vertical = 40.dp))
                             }
 
                             is AlbumUiState.Failed -> item(key = "detail-failed") {
@@ -697,13 +698,14 @@ private fun CouiDetailHeader(
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             if (!coverUrl.isNullOrBlank()) {
-                // 头图是「列表卡片 → 详情页」形变飞行的落点：两端圆角取同一档 COUI 卡片曲率
+                // 头图是「列表卡片 → 详情页」形变飞行的落点：两端圆角取同一档皮肤嵌套卡片曲率
+                val heroRadius = LocalCouiShapes.current.nested
                 Box(
                     modifier = Modifier
                         .size(width = 108.dp, height = 144.dp)
-                        .squircleClip(CouiShapes.nestedCardRadius)
+                        .squircleClip(heroRadius)
                         .background(colors.accentContainer)
-                        .albumHeroHeader(albumId, coverUrl, CouiShapes.nestedCardRadius.value),
+                        .albumHeroHeader(albumId, coverUrl, heroRadius.value),
                 ) {
                     AlbumCoverImage(
                         url = coverUrl,
@@ -1150,7 +1152,7 @@ private fun CouiPreviewRow(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(width = 104.dp, height = 140.dp)
-                    .clip(RoundedCornerShape(CouiShapes.controlRadius))
+                    .squircleClip(LocalCouiShapes.current.control)
                     .background(colors.accentContainer)
                     .couiRowClickable { onOpenPage(page.index + 1) },
             )
@@ -1243,7 +1245,7 @@ private fun CouiCommentsCard(
             CouiCommentRow(item = comment, onReply = onReply)
         }
         if (feed.items.isNotEmpty()) {
-            CouiCommentsFooter(
+            LoadMoreFooter(
                 feed = feed,
                 onLoadMore = onLoadMore,
                 modifier = Modifier.padding(top = 8.dp),
@@ -1397,27 +1399,6 @@ private fun CouiCommentBody(item: CommentItem) {
     }
 }
 
-@Composable
-private fun CouiCommentsFooter(
-    feed: PagedFeed<CommentItem>,
-    onLoadMore: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = LocalCouiColors.current
-    Box(modifier = modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-        when {
-            feed.loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-            feed.loadMoreFailed -> CouiTextButton(text = "加载失败，点击重试", onClick = onLoadMore)
-            !feed.hasMore -> BasicText(
-                text = "没有更多了",
-                style = CouiType.caption.copy(color = colors.textSecondary),
-            )
-
-            else -> CouiTextButton(text = "加载更多", onClick = onLoadMore)
-        }
-    }
-}
-
 /** 收藏夹选择面板：未收藏=加入，已收藏=移动，底部提供取消收藏。 */
 @Composable
 private fun CouiFolderSheet(
@@ -1531,7 +1512,7 @@ private fun CouiSheetRow(
     }
 }
 
-/** COUI 输入容器：12dp 曲率描边底，内部 BasicTextField 至少两行高。 */
+/** COUI 输入容器：皮肤控件曲率描边底，内部 BasicTextField 至少两行高。 */
 @Composable
 private fun CouiTextField(
     value: String,
@@ -1540,11 +1521,12 @@ private fun CouiTextField(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalCouiColors.current
-    val shape = RoundedCornerShape(CouiShapes.controlRadius)
+    val control = LocalCouiShapes.current.control
+    val shape = RoundedCornerShape(control)
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
+            .squircleClip(control)
             .background(colors.searchField)
             .border(1.dp, colors.searchBorder, shape)
             .padding(12.dp),
@@ -1564,18 +1546,6 @@ private fun CouiTextField(
             textStyle = CouiType.body.copy(color = colors.textPrimary),
             cursorBrush = SolidColor(colors.accent),
         )
-    }
-}
-
-@Composable
-private fun CouiLoadingRow() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 40.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
     }
 }
 
@@ -1606,11 +1576,11 @@ private fun CouiNoticeCard(
     }
 }
 
-/** 行级点击：不画涟漪，只保留最小触摸目标。 */
+/** 行级点击：不画涟漪，只保留最小触摸目标；圆角取皮肤控件曲率。 */
 @Composable
 private fun Modifier.couiRowClickable(onClick: () -> Unit): Modifier =
     this
-        .clip(RoundedCornerShape(CouiShapes.controlRadius))
+        .squircleClip(LocalCouiShapes.current.control)
         .clickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,

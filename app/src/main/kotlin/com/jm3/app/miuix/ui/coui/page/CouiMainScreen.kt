@@ -49,10 +49,8 @@ import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.session.AccountManager
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.UnreadBadge
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.WideScreenNavigation
@@ -98,11 +96,9 @@ private fun couiTabIcon(tab: CouiMainTab): ImageVector = when (tab) {
 @Composable
 fun CouiMainScreen(
     deps: ScreenDeps,
-    gateway: Jm3Gateway,
     account: AccountManager,
     downloadManager: DownloadManager,
     unreadBadge: UnreadBadge,
-    authCall: AuthCall,
     snackbarHostState: SnackbarHostState,
     onOpenAlbum: (String) -> Unit,
     onOpenLogin: () -> Unit,
@@ -195,8 +191,6 @@ fun CouiMainScreen(
                                         when (currentTab) {
                                             0 -> CouiHomeScreen(
                                                 deps = deps,
-                                                gateway = gateway,
-                                                authCall = authCall,
                                                 backdrop = backdrop,
                                                 onOpenAlbum = onOpenAlbum,
                                                 onOpenWeek = onOpenWeek,
@@ -204,21 +198,16 @@ fun CouiMainScreen(
                                             1 -> BrowseScreen(
                                                 deps = deps,
                                                 mode = BrowseMode.CATEGORY,
-                                                gateway = gateway,
-                                                authCall = authCall,
                                                 onOpenAlbum = onOpenAlbum,
                                             )
                                             2 -> BrowseScreen(
                                                 deps = deps,
                                                 mode = BrowseMode.RANK,
-                                                gateway = gateway,
-                                                authCall = authCall,
                                                 onOpenAlbum = onOpenAlbum,
                                             )
                                             else -> MineScreen(
                                                 deps = deps,
                                                 account = account,
-                                                authCall = authCall,
                                                 unreadBadge = unreadBadge,
                                                 downloadManager = downloadManager,
                                                 snackbarHostState = snackbarHostState,

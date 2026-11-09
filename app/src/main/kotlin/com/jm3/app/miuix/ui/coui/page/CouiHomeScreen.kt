@@ -28,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,7 +41,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
@@ -53,9 +51,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.ErrorScreen
 import com.jm3.app.miuix.ui.HomeSideData
 import com.jm3.app.miuix.ui.ListState
+import com.jm3.app.miuix.ui.LoadMoreFooter
 import com.jm3.app.miuix.ui.LoadMoreOnScroll
+import com.jm3.app.miuix.ui.LoadingScreen
+import com.jm3.app.miuix.ui.PagerBar
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.asListState
@@ -71,11 +73,11 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiTopBarHeight
 import com.jm3.app.miuix.ui.coui.theme.CouiType
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
+import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.isShowingSearchResults
 import com.jm3.app.miuix.ui.orDegrade
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
@@ -84,7 +86,6 @@ import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.runCatchingSuspending
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
@@ -92,7 +93,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -119,12 +119,13 @@ private val SectionHorizontalPadding = 16.dp
 @Composable
 fun CouiHomeScreen(
     deps: ScreenDeps,
-    gateway: Jm3Gateway,
-    authCall: AuthCall,
     backdrop: LayerBackdrop?,
     onOpenAlbum: (String) -> Unit,
     onOpenWeek: () -> Unit,
 ) {
+    // 网关与鉴权统一从 ScreenDeps 取，不再额外收一份同源参数
+    val gateway = deps.gateway
+    val authCall = deps.authCall
     var query by rememberSaveable { mutableStateOf("") }
     var activeQuery by rememberSaveable { mutableStateOf("") }
     var searchByTag by rememberSaveable { mutableStateOf(false) }
@@ -392,10 +393,15 @@ fun CouiHomeScreen(
                     }
                     when (val s = results) {
                         null, is ListState.Loading -> if (!refreshing) {
-                            item(key = "search-loading") { CouiInlineLoading() }
+                            item(key = "search-loading") {
+                                LoadingScreen(modifier = Modifier.padding(vertical = 24.dp))
+                            }
                         }
                         is ListState.Failed -> item(key = "search-error") {
-                            CouiErrorCard(message = s.message, onRetry = { runSearch(activeQuery, searchByTag, order) })
+                            ErrorScreen(
+                                message = s.message,
+                                onRetry = { runSearch(activeQuery, searchByTag, order) },
+                            )
                         }
                         is ListState.Loaded -> couiResultItems(
                             feed = s.feed,
@@ -488,10 +494,12 @@ fun CouiHomeScreen(
                     item(key = "latest-title") { CouiSectionTitle(text = "最新上架") }
                     when (val s = feed) {
                         is ListState.Loading -> if (!refreshing) {
-                            item(key = "feed-loading") { CouiInlineLoading() }
+                            item(key = "feed-loading") {
+                                LoadingScreen(modifier = Modifier.padding(vertical = 24.dp))
+                            }
                         }
                         is ListState.Failed -> item(key = "feed-error") {
-                            CouiErrorCard(message = s.message, onRetry = { refresh() })
+                            ErrorScreen(message = s.message, onRetry = { refresh() })
                         }
                         is ListState.Loaded -> couiResultItems(
                             feed = s.feed,
@@ -616,34 +624,6 @@ private fun CouiSearchHeader(query: String, byTag: Boolean, total: Int) {
 }
 
 @Composable
-private fun CouiInlineLoading() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 24.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-    }
-}
-
-@Composable
-private fun CouiErrorCard(message: String, onRetry: () -> Unit) {
-    CouiCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = SectionHorizontalPadding, vertical = 8.dp),
-    ) {
-        BasicText(
-            text = "加载失败：$message",
-            style = CouiType.body.copy(color = LocalCouiColors.current.textSecondary),
-        )
-        Spacer(Modifier.height(8.dp))
-        CouiTextButton(text = "重试", onClick = onRetry)
-    }
-}
-
-@Composable
 private fun CouiSearchHistoryCard(
     history: List<String>,
     onPick: (String) -> Unit,
@@ -687,7 +667,6 @@ private fun CouiSearchHistoryCard(
                     text = "×",
                     style = CouiType.caption.copy(color = colors.textSecondary),
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
                         .clickableRow { onRemove(word) }
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
@@ -773,7 +752,7 @@ private fun CouiResultRow(result: SearchResult, onClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(width = 68.dp, height = 90.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .squircleClip(LocalCouiShapes.current.control)
                     .background(colors.accentContainer),
             ) {
                 if (result.coverUrl != null) {
@@ -845,58 +824,14 @@ private fun LazyListScope.couiResultItems(
     }
     if (clickPaging && (feed.pageCount ?: 1) > 1) {
         item(key = "result-pager") {
-            CouiPagerBar(feed = feed, onPageChange = onPageChange)
+            PagerBar(
+                page = feed.page,
+                totalPages = feed.pageCount,
+                onPageChange = onPageChange,
+            )
         }
     } else if (feed.loadingMore || feed.loadMoreFailed || feed.hasMore) {
-        item(key = "result-footer") { CouiLoadMoreFooter(feed = feed, onLoadMore = onLoadMore) }
-    }
-}
-
-@Composable
-private fun CouiPagerBar(feed: PagedFeed<SearchResult>, onPageChange: (Int) -> Unit) {
-    val colors = LocalCouiColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = SectionHorizontalPadding, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        if (feed.page > 1) {
-            CouiTextButton(text = "上一页", onClick = { onPageChange(feed.page - 1) })
-        } else {
-            Spacer(Modifier.width(48.dp))
-        }
-        BasicText(
-            text = "第 ${feed.page} / ${feed.pageCount ?: 1} 页",
-            style = CouiType.caption.copy(color = colors.textSecondary),
-        )
-        if (feed.page < (feed.pageCount ?: 1)) {
-            CouiTextButton(text = "下一页", onClick = { onPageChange(feed.page + 1) })
-        } else {
-            Spacer(Modifier.width(48.dp))
-        }
-    }
-}
-
-@Composable
-private fun CouiLoadMoreFooter(feed: PagedFeed<SearchResult>, onLoadMore: () -> Unit) {
-    val colors = LocalCouiColors.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            feed.loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-            feed.loadMoreFailed -> CouiTextButton(text = "加载失败，点击重试", onClick = onLoadMore)
-            !feed.hasMore -> BasicText(
-                text = "没有更多了",
-                style = CouiType.caption.copy(color = colors.textSecondary),
-            )
-            else -> CouiTextButton(text = "加载更多", onClick = onLoadMore)
-        }
+        item(key = "result-footer") { LoadMoreFooter(feed = feed, onLoadMore = onLoadMore) }
     }
 }
 
@@ -937,10 +872,10 @@ private fun CouiSyntaxRow(title: String, summary: String) {
     }
 }
 
-/** 行级点击：不画涟漪，只保留最小触摸目标。 */
+/** 行级点击：不画涟漪，只保留最小触摸目标；圆角取皮肤控件曲率。 */
 @Composable
 private fun Modifier.clickableRow(onClick: () -> Unit): Modifier =
-    this.clip(RoundedCornerShape(8.dp)).clickable(
+    this.squircleClip(LocalCouiShapes.current.control).clickable(
         interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
         indication = null,
         onClick = onClick,

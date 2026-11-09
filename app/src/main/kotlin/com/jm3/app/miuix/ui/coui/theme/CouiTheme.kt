@@ -15,9 +15,12 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jm3.app.miuix.ui.skin.LocalSkin
+import com.jm3.app.miuix.ui.skin.SkinShapes
+import top.yukonga.miuix.kmp.theme.Colors
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 /**
  * COUI（ColorOS 17 取向）固定色板。
@@ -49,55 +52,35 @@ data class CouiColors(
     val ambientBlue: Color,
 )
 
-object CouiPalette {
-    val Light = CouiColors(
-        isDark = false,
-        backgroundTop = Color(0xFFF1F4F6),
-        backgroundBottom = Color(0xFFE9EEF2),
-        card = Color(0xFFFFFFFF),
-        nestedCard = Color(0xFFFFFFFF),
-        cardBorder = Color(0xFFE6EBE8),
-        barSurface = Color(0xFFFBFCFB),
-        topBarSurface = Color(0xFFFBFCFB),
-        textPrimary = Color(0xFF111413),
-        textSecondary = Color(0xFF7D8A83),
-        textTertiary = Color(0xFFA6B0AA),
-        accent = Color(0xFF1DA26B),
-        accentContainer = Color(0xFFE7F7EF),
-        onAccent = Color(0xFFFFFFFF),
-        divider = Color(0xFFE6EBE8),
-        searchField = Color(0xFFFFFFFF),
-        searchBorder = Color(0xFFDDE5E0),
-        scrim = Color(0x59000000),
-        ambientGreen = Color(0xFF1DA26B),
-        ambientBlue = Color(0xFF4C7DFF),
-    )
-
-    val Dark = CouiColors(
-        isDark = true,
-        backgroundTop = Color(0xFF0E1110),
-        backgroundBottom = Color(0xFF141817),
-        card = Color(0xFF1B201D),
-        nestedCard = Color(0xFF1B201D),
-        cardBorder = Color(0xFF2A322D),
-        barSurface = Color(0xFF141817),
-        topBarSurface = Color(0xFF141817),
-        textPrimary = Color(0xFFF1F1F1),
-        textSecondary = Color(0xFF8C9A93),
-        textTertiary = Color(0xFF66736C),
-        accent = Color(0xFF34C98B),
-        accentContainer = Color(0xFF17362A),
-        onAccent = Color(0xFF06291C),
-        divider = Color(0xFF2A322D),
-        searchField = Color(0xFF1B201D),
-        searchBorder = Color(0xFF2A322D),
-        scrim = Color(0x59000000),
-        ambientGreen = Color(0xFF34C98B),
-        ambientBlue = Color(0xFF6E98FF),
-    )
-
-    fun forDark(dark: Boolean): CouiColors = if (dark) Dark else Light
-}
+/**
+ * 由当前皮肤色板派生 COUI 色板，COUI 不再持有第二份颜色真源。
+ *
+ * 底色、卡片、分隔线与文字色全部映射自皮肤 [Colors]：切皮肤或切深浅时，
+ * COUI 页面与设置页、偏好行读的是同一份取值。只有 [CouiColors.ambientBlue]
+ * 因为皮肤契约里没有蓝色，按深浅保留字面量。
+ */
+internal fun couiColorsOf(skinColors: Colors, isDark: Boolean): CouiColors = CouiColors(
+    isDark = isDark,
+    backgroundTop = skinColors.background,
+    backgroundBottom = skinColors.surface,
+    card = skinColors.surfaceContainer,
+    nestedCard = skinColors.surfaceVariant,
+    cardBorder = skinColors.outline,
+    barSurface = skinColors.surfaceVariant,
+    topBarSurface = skinColors.surfaceVariant,
+    textPrimary = skinColors.onSurface,
+    textSecondary = skinColors.onBackgroundVariant,
+    textTertiary = skinColors.onSurfaceVariantActions,
+    accent = skinColors.primary,
+    accentContainer = skinColors.tertiaryContainer,
+    onAccent = skinColors.onPrimary,
+    divider = skinColors.dividerLine,
+    searchField = skinColors.surfaceContainer,
+    searchBorder = skinColors.outline,
+    scrim = Color.Black.copy(alpha = 0.35f),
+    ambientGreen = skinColors.primary,
+    ambientBlue = if (isDark) Color(0xFF6E98FF) else Color(0xFF4C7DFF),
+)
 
 /**
  * COUI 字阶：只保留标题、分组、正文、辅助、按钮、页签六档，避免页面各自挑字号。
@@ -145,15 +128,31 @@ object CouiType {
     val number = body.copy(fontFeatureSettings = "tnum")
 }
 
-object CouiShapes {
-    val cardRadius: Dp = 20.dp
-    val nestedCardRadius: Dp = 16.dp
-    val dialogRadius: Dp = 28.dp
-    val sheetRadius: Dp = 28.dp
-    val controlRadius: Dp = 12.dp
-    val searchRadius: Dp = 20.dp
-    val pillRadius: Dp = 16.dp
-}
+/**
+ * COUI 组件取用的形状档位。全部映射自皮肤契约 [SkinShapes]，
+ * 组件里不再出现第二份圆角数值。
+ */
+@Immutable
+internal data class CouiShapeSpec(
+    val card: Dp,
+    val nested: Dp,
+    val control: Dp,
+    val pill: Dp,
+    val search: Dp,
+    val sheet: Dp,
+    val dialog: Dp,
+)
+
+/** 把皮肤形状映射成 COUI 档位：卡片与外框取卡片曲率，行内控件取控件曲率。 */
+internal fun couiShapesOf(shapes: SkinShapes): CouiShapeSpec = CouiShapeSpec(
+    card = shapes.cardCorner,
+    nested = shapes.controlCorner,
+    control = shapes.controlCorner,
+    pill = shapes.capsuleCorner,
+    search = shapes.cardCorner,
+    sheet = shapes.sheetCorner,
+    dialog = shapes.dialogCorner ?: shapes.sheetCorner,
+)
 
 /**
  * COUI 动效参数：push 用接近 iOS/ColorOS 的强减速曲线，按压与页签用低阻尼弹簧。
@@ -171,15 +170,26 @@ object CouiMotion {
     val SheetSpring: SpringSpec<Float> = spring(dampingRatio = 0.85f, stiffness = 450f)
 }
 
-val LocalCouiColors = staticCompositionLocalOf { CouiPalette.Light }
+val LocalCouiColors = staticCompositionLocalOf { couiColorsOf(lightColorScheme(), isDark = false) }
+
+/** 当前皮肤的 COUI 形状档位；由 [CouiTheme] 一次性算出，组件只读。 */
+internal val LocalCouiShapes = staticCompositionLocalOf { couiShapesOf(SkinShapes()) }
 
 /**
- * COUI 页面的主题入口。只提供 COUI 自有色板，不覆盖 MiuixTheme：
- * 页面内 Miuix 组件（过渡期复用的设置行等）继续读 COLOROS 皮肤色，视觉不会互相打架。
+ * COUI 页面的主题入口。色板与形状都从 [LocalSkin] 派生，不覆盖 MiuixTheme：
+ * 页面内 Miuix 组件（过渡期复用的设置行等）继续读皮肤色，视觉不会互相打架。
  */
 @Composable
 fun CouiTheme(content: @Composable () -> Unit) {
+    val skin = LocalSkin.current
     val dark = MiuixTheme.colorScheme.surface.luminance() < 0.5f
-    val colors = remember(dark) { CouiPalette.forDark(dark) }
-    CompositionLocalProvider(LocalCouiColors provides colors, content = content)
+    val colors = remember(skin, dark) {
+        couiColorsOf(if (dark) skin.darkColors else skin.lightColors, isDark = dark)
+    }
+    val shapes = remember(skin) { couiShapesOf(skin.shapes) }
+    CompositionLocalProvider(
+        LocalCouiColors provides colors,
+        LocalCouiShapes provides shapes,
+        content = content,
+    )
 }
