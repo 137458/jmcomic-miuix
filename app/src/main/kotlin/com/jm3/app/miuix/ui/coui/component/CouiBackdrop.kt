@@ -11,7 +11,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -20,6 +22,7 @@ import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import kotlin.math.round
 
 /**
  * COUI 背景：纵向渐变底色 + 两枚低饱和氛围光斑。
@@ -42,6 +45,10 @@ fun CouiSurfaceBackground(modifier: Modifier = Modifier) {
         ),
         label = "couiAmbientDrift",
     )
+    // 漂移量化到 1% 再驱动绘制：30 秒一轮只需约 3Hz 重建画刷，避免每帧全屏重绘
+    val quantizedDrift by remember {
+        derivedStateOf { round(drift * 100f) / 100f }
+    }
     val greenAlpha = if (colors.isDark) 0.08f else 0.06f
     val blueAlpha = if (colors.isDark) 0.06f else 0.05f
 
@@ -60,8 +67,8 @@ fun CouiSurfaceBackground(modifier: Modifier = Modifier) {
                     Color.Transparent,
                 ),
                 center = Offset(
-                    x = width * (0.16f + drift * 0.03f),
-                    y = height * (0.10f + drift * 0.04f),
+                    x = width * (0.16f + quantizedDrift * 0.03f),
+                    y = height * (0.10f + quantizedDrift * 0.04f),
                 ),
                 radius = width * 0.62f,
             ),
@@ -74,8 +81,8 @@ fun CouiSurfaceBackground(modifier: Modifier = Modifier) {
                     Color.Transparent,
                 ),
                 center = Offset(
-                    x = width * (0.88f - drift * 0.04f),
-                    y = height * (0.62f - drift * 0.03f),
+                    x = width * (0.88f - quantizedDrift * 0.04f),
+                    y = height * (0.62f - quantizedDrift * 0.03f),
                 ),
                 radius = width * 0.58f,
             ),
