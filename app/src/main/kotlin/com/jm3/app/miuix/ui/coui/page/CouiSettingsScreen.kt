@@ -227,27 +227,26 @@ fun CouiSettingsScreen(
             }
         }
 
-        fun loadDomainsDiagnostics() {
-            scope.launch {
-                diagError = null
-                // 两个网关查询合成一次结局：等待会话恢复、切 IO、判失效都在 AuthCall 内完成。
-                val result = authCall.call {
-                    gateway.usedDomain() to
-                        gateway.domainLatency().entries
-                            .sortedBy { it.value }
-                            .map { it.key to it.value }
+        /** 读一次线路诊断；调用方在协程内等到读完，避免旧数据先回到界面。 */
+        suspend fun loadDomainsDiagnostics() {
+            diagError = null
+            // 两个网关查询合成一次结局：等待会话恢复、切 IO、判失效都在 AuthCall 内完成。
+            val result = authCall.call {
+                gateway.usedDomain() to
+                    gateway.domainLatency().entries
+                        .sortedBy { it.value }
+                        .map { it.key to it.value }
+            }
+            when (result) {
+                is SessionOutcome.Ok -> {
+                    usedDomain = result.value.first
+                    domainLatency = result.value.second
                 }
-                when (result) {
-                    is SessionOutcome.Ok -> {
-                        usedDomain = result.value.first
-                        domainLatency = result.value.second
-                    }
-                    else -> diagError = planLoad(
-                        result,
-                        hasContent = false,
-                        failureMessage = "线路诊断失败",
-                    ).message
-                }
+                else -> diagError = planLoad(
+                    result,
+                    hasContent = false,
+                    failureMessage = "线路诊断失败",
+                ).message
             }
         }
 
@@ -256,6 +255,9 @@ fun CouiSettingsScreen(
             reprobeBusy = true
             scope.launch {
                 val result = authCall.call { gateway.reprobeDomains() }
+                // 先重读诊断再解锁：按钮解锁那一刻列表已是新延迟，不会停留在旧数字。
+                // 无论成败都重读一次，失败时也保留上一次可用的探活结果。
+                loadDomainsDiagnostics()
                 reprobeBusy = false
                 when (result) {
                     is SessionOutcome.Ok -> snackbarHostState.showSnackbar("线路探活完成")
@@ -263,8 +265,6 @@ fun CouiSettingsScreen(
                         "探活失败：" + planLoad(result, hasContent = false, failureMessage = "未知错误").message,
                     )
                 }
-                // 无论成败都重读一次：失败时也保留上一次可用的探活结果。
-                loadDomainsDiagnostics()
             }
         }
 
@@ -285,8 +285,8 @@ fun CouiSettingsScreen(
                     activeDomains.value = applied.joinToString("、")
                     // 归一后的结果回填输入框，让用户看到真正生效的线路，而不是带协议头的原文。
                     domainsInput.value = applied.joinToString("\n")
-                    // 网关已重建，诊断数据属于旧实例，重新读取。
-                    loadDomainsDiagnostics()
+                    // 网关已重建，诊断数据属于旧实例，重新读取（不阻塞提示）。
+                    scope.launch { loadDomainsDiagnostics() }
                     snackbarHostState.showSnackbar(
                         if (applied.isEmpty()) "已恢复默认线路" else "已应用 ${applied.size} 个线路域名",
                     )
