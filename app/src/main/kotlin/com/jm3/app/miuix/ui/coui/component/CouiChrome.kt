@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -477,9 +478,11 @@ fun CouiSegmented(
                     .weight(1f)
                     .squircleClip(shapes.control)
                     .background(background)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
+                    // 分段项本身约 34dp，撑到 48dp 会把整条排序行撑高，触摸区域就按行高走
+                    .couiSelectable(
+                        selected = selected,
+                        role = Role.Tab,
+                        ensureMinTouchTarget = false,
                         onClick = { onSelect(index) },
                     )
                     .padding(vertical = 8.dp),

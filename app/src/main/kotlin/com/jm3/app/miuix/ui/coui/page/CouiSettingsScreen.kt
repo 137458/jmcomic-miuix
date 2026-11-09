@@ -49,6 +49,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTextButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
 import com.jm3.app.miuix.ui.coui.component.couiClickable
+import com.jm3.app.miuix.ui.coui.component.couiSelectable
 import com.jm3.app.miuix.ui.coui.component.couiTopBarHeight
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBlurBackdrop
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -837,7 +838,7 @@ private fun CouiSkinOption(
             .padding(vertical = 2.dp)
             .squircleClip(LocalCouiShapes.current.control)
             .background(if (selected) colors.accentContainer else Color.Transparent)
-            .couiClickable(onClick)
+            .couiSelectable(selected = selected, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -884,5 +885,4 @@ private enum class ClearTarget(val title: String, val description: String, val d
     HISTORY("清空阅读历史", "将删除全部阅读记录，此操作不可撤销。", "已清空阅读历史"),
     DOWNLOADS("清空下载", "将删除全部下载任务并清除已下载文件，此操作不可撤销。", "已清空下载"),
 }
-
 

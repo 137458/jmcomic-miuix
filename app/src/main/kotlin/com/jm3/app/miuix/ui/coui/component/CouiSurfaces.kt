@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -39,6 +40,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
@@ -97,6 +99,29 @@ fun Modifier.couiClickable(onClick: () -> Unit, ensureMinTouchTarget: Boolean = 
         .clickable(
             interactionSource = interaction,
             indication = null,
+            onClick = onClick,
+        )
+}
+
+/**
+ * 单选项/分段项：按压反馈与整行可点一致，选中态交给无障碍语义，读屏会播报「已选择」。
+ */
+@Composable
+fun Modifier.couiSelectable(
+    selected: Boolean,
+    onClick: () -> Unit,
+    role: Role = Role.RadioButton,
+    ensureMinTouchTarget: Boolean = true,
+): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val base = if (ensureMinTouchTarget) defaultMinSize(minHeight = 48.dp) else this
+    return base
+        .couiPressOverlay(interaction)
+        .selectable(
+            selected = selected,
+            interactionSource = interaction,
+            indication = null,
+            role = role,
             onClick = onClick,
         )
 }
