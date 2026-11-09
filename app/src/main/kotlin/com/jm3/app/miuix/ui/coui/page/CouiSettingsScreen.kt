@@ -471,7 +471,7 @@ fun CouiSettingsScreen(
                             style = CouiType.caption.copy(color = MiuixTheme.colorScheme.error),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                                .padding(vertical = 6.dp),
                         )
                     }
                     CouiSettingsRow(
@@ -488,7 +488,7 @@ fun CouiSettingsScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(vertical = 8.dp),
                     ) {
                         BasicText(
                             text = "自定义线路",
@@ -738,7 +738,7 @@ fun CouiSettingsScreen(
     }
 }
 
-/** COUI 分组：17sp 分组标题 + 20dp squircle 主卡片，卡内各行自带 16dp 内衬。 */
+/** COUI 分组：17sp 分组标题 + squircle 主卡片，卡内统一 16dp 水平内衬。 */
 @Composable
 private fun CouiSettingsGroup(
     title: String,
@@ -752,7 +752,9 @@ private fun CouiSettingsGroup(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(0.dp),
+        // Miuix preference 依赖 Card 的 insideMargin 提供内衬，这里必须给回 16dp，
+        // 否则整组 Miuix 行贴住 squircle 边缘、与 CouiSettingsRow 的文字起点错位。
+        contentPadding = PaddingValues(horizontal = 16.dp),
         content = content,
     )
 }
@@ -760,8 +762,8 @@ private fun CouiSettingsGroup(
 /**
  * COUI 设置行：标题 + 辅助说明 + 可选右侧值。
  *
- * Miuix preference 无法表达的行（只读诊断、版本连点、线路操作）用这一套，
- * 与卡片内 Miuix preference 的 16dp 文字起点保持一致。
+ * Miuix preference 无法表达的行（只读诊断、版本连点、线路操作）用这一套；
+ * 水平内衬由外层 CouiCard 提供，这里只补纵向间距。
  */
 @Composable
 private fun CouiSettingsRow(
@@ -786,7 +788,7 @@ private fun CouiSettingsRow(
                     Modifier
                 },
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
