@@ -8,13 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -28,47 +22,19 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.itos.coui.navigation.CouiNavigationItem
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.BrowseMode
-import com.jm3.app.miuix.ui.BrowseScreen
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.HomeScreen
-import com.jm3.app.miuix.ui.MineScreen
-import com.jm3.app.miuix.ui.coui.component.CouiBadge
-import com.jm3.app.miuix.ui.coui.component.CouiBottomBar
-import com.jm3.app.miuix.ui.coui.component.CouiNavItem
-import com.jm3.app.miuix.ui.coui.component.CouiSurfaceBackground
-import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
-import com.jm3.app.miuix.ui.coui.component.rememberCouiBlurBackdrop
+import com.jm3.app.miuix.ui.coui.component.CouiNavigationBar
+import com.jm3.app.miuix.ui.coui.component.LocalCouiBottomBar
+import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
-import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
-import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
-import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.session.UnreadBadge
-import com.jm3.core.settings.BottomBarPreferencePolicy
-import com.jm3.core.settings.WideScreenNavigation
-import kotlin.math.roundToInt
-import top.yukonga.miuix.kmp.basic.Badge
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.NavigationRail
-import top.yukonga.miuix.kmp.basic.NavigationRailItem
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.rememberNavigationRailState
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
-import top.yukonga.miuix.kmp.icon.extended.ChevronForward
-import top.yukonga.miuix.kmp.icon.extended.Contacts
-import top.yukonga.miuix.kmp.icon.extended.GridView
-import top.yukonga.miuix.kmp.icon.extended.Home
-import top.yukonga.miuix.kmp.icon.extended.Playlist
 
 private enum class CouiMainTab(val label: String) {
     HOME("首页"),
@@ -77,19 +43,17 @@ private enum class CouiMainTab(val label: String) {
     MINE("我的"),
 }
 
-private fun couiTabIcon(tab: CouiMainTab): ImageVector = when (tab) {
-    CouiMainTab.HOME -> MiuixIcons.Home
-    CouiMainTab.CATEGORY -> MiuixIcons.GridView
-    CouiMainTab.RANK -> MiuixIcons.Playlist
-    CouiMainTab.MINE -> MiuixIcons.Contacts
-}
+/** 底栏净空：COUI NavigationBar 实测 56dp 主体 + 上下 16dp 外边距。 */
+private val CouiBottomBarClearance = 96.dp
 
 /**
- * COUI 主框架：背景、底栏、页签转场与宽屏侧栏。
+ * COUI 主框架：只负责皮肤、页签转场与底栏装配。
  *
- * 过渡期只有首页是 COUI 页；分类、榜单、我的继续挂现有 HyperOS 页，
- * 因此这里提供 [LocalFloatingBarContentPadding]，让下层页知道底栏占位，内容不会被底栏压住。
- * 宽屏侧栏仍用 Miuix NavigationRail，属于过渡期混合，不在本轮样板页范围内。
+ * 每个页签都是独立的 COUI 页面，各自持有 Scaffold（顶栏、正文、FAB），
+ * 底栏由这里装配后经 [LocalCouiBottomBar] 下发，页面在自身 Scaffold 的 bottomBar 槽位取用，
+ * 使得浮动材质始终采样当前页正文，而不是跨页共享一层固定的背景。
+ *
+ * 页签状态、滚动位置与搜索态全部留在各自页面内，切页只做淡入淡出，返回时不重建。
  */
 @Composable
 fun CouiMainScreen(
@@ -115,169 +79,89 @@ fun CouiMainScreen(
     CouiTheme {
         var tab by rememberSaveable { mutableIntStateOf(0) }
         LaunchedEffect(Unit) { deps.downloadManager.ensureStarted() }
-        val downloads by deps.downloadManager.queue.updates.collectAsState()
-        val activeDownloads = downloads.activeDownloadCount()
         val user by deps.account.user.collectAsState()
-        val unread by unreadBadge.count.collectAsState()
         LaunchedEffect(user?.uid) { unreadBadge.refresh(user != null) }
-        val backdrop = rememberCouiBlurBackdrop()
-        val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        unreadBadge.count.collectAsState()
 
-        fun couiBadgeFor(index: Int): CouiBadge? = when {
-            index == CouiMainTab.MINE.ordinal && unread > 0 -> CouiBadge(count = unread)
-            index == CouiMainTab.MINE.ordinal && activeDownloads > 0 -> CouiBadge(dot = true)
-            else -> null
+        val navItems = CouiMainTab.entries.map { item ->
+            CouiNavigationItem(
+                title = item.label,
+                icon = when (item) {
+                    CouiMainTab.HOME -> CouiIcons.Home
+                    CouiMainTab.CATEGORY -> CouiIcons.Category
+                    CouiMainTab.RANK -> CouiIcons.Rank
+                    CouiMainTab.MINE -> CouiIcons.Mine
+                },
+            )
         }
+        val bottomBar: @Composable () -> Unit = {
+            CouiNavigationBar(
+                items = navItems,
+                selectedIndex = tab,
+                onSelect = { tab = it },
+            )
+        }
+        val pageState = rememberSaveableStateHolder()
 
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = Color.Transparent,
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            snackbarHost = { GlassSnackbarHost(state = snackbarHostState, backdrop = backdrop) },
-        ) { _ ->
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val widthDp = maxWidth.value.roundToInt()
-                val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation, widthDp) {
-                    BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
-                        deps.preferences.wideScreenNavigation,
-                        widthDp,
-                    )
-                }
-                val useRail = wideScreenNavigation == WideScreenNavigation.RAIL
-                // 与 HyperOS 主框架同源解析尺寸/形态档：切换偏好只重建 token，底栏几何全部由它给出
-                val barTokens = remember(
-                    deps.preferences.bottomBarSize,
-                    deps.preferences.bottomBarForm,
-                    widthDp,
-                ) {
-                    resolveBottomBarTokens(
-                        explicitSize = deps.preferences.bottomBarSize,
-                        explicitForm = deps.preferences.bottomBarForm,
-                        widthDp = widthDp,
-                    )
-                }
-                // 净空按 token 推导：条高 + 悬浮档与导航条之间的 8dp 间隙 + 4dp 呼吸位 + 导航条 inset
-                val floatingBarClearance = barTokens.height +
-                    (if (barTokens.floating) 8.dp else 0.dp) +
-                    navBarHeight +
-                    4.dp
-                CompositionLocalProvider(
-                    LocalFloatingBarContentPadding provides if (useRail) 0.dp else floatingBarClearance,
-                    LocalGlassBottomBarTokens provides barTokens,
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .couiBackdropSource(backdrop),
-                        ) {
-                            CouiSurfaceBackground(modifier = Modifier.fillMaxSize())
-                            val saveableStateHolder = rememberSaveableStateHolder()
-                            val tabContent: @Composable (Modifier) -> Unit = { contentModifier ->
-                                AnimatedContent(
-                                    targetState = tab,
-                                    transitionSpec = {
-                                        fadeIn(tween(CouiMotion.TabCrossfadeMs)) togetherWith
-                                            fadeOut(tween(CouiMotion.TabCrossfadeMs))
-                                    },
-                                    label = "couiMainTab",
-                                    modifier = contentModifier,
-                                ) { currentTab ->
-                                    saveableStateHolder.SaveableStateProvider(currentTab) {
-                                        when (currentTab) {
-                                            0 -> CouiHomeScreen(
-                                                deps = deps,
-                                                onOpenAlbum = onOpenAlbum,
-                                                onOpenWeek = onOpenWeek,
-                                            )
-                                            1 -> BrowseScreen(
-                                                deps = deps,
-                                                mode = BrowseMode.CATEGORY,
-                                                onOpenAlbum = onOpenAlbum,
-                                            )
-                                            2 -> BrowseScreen(
-                                                deps = deps,
-                                                mode = BrowseMode.RANK,
-                                                onOpenAlbum = onOpenAlbum,
-                                            )
-                                            else -> MineScreen(
-                                                deps = deps,
-                                                unreadBadge = unreadBadge,
-                                                snackbarHostState = snackbarHostState,
-                                                onOpenLogin = onOpenLogin,
-                                                onOpenFavorites = onOpenFavorites,
-                                                onOpenHistory = onOpenHistory,
-                                                onOpenShelf = onOpenShelf,
-                                                onOpenSettings = onOpenSettings,
-                                                onOpenNotifications = onOpenNotifications,
-                                                onOpenTracking = onOpenTracking,
-                                                onOpenProfile = onOpenProfile,
-                                                onOpenTasks = onOpenTasks,
-                                                onOpenWatchHistory = onOpenWatchHistory,
-                                                onOpenForum = onOpenForum,
-                                                onOpenNovel = onOpenNovel,
-                                                onOpenLibrary = onOpenLibrary,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            if (useRail) {
-                                Row(modifier = Modifier.fillMaxSize()) {
-                                    val railState = rememberNavigationRailState()
-                                    NavigationRail(
-                                        state = railState,
-                                        header = {
-                                            IconButton(
-                                                onClick = { railState.toggle() },
-                                                minWidth = 48.dp,
-                                                minHeight = 48.dp,
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (railState.isExpanded) {
-                                                        MiuixIcons.ChevronBackward
-                                                    } else {
-                                                        MiuixIcons.ChevronForward
-                                                    },
-                                                    contentDescription = if (railState.isExpanded) "收起侧栏" else "展开侧栏",
-                                                )
-                                            }
-                                        },
-                                    ) {
-                                        CouiMainTab.entries.forEachIndexed { index, item ->
-                                            NavigationRailItem(
-                                                selected = tab == index,
-                                                onClick = { tab = index },
-                                                icon = couiTabIcon(item),
-                                                label = item.label,
-                                                badge = if (index == CouiMainTab.MINE.ordinal && unread > 0) {
-                                                    { Badge { Text(text = if (unread > 99) "99+" else unread.toString()) } }
-                                                } else if (index == CouiMainTab.MINE.ordinal && activeDownloads > 0) {
-                                                    { Badge() }
-                                                } else {
-                                                    null
-                                                },
-                                            )
-                                        }
-                                    }
-                                    tabContent(Modifier.weight(1f).fillMaxHeight())
-                                }
-                            } else {
-                                tabContent(Modifier.fillMaxSize())
-                            }
-                        }
-                        if (!useRail) {
-                            CouiBottomBar(
-                                items = CouiMainTab.entries.map { CouiNavItem(label = it.label, icon = couiTabIcon(it)) },
-                                selectedIndex = tab,
-                                onItemClick = { tab = it },
-                                modifier = Modifier.align(Alignment.BottomCenter),
-                                backdrop = backdrop,
-                                badge = { index -> couiBadgeFor(index) },
+        CompositionLocalProvider(
+            LocalCouiBottomBar provides bottomBar,
+            LocalFloatingBarContentPadding provides CouiBottomBarClearance,
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AnimatedContent(
+                    targetState = tab,
+                    transitionSpec = {
+                        fadeIn(tween(CouiMotion.TabCrossfadeMs)) togetherWith
+                            fadeOut(tween(CouiMotion.TabCrossfadeMs))
+                    },
+                    label = "couiMainTab",
+                    modifier = Modifier.fillMaxSize(),
+                ) { currentTab ->
+                    pageState.SaveableStateProvider(currentTab) {
+                        when (currentTab) {
+                            0 -> CouiHomeScreen(
+                                deps = deps,
+                                onOpenAlbum = onOpenAlbum,
+                                onOpenWeek = onOpenWeek,
+                            )
+                            1 -> CouiBrowseScreen(
+                                deps = deps,
+                                mode = BrowseMode.CATEGORY,
+                                onOpenAlbum = onOpenAlbum,
+                            )
+                            2 -> CouiBrowseScreen(
+                                deps = deps,
+                                mode = BrowseMode.RANK,
+                                onOpenAlbum = onOpenAlbum,
+                            )
+                            else -> CouiMineScreen(
+                                deps = deps,
+                                unreadBadge = unreadBadge,
+                                snackbarHostState = snackbarHostState,
+                                onOpenLogin = onOpenLogin,
+                                onOpenFavorites = onOpenFavorites,
+                                onOpenHistory = onOpenHistory,
+                                onOpenShelf = onOpenShelf,
+                                onOpenSettings = onOpenSettings,
+                                onOpenNotifications = onOpenNotifications,
+                                onOpenTracking = onOpenTracking,
+                                onOpenProfile = onOpenProfile,
+                                onOpenTasks = onOpenTasks,
+                                onOpenWatchHistory = onOpenWatchHistory,
+                                onOpenForum = onOpenForum,
+                                onOpenNovel = onOpenNovel,
+                                onOpenLibrary = onOpenLibrary,
                             )
                         }
                     }
                 }
+                GlassSnackbarHost(
+                    state = snackbarHostState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = CouiBottomBarClearance),
+                    backdrop = null,
+                )
             }
         }
     }
