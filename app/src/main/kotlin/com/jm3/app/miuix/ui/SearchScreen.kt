@@ -26,7 +26,6 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
@@ -35,7 +34,6 @@ import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.replacedBy
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
@@ -66,8 +64,6 @@ fun SearchScreen(
     deps: ScreenDeps,
     query: String,
     scope: SearchScope,
-    gateway: Jm3Gateway,
-    authCall: AuthCall,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
@@ -89,7 +85,7 @@ fun SearchScreen(
     val clickPaging = mode == PaginationMode.CLICK
 
     fun fetch(page: Int, sort: BrowseOrder): SearchPage =
-        gateway.search(query, page, sort, scope, time)
+        deps.gateway.search(query, page, sort, scope, time)
 
     fun loadFirstPage(byPull: Boolean = false) {
         if (byPull) refreshing = true
@@ -98,7 +94,7 @@ fun SearchScreen(
         // 下拉刷新时保留当前结果，避免列表在刷新指示器下方整屏消失
         if (!byPull) state = SearchUiState.Loading
         coroutineScope.launch {
-            val next = authCall.call { fetch(1, order) }
+            val next = deps.authCall.call { fetch(1, order) }
             if (token != requestToken) return@launch
             state = searchStateOf(next, "搜索失败")
             refreshing = false
@@ -112,7 +108,7 @@ fun SearchScreen(
         val requested = loaded.feed.beginLoadMore()
         state = SearchUiState.Loaded(requested)
         coroutineScope.launch {
-            val next = authCall.call { fetch(requested.page + 1, order) }
+            val next = deps.authCall.call { fetch(requested.page + 1, order) }
             if (token != requestToken) return@launch
             val current = state as? SearchUiState.Loaded ?: return@launch
             val updated = when (next) {
@@ -131,7 +127,7 @@ fun SearchScreen(
         val token = requestToken
         state = SearchUiState.Loading
         coroutineScope.launch {
-            val next = authCall.call { fetch(target, order) }
+            val next = deps.authCall.call { fetch(target, order) }
             if (token != requestToken) return@launch
             state = searchStateOf(next, "搜索失败")
             if (state is SearchUiState.Loaded) listState.scrollToItem(0)

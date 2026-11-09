@@ -23,12 +23,10 @@ import com.jm3.app.miuix.data.download.textRes
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.CoverLocator
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.download.DownloadAction
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadRow
 import com.jm3.core.download.presentRow
-import com.jm3.core.session.AuthCall
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Icon
@@ -45,8 +43,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun ShelfScreen(
     deps: ScreenDeps,
-    gateway: Jm3Gateway,
-    authCall: AuthCall,
     onBack: () -> Unit,
     onOpenReader: (String) -> Unit,
 ) {
@@ -65,8 +61,8 @@ fun ShelfScreen(
 
     // 图片域名整个屏幕只取一次：网关取域名是阻塞方法，AuthCall 负责等待会话恢复并切到 IO；
     // 取不到或会话失效时留空串，封面由 CoverLocator.cover 返回 null 退化为占位，不影响行内容与按钮
-    LaunchedEffect(gateway, authCall) {
-        imageHost = authCall.call { gateway.imageHost() }.orDegrade("")
+    LaunchedEffect(deps.gateway, deps.authCall) {
+        imageHost = deps.authCall.call { deps.gateway.imageHost() }.orDegrade("")
     }
 
     GlassScaffold(

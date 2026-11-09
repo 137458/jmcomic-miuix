@@ -51,7 +51,6 @@ import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
@@ -60,7 +59,6 @@ import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.runCatchingSuspending
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.Dispatchers
@@ -99,8 +97,6 @@ private const val HOT_TAG_COLLAPSED = 8
 @Composable
 fun HomeScreen(
     deps: ScreenDeps,
-    gateway: Jm3Gateway,
-    authCall: AuthCall,
     onOpenAlbum: (String) -> Unit,
     onOpenWeek: () -> Unit,
 ) {
@@ -160,7 +156,7 @@ fun HomeScreen(
     }
 
     fun requestSearch(page: Int, byTag: Boolean, text: String, sort: BrowseOrder): SearchPage =
-        gateway.search(text, page, sort, if (byTag) SearchScope.TAG else SearchScope.SITE)
+        deps.gateway.search(text, page, sort, if (byTag) SearchScope.TAG else SearchScope.SITE)
 
     /** 搜索历史读写都在 IO 线程，写入后重新读取，UI 只拿最新快照。 */
     fun mutateHistory(block: suspend () -> Unit) {
@@ -175,7 +171,7 @@ fun HomeScreen(
     fun loadFeed(page: Int, token: Int) {
         scope.launch {
             // 等待会话恢复、切 IO、判失效都在 AuthCall 里完成，这里只关心结局。
-            val next = authCall.call { gateway.latest(page) }
+            val next = deps.authCall.call { deps.gateway.latest(page) }
             if (token != listToken) return@launch
             rememberFeed(next.asListState("加载失败"))
         }
@@ -193,7 +189,7 @@ fun HomeScreen(
         // 提交即记录：标签检索与排序切换也会把当前关键词前移。
         mutateHistory { deps.settings.addSearchHistory(trimmed) }
         scope.launch {
-            val next = authCall.call { requestSearch(1, byTag, trimmed, sort) }
+            val next = deps.authCall.call { requestSearch(1, byTag, trimmed, sort) }
             if (token != listToken) return@launch
             rememberResults(next.asListState("网络错误"))
         }
@@ -251,12 +247,12 @@ fun HomeScreen(
                 rememberResults(ListState.Loading)
                 val text = activeQuery
                 val byTag = searchByTag
-                val next = authCall.call { requestSearch(1, byTag, text, order) }
+                val next = deps.authCall.call { requestSearch(1, byTag, text, order) }
                 if (token == listToken) {
                     rememberResults(next.asListState("网络错误"))
                 }
             } else {
-                val next = authCall.call { gateway.latest(1) }
+                val next = deps.authCall.call { deps.gateway.latest(1) }
                 if (token == listToken) {
                     rememberFeed(next.asListState("加载失败"))
                 }
@@ -286,9 +282,9 @@ fun HomeScreen(
         val byTag = searchByTag
         publishTransient(ListState.Loaded(requested))
         scope.launch {
-            val next = authCall.call {
+            val next = deps.authCall.call {
                 if (searching) requestSearch(requested.page + 1, byTag, text, nextOrder)
-                else gateway.latest(requested.page + 1)
+                else deps.gateway.latest(requested.page + 1)
             }
             if (token != listToken) return@launch
             val updated = when (next) {
@@ -314,9 +310,9 @@ fun HomeScreen(
             rememberFeed(ListState.Loading)
         }
         scope.launch {
-            val next = authCall.call {
+            val next = deps.authCall.call {
                 if (searching) requestSearch(target, byTag, text, nextOrder)
-                else gateway.latest(target)
+                else deps.gateway.latest(target)
             }
             if (token != listToken) return@launch
             val mapped = next.asListState("网络错误")
@@ -326,7 +322,7 @@ fun HomeScreen(
     }
 
     // 首屏：最新上架 + 连载更新 + 热门标签 + 随机推荐 + 搜索历史并行加载；若处于搜索态且无缓存结果则自动拉取搜索。
-    LaunchedEffect(gateway, authCall) {
+    LaunchedEffect(deps.gateway, deps.authCall) {
         if (!searching && feed !is ListState.Loaded) {
             listToken++
             loadFeed(1, listToken)
@@ -337,10 +333,10 @@ fun HomeScreen(
         if (sessionCache.homeSide.isEmpty) {
             scope.launch {
                 // 三份侧栏数据都是可降级内容：接口失败或会话失效一律留空，主列表与整屏错误态不受影响。
-                val tags = authCall.call { gateway.hotTags() }.orDegrade(emptyList())
-                val picks = authCall.call { gateway.randomRecommend() }.orDegrade(emptyList())
-                val updates = authCall
-                    .call { gateway.serialization(1) }
+                val tags = deps.authCall.call { deps.gateway.hotTags() }.orDegrade(emptyList())
+                val picks = deps.authCall.call { deps.gateway.randomRecommend() }.orDegrade(emptyList())
+                val updates = deps.authCall
+                    .call { deps.gateway.serialization(1) }
                     .orDegrade<SearchPage?>(null)
                     ?.items
                     ?.take(SERIAL_CAROUSEL_LIMIT)
@@ -550,7 +546,7 @@ fun HomeScreen(
                         }
                         is ListState.Failed -> item(key = "search-error") {
                             ErrorScreen(
-                                message = "加载失败：${s.message}",
+                                message = s.message,
                                 onRetry = { runSearch(activeQuery, searchByTag, order) },
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
@@ -645,7 +641,7 @@ fun HomeScreen(
                         }
                         is ListState.Failed -> item(key = "feed-error") {
                             ErrorScreen(
-                                message = "加载失败：${s.message}",
+                                message = s.message,
                                 onRetry = { refresh() },
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )

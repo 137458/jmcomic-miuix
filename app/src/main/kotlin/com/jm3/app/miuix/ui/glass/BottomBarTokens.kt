@@ -93,14 +93,14 @@ internal fun bottomBarTokens(size: BottomBarSize, form: BottomBarForm): GlassBot
         BottomBarForm.DOCKED -> docked(size)
     }
 
-/** 组合期解析：未显式设置时按窗口断点取默认档。 */
+/** 组合期解析：尺寸档未显式设置时按窗口断点取默认档，形态档未设置即悬浮。 */
 internal fun resolveBottomBarTokens(
     explicitSize: BottomBarSize?,
     explicitForm: BottomBarForm?,
     widthDp: Int,
 ): GlassBottomBarTokens {
     val size = BottomBarPreferencePolicy.resolveSize(explicitSize, widthDp)
-    val form = BottomBarPreferencePolicy.resolveForm(explicitForm, widthDp)
+    val form = BottomBarPreferencePolicy.resolveForm(explicitForm)
     return bottomBarTokens(size, form)
 }
 

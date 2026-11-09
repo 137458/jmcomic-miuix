@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
  *   Activity 被回收之后，服务仍能随队列状态自动开关，也不会因为多个 Activity
  *   重复注册而重复 startForegroundService。
  * - 该做什么由 :core 的 [ForegroundPolicy] 决定（活动任务数 → 拉起/停止/发进度/补发），
- *   这里只执行动作，并把「服务是否真的在前台」回写给它。
+ *   这里只执行动作，并把「服务是否真的在前台」回写给它；拉起被拒后的补评估由 [ForegroundRunner] 排期。
  * - 画什么由 :core 的 [present] 决定，[DownloadNotifier] 只把选型翻成通知内容。
  */
 class DownloadService : Service() {
@@ -78,6 +78,10 @@ class DownloadService : Service() {
 
     private fun handleTimeout() {
         runCatching { Jm3Graph.downloads.manager.pauseActive() }
+            .onFailure { e ->
+                // 暂停失败也要继续退场：先把失败留痕，否则通知消失了却没人知道任务没停。
+                Log.w(TAG, "超时暂停在途任务失败", e)
+            }
         DownloadNotifier.cancel(this)
         // 前台通知会随退场一起消失：不留一条可见提示，用户只会看到通知无声消失、以为下载完成。
         DownloadNotifier.notifyPaused(this, getString(R.string.notification_download_paused_text))
@@ -110,8 +114,11 @@ class DownloadService : Service() {
 
         private val attached = AtomicBoolean(false)
 
+        /** 同一批任务内的拉起重试窗口：策略的退避判定与这里的到点补评估共用同一个值。 */
+        private const val START_RETRY_INTERVAL_MS = ForegroundPolicy.DEFAULT_START_RETRY_INTERVAL_MS
+
         /** 前台服务的全部决策状态：进程内一份，随 Activity 重建而保持。 */
-        private val policy = ForegroundPolicy()
+        private val policy = ForegroundPolicy(startRetryIntervalMs = START_RETRY_INTERVAL_MS)
 
         /** 节流窗口末尾的补发任务：保证进度条最终能停在真实值上。 */
         private var flushJob: Job? = null
@@ -123,24 +130,32 @@ class DownloadService : Service() {
         fun attach(context: Context) {
             if (!attached.compareAndSet(false, true)) return
             val app = context.applicationContext
+            // 队列更新只是快照来源：决策与执行都交给 runner，它自己负责拉起被拒后的到点补评估。
+            val runner = ForegroundRunner(
+                policy = policy,
+                scope = Jm3Graph.appScope,
+                retryIntervalMs = START_RETRY_INTERVAL_MS,
+                latestTasks = { currentTasks() },
+                perform = { action -> perform(app, action) },
+            )
             // 全应用只允许一处长期协程作用域：appScope 随进程存活，attach 的幂等由 attached 保证。
             Jm3Graph.appScope.launch {
-                Jm3Graph.downloads.manager.queue.updates.collect { tasks ->
-                    policy.onTasks(tasks).forEach { action -> perform(app, action) }
-                }
+                Jm3Graph.downloads.manager.queue.updates.collect { tasks -> runner.onTasks(tasks) }
             }
         }
 
-        fun start(context: Context) {
+        /** 拉起前台服务；被系统拒绝时返回 false，由 [ForegroundRunner] 排一次到点补评估。 */
+        fun start(context: Context): Boolean {
             val intent = Intent(context, DownloadService::class.java).setAction(ACTION_START)
             // minSdk 26：统一走 startForegroundService，由 onStartCommand 在 5s 内 startForeground。
-            runCatching { context.startForegroundService(intent) }
+            return runCatching { context.startForegroundService(intent) }
                 .onFailure { e ->
                     // 后台启动被拒（ForegroundServiceStartNotAllowedException）时界面毫无反馈，至少留痕。
                     Log.w(TAG, "启动下载前台服务失败", e)
-                    // 回滚活动数快照，让退避窗口结束后的下一次队列更新还能再次尝试拉起
+                    // 回滚活动数快照，让退避窗口结束后的补评估还能再次尝试拉起
                     policy.onStartFailed()
                 }
+                .isSuccess
         }
 
         fun stop(context: Context) {
@@ -151,12 +166,20 @@ class DownloadService : Service() {
         internal fun currentTasks(): Map<String, DownloadTask> =
             Jm3Graph.downloads.manager.queue.updates.value
 
-        private fun perform(app: Context, action: ForegroundAction) {
-            when (action) {
-                ForegroundAction.Start -> start(app)
-                ForegroundAction.Stop -> stop(app)
-                is ForegroundAction.Publish -> publish(app, action.tasks)
-                is ForegroundAction.ScheduleFlush -> scheduleFlush(app, action.delayMs)
+        /** 执行一条动作；返回值只对 [ForegroundAction.Start] 有意义（拉起是否被系统接受）。 */
+        private fun perform(app: Context, action: ForegroundAction): Boolean = when (action) {
+            ForegroundAction.Start -> start(app)
+            ForegroundAction.Stop -> {
+                stop(app)
+                true
+            }
+            is ForegroundAction.Publish -> {
+                publish(app, action.tasks)
+                true
+            }
+            is ForegroundAction.ScheduleFlush -> {
+                scheduleFlush(app, action.delayMs)
+                true
             }
         }
 

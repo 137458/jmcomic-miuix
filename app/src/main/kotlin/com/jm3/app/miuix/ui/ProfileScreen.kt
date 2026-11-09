@@ -26,7 +26,6 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.UserProfile
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -80,7 +79,6 @@ fun ProfileScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
@@ -124,7 +122,7 @@ fun ProfileScreen(
         }
         if (showLoading) state = ProfileUiState.Loading
         scope.launch {
-            val outcome = authCall.call { deps.gateway.userProfile(uid) }
+            val outcome = deps.authCall.call { deps.gateway.userProfile(uid) }
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     applyProfile(outcome.value)
@@ -143,7 +141,7 @@ fun ProfileScreen(
         if (saving) return
         saving = true
         scope.launch {
-            val outcome = authCall.call { deps.gateway.editUserProfile(uid, fields.toMap()) }
+            val outcome = deps.authCall.call { deps.gateway.editUserProfile(uid, fields.toMap()) }
             saving = false
             when (outcome) {
                 is SessionOutcome.Ok -> {

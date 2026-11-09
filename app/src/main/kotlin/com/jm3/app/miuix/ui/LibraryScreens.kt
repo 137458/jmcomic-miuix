@@ -66,7 +66,6 @@ import com.jm3.core.model.CreatorWorkMeta
 import com.jm3.core.model.CreatorWorkPage
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
@@ -105,7 +104,6 @@ fun LibraryScreen(
     onOpenCreator: (String) -> Unit,
     onOpenWork: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -167,7 +165,7 @@ fun LibraryScreen(
         }
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
-            val outcome = authCall.call {
+            val outcome = deps.authCall.call {
                 if (tabIndex == 0) {
                     deps.gateway.creatorAuthors(targetPage, keyword)
                 } else {
@@ -396,7 +394,6 @@ fun CreatorWorksScreen(
     onOpenCreator: (String) -> Unit,
     onOpenWork: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     var data by remember { mutableStateOf<CreatorAuthorWorks?>(null) }
@@ -419,7 +416,7 @@ fun CreatorWorksScreen(
         if (showLoading) loading = true
         failure = null
         scope.launch {
-            val outcome = authCall.call { deps.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
+            val outcome = deps.authCall.call { deps.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
             if (token != loadToken) return@launch
             loading = false
             refreshing = false
@@ -597,7 +594,6 @@ fun CreatorWorkDetailScreen(
     onBack: () -> Unit,
     onOpenWork: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
@@ -615,7 +611,7 @@ fun CreatorWorkDetailScreen(
         loading = true
         failure = null
         scope.launch {
-            val outcome = authCall.call { deps.gateway.creatorWork(workId) }
+            val outcome = deps.authCall.call { deps.gateway.creatorWork(workId) }
             if (token != loadToken) return@launch
             loading = false
             when (outcome) {

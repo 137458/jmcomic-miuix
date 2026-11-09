@@ -65,7 +65,6 @@ import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.reader.ChapterGroups
 import com.jm3.core.replacedBy
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.SettingsRepository
 import java.time.format.DateTimeFormatter
@@ -122,8 +121,9 @@ fun NovelListScreen(
     onOpenNovel: (String) -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
 ) {
+    // 会话闸门只经 deps 取：路由层不再重复传第二份。
+    val authCall = deps.authCall
     val user by deps.account.user.collectAsState()
     var orderName by rememberSaveable { mutableStateOf(NovelOrder.DEFAULT.name) }
     val order = NovelOrder.entries.firstOrNull { it.name == orderName } ?: NovelOrder.DEFAULT
@@ -437,8 +437,8 @@ fun NovelDetailScreen(
     onOpenSearch: (String, SearchScope) -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
 ) {
+    val authCall = deps.authCall
     val user by deps.account.user.collectAsState()
     var detail by remember { mutableStateOf<NovelDetail?>(null) }
     var savedChapter by remember { mutableStateOf<String?>(null) }
@@ -671,7 +671,6 @@ fun NovelDetailScreen(
                                     novelId = novelId,
                                     onOpenLogin = onOpenLogin,
                                     snackbarHostState = snackbarHostState,
-                                    authCall = authCall,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 )
                             }
@@ -859,8 +858,8 @@ fun NovelReaderScreen(
     onBack: () -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
 ) {
+    val authCall = deps.authCall
     val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
     var detail by remember { mutableStateOf<NovelDetail?>(null) }
@@ -1107,7 +1106,6 @@ fun NovelReaderScreen(
                     novelId = novelId,
                     onOpenLogin = onOpenLogin,
                     snackbarHostState = snackbarHostState,
-                    authCall = authCall,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -1169,9 +1167,9 @@ private fun NovelCommentsPanel(
     novelId: String,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     modifier: Modifier = Modifier,
 ) {
+    val authCall = deps.authCall
     val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
     var feed by remember { mutableStateOf(PagedFeed<CommentItem>()) }
@@ -1279,7 +1277,7 @@ private fun NovelCommentsPanel(
                 TextButton(text = "去登录", onClick = onOpenLogin)
             }
             failure != null -> ErrorScreen(
-                message = "评论加载失败：" + failure?.message.orEmpty(),
+                message = failure?.message.orEmpty(),
                 onRetry = { load(1, replace = true, showLoading = true) },
                 modifier = Modifier.fillMaxWidth().padding(8.dp),
             )

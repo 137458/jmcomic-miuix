@@ -37,7 +37,6 @@ import com.jm3.core.model.SearchResult
 import com.jm3.core.model.TagFavorite
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
@@ -71,7 +70,6 @@ fun FavoritesScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
@@ -144,7 +142,7 @@ fun FavoritesScreen(
             failure = null
             feed = null
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
-            val outcome = authCall.call { deps.gateway.favorites(targetFolderId, 1) }
+            val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, 1) }
             // 请求期间切换了收藏夹：丢弃旧夹结果，避免覆盖新夹内容。
             if (targetFolderId != folderId) return@launch
             when (outcome) {
@@ -171,7 +169,7 @@ fun FavoritesScreen(
         val targetFolderId = folderId
         scope.launch {
             try {
-                val outcome = authCall.call { deps.gateway.favorites(targetFolderId, resolved) }
+                val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, resolved) }
                 if (targetFolderId != folderId) return@launch
                 when (outcome) {
                     is SessionOutcome.Ok -> {
@@ -197,7 +195,7 @@ fun FavoritesScreen(
         refreshing = true
         scope.launch {
             val targetFolderId = folderId
-            val outcome = authCall.call { deps.gateway.favorites(targetFolderId, 1) }
+            val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, 1) }
             refreshing = false
             if (targetFolderId != folderId) return@launch
             when (outcome) {
@@ -235,7 +233,7 @@ fun FavoritesScreen(
         folderBusy = true
         folderError = null
         scope.launch {
-            val outcome = authCall.call { deps.gateway.manageFavoriteFolder(action, targetId, name) }
+            val outcome = deps.authCall.call { deps.gateway.manageFavoriteFolder(action, targetId, name) }
             folderBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -272,7 +270,7 @@ fun FavoritesScreen(
         moveBusy = true
         moveError = null
         scope.launch {
-            val outcome = authCall.call {
+            val outcome = deps.authCall.call {
                 deps.gateway.manageFavoriteFolder(
                     FavoriteFolderAction.MOVE,
                     targetFolderId.toString(),
@@ -310,7 +308,7 @@ fun FavoritesScreen(
         scope.launch {
             tagsError = null
             tags = null
-            val outcome = authCall.call { deps.gateway.tagsFavorite() }
+            val outcome = deps.authCall.call { deps.gateway.tagsFavorite() }
             if (user?.uid != uid) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> tags = outcome.value
@@ -336,7 +334,7 @@ fun FavoritesScreen(
         tagBusy = true
         tagError = null
         scope.launch {
-            val outcome = authCall.call { deps.gateway.addFavoriteTags(listOf(tag)) }
+            val outcome = deps.authCall.call { deps.gateway.addFavoriteTags(listOf(tag)) }
             tagBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -362,7 +360,7 @@ fun FavoritesScreen(
         tagBusy = true
         tagError = null
         scope.launch {
-            val outcome = authCall.call { deps.gateway.removeFavoriteTags(listOf(tag)) }
+            val outcome = deps.authCall.call { deps.gateway.removeFavoriteTags(listOf(tag)) }
             tagBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -404,7 +402,7 @@ fun FavoritesScreen(
         val targetFolderId = folderId
         feed = requested
         scope.launch {
-            val outcome = authCall.call { deps.gateway.favorites(targetFolderId, requested.page + 1) }
+            val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, requested.page + 1) }
             // 加载期间切换了收藏夹：这批结果属于旧收藏夹，丢弃以免串夹。
             if (targetFolderId != folderId) return@launch
             when (outcome) {

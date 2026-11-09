@@ -24,7 +24,6 @@ import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.paging.pagerNextPage
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
@@ -52,7 +51,6 @@ fun WatchHistoryScreen(
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     val mode = deps.preferences.paginationMode
@@ -93,7 +91,7 @@ fun WatchHistoryScreen(
         if (!replace) feed = requested
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
-            val outcome = authCall.call { deps.gateway.watchHistory(targetPage) }
+            val outcome = deps.authCall.call { deps.gateway.watchHistory(targetPage) }
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -123,7 +121,7 @@ fun WatchHistoryScreen(
         if (deletingId != null) return
         deletingId = item.id
         scope.launch {
-            val outcome = authCall.call { deps.gateway.deleteWatchHistory(item.id) }
+            val outcome = deps.authCall.call { deps.gateway.deleteWatchHistory(item.id) }
             deletingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {

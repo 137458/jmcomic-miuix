@@ -52,7 +52,6 @@ import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
 import com.jm3.core.model.TaskPage
 import com.jm3.core.model.TaskType
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -95,7 +94,6 @@ fun TasksScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     val types = TaskType.entries
@@ -131,7 +129,7 @@ fun TasksScreen(
         if (claimingId != null) return
         claimingId = item.id
         scope.launch {
-            val outcome = authCall.call { deps.gateway.claimTask(type, uid, item.id) }
+            val outcome = deps.authCall.call { deps.gateway.claimTask(type, uid, item.id) }
             claimingId = null
             val failure = when (outcome) {
                 is SessionOutcome.Ok -> outcome.value
@@ -180,7 +178,7 @@ fun TasksScreen(
         val requestType = type
         val requestFilter = filter
         scope.launch {
-            val outcome = authCall.call {
+            val outcome = deps.authCall.call {
                 // 勋章图与 API 同域；封面域名未就绪时退回当前 API 域名，仍为空才不展示图片
                 val host = runCatching { deps.gateway.imageHost() }
                     .getOrDefault("")

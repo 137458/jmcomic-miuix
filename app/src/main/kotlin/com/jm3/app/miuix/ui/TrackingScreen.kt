@@ -31,7 +31,6 @@ import com.jm3.core.model.TrackingItem
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
@@ -59,7 +58,6 @@ fun TrackingScreen(
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     // 在途、失败、是否还有下一页、累计总数都由 PagedFeed 记，页面不再各存一份布尔
@@ -79,7 +77,7 @@ fun TrackingScreen(
     /**
      * 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏。
      *
-     * 失效时 [AuthCall] 已在返回结局前清掉本地会话，整屏只能去登录，重试同一个请求只会再吃一次 401。
+     * 失效时 AuthCall 已在返回结局前清掉本地会话，整屏只能去登录，重试同一个请求只会再吃一次 401。
      */
     fun applyFailure(outcome: SessionOutcome<*>) {
         val plan = planLoad(
@@ -101,7 +99,7 @@ fun TrackingScreen(
         if (showLoading) state = TrackingUiState.Loading
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
-            val outcome = authCall.call { deps.gateway.trackingList(1) }
+            val outcome = deps.authCall.call { deps.gateway.trackingList(1) }
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -136,7 +134,7 @@ fun TrackingScreen(
         pageBusy = true
         scope.launch {
             try {
-                val outcome = authCall.call { deps.gateway.trackingList(resolved) }
+                val outcome = deps.authCall.call { deps.gateway.trackingList(resolved) }
                 refreshing = false
                 when (outcome) {
                     is SessionOutcome.Ok -> {
@@ -172,7 +170,7 @@ fun TrackingScreen(
         val page = requested.page + 1
         feed = requested
         scope.launch {
-            val outcome = authCall.call { deps.gateway.trackingList(page) }
+            val outcome = deps.authCall.call { deps.gateway.trackingList(page) }
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val next = outcome.value
@@ -199,7 +197,7 @@ fun TrackingScreen(
         if (removingId != null) return
         removingId = item.id
         scope.launch {
-            val outcome = authCall.call { deps.gateway.setTracking(item.id) }
+            val outcome = deps.authCall.call { deps.gateway.setTracking(item.id) }
             removingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {

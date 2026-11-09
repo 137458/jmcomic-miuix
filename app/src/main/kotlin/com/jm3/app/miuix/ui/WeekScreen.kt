@@ -28,7 +28,6 @@ import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicksDetail
 import com.jm3.core.paging.PagedFeed
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
@@ -48,7 +47,6 @@ fun WeekScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
-    authCall: AuthCall,
     onOpenLogin: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
@@ -72,7 +70,7 @@ fun WeekScreen(
         if (showLoading) detailLoading = true
         detailFailure = null
         scope.launch {
-            val outcome = authCall.call { deps.gateway.weeklyPicksDetail(period.id) }
+            val outcome = deps.authCall.call { deps.gateway.weeklyPicksDetail(period.id) }
             if (current != detailToken) return@launch
             detailLoading = false
             refreshing = false
@@ -89,7 +87,7 @@ fun WeekScreen(
         periodsLoading = true
         periodsFailure = null
         scope.launch {
-            val outcome = authCall.call { deps.gateway.weeklyPicks() }
+            val outcome = deps.authCall.call { deps.gateway.weeklyPicks() }
             periodsLoading = false
             refreshing = false
             when (outcome) {

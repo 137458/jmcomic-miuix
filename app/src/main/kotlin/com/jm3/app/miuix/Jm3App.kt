@@ -524,11 +524,9 @@ fun Jm3App() {
                             hyperOs = {
                                 MainScreen(
                                     deps = deps,
-                                    gateway = Jm3Graph.api.gateway,
                                     account = Jm3Graph.session.account,
                                     downloadManager = Jm3Graph.downloads.manager,
                                     unreadBadge = Jm3Graph.session.unread,
-                                    authCall = Jm3Graph.session.authCall,
                                     snackbarHostState = snackbarHostState,
                                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                                     onOpenLogin = { backStack.add(Route.Login) },
@@ -550,11 +548,9 @@ fun Jm3App() {
                             colorOs = {
                                 CouiMainScreen(
                                     deps = deps,
-                                    gateway = Jm3Graph.api.gateway,
                                     account = Jm3Graph.session.account,
                                     downloadManager = Jm3Graph.downloads.manager,
                                     unreadBadge = Jm3Graph.session.unread,
-                                    authCall = Jm3Graph.session.authCall,
                                     snackbarHostState = snackbarHostState,
                                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                                     onOpenLogin = { backStack.add(Route.Login) },
@@ -583,7 +579,6 @@ fun Jm3App() {
                             deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -598,8 +593,6 @@ fun Jm3App() {
                     entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         ShelfScreen(
                             deps = deps,
-                            gateway = Jm3Graph.gateway,
-                            authCall = Jm3Graph.session.authCall,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
                         )
@@ -630,8 +623,6 @@ fun Jm3App() {
                                     dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
                                     uiSkin = uiSkin,
                                     onUiSkinChange = changeSkin,
-                                    gateway = Jm3Graph.gateway,
-                                    authCall = Jm3Graph.session.authCall,
                                     onBack = { backStack.removeLastOrNull() },
                                     onOpenUpdate = openUpdate,
                                     snackbarHostState = snackbarHostState,
@@ -647,8 +638,6 @@ fun Jm3App() {
                                     dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
                                     uiSkin = uiSkin,
                                     onUiSkinChange = changeSkin,
-                                    gateway = Jm3Graph.gateway,
-                                    authCall = Jm3Graph.session.authCall,
                                     onBack = { backStack.removeLastOrNull() },
                                     onOpenUpdate = openUpdate,
                                     snackbarHostState = snackbarHostState,
@@ -667,7 +656,6 @@ fun Jm3App() {
                             deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -677,7 +665,6 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                             unreadBadge = Jm3Graph.session.unread,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
@@ -688,7 +675,6 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -697,7 +683,6 @@ fun Jm3App() {
                             deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -706,7 +691,6 @@ fun Jm3App() {
                             deps = deps,
                             onBack = { backStack.removeLastOrNull() },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -716,7 +700,6 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -727,7 +710,6 @@ fun Jm3App() {
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.AlbumDetail>(
@@ -787,13 +769,7 @@ fun Jm3App() {
                             deps = deps,
                             photoId = route.photoId,
                             startPage = route.startPage,
-                            authCall = Jm3Graph.session.authCall,
-                            gateway = Jm3Graph.api.gateway,
-                            downloadManager = Jm3Graph.downloads.manager,
                             settings = Jm3Graph.preferences.repository,
-                            history = Jm3Graph.library.history,
-                            downloadFiles = Jm3Graph.downloads.files,
-                            account = Jm3Graph.session.account,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenChapter = { photoId ->
                                 // 同层替换：返回键回到详情页，而不是逐章回退
@@ -810,7 +786,6 @@ fun Jm3App() {
                             onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.NovelDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
@@ -825,7 +800,6 @@ fun Jm3App() {
                             onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.NovelReader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
@@ -836,7 +810,6 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenLogin = { backStack.add(Route.Login) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                         )
                     }
                     entry<Route.Library>(swipeDismiss = NavSwipeDirection.LeftToRight) {
@@ -846,7 +819,6 @@ fun Jm3App() {
                             onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
                             onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -858,7 +830,6 @@ fun Jm3App() {
                             onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
                             onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -869,7 +840,6 @@ fun Jm3App() {
                             onBack = { backStack.removeLastOrNull() },
                             onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
                             snackbarHostState = snackbarHostState,
-                            authCall = Jm3Graph.session.authCall,
                             onOpenLogin = { backStack.add(Route.Login) },
                         )
                     }
@@ -878,8 +848,6 @@ fun Jm3App() {
                             deps = deps,
                             query = route.query,
                             scope = route.scope,
-                            gateway = Jm3Graph.gateway,
-                            authCall = Jm3Graph.session.authCall,
                             onBack = { backStack.removeLastOrNull() },
                             onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                         )

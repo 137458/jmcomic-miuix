@@ -42,7 +42,6 @@ import com.jm3.core.appendedBy
 import com.jm3.core.model.ForumScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.replacedBy
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.app.miuix.ui.skin.LocalSkin
@@ -87,7 +86,6 @@ fun ForumScreen(
     onBack: () -> Unit,
     onOpenLogin: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     onOpenAlbum: (albumId: String) -> Unit = {},
 ) {
     val user by deps.account.user.collectAsState()
@@ -146,7 +144,7 @@ fun ForumScreen(
         inFlightJob?.cancel()
         val token = ++loadToken
         inFlightJob = scope.launch {
-            val outcome = authCall.call { deps.gateway.forum(forumScope, targetPage) }
+            val outcome = deps.authCall.call { deps.gateway.forum(forumScope, targetPage) }
             if (token != loadToken) return@launch
             refreshing = false
             when (outcome) {
@@ -191,7 +189,7 @@ fun ForumScreen(
         if (text.isBlank() || replyBusy) return
         replyBusy = true
         scope.launch {
-            val outcome = authCall.call { deps.gateway.replyComment(albumId, text, target.id) }
+            val outcome = deps.authCall.call { deps.gateway.replyComment(albumId, text, target.id) }
             replyBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -212,7 +210,7 @@ fun ForumScreen(
         if (text.isBlank() || composeBusy) return
         composeBusy = true
         scope.launch {
-            val outcome = authCall.call { deps.gateway.postComment("", text) }
+            val outcome = deps.authCall.call { deps.gateway.postComment("", text) }
             composeBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {

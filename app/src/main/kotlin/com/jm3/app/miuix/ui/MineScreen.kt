@@ -35,7 +35,6 @@ import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.AccountManager
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.UnreadBadge
 import kotlinx.coroutines.delay
@@ -63,7 +62,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun MineScreen(
     deps: ScreenDeps,
     account: AccountManager,
-    authCall: AuthCall,
     unreadBadge: UnreadBadge,
     downloadManager: DownloadManager,
     snackbarHostState: SnackbarHostState,
@@ -122,7 +120,7 @@ fun MineScreen(
             // 超时也照常发：真实网络错误必须显示出来，不能让卡片永远停在加载中。
             awaitGatewayReady(ready = { runCatching { deps.gateway.domainsReady() }.getOrDefault(false) })
             val outcome = retryCheckInLoad(
-                attempt = { authCall.call { deps.gateway.dailyCheckInStatus(uid) } },
+                attempt = { deps.authCall.call { deps.gateway.dailyCheckInStatus(uid) } },
             )
             checkInLoading = false
             when (outcome) {
@@ -146,7 +144,7 @@ fun MineScreen(
 
     /** 签到后的回读：失效时仍只解释原因并留登录入口，不把「未生效」误报给用户。 */
     suspend fun refreshCheckInStatus(uid: String): DailyCheckInStatus? {
-        val outcome = authCall.call {
+        val outcome = deps.authCall.call {
             runCatchingSuspending { deps.gateway.dailyCheckInStatus(uid) }.getOrNull()
         }
         return when (outcome) {
@@ -169,7 +167,7 @@ fun MineScreen(
         checkInBusy = true
         checkInError = null
         scope.launch {
-            val outcome = authCall.call { deps.gateway.dailyCheckIn(uid, status.dailyId) }
+            val outcome = deps.authCall.call { deps.gateway.dailyCheckIn(uid, status.dailyId) }
             checkInBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {

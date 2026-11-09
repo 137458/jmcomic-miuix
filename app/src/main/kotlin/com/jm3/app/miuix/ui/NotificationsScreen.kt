@@ -38,7 +38,6 @@ import com.jm3.core.model.NotificationItem
 import com.jm3.core.model.NotificationPage
 import com.jm3.core.notificationBody
 import com.jm3.core.notificationDisplayTitle
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.UnreadBadge
 import kotlinx.coroutines.launch
@@ -65,7 +64,6 @@ fun NotificationsScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    authCall: AuthCall,
     // 未读角标的唯一真源：与 MainScreen 注入同一个实例，避免这里写一份、底栏读另一份
     unreadBadge: UnreadBadge,
     onOpenAlbum: (albumId: String) -> Unit = {},
@@ -109,7 +107,7 @@ fun NotificationsScreen(
     fun load(showLoading: Boolean = true) {
         if (showLoading) loading = true
         scope.launch {
-            val outcome = authCall.call { deps.gateway.notifications() }
+            val outcome = deps.authCall.call { deps.gateway.notifications() }
             loading = false
             refreshing = false
             when (outcome) {
@@ -134,7 +132,7 @@ fun NotificationsScreen(
         markingId = item.id
         scope.launch {
             val target = !item.read
-            val outcome = authCall.call { deps.gateway.markNotification(item.id, target) }
+            val outcome = deps.authCall.call { deps.gateway.markNotification(item.id, target) }
             markingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {

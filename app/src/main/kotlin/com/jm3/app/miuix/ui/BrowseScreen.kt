@@ -42,7 +42,6 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.Jm3Gateway
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseCategory
 import com.jm3.core.model.BrowseFilter
@@ -54,7 +53,6 @@ import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
@@ -84,8 +82,6 @@ enum class BrowseMode(val title: String) {
 fun BrowseScreen(
     deps: ScreenDeps,
     mode: BrowseMode,
-    gateway: Jm3Gateway,
-    authCall: AuthCall,
     onOpenAlbum: (String) -> Unit,
 ) {
     val skin = LocalSkin.current
@@ -152,7 +148,7 @@ fun BrowseScreen(
         // 下拉刷新时保留当前列表，避免刷新指示器下方整屏空白
         if (!byPull) publish(key, ListState.Loading)
         scope.launch {
-            val next = authCall.call { gateway.browse(filter(), 1) }.asListState("加载失败")
+            val next = deps.authCall.call { deps.gateway.browse(filter(), 1) }.asListState("加载失败")
             if (token != requestToken) return@launch
             publish(key, next)
             refreshing = false
@@ -169,7 +165,7 @@ fun BrowseScreen(
         val key = pageKey
         publish(key, ListState.Loading)
         scope.launch {
-            val next = authCall.call { gateway.browse(filter(), resolved) }.asListState("加载失败")
+            val next = deps.authCall.call { deps.gateway.browse(filter(), resolved) }.asListState("加载失败")
             if (token != requestToken) return@launch
             publish(key, next)
             if (mode == BrowseMode.RANK) gridState.scrollToItem(0) else listState.scrollToItem(0)
@@ -183,7 +179,7 @@ fun BrowseScreen(
         val token = requestToken
         state = ListState.Loaded(requested)
         scope.launch {
-            val next = authCall.call { gateway.browse(filter(), requested.page + 1) }
+            val next = deps.authCall.call { deps.gateway.browse(filter(), requested.page + 1) }
             // 加载期间切换了筛选：这批结果属于旧条件，丢弃以免串页
             if (token != requestToken) return@launch
             val updated = when (next) {
@@ -204,7 +200,7 @@ fun BrowseScreen(
         if (requested === weeklyFeed) return
         weeklyFeed = requested
         scope.launch {
-            val next = authCall.call { gateway.serialization(requested.page + 1) }
+            val next = deps.authCall.call { deps.gateway.serialization(requested.page + 1) }
                 .orDegrade<com.jm3.core.model.SearchPage?>(null)
             weeklyFeed = if (next != null) requested.appendedBy(next) else requested.failLoadMore()
         }
@@ -215,7 +211,7 @@ fun BrowseScreen(
         weeklyLoading = true
         weeklyFailure = null
         scope.launch {
-            val outcome = authCall.call { gateway.serialization(1) }
+            val outcome = deps.authCall.call { deps.gateway.serialization(1) }
             weeklyLoading = false
             weeklyFailure = planLoad(
                 outcome = outcome,
@@ -227,11 +223,11 @@ fun BrowseScreen(
     }
 
     // 三个增强区块并行加载；失败或会话失效只影响各自区域，不影响主列表与整屏错误态。
-    LaunchedEffect(gateway, authCall) {
+    LaunchedEffect(deps.gateway, deps.authCall) {
         loadWeekly()
         coroutineScope {
-            val treeRequest = async { authCall.call { gateway.categoriesList() } }
-            val tagsRequest = async { authCall.call { gateway.hotTags() } }
+            val treeRequest = async { deps.authCall.call { deps.gateway.categoriesList() } }
+            val tagsRequest = async { deps.authCall.call { deps.gateway.hotTags() } }
             categoryTree = treeRequest.await().orDegrade<CategoryTree?>(null)
             hotTags = tagsRequest.await().orDegrade(emptyList())
         }
@@ -351,8 +347,6 @@ fun BrowseScreen(
         if (activeTag != null) {
             TagResultSection(
                 deps = deps,
-                gateway = gateway,
-                authCall = authCall,
                 keyword = activeTag,
                 order = order,
                 onOpenAlbum = onOpenAlbum,
@@ -590,8 +584,6 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
 @Composable
 private fun TagResultSection(
     deps: ScreenDeps,
-    gateway: Jm3Gateway,
-    authCall: AuthCall,
     keyword: String,
     order: BrowseOrder,
     onOpenAlbum: (String) -> Unit,
@@ -611,7 +603,7 @@ private fun TagResultSection(
         val token = requestToken
         state = ListState.Loading
         scope.launch {
-            val next = authCall.call { gateway.search(keyword, 1, order, SearchScope.TAG) }
+            val next = deps.authCall.call { deps.gateway.search(keyword, 1, order, SearchScope.TAG) }
                 .asListState("加载失败")
             if (token != requestToken) return@launch
             state = next
@@ -627,7 +619,7 @@ private fun TagResultSection(
         val token = requestToken
         state = ListState.Loading
         scope.launch {
-            val next = authCall.call { gateway.search(keyword, resolved, order, SearchScope.TAG) }
+            val next = deps.authCall.call { deps.gateway.search(keyword, resolved, order, SearchScope.TAG) }
                 .asListState("加载失败")
             if (token != requestToken) return@launch
             state = next
@@ -642,7 +634,7 @@ private fun TagResultSection(
         val token = requestToken
         state = ListState.Loaded(requested)
         scope.launch {
-            val next = authCall.call { gateway.search(keyword, requested.page + 1, order, SearchScope.TAG) }
+            val next = deps.authCall.call { deps.gateway.search(keyword, requested.page + 1, order, SearchScope.TAG) }
             if (token != requestToken) return@launch
             val updated = when (next) {
                 is SessionOutcome.Ok -> requested.appendedBy(next.value)
