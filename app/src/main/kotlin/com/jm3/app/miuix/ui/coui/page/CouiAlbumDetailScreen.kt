@@ -84,9 +84,11 @@ import com.jm3.app.miuix.ui.coui.component.CouiButton
 import com.jm3.app.miuix.ui.coui.component.CouiCard
 import com.jm3.app.miuix.ui.coui.component.CouiChip
 import com.jm3.app.miuix.ui.coui.component.CouiNestedCard
+import com.jm3.app.miuix.ui.coui.component.CouiNoticeCard
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitle
 import com.jm3.app.miuix.ui.coui.component.CouiSurfaceBackground
 import com.jm3.app.miuix.ui.coui.component.CouiTextButton
+import com.jm3.app.miuix.ui.coui.component.CouiTextField
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
 import com.jm3.app.miuix.ui.coui.component.couiClickable
@@ -1515,68 +1517,5 @@ private fun CouiSheetRow(
     }
 }
 
-/** COUI 输入容器：皮肤控件曲率描边底，内部 BasicTextField 至少两行高。 */
-@Composable
-private fun CouiTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    modifier: Modifier = Modifier,
-) {
-    val colors = LocalCouiColors.current
-    val control = LocalCouiShapes.current.control
-    val shape = RoundedCornerShape(control)
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .squircleClip(control)
-            .background(colors.searchField)
-            .border(1.dp, colors.searchBorder, shape)
-            .padding(12.dp),
-    ) {
-        if (value.isEmpty()) {
-            BasicText(
-                text = placeholder,
-                style = CouiType.caption.copy(color = colors.textTertiary),
-            )
-        }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp),
-            textStyle = CouiType.body.copy(color = colors.textPrimary),
-            cursorBrush = SolidColor(colors.accent),
-        )
-    }
-}
-
-/** 页内提示卡：错误/空态/失效共用；失效时不给重试，只给登录入口。 */
-@Composable
-private fun CouiNoticeCard(
-    message: String,
-    actionText: String? = null,
-    onAction: (() -> Unit)? = null,
-) {
-    val colors = LocalCouiColors.current
-    CouiCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = CouiPagePadding, vertical = 12.dp),
-    ) {
-        BasicText(
-            text = message,
-            style = CouiType.body.copy(color = colors.textSecondary),
-        )
-        if (actionText != null && onAction != null) {
-            CouiTextButton(
-                text = actionText,
-                onClick = onAction,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-    }
-}
 
 

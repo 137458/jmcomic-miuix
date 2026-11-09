@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.ui.skin.SkinShapes
@@ -179,6 +180,7 @@ object CouiMotion {
     val ListSpring: SpringSpec<Float> = spring(dampingRatio = 0.85f, stiffness = 400f)
     val DialogSpring: SpringSpec<Float> = spring(dampingRatio = 0.8f, stiffness = 500f)
     val SheetSpring: SpringSpec<Float> = spring(dampingRatio = 0.85f, stiffness = 450f)
+    val SheetOffsetSpring: SpringSpec<IntOffset> = spring(dampingRatio = 0.85f, stiffness = 450f)
 }
 
 val LocalCouiColors = staticCompositionLocalOf { couiColorsOf(lightColorScheme(), isDark = false) }

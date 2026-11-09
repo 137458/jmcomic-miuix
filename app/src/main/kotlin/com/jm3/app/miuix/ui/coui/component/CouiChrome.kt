@@ -13,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -283,9 +285,10 @@ private fun RowScope.NavItems(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
+                .couiSelectable(
+                    selected = selected,
+                    role = Role.Tab,
+                    ensureMinTouchTarget = false,
                     onClick = { onItemClick(index) },
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -430,18 +433,23 @@ fun CouiSearchField(
             )
         }
         if (value.isNotEmpty()) {
-            BasicText(
-                text = "×",
-                style = CouiType.body.copy(color = colors.textSecondary, fontSize = 18.sp),
+            Box(
                 modifier = Modifier
+                    .size(28.dp)
                     .clip(CircleShape)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
+                        role = Role.Button,
                         onClick = { onValueChange("") },
-                    )
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                BasicText(
+                    text = "×",
+                    style = CouiType.body.copy(color = colors.textSecondary, fontSize = 18.sp),
+                )
+            }
         }
     }
 }
@@ -503,3 +511,31 @@ fun CouiSegmented(
 @Composable
 fun couiTopBarHeight(): Dp =
     56.dp + WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+/**
+ * COUI 浮动操作按钮（FAB）：44dp 方卡片，支持图标与旋转角度（如回到顶部、随机漫游）。
+ */
+@Composable
+fun CouiFab(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    rotationDegrees: Float = 0f,
+) {
+    CouiCard(
+        onClick = onClick,
+        modifier = modifier.size(44.dp),
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer { rotationZ = rotationDegrees },
+            )
+        }
+    }
+}

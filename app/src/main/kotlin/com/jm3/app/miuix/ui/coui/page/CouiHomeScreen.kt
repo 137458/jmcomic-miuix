@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -65,12 +66,14 @@ import com.jm3.app.miuix.ui.coui.component.CouiButton
 import com.jm3.app.miuix.ui.coui.component.CouiCard
 import com.jm3.app.miuix.ui.coui.component.CouiChip
 import com.jm3.app.miuix.ui.coui.component.CouiDialogOverlay
+import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiSearchField
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitle
 import com.jm3.app.miuix.ui.coui.component.CouiSegmented
 import com.jm3.app.miuix.ui.coui.component.CouiTextButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
+import com.jm3.app.miuix.ui.coui.component.couiClickable
 import com.jm3.app.miuix.ui.coui.component.couiTopBarHeight
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBlurBackdrop
 import com.jm3.app.miuix.ui.coui.theme.CouiType
@@ -78,6 +81,7 @@ import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
+import com.jm3.app.miuix.ui.glass.LocalGlassTopBarExpandedHeight
 import com.jm3.app.miuix.ui.isShowingSearchResults
 import com.jm3.app.miuix.ui.mutateSearchHistory
 import com.jm3.app.miuix.ui.orDegrade
@@ -366,145 +370,149 @@ fun CouiHomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        GlassPullToRefresh(
-            isRefreshing = refreshing,
-            onRefresh = { refresh(byPull = true) },
-            modifier = Modifier
-                .fillMaxSize()
-                .couiBackdropSource(topBarBackdrop),
-            pullToRefreshState = refreshState,
-            contentPadding = PaddingValues(top = contentTop, bottom = contentBottom),
+        CompositionLocalProvider(
+            LocalGlassTopBarExpandedHeight provides contentTop,
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
+            GlassPullToRefresh(
+                isRefreshing = refreshing,
+                onRefresh = { refresh(byPull = true) },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .couiBackdropSource(topBarBackdrop),
+                pullToRefreshState = refreshState,
                 contentPadding = PaddingValues(top = contentTop, bottom = contentBottom),
             ) {
-                if (searching) {
-                    item(key = "search-header") {
-                        CouiSearchHeader(
-                            query = activeQuery,
-                            byTag = searchByTag,
-                            total = (results as? ListState.Loaded)?.feed?.total ?: 0,
-                        )
-                    }
-                    when (val s = results) {
-                        null, is ListState.Loading -> if (!refreshing) {
-                            item(key = "search-loading") {
-                                LoadingScreen(modifier = Modifier.padding(vertical = 24.dp))
-                            }
-                        }
-                        is ListState.Failed -> item(key = "search-error") {
-                            ErrorScreen(
-                                message = s.message,
-                                onRetry = { runSearch(activeQuery, searchByTag, order) },
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = contentTop, bottom = contentBottom),
+                ) {
+                    if (searching) {
+                        item(key = "search-header") {
+                            CouiSearchHeader(
+                                query = activeQuery,
+                                byTag = searchByTag,
+                                total = (results as? ListState.Loaded)?.feed?.total ?: 0,
                             )
                         }
-                        is ListState.Loaded -> couiResultItems(
-                            feed = s.feed,
-                            clickPaging = clickPaging,
-                            onLoadMore = ::loadMore,
-                            onPageChange = ::jumpToPage,
-                            onOpenAlbum = { openAlbum(it) },
-                        )
-                    }
-                } else {
-                    item(key = "discovery-header") {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            if (query.isBlank() && searchHistory.isNotEmpty()) {
-                                CouiSearchHistoryCard(
-                                    history = searchHistory,
-                                    onPick = { word ->
-                                        query = word
-                                        runSearch(word, byTag = false, sort = order)
-                                    },
-                                    onRemove = { word ->
-                                        mutateHistory { deps.settings.removeSearchHistory(word) }
-                                    },
-                                    onClear = { mutateHistory { deps.settings.clearSearchHistory() } },
+                        when (val s = results) {
+                            null, is ListState.Loading -> if (!refreshing) {
+                                item(key = "search-loading") {
+                                    LoadingScreen(modifier = Modifier.padding(vertical = 24.dp))
+                                }
+                            }
+                            is ListState.Failed -> item(key = "search-error") {
+                                ErrorScreen(
+                                    message = s.message,
+                                    onRetry = { runSearch(activeQuery, searchByTag, order) },
                                 )
                             }
-                            if (serialUpdates.isNotEmpty()) {
-                                CouiSectionTitle(text = "连载更新")
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    items(serialUpdates, key = { it.id }) { update ->
-                                        CouiCompactWorkCard(
-                                            result = update,
-                                            subtitle = update.authors.joinToString(" / ").ifBlank { "未知作者" },
-                                            onClick = { openAlbum(update.id) },
-                                        )
-                                    }
-                                }
-                            }
-                            if (hotTags.isNotEmpty()) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Box(modifier = Modifier.weight(1f)) {
-                                        CouiSectionTitle(text = "热门标签")
-                                    }
-                                    if (hotTags.size > HOT_TAG_COLLAPSED) {
-                                        CouiTextButton(
-                                            text = if (showAllTags) "收起" else "更多",
-                                            onClick = { showAllTags = !showAllTags },
-                                            modifier = Modifier.padding(end = 8.dp),
-                                        )
-                                    }
-                                }
-                                CouiCard(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = SectionHorizontalPadding),
-                                    contentPadding = PaddingValues(12.dp),
-                                ) {
-                                    CouiTagFlow(
-                                        tags = hotTags,
-                                        expanded = showAllTags,
-                                        onClick = { tag ->
-                                            query = tag
-                                            runSearch(tag, byTag = true, sort = order)
+                            is ListState.Loaded -> couiResultItems(
+                                feed = s.feed,
+                                clickPaging = clickPaging,
+                                onLoadMore = ::loadMore,
+                                onPageChange = ::jumpToPage,
+                                onOpenAlbum = { openAlbum(it) },
+                            )
+                        }
+                    } else {
+                        item(key = "discovery-header") {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                if (query.isBlank() && searchHistory.isNotEmpty()) {
+                                    CouiSearchHistoryCard(
+                                        history = searchHistory,
+                                        onPick = { word ->
+                                            query = word
+                                            runSearch(word, byTag = false, sort = order)
                                         },
+                                        onRemove = { word ->
+                                            mutateHistory { deps.settings.removeSearchHistory(word) }
+                                        },
+                                        onClear = { mutateHistory { deps.settings.clearSearchHistory() } },
                                     )
                                 }
-                            }
-                            if (randomPicks.isNotEmpty()) {
-                                CouiSectionTitle(text = "随便看看")
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    items(randomPicks, key = { it.id }) { pick ->
-                                        CouiCompactWorkCard(
-                                            result = pick,
-                                            subtitle = pick.authors.joinToString(" / ").ifBlank { "未知作者" },
-                                            onClick = { openAlbum(pick.id) },
+                                if (serialUpdates.isNotEmpty()) {
+                                    CouiSectionTitle(text = "连载更新")
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        items(serialUpdates, key = { it.id }) { update ->
+                                            CouiCompactWorkCard(
+                                                result = update,
+                                                subtitle = update.authors.joinToString(" / ").ifBlank { "未知作者" },
+                                                onClick = { openAlbum(update.id) },
+                                            )
+                                        }
+                                    }
+                                }
+                                if (hotTags.isNotEmpty()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            CouiSectionTitle(text = "热门标签")
+                                        }
+                                        if (hotTags.size > HOT_TAG_COLLAPSED) {
+                                            CouiTextButton(
+                                                text = if (showAllTags) "收起" else "更多",
+                                                onClick = { showAllTags = !showAllTags },
+                                                modifier = Modifier.padding(end = 8.dp),
+                                            )
+                                        }
+                                    }
+                                    CouiCard(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = SectionHorizontalPadding),
+                                        contentPadding = PaddingValues(12.dp),
+                                    ) {
+                                        CouiTagFlow(
+                                            tags = hotTags,
+                                            expanded = showAllTags,
+                                            onClick = { tag ->
+                                                query = tag
+                                                runSearch(tag, byTag = true, sort = order)
+                                            },
                                         )
+                                    }
+                                }
+                                if (randomPicks.isNotEmpty()) {
+                                    CouiSectionTitle(text = "随便看看")
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        items(randomPicks, key = { it.id }) { pick ->
+                                            CouiCompactWorkCard(
+                                                result = pick,
+                                                subtitle = pick.authors.joinToString(" / ").ifBlank { "未知作者" },
+                                                onClick = { openAlbum(pick.id) },
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    item(key = "latest-title") { CouiSectionTitle(text = "最新上架") }
-                    when (val s = feed) {
-                        is ListState.Loading -> if (!refreshing) {
-                            item(key = "feed-loading") {
-                                LoadingScreen(modifier = Modifier.padding(vertical = 24.dp))
+                        item(key = "latest-title") { CouiSectionTitle(text = "最新上架") }
+                        when (val s = feed) {
+                            is ListState.Loading -> if (!refreshing) {
+                                item(key = "feed-loading") {
+                                    LoadingScreen(modifier = Modifier.padding(vertical = 24.dp))
+                                }
                             }
+                            is ListState.Failed -> item(key = "feed-error") {
+                                ErrorScreen(message = s.message, onRetry = { refresh() })
+                            }
+                            is ListState.Loaded -> couiResultItems(
+                                feed = s.feed,
+                                clickPaging = clickPaging,
+                                onLoadMore = ::loadMore,
+                                onPageChange = ::jumpToPage,
+                                onOpenAlbum = { openAlbum(it) },
+                            )
                         }
-                        is ListState.Failed -> item(key = "feed-error") {
-                            ErrorScreen(message = s.message, onRetry = { refresh() })
-                        }
-                        is ListState.Loaded -> couiResultItems(
-                            feed = s.feed,
-                            clickPaging = clickPaging,
-                            onLoadMore = ::loadMore,
-                            onPageChange = ::jumpToPage,
-                            onOpenAlbum = { openAlbum(it) },
-                        )
                     }
                 }
             }
@@ -654,7 +662,7 @@ private fun CouiSearchHistoryCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickableRow { onPick(word) }
+                    .couiClickable(onClick = { onPick(word) }, ensureMinTouchTarget = false)
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -669,7 +677,7 @@ private fun CouiSearchHistoryCard(
                     text = "×",
                     style = CouiType.caption.copy(color = colors.textSecondary),
                     modifier = Modifier
-                        .clickableRow { onRemove(word) }
+                        .couiClickable(onClick = { onRemove(word) }, ensureMinTouchTarget = false)
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
             }
@@ -830,30 +838,6 @@ private fun LazyListScope.couiResultItems(
 }
 
 @Composable
-private fun CouiFab(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    rotationDegrees: Float = 0f,
-) {
-    CouiCard(
-        onClick = onClick,
-        modifier = Modifier.size(44.dp),
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier
-                    .size(22.dp)
-                    .graphicsLayer { rotationZ = rotationDegrees },
-            )
-        }
-    }
-}
-
-@Composable
 private fun CouiSyntaxRow(title: String, summary: String) {
     val colors = LocalCouiColors.current
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -866,11 +850,3 @@ private fun CouiSyntaxRow(title: String, summary: String) {
     }
 }
 
-/** 行级点击：不画涟漪，只保留最小触摸目标；圆角取皮肤控件曲率。 */
-@Composable
-private fun Modifier.clickableRow(onClick: () -> Unit): Modifier =
-    this.squircleClip(LocalCouiShapes.current.control).clickable(
-        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-        indication = null,
-        onClick = onClick,
-    )

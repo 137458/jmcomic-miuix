@@ -44,8 +44,11 @@ import com.jm3.app.miuix.ui.coui.component.CouiCard
 import com.jm3.app.miuix.ui.coui.component.CouiDialogOverlay
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitle
 import com.jm3.app.miuix.ui.coui.component.CouiSegmented
+import com.jm3.app.miuix.ui.coui.component.CouiSettingsGroup
+import com.jm3.app.miuix.ui.coui.component.CouiSettingsRow
 import com.jm3.app.miuix.ui.coui.component.CouiSurfaceBackground
 import com.jm3.app.miuix.ui.coui.component.CouiTextButton
+import com.jm3.app.miuix.ui.coui.component.CouiTextField
 import com.jm3.app.miuix.ui.coui.component.CouiTopBar
 import com.jm3.app.miuix.ui.coui.component.couiBackdropSource
 import com.jm3.app.miuix.ui.coui.component.couiClickable
@@ -76,7 +79,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -521,10 +523,11 @@ fun CouiSettingsScreen(
                             style = CouiType.caption.copy(color = colors.textSecondary),
                             modifier = Modifier.padding(top = 2.dp),
                         )
-                        TextField(
+                        CouiTextField(
                             value = domainsInput.value,
                             onValueChange = { domainsInput.value = it },
-                            label = "自定义线路域名",
+                            placeholder = "每行一个域名，留空恢复默认",
+                            minHeight = 84.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 8.dp, bottom = 4.dp),
@@ -759,85 +762,6 @@ fun CouiSettingsScreen(
                 )
             }
         }
-    }
-}
-
-/** COUI 分组：17sp 分组标题 + squircle 主卡片，卡内统一 16dp 水平内衬。 */
-@Composable
-private fun CouiSettingsGroup(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    CouiSectionTitle(
-        text = title,
-        modifier = Modifier.padding(horizontal = 16.dp),
-    )
-    CouiCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        // Miuix preference 依赖 Card 的 insideMargin 提供内衬，这里必须给回 16dp，
-        // 否则整组 Miuix 行贴住 squircle 边缘、与 CouiSettingsRow 的文字起点错位。
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        content = content,
-    )
-}
-
-/**
- * COUI 设置行：标题 + 辅助说明 + 可选右侧值。
- *
- * Miuix preference 无法表达的行（只读诊断、版本连点、线路操作）用这一套；
- * 水平内衬由外层 CouiCard 提供，这里只补纵向间距。
- */
-@Composable
-private fun CouiSettingsRow(
-    title: String,
-    summary: String,
-    modifier: Modifier = Modifier,
-    value: String? = null,
-    enabled: Boolean = true,
-    onClick: (() -> Unit)? = null,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    val colors = LocalCouiColors.current
-    val titleColor = if (enabled) colors.textPrimary else colors.textTertiary
-    val summaryColor = if (enabled) colors.textSecondary else colors.textTertiary
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(
-                if (onClick != null && enabled) {
-                    Modifier.couiClickable(onClick)
-                } else {
-                    Modifier
-                },
-            )
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            BasicText(
-                text = title,
-                style = CouiType.bodyEmphasis.copy(color = titleColor),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (summary.isNotEmpty()) {
-                BasicText(
-                    text = summary,
-                    style = CouiType.caption.copy(color = summaryColor),
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        value?.let {
-            BasicText(
-                text = it,
-                style = CouiType.caption.copy(color = colors.textTertiary),
-                modifier = Modifier.padding(start = 12.dp),
-            )
-        }
-        trailing?.invoke()
     }
 }
 

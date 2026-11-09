@@ -8,13 +8,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -22,7 +20,6 @@ import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import kotlin.math.round
 
 /**
  * COUI 背景：纵向渐变底色 + 两枚低饱和氛围光斑。
@@ -36,7 +33,7 @@ import kotlin.math.round
 fun CouiSurfaceBackground(modifier: Modifier = Modifier) {
     val colors = LocalCouiColors.current
     val transition = rememberInfiniteTransition(label = "couiAmbient")
-    val drift by transition.animateFloat(
+    val drift = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -45,50 +42,51 @@ fun CouiSurfaceBackground(modifier: Modifier = Modifier) {
         ),
         label = "couiAmbientDrift",
     )
-    // 漂移量化到 1% 再驱动绘制：30 秒一轮只需约 3Hz 重建画刷，避免每帧全屏重绘
-    val quantizedDrift by remember {
-        derivedStateOf { round(drift * 100f) / 100f }
-    }
     val greenAlpha = if (colors.isDark) 0.08f else 0.06f
     val blueAlpha = if (colors.isDark) 0.06f else 0.05f
 
-    Canvas(modifier = modifier.fillMaxSize()) {
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(colors.backgroundTop, colors.backgroundBottom),
-            ),
-        )
-        val width = size.width
-        val height = size.height
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    colors.ambientGreen.copy(alpha = greenAlpha),
-                    Color.Transparent,
-                ),
-                center = Offset(
-                    x = width * (0.16f + quantizedDrift * 0.03f),
-                    y = height * (0.10f + quantizedDrift * 0.04f),
-                ),
-                radius = width * 0.62f,
-            ),
-            size = size,
-        )
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    colors.ambientBlue.copy(alpha = blueAlpha),
-                    Color.Transparent,
-                ),
-                center = Offset(
-                    x = width * (0.88f - quantizedDrift * 0.04f),
-                    y = height * (0.62f - quantizedDrift * 0.03f),
-                ),
-                radius = width * 0.58f,
-            ),
-            size = size,
-        )
-    }
+    Spacer(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(colors.backgroundTop, colors.backgroundBottom),
+                    ),
+                )
+                val width = size.width
+                val height = size.height
+                val currentDrift = drift.value
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            colors.ambientGreen.copy(alpha = greenAlpha),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            x = width * (0.16f + currentDrift * 0.03f),
+                            y = height * (0.10f + currentDrift * 0.04f),
+                        ),
+                        radius = width * 0.62f,
+                    ),
+                    size = size,
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            colors.ambientBlue.copy(alpha = blueAlpha),
+                            Color.Transparent,
+                        ),
+                        center = Offset(
+                            x = width * (0.88f - currentDrift * 0.04f),
+                            y = height * (0.62f - currentDrift * 0.03f),
+                        ),
+                        radius = width * 0.58f,
+                    ),
+                    size = size,
+                )
+            },
+    )
 }
 
 /** COUI 玻璃采样源：能力检测与底色保护沿用现有实现，无着色器时返回 null。 */

@@ -3,33 +3,47 @@
 package com.jm3.app.miuix.ui.coui.component
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,16 +51,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
-import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import com.jm3.app.miuix.ui.coui.theme.CouiType
 import com.jm3.app.miuix.ui.coui.theme.LocalCouiColors
+import com.jm3.app.miuix.ui.coui.theme.LocalCouiShapes
 import top.yukonga.miuix.kmp.squircle.squircleClip
+import kotlin.math.roundToInt
 
 /**
  * 按压缩放必须放在卡片最外层，才能连背景与投影一起缩小；
@@ -141,10 +162,23 @@ fun CouiCard(
     val colors = LocalCouiColors.current
     val shapes = LocalCouiShapes.current
     val shape = RoundedCornerShape(shapes.card)
-    val interaction = remember { MutableInteractionSource() }
+    val clickModifier = if (onClick != null) {
+        val interaction = remember { MutableInteractionSource() }
+        Modifier
+            .couiPressScale(interaction)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .couiPressOverlay(interaction)
+    } else {
+        Modifier
+    }
     Column(
         modifier = modifier
-            .then(if (onClick != null) Modifier.couiPressScale(interaction) else Modifier)
+            .then(if (onClick != null) clickModifier else Modifier)
             .then(if (colors.isDark) Modifier else Modifier.shadow(
                 elevation = 10.dp,
                 shape = shape,
@@ -155,12 +189,6 @@ fun CouiCard(
             .squircleClip(shapes.card)
             .background(colors.card)
             .then(if (colors.isDark) Modifier.border(1.dp, colors.cardBorder, shape) else Modifier)
-            .then(if (onClick != null) Modifier.clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-            ) else Modifier)
-            .then(if (onClick != null) Modifier.couiPressOverlay(interaction) else Modifier)
             .padding(contentPadding),
         content = content,
     )
@@ -203,7 +231,8 @@ fun CouiSectionTitle(
  * COUI 弹窗：页内浮层而非独立 Window。
  *
  * 独立 Window 的遮罩由系统 Dialog 决定，无法稳定压到 35%；页内浮层能直接控制遮罩、
- * 圆角与弹簧入场，也不受 NavDisplay 尺寸变化影响。返回键在浮层显示期间只关弹窗。
+ * 圆角与弹簧双向进出场（DialogSpring 入场，减速退场），也不受 NavDisplay 尺寸变化影响。
+ * 返回键在浮层显示期间只关弹窗。
  */
 @Composable
 fun CouiDialogOverlay(
@@ -211,56 +240,57 @@ fun CouiDialogOverlay(
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (!visible) return
-    BackHandler(onBack = onDismiss)
-    val colors = LocalCouiColors.current
-    val progress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { progress.animateTo(1f, CouiMotion.DialogSpring) }
-    val dialogRadius = LocalCouiShapes.current.dialog
-    val shape = RoundedCornerShape(dialogRadius)
-    val consumeInteraction = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.scrim)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            ),
-        contentAlignment = Alignment.Center,
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)),
+        exit = fadeOut(tween(140)),
     ) {
-        Column(
+        BackHandler(onBack = onDismiss)
+        val colors = LocalCouiColors.current
+        val dialogRadius = LocalCouiShapes.current.dialog
+        val shape = RoundedCornerShape(dialogRadius)
+        val consumeInteraction = remember { MutableInteractionSource() }
+        Box(
             modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .widthIn(max = 400.dp)
-                .graphicsLayer {
-                    val value = progress.value
-                    scaleX = 0.92f + 0.08f * value
-                    scaleY = 0.92f + 0.08f * value
-                    alpha = value
-                }
-                .shadow(
-                    elevation = 28.dp,
-                    shape = shape,
-                    clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.12f),
-                    spotColor = Color.Black.copy(alpha = 0.14f),
-                )
-                .squircleClip(dialogRadius)
-                .background(colors.card)
+                .fillMaxSize()
+                .background(colors.scrim)
                 .clickable(
-                    interactionSource = consumeInteraction,
+                    interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = {},
-                )
-                .padding(24.dp),
-            content = content,
-        )
+                    onClick = onDismiss,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .animateEnterExit(
+                        enter = scaleIn(initialScale = 0.92f, animationSpec = CouiMotion.DialogSpring),
+                        exit = scaleOut(targetScale = 0.92f, animationSpec = tween(140)),
+                    )
+                    .padding(horizontal = 24.dp)
+                    .widthIn(max = 400.dp)
+                    .shadow(
+                        elevation = 28.dp,
+                        shape = shape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.12f),
+                        spotColor = Color.Black.copy(alpha = 0.14f),
+                    )
+                    .squircleClip(dialogRadius)
+                    .background(colors.card)
+                    .clickable(
+                        interactionSource = consumeInteraction,
+                        indication = null,
+                        onClick = {},
+                    )
+                    .padding(24.dp),
+                content = content,
+            )
+        }
     }
 }
 
-/** COUI 主按钮：44dp 高、皮肤控件曲率、绿色填充；绿色只用于这一个明确动作。 */
+/** COUI 主按钮：44dp 高、皮肤控件曲率、绿色填充，附带弹簧微缩按压反馈；绿色只用于这一个明确动作。 */
 @Composable
 fun CouiButton(
     text: String,
@@ -269,17 +299,21 @@ fun CouiButton(
     enabled: Boolean = true,
 ) {
     val colors = LocalCouiColors.current
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .height(44.dp)
+            .then(if (enabled) Modifier.couiPressScale(interaction) else Modifier)
             .squircleClip(LocalCouiShapes.current.control)
             .background(if (enabled) colors.accent else colors.accent.copy(alpha = 0.38f))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interaction,
                 indication = null,
                 enabled = enabled,
+                role = Role.Button,
                 onClick = onClick,
             )
+            .then(if (enabled) Modifier.couiPressOverlay(interaction) else Modifier)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -306,6 +340,7 @@ fun CouiTextButton(
             .clickable(
                 interactionSource = interaction,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             )
             .couiPressOverlay(interaction)
@@ -336,68 +371,261 @@ fun CouiChip(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             )
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }
 
-/** COUI 底部面板：顶部取皮肤面板曲率 + 32×4 拖拽条，300ms 级弹簧入场。 */
+/**
+ * COUI 底部面板：顶部取皮肤面板曲率 + 32×4 拖拽条，支持双向滑动进退场动画与拖拽条垂直手势下拉收起。
+ */
 @Composable
 fun CouiBottomSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (!visible) return
-    BackHandler(onBack = onDismiss)
-    val colors = LocalCouiColors.current
-    val sheetShape = LocalCouiShapes.current.sheet
-    val progress = remember { Animatable(0f) }
-    var sheetHeight by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) { progress.animateTo(1f, CouiMotion.SheetSpring) }
-    val consumeInteraction = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.scrim)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            ),
-        contentAlignment = Alignment.BottomCenter,
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)),
+        exit = fadeOut(tween(160)),
     ) {
-        Column(
+        BackHandler(onBack = onDismiss)
+        val colors = LocalCouiColors.current
+        val sheetShape = LocalCouiShapes.current.sheet
+        val consumeInteraction = remember { MutableInteractionSource() }
+        var offsetY by remember { mutableFloatStateOf(0f) }
+        val density = LocalDensity.current
+
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .onSizeChanged { sheetHeight = it.height }
-                .graphicsLayer {
-                    translationY = (1f - progress.value) * sheetHeight
-                }
-                .clip(RoundedCornerShape(topStart = sheetShape, topEnd = sheetShape))
-                .background(colors.card)
+                .fillMaxSize()
+                .background(colors.scrim)
                 .clickable(
-                    interactionSource = consumeInteraction,
+                    interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = {},
-                )
-                .navigationBarsPadding()
-                .padding(bottom = 16.dp),
+                    onClick = onDismiss,
+                ),
+            contentAlignment = Alignment.BottomCenter,
         ) {
-            Box(
+            Column(
                 modifier = Modifier
+                    .animateEnterExit(
+                        enter = slideInVertically(
+                            initialOffsetY = { it },
+                            animationSpec = CouiMotion.SheetOffsetSpring,
+                        ),
+                        exit = slideOutVertically(
+                            targetOffsetY = { it },
+                            animationSpec = tween(180, easing = CouiMotion.PushEasing),
+                        ),
+                    )
+                    .offset { IntOffset(0, offsetY.roundToInt()) }
                     .fillMaxWidth()
-                    .padding(top = 10.dp, bottom = 14.dp),
-                contentAlignment = Alignment.Center,
+                    .clip(RoundedCornerShape(topStart = sheetShape, topEnd = sheetShape))
+                    .background(colors.card)
+                    .clickable(
+                        interactionSource = consumeInteraction,
+                        indication = null,
+                        onClick = {},
+                    )
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
             ) {
                 Box(
                     modifier = Modifier
-                        .size(width = 32.dp, height = 4.dp)
-                        .background(colors.textTertiary.copy(alpha = 0.6f), CircleShape),
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onDragEnd = {
+                                    if (offsetY > with(density) { 60.dp.toPx() }) {
+                                        onDismiss()
+                                    }
+                                    offsetY = 0f
+                                },
+                                onDragCancel = {
+                                    offsetY = 0f
+                                },
+                                onVerticalDrag = { _, dragAmount ->
+                                    offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                },
+                            )
+                        }
+                        .padding(top = 10.dp, bottom = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 32.dp, height = 4.dp)
+                            .background(colors.textTertiary.copy(alpha = 0.6f), CircleShape),
+                    )
+                }
+                content()
+            }
+        }
+    }
+}
+
+/**
+ * COUI 文本输入框：统一边框、背景、圆角与聚焦绿环。
+ *
+ * 支持单行与多行，可用于评论输入、回复输入以及自定义线路域名输入等场景。
+ */
+@Composable
+fun CouiTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    minHeight: Dp = 48.dp,
+    singleLine: Boolean = false,
+    enabled: Boolean = true,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+) {
+    val colors = LocalCouiColors.current
+    val control = LocalCouiShapes.current.control
+    val shape = RoundedCornerShape(control)
+    var focused by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .squircleClip(control)
+            .background(colors.searchField)
+            .border(
+                width = if (focused) 2.dp else 1.dp,
+                color = if (focused) colors.accent.copy(alpha = 0.4f) else colors.searchBorder,
+                shape = shape,
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        if (value.isEmpty() && placeholder.isNotEmpty()) {
+            BasicText(
+                text = placeholder,
+                style = CouiType.body.copy(color = colors.textTertiary),
+            )
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = minHeight)
+                .onFocusChanged { focused = it.isFocused },
+            enabled = enabled,
+            singleLine = singleLine,
+            textStyle = CouiType.body.copy(color = colors.textPrimary),
+            cursorBrush = SolidColor(colors.accent),
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+        )
+    }
+}
+
+/** 页内提示卡：错误/空态/失效共用；包含说明文字与可选操作按钮。 */
+@Composable
+fun CouiNoticeCard(
+    message: String,
+    modifier: Modifier = Modifier,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    val colors = LocalCouiColors.current
+    CouiCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        BasicText(
+            text = message,
+            style = CouiType.body.copy(color = colors.textSecondary),
+        )
+        if (actionText != null && onAction != null) {
+            CouiTextButton(
+                text = actionText,
+                onClick = onAction,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+/** COUI 设置分组：17sp 分组标题 + squircle 主卡片，卡内统一 16dp 水平内衬。 */
+@Composable
+fun CouiSettingsGroup(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    CouiSectionTitle(
+        text = title,
+        modifier = modifier.padding(horizontal = 16.dp),
+    )
+    CouiCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        content = content,
+    )
+}
+
+/**
+ * COUI 设置行：标题 + 辅助说明 + 可选右侧值。
+ *
+ * 水平内衬由外层 CouiCard 提供，这里只补纵向间距与可点交互。
+ */
+@Composable
+fun CouiSettingsRow(
+    title: String,
+    summary: String = "",
+    modifier: Modifier = Modifier,
+    value: String? = null,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val colors = LocalCouiColors.current
+    val titleColor = if (enabled) colors.textPrimary else colors.textTertiary
+    val summaryColor = if (enabled) colors.textSecondary else colors.textTertiary
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null && enabled) {
+                    Modifier.couiClickable(onClick)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            BasicText(
+                text = title,
+                style = CouiType.bodyEmphasis.copy(color = titleColor),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (summary.isNotEmpty()) {
+                BasicText(
+                    text = summary,
+                    style = CouiType.caption.copy(color = summaryColor),
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
-            content()
         }
+        value?.let {
+            BasicText(
+                text = it,
+                style = CouiType.caption.copy(color = colors.textTertiary),
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+        trailing?.invoke()
     }
 }
