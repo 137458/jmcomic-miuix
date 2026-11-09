@@ -137,6 +137,11 @@ interface ReaderProgressSettings : SettingsKeyStore {
     suspend fun setReaderLastPage(photoId: String, progress: ReaderPageProgress) {
         writeString(SettingsKeys.readerLastPage(photoId), encodeReaderProgress(progress))
     }
+
+    /** 清掉某章的进度键：读完末页自然退出时调用，否则每读一章就永久多留一个键。 */
+    suspend fun clearReaderLastPage(photoId: String) {
+        writeString(SettingsKeys.readerLastPage(photoId), null)
+    }
 }
 
 /** 阅读器：左右翻页、音量键提示是否已展示、末页追更静默截止时间、漫画阅读进度。 */

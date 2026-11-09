@@ -192,6 +192,37 @@ class DownloadQueueTest {
     }
 
     @Test
+    fun `挂起页返回时已换代际 旧 worker 不得回退新任务的游标`() = runTest {
+        val stalePage = CompletableDeferred<Unit>()
+        var pageTwoCalls = 0
+        // 只挂住第一次取页 2：旧 worker 卡在这里，续传的新 worker 立刻拿到字节
+        val fetcher = PageFetcher { _, index ->
+            if (index == 2 && pageTwoCalls++ == 0) stalePage.await()
+            ByteArray(index)
+        }
+        val store = FakeStore()
+        val queue = DownloadQueue(fetcher, store, maxConcurrent = 2)
+        queue.start(this)
+        queue.enqueue(task("p1", total = 3))
+        runCurrent() // 旧 worker 卡在页 2，页 1 已落盘
+        assertEquals(listOf(1), store.files("p1"))
+        queue.pause("p1")
+        queue.resume("p1") // 新 run 紧接着接管并跑完三页
+        runCurrent()
+        assertEquals(DONE, queue.updates.value.getValue("p1").status)
+        assertEquals(3, queue.updates.value.getValue("p1").index)
+        stalePage.complete(Unit) // 旧 worker 此刻才带着页 2 的字节返回
+        advanceUntilIdle()
+        // 旧代际只落盘不改游标：已完成的进度不能被写回 2
+        assertEquals(DONE, queue.updates.value.getValue("p1").status)
+        assertEquals(3, queue.updates.value.getValue("p1").index)
+        assertEquals(listOf(1, 2, 3), store.files("p1"))
+
+        queue.shutdown()
+        advanceUntilIdle()
+    }
+
+    @Test
     fun `cancel removes task`() = runTest {
         val fetcher = FakeFetcher()
         fetcher.gates[1] = CompletableDeferred()

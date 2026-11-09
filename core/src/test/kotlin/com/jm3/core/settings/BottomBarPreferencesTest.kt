@@ -18,9 +18,9 @@ class BottomBarPreferencesTest {
         assertEquals(BottomBarSize.STANDARD, BottomBarPreferencePolicy.resolveSize(null, 400))
         assertEquals(BottomBarSize.GENEROUS, BottomBarPreferencePolicy.resolveSize(null, 800))
 
-        // 形态两档都默认悬浮
-        assertEquals(BottomBarForm.FLOATING, BottomBarPreferencePolicy.resolveForm(null, 400))
-        assertEquals(BottomBarForm.FLOATING, BottomBarPreferencePolicy.resolveForm(null, 800))
+        // 形态只有悬浮一档默认值，与窗口宽度无关
+        assertEquals(BottomBarForm.FLOATING, BottomBarPreferencePolicy.defaultForm())
+        assertEquals(BottomBarForm.FLOATING, BottomBarPreferencePolicy.resolveForm(null))
     }
 
     @Test
@@ -50,9 +50,9 @@ class BottomBarPreferencesTest {
     }
 
     @Test
-    fun `显式形态选择优先于断点`() {
-        assertEquals(BottomBarForm.DOCKED, BottomBarPreferencePolicy.resolveForm(BottomBarForm.DOCKED, 400))
-        assertEquals(BottomBarForm.DOCKED, BottomBarPreferencePolicy.resolveForm(BottomBarForm.DOCKED, 800))
+    fun `显式形态选择优先于默认值`() {
+        assertEquals(BottomBarForm.DOCKED, BottomBarPreferencePolicy.resolveForm(BottomBarForm.DOCKED))
+        assertEquals(BottomBarForm.FLOATING, BottomBarPreferencePolicy.resolveForm(BottomBarForm.FLOATING))
     }
 
     @Test

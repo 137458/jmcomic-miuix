@@ -1,5 +1,7 @@
 package com.jm3.core.reader
 
+import com.jm3.core.settings.BottomBarPreferencePolicy
+
 /**
  * 双页阅读的窗口可用性与「跨页索引 ↔ 单页索引」换算。
  *
@@ -12,8 +14,8 @@ package com.jm3.core.reader
  */
 object ReaderSpreadPolicy {
 
-    /** 与平板断点一致：600dp 及以上且横屏才允许双页。 */
-    const val MIN_WIDTH_DP = 600
+    /** 与平板断点同源（[BottomBarPreferencePolicy.TABLET_MIN_WIDTH_DP]）：600dp 及以上且横屏才允许双页。 */
+    const val MIN_WIDTH_DP = BottomBarPreferencePolicy.TABLET_MIN_WIDTH_DP
 
     /** 首页固定单独成屏。 */
     private const val FIRST_SINGLE_PAGE = 1

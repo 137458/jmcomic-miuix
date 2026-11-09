@@ -36,23 +36,35 @@ class ApkDigestTest {
     }
 
     @Test
-    fun `hashes bytes with the known sha256 vectors`() {
-        assertEquals(
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-            ApkDigest.sha256Hex("abc".toByteArray()),
-        )
-        assertEquals(
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            ApkDigest.sha256Hex(ByteArray(0)),
-        )
+    fun `hashes files with the known sha256 vectors`() {
+        val abc = Files.createTempFile("jm3-digest", ".apk").toFile()
+        val empty = Files.createTempFile("jm3-digest", ".apk").toFile()
+        try {
+            abc.writeText("abc")
+            assertEquals(
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                ApkDigest.sha256Hex(abc),
+            )
+            assertEquals(
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                ApkDigest.sha256Hex(empty),
+            )
+        } finally {
+            abc.delete()
+            empty.delete()
+        }
     }
 
     @Test
-    fun `hashes a file with the same rule as bytes`() {
+    fun `hashes the whole file across 8 kib chunks`() {
+        // 一百万字节的 "a" 是官方测试向量：读完整个文件才能对上，漏读或截断都会变红
         val file = Files.createTempFile("jm3-digest", ".apk").toFile()
         try {
-            file.writeText("abc")
-            assertEquals(ApkDigest.sha256Hex("abc".toByteArray()), ApkDigest.sha256Hex(file))
+            file.writeText("a".repeat(1_000_000))
+            assertEquals(
+                "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+                ApkDigest.sha256Hex(file),
+            )
         } finally {
             file.delete()
         }
@@ -76,7 +88,8 @@ class ApkDigestTest {
         val file = Files.createTempFile("jm3-digest", ".apk").toFile()
         try {
             file.writeText("abc")
-            val actual = ApkDigest.sha256Hex("abc".toByteArray())
+            // "abc" 的已知摘要，顺带把 verify 的解析与比较一起验了
+            val actual = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
             assertEquals(DigestCheck.Matched, ApkDigest.verify(file, "sha256:$actual"))
 
             val wrong = "f".repeat(64)

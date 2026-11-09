@@ -19,11 +19,11 @@ enum class WideScreenNavigation(val label: String) {
 }
 
 /**
- * 底栏默认值解析：未显式设置时按窗口宽度断点判断，而不是写死某一档。
+ * 底栏默认值解析：尺寸未显式设置时按窗口宽度断点判断，形态未设置恒为悬浮，都不写死某一档的具体设备。
  *
  * 尺寸档只有「偏大」是强制选择；「普通」与未设置同义，都按断点自适应
- * （手机标准、平板偏大）。形态档未显式设置时走断点默认，用户选过则以其选择为准。
- * 非法持久化值由 [BottomBarSettings] 读成 null，同样走这里的断点默认。
+ * （手机标准、平板偏大）。形态档只有悬浮一档默认值，与断点无关，用户选过则以其选择为准。
+ * 非法持久化值由 [BottomBarSettings] 读成 null，同样走这里的默认（尺寸按断点，形态恒为悬浮）。
  */
 object BottomBarPreferencePolicy {
 
@@ -36,15 +36,15 @@ object BottomBarPreferencePolicy {
     fun defaultSize(isTablet: Boolean): BottomBarSize =
         if (isTablet) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
 
-    /** 全设备默认悬浮。 */
-    fun defaultForm(isTablet: Boolean): BottomBarForm = BottomBarForm.FLOATING
+    /** 全设备默认悬浮：唯一一档默认值，不受窗口宽度影响。 */
+    fun defaultForm(): BottomBarForm = BottomBarForm.FLOATING
 
     /** 偏大档强制大值；普通档与未设置都按设备自适应。 */
     fun resolveSize(explicit: BottomBarSize?, widthDp: Int): BottomBarSize =
         if (explicit == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else defaultSize(isTablet(widthDp))
 
-    fun resolveForm(explicit: BottomBarForm?, widthDp: Int): BottomBarForm =
-        explicit ?: defaultForm(isTablet(widthDp))
+    /** 未设置即悬浮；默认值的唯一出口在 [defaultForm]。 */
+    fun resolveForm(explicit: BottomBarForm?): BottomBarForm = explicit ?: defaultForm()
 
     /** 宽屏导航默认底栏；用户显式选过侧栏才走 Rail。 */
     fun resolveWideScreenNavigation(explicit: WideScreenNavigation?): WideScreenNavigation =

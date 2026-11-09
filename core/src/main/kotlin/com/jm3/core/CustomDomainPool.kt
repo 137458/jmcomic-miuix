@@ -27,13 +27,23 @@ private val domainManagerField: Field by lazy {
 internal fun domainManagerOf(client: AbstractJmClient): JmDomainManager =
     domainManagerField.get(client) as JmDomainManager
 
-/** 库只在 protected 的 createDomainProbe 上暴露探活器，字段名变更时惰性失败而非拖垮类初始化。 */
-private val domainProbeMethod: Method by lazy {
-    AbstractJmClient::class.java.getDeclaredMethod("createDomainProbe").apply { isAccessible = true }
+/**
+ * 库只在 protected 的 createDomainProbe 上暴露探活器；成员名变更时降级为「不刷新线路池」并留一条事实日志。
+ *
+ * 惰性初始化只尝试一次：取不到就缓存 null，后续刷新直接跳过，不会反复反射也不会重复刷日志。
+ */
+private val domainProbeMethod: Method? by lazy {
+    runCatching {
+        AbstractJmClient::class.java.getDeclaredMethod("createDomainProbe").apply { isAccessible = true }
+    }.getOrElse { failure ->
+        Jm3Log.warn(TAG, "库内反射成员 createDomainProbe 取不到（" + failure.javaClass.name + "），线路池刷新降级")
+        null
+    }
 }
 
-private fun domainProbeOf(client: AbstractJmClient): DomainProbe =
-    domainProbeMethod.invoke(client) as DomainProbe
+/** 探活器取不到时返回 null，由调用方跳过整段刷新。 */
+private fun domainProbeOf(client: AbstractJmClient): DomainProbe? =
+    domainProbeMethod?.invoke(client) as? DomainProbe
 
 /** 首屏之后再补跑线路表刷新的延迟：留出首屏请求的窗口，避免探活抢首屏带宽。 */
 private const val DOMAIN_REFRESH_DELAY_MS = 3_000L
@@ -71,12 +81,15 @@ internal fun refreshDomainPoolInBackground(
         try {
             runCatching {
                 val manager = domainManagerOf(client)
-                val pool = refreshDomainPool(
-                    manager = manager,
-                    custom = custom,
-                    fetchOfficial = fetchOfficial,
-                    probe = { candidate -> probeDomainPool(candidate, domainProbeOf(client)) },
-                )
+                // 探活器取不到时整段刷新跳过：与原先反射失败被 runCatching 吞掉的效果一致，现有池保持不动。
+                val pool = domainProbeOf(client)?.let { probe ->
+                    refreshDomainPool(
+                        manager = manager,
+                        custom = custom,
+                        fetchOfficial = fetchOfficial,
+                        probe = { candidate -> probeDomainPool(candidate, probe) },
+                    )
+                }
                 if (pool != null) onPoolRefreshed(pool)
             }
         } finally {
@@ -140,3 +153,5 @@ internal fun persistDomainPool(
         if (pool.isNotEmpty()) onPoolRefreshed(pool)
     }
 }
+
+private const val TAG = "CustomDomainPool"

@@ -57,3 +57,13 @@ fun readerProgressOnExit(restored: Boolean, page: Int, total: Int): ReaderPagePr
     if (!restored || total <= 0 || page < 1) return null
     return ReaderPageProgress(page = page.coerceAtMost(total), total = total)
 }
+
+/**
+ * 是否该清掉进度键。
+ *
+ * 读到末页（[ReaderPageProgress.page] 达到 [ReaderPageProgress.total]）说明本章已读完，
+ * 自然退出时改为清键，否则每读一本书就会永久多留一个进度键；
+ * 总页数无效（0 或负数）时没有「末页」概念，按未读完处理，保留原进度。
+ */
+fun shouldClearReaderProgress(progress: ReaderPageProgress): Boolean =
+    progress.total > 0 && progress.page >= progress.total

@@ -135,7 +135,7 @@ class DownloadQueue(
         val next = tasks.values.firstOrNull { it.status == DownloadStatus.QUEUED } ?: return null
         val running = next.withStatus(DownloadStatus.RUNNING)
         tasks = tasks + (next.photoId to running)
-        // 每次领取发一个新代际：暂停后立即续传时，旧 worker 即使取数返回也不许再落盘
+        // 每次领取发一个新代际：暂停后立即续传时，旧 worker 取数返回也不许再推进新 run 的游标（页本身照常落盘）
         val runId = nextRunId++
         runIds = runIds + (next.photoId to runId)
         _updates.value = tasks
@@ -187,10 +187,13 @@ class DownloadQueue(
                     failWith(current, runId)
                     return
                 }
-                // 取数期间被暂停也不丢这一页：结果照常落盘，只是不再推进状态；
+                // 取数期间被暂停也不丢这一页：结果照常落盘，游标只归当前代际推进。
                 // 落盘按唯一临时名写入，暂停后立即续传的新旧 worker 不会互相截断同一文件。
                 store.write(current.photoId, pageIndex, bytes)
             }
+            // 取这一页的间隙代际可能已被换掉（暂停后续传、取消后重排、重置）：
+            // 旧 worker 只负责把已取到的字节落盘，禁止再改写新 run 的游标。
+            if (!isCurrent(current.photoId, runId)) return
             current = update(current.photoId) { it.copy(index = pageIndex) } ?: return
         }
         completeIfRunning(current.photoId, runId)

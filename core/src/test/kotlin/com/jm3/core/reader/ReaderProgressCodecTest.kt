@@ -1,6 +1,7 @@
 package com.jm3.core.reader
 
 import com.jm3.core.settings.InMemorySettingsRepository
+import com.jm3.core.settings.SettingsKeys
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -91,6 +92,23 @@ class ReaderProgressCodecTest {
         assertEquals(ReaderPageProgress(page = 5, total = 20), s.readerLastPage("photo-1"))
         assertEquals(ReaderPageProgress(page = 2, total = 10), s.readerLastPage("photo-2"))
         assertNull(s.readerLastPage("photo-3"))
+    }
+
+    /**
+     * 清理入口：读完末页退出后删掉该章的进度键，别的章进度不受影响；
+     * 断言直接看存储原语，确保键是被真删掉而不是写成空串（空串也读成 null，但键会一直堆在盘上）。
+     */
+    @Test
+    fun 设置层清理单章进度只删该章的键() = runTest {
+        val s = InMemorySettingsRepository()
+        s.setReaderLastPage("photo-1", ReaderPageProgress(page = 5, total = 20))
+        s.setReaderLastPage("photo-2", ReaderPageProgress(page = 2, total = 10))
+
+        s.clearReaderLastPage("photo-1")
+
+        assertNull(s.readerLastPage("photo-1"))
+        assertNull(s.readString(SettingsKeys.readerLastPage("photo-1")))
+        assertEquals(ReaderPageProgress(page = 2, total = 10), s.readerLastPage("photo-2"))
     }
 
     @Test

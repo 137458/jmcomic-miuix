@@ -2,6 +2,7 @@ package com.jm3.core.update
 
 import java.io.File
 import java.security.MessageDigest
+import java.util.HexFormat
 
 /**
  * 安装包摘要校验结论。
@@ -31,14 +32,14 @@ sealed interface DigestCheck {
 object ApkDigest {
 
     private const val SHA256_PREFIX = "sha256:"
-    private val Sha256Hex = Regex("[0-9a-fA-F]{64}")
+    private val sha256HexPattern = Regex("[0-9a-fA-F]{64}")
 
     /** 解析 `sha256:<64 位 hex>`，返回小写 hex；缺失、其它算法或格式非法时返回 null。 */
     fun expectedSha256(digest: String?): String? {
         val raw = digest?.trim().orEmpty()
         if (!raw.startsWith(SHA256_PREFIX, ignoreCase = true)) return null
         val hex = raw.substring(SHA256_PREFIX.length)
-        if (!Sha256Hex.matches(hex)) return null
+        if (!sha256HexPattern.matches(hex)) return null
         return hex.lowercase()
     }
 
@@ -55,10 +56,6 @@ object ApkDigest {
         }
         return digest.digest().toLowerHex()
     }
-
-    /** 计算字节 SHA-256，返回小写 hex。 */
-    fun sha256Hex(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256").digest(bytes).toLowerHex()
 
     /** 按远端 digest 原文校验文件；没有可用摘要时 [DigestCheck.Skipped]。 */
     fun verify(file: File, digest: String?): DigestCheck {
@@ -81,5 +78,5 @@ object ApkDigest {
     fun mismatchMessage(expected: String, actual: String): String =
         "安装包校验失败：SHA-256 不匹配（期望 ${expected.take(12)}…，实际 ${actual.take(12)}…）"
 
-    private fun ByteArray.toLowerHex(): String = joinToString("") { "%02x".format(it) }
+    private fun ByteArray.toLowerHex(): String = HexFormat.of().formatHex(this)
 }
