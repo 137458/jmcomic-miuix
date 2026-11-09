@@ -713,6 +713,7 @@ fun CouiSettingsScreen(
                                 }
                             },
                             modifier = Modifier.weight(1f),
+                            enabled = !clearing,
                         )
                     }
                 }

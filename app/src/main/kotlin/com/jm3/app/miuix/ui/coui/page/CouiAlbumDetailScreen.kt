@@ -786,6 +786,7 @@ private fun CouiDetailHeader(
                 text = if (resumeId != null) "继续阅读" else "开始阅读",
                 onClick = { startId?.let(onRead) },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = startId != null,
             )
             Spacer(modifier = Modifier.height(10.dp))
             // 高频动作：胶囊标签，状态用选中态容器回显
@@ -1211,7 +1212,8 @@ private fun CouiCommentComposer(
                 )
                 CouiButton(
                     text = if (busy) "发表中…" else "发表",
-                    onClick = { if (!busy && text.isNotBlank()) onSend() },
+                    onClick = onSend,
+                    enabled = !busy && text.isNotBlank(),
                 )
             }
         }
@@ -1467,10 +1469,11 @@ private fun CouiReplySheet(
         )
         CouiButton(
             text = if (busy) "发送中…" else "发送",
-            onClick = { if (!busy && replyText.isNotBlank()) onSend(replyText) },
+            onClick = { onSend(replyText) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
+            enabled = !busy && replyText.isNotBlank(),
         )
     }
 }

@@ -266,22 +266,27 @@ fun CouiButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val colors = LocalCouiColors.current
     Box(
         modifier = modifier
             .height(44.dp)
             .squircleClip(LocalCouiShapes.current.control)
-            .background(colors.accent)
+            .background(if (enabled) colors.accent else colors.accent.copy(alpha = 0.38f))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
+                enabled = enabled,
                 onClick = onClick,
             )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
-        BasicText(text = text, style = CouiType.button.copy(color = colors.onAccent))
+        BasicText(
+            text = text,
+            style = CouiType.button.copy(color = colors.onAccent.copy(alpha = if (enabled) 1f else 0.7f)),
+        )
     }
 }
 
