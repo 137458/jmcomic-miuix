@@ -17,6 +17,8 @@
 
 ### 优化
 
+- 优化了 COUI 页面接入库高阶能力的方式：顶栏标题改读库下发的 `LocalCouiTextStyle`，折叠后不再回落成 16sp 小字；五处顶栏补上取自皮肤背景的 `CouiTopAppBarColors`；`Scaffold` 的 FAB 槽补 `align(BottomEnd)` 归位右下，不再压住热词与分段控件；分段胶囊与标签接入库的按压回弹与聚光凝光，字阶改用 `rememberCouiTextStyle(PreferenceValue)`，不再写 14sp 字面量；选择弹窗的勾选换成库 `RadioButton`，弹窗改由 `visible` 驱动以保留库的退场动画。
+- 优化了 COUI 深色卡片层级：卡片改用容器高亮层，与页面底色拉开一档，分组终于能看出卡片边界；`CouiThemeTest` 同步断言新映射。
 - 优化了 COUI 首页、分类页与详情评论的触底预取：三处重复的滚动快照与行高换算收敛为一个公共效果，页面只交当前列表与行起点，判定仍与 core `PagedFeed` 同源。
 - 优化了 COUI 分类页周更分组的加载与空态：改用公共的加载、失败与空态卡片，不再自写「标题 + 单行 Item」的三态。
 - 优化了 COUI 详情与 Miuix 详情共用的返回飞行逻辑：判定抽成纯函数，两套皮肤共用同一个飞行效果，删掉重复的 snapshotFlow/DisposableEffect 约 55 行。
