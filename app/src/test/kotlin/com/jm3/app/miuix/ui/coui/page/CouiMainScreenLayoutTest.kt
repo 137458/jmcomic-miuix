@@ -4,6 +4,7 @@ package com.jm3.app.miuix.ui.coui.page
 
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.glass.bottomBarTokens
+import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
 import kotlin.test.Test
@@ -47,5 +48,12 @@ class CouiMainScreenLayoutTest {
         val generous = bottomBarTokens(BottomBarSize.GENEROUS, BottomBarForm.DOCKED)
         assertEquals(72.dp, generous.height)
         assertEquals(generous.height, couiBottomBarClearance(useRail = false, tokens = generous))
+    }
+
+    @Test
+    fun `600dp 断点向下取整不提前进入平板`() {
+        assertEquals(599, 599.6f.dp.toLayoutDpInt())
+        assertEquals(599, 599.99f.dp.toLayoutDpInt())
+        assertEquals(600, 600.0f.dp.toLayoutDpInt())
     }
 }

@@ -44,7 +44,7 @@ import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.WideScreenNavigation
-import kotlin.math.roundToInt
+
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.session.UnreadBadge
 import top.yukonga.miuix.kmp.basic.Badge
@@ -130,7 +130,7 @@ fun MainScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { _ ->
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val widthDp = maxWidth.value.roundToInt()
+            val widthDp = maxWidth.toLayoutDpInt()
             // 宽屏导航偏好与底栏 token 同源：600dp 以下设置项不可见，布局一律按底栏渲染；
             // 大屏未设置时默认底栏，用户显式选侧栏才切成 NavigationRail。
             val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation, widthDp) {

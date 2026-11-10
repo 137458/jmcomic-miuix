@@ -254,9 +254,11 @@ internal fun CouiBrowseScreen(
         val current = weeklyFeed
         val requested = current.beginLoadMore()
         if (requested === current) return
+        val token = weeklyToken
         weeklyFeed = requested
         scope.launch {
             val outcome = authCall.call { gateway.serialization(requested.page + 1) }
+            if (token != weeklyToken) return@launch
             weeklyFeed = when (outcome) {
                 is SessionOutcome.Ok -> requested.appendedBy(outcome.value)
                 else -> requested.failLoadMore()
@@ -289,6 +291,8 @@ internal fun CouiBrowseScreen(
         val current = tagFeed
         val requested = current.beginLoadMore()
         if (requested === current) return
+        // 切换标签会推进 token：在途的旧标签下一页到达后不能再写进新列表
+        val token = tagToken
         tagFeed = requested
         scope.launch {
             val outcome = authCall.call {
@@ -299,6 +303,7 @@ internal fun CouiBrowseScreen(
                     scope = SearchScope.TAG,
                 )
             }
+            if (token != tagToken) return@launch
             tagFeed = when (outcome) {
                 is SessionOutcome.Ok -> requested.appendedBy(outcome.value)
                 else -> requested.failLoadMore()
@@ -634,11 +639,7 @@ internal fun CouiBrowseScreen(
                                 )
                             }
                             // 首页拿不到时退回本页条数：宁可名次在本页重新起算，也不要空着
-                            val stride = if (pageStride > 0) {
-                                pageStride
-                            } else {
-                                feed.items.size.coerceAtLeast(1)
-                            }
+                            val stride = if (pageStride > 0) pageStride else feed.items.size.coerceAtLeast(1)
                             itemsIndexed(
                                 items = feed.items,
                                 key = { index, result -> "coui-browse-row-${result.id}-$index" },
@@ -650,7 +651,7 @@ internal fun CouiBrowseScreen(
                                     CouiBrowseResultRow(
                                         result = result,
                                         rank = if (mode == BrowseMode.RANK) {
-                                            rankOf(feed.page, stride, index)
+                                            displayRank(clickPaging, feed.page, stride, index)
                                         } else {
                                             null
                                         },

@@ -94,4 +94,18 @@ class CouiFeedPolicyTest {
         assertEquals(4, rankOf(page = 1, stride = 0, index = 3))
         assertEquals(1, rankOf(page = 1, stride = 20, index = -5))
     }
+
+    @Test
+    fun `无限滚动追加一页后名次不整体后移`() {
+        // 追加后 items 已含两页，下标 20 就是整份列表第 21 项，不能再叠加页偏移
+        assertEquals(21, displayRank(clickPaging = false, page = 2, stride = 20, index = 20))
+        assertEquals(1, displayRank(clickPaging = false, page = 1, stride = 20, index = 0))
+        assertEquals(40, displayRank(clickPaging = false, page = 2, stride = 20, index = 39))
+    }
+
+    @Test
+    fun `点页模式保留跨页续号`() {
+        assertEquals(21, displayRank(clickPaging = true, page = 2, stride = 20, index = 0))
+        assertEquals(72, displayRank(clickPaging = true, page = 3, stride = 24, index = 23))
+    }
 }

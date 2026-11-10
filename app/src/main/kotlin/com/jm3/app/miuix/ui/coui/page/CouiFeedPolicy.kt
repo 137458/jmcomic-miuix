@@ -54,3 +54,12 @@ internal fun rankOf(page: Int, stride: Int, index: Int): Int {
     val safeStride = stride.coerceAtLeast(1)
     return (safePage - 1) * safeStride + index.coerceAtLeast(0) + 1
 }
+
+/**
+ * 行下标对应的展示名次：累计列表直接用下标，一次点击一页才按页续号。
+ *
+ * 无限滚动把每页拼进同一个 items，页码已随 append 推进，再用 [rankOf] 会把页偏移加两遍
+ * （翻一页后第一行变成第 21 名）。点页模式每页 replace 成独立一页，下标从 0 起，必须续号。
+ */
+internal fun displayRank(clickPaging: Boolean, page: Int, stride: Int, index: Int): Int =
+    if (clickPaging) rankOf(page, stride, index) else index.coerceAtLeast(0) + 1

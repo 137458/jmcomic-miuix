@@ -39,10 +39,10 @@ import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.rememberWindowDpSize
+import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.session.UnreadBadge
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.WideScreenNavigation
-import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 private enum class CouiMainTab(val label: String) {
@@ -101,7 +101,8 @@ fun CouiMainScreen(
         // 登录态变化后重算未读；登出时 refresh 内部会归零
         LaunchedEffect(user?.uid) { unreadBadge.refresh(user != null) }
 
-        val widthDp = rememberWindowDpSize().width.value.roundToInt()
+        // 与全 app 断点同一取整方式：599.6dp 不能被四舍五入成 600 提前进入平板布局
+        val widthDp = rememberWindowDpSize().width.toLayoutDpInt()
         // 宽屏导航偏好与底栏 token 同源：600dp 以下设置项不可见，布局一律按底栏渲染；
         // 大屏未设置时默认底栏，用户显式选侧栏才切成侧栏。
         val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation, widthDp) {

@@ -384,7 +384,8 @@ private fun CouiPlainNavigationBar(
             ) {
                 Icon(
                     imageVector = if (selected) item.selectedIcon else item.icon,
-                    contentDescription = item.title,
+                    // 选中项的文字标签常显，图标不再重复播报；未选中项只有图标，仍需要名称
+                    contentDescription = if (selected) null else item.title,
                     modifier = Modifier.size(tokens.iconSize),
                     tint = if (selected) colors.accent else colors.onSurfaceVariant,
                 )
