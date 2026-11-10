@@ -4,7 +4,6 @@ package com.jm3.app.miuix.ui.coui.page
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,8 +27,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -38,14 +37,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.layout.CouiPageDefaults
@@ -63,6 +60,7 @@ import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CollapsingTopAppBar
 import com.itos.coui.topappbar.rememberCouiCollapsingAppBarState
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.HomeSideData
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
@@ -76,14 +74,17 @@ import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.LocalCouiFallbackContentColor
+import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.isShowingSearchResults
 import com.jm3.app.miuix.ui.mutateSearchHistory
 import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.readSearchHistory
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
@@ -381,10 +382,9 @@ fun CouiHomeScreen(
             visible.lastOrNull()?.index to rowHeightDp
         }.collect { (lastIndex, rowHeightDp) ->
             val current = pagingFeed ?: return@collect
-            if (!current.canLoadMore || current.loadMoreFailed) return@collect
             val distance = prefetchItemCount(COUI_LOAD_MORE_PREFETCH_DP.toFloat(), rowHeightDp)
-            val feedIndex = (lastIndex ?: return@collect) - HOME_FEED_ROW_START
-            if (shouldPrefetch(feedIndex, current.items.size, distance)) {
+            // feed 级开关（还能不能加载、上次是否失败）由 core 判据一并处理
+            if (current.shouldPrefetchRow(lastIndex ?: return@collect, HOME_FEED_ROW_START, distance)) {
                 latestLoadMore()
             }
         }
@@ -440,8 +440,8 @@ fun CouiHomeScreen(
                 start = appBarPadding.calculateLeftPadding(layoutDirection),
                 top = appBarPadding.calculateTopPadding(),
                 end = appBarPadding.calculateRightPadding(layoutDirection),
-                // 底部再留出 FAB 的高度，最后一行不会被浮动按钮压住
-                bottom = appBarPadding.calculateBottomPadding() + 88.dp,
+                // 底栏净空与 FAB 位置由 CouiAppScaffold 的 bottomBar 占位统一让出
+                bottom = appBarPadding.calculateBottomPadding(),
             )
         }
         val feedState = if (searching) results else feed
@@ -724,7 +724,7 @@ private fun CouiTagCapsule(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(colors.container)
-            .clickable(onClick = onClick)
+            .couiPressable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -769,20 +769,19 @@ private fun CouiAlbumRow(album: SearchResult, onClick: () -> Unit) {
 
 @Composable
 private fun CouiAlbumCover(url: String?, title: String) {
+    // 圆角取皮肤卡圆角、解码走统一封面入口，与详情头图落在同一条内存缓存上
+    val cardCorner = LocalSkin.current.shapes.cardCorner
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(cardCorner))
             .background(CouiTheme.colorScheme.container),
     ) {
-        if (!url.isNullOrBlank()) {
-            AsyncImage(
-                model = url,
-                contentDescription = title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+        AlbumCoverImage(
+            url = url,
+            contentDescription = title,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -794,7 +793,7 @@ private fun CouiRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .clickable(enabled = !refreshing, onClick = onRefresh)
+            .couiPressable(enabled = !refreshing, onClick = onRefresh)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -817,19 +816,19 @@ private fun CouiHeaderTextAction(text: String, onClick: () -> Unit) {
         color = CouiTheme.colorScheme.accent,
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .clickable(onClick = onClick)
+            .couiPressable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
     )
 }
 
-/** 行尾的图标动作：40dp 命中区里放 16dp 图标，避免误触整行。 */
+/** 行尾的图标动作：32dp 视觉里放 16dp 图标，触区由 couiPressable 补到 48dp，避免误触整行。 */
 @Composable
 private fun CouiRowIconAction(icon: ImageVector, description: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
+            .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .size(32.dp)
-            .clip(CouiCapsuleShape)
-            .clickable(onClick = onClick),
+            .clip(CouiCapsuleShape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

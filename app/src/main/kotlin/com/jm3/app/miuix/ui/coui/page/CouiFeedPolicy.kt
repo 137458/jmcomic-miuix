@@ -2,6 +2,8 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.shouldLoadMore
 import kotlin.math.ceil
 
 /**
@@ -32,16 +34,26 @@ internal fun prefetchItemCount(prefetchDistanceDp: Float, rowHeightDp: Float): I
 }
 
 /**
- * 触底判据：最后一个可见项已进入末尾的提前量区间时预取下一页。
+ * 触底判据的唯一实现在 core 的 [PagedFeed.shouldLoadMore]：本函数只是「拿不到 feed」时的适配器。
  *
- * 空列表永不预取（[totalCount] 为 0 时下面那个减法没有意义）；
- * 提前量为负按 0 处理，判据不会因此变得比「看见最后一项」更早。
+ * 详情页评论列表把 list 的总项数（含页头/页脚条目）当 [totalCount] 传进来，手上没有 feed 级开关，
+ * 于是借用一份恒为「还有下一页、不在加载中、上次没失败」的 feed 求值，判据与页面侧完全同源。
+ * 页面侧请直接用 [shouldPrefetchRow]，不要在这里再拼一份条件。
  */
-internal fun shouldPrefetch(index: Int, totalCount: Int, prefetchDistance: Int): Boolean {
-    if (totalCount <= 0) return false
-    val distance = prefetchDistance.coerceAtLeast(0)
-    return index >= totalCount - 1 - distance
-}
+internal fun shouldPrefetch(index: Int, totalCount: Int, prefetchDistance: Int): Boolean =
+    PagedFeed<Unit>(hasMore = true).shouldLoadMore(index, totalCount, prefetchDistance)
+
+/**
+ * 页面侧触底判据：把懒列表的可见下标换算成 feed 行下标，再交给 core 的 [PagedFeed.shouldLoadMore]。
+ *
+ * [rowStart] 是「列表第几项开始是 feed 的第一行」。feed 级开关（还能不能加载、上次是否失败、
+ * 空列表）都由 core 判据一并处理，调用点不必自己再判一遍。
+ */
+internal fun PagedFeed<*>.shouldPrefetchRow(
+    lastVisibleIndex: Int,
+    rowStart: Int,
+    prefetchDistance: Int,
+): Boolean = shouldLoadMore(lastVisibleIndex - rowStart, items.size, prefetchDistance)
 
 /**
  * 榜单名次：第 [page] 页（1 基）第 [index] 项（0 基）在整份榜单里的序号（1 基）。

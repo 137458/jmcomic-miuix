@@ -2,6 +2,7 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import com.jm3.core.paging.PagedFeed
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,14 +30,24 @@ class CouiFeedPolicyTest {
 
     @Test
     fun `提前量边界两侧判定相反`() {
-        // 总 50 项、提前 5 项：最后一项下标 49，界内起点为 49 - 5 = 44
-        assertFalse(shouldPrefetch(index = 43, totalCount = 50, prefetchDistance = 5))
-        assertTrue(shouldPrefetch(index = 44, totalCount = 50, prefetchDistance = 5))
+        // 总 50 项、提前 5 项：界内起点为 50 - 5 = 45（与 core 的 shouldLoadMore 同一条判据）
+        assertFalse(shouldPrefetch(index = 44, totalCount = 50, prefetchDistance = 5))
+        assertTrue(shouldPrefetch(index = 45, totalCount = 50, prefetchDistance = 5))
         assertTrue(shouldPrefetch(index = 49, totalCount = 50, prefetchDistance = 5))
 
-        // 提前量为 0：只有真的看见最后一项才取下一页
-        assertFalse(shouldPrefetch(index = 48, totalCount = 50, prefetchDistance = 0))
-        assertTrue(shouldPrefetch(index = 49, totalCount = 50, prefetchDistance = 0))
+        // 提前 1 项：看见最后一项就取下一页（页面永远传 ≥1 的项数，见 prefetchItemCount）
+        assertFalse(shouldPrefetch(index = 48, totalCount = 50, prefetchDistance = 1))
+        assertTrue(shouldPrefetch(index = 49, totalCount = 50, prefetchDistance = 1))
+
+        // 提前 0 项：core 判据的阈值等于总项数，永远不触发
+        assertFalse(shouldPrefetch(index = 49, totalCount = 50, prefetchDistance = 0))
+    }
+
+    @Test
+    fun `负下标与 core 判据同样不触发`() {
+        // 页头还在屏幕里时「可见下标 - 行起点」是负数，不能因为提前量很大就判成触底
+        assertFalse(shouldPrefetch(index = -1, totalCount = 50, prefetchDistance = 5))
+        assertFalse(shouldPrefetch(index = -1, totalCount = 3, prefetchDistance = 10))
     }
 
     @Test
@@ -48,13 +59,14 @@ class CouiFeedPolicyTest {
     @Test
     fun `下标越界仍按触底处理`() {
         assertTrue(shouldPrefetch(index = 100, totalCount = 50, prefetchDistance = 5))
-        assertTrue(shouldPrefetch(index = 50, totalCount = 51, prefetchDistance = 0))
+        assertTrue(shouldPrefetch(index = 50, totalCount = 51, prefetchDistance = 1))
     }
 
     @Test
-    fun `负提前量按零处理`() {
+    fun `负提前量不会提前触发`() {
+        // 阈值被推到最后一项之外，等于「暂不预取」；页面侧的 prefetchItemCount 保证不会传负值
         assertFalse(shouldPrefetch(index = 48, totalCount = 50, prefetchDistance = -3))
-        assertTrue(shouldPrefetch(index = 49, totalCount = 50, prefetchDistance = -3))
+        assertFalse(shouldPrefetch(index = 49, totalCount = 50, prefetchDistance = -3))
     }
 
     @Test
@@ -73,6 +85,22 @@ class CouiFeedPolicyTest {
         assertEquals(5, prefetchItemCount(prefetchDistanceDp = 320f, rowHeightDp = 0f))
         assertEquals(5, prefetchItemCount(prefetchDistanceDp = 320f, rowHeightDp = -12f))
         assertEquals(5, prefetchItemCount(prefetchDistanceDp = 320f, rowHeightDp = Float.POSITIVE_INFINITY))
+    }
+
+    @Test
+    fun `页面侧判据按行起点换算并复用 feed 的开关`() {
+        // 列表前 2 项是页头，feed 第 0 行对应可见下标 2
+        val feed = PagedFeed(items = List(50) { it }, page = 1, hasMore = true)
+        assertFalse(feed.shouldPrefetchRow(lastVisibleIndex = 46, rowStart = 2, prefetchDistance = 5))
+        assertTrue(feed.shouldPrefetchRow(lastVisibleIndex = 47, rowStart = 2, prefetchDistance = 5))
+        // 页头还在屏幕里：feed 行下标为负，不算触底
+        assertFalse(feed.shouldPrefetchRow(lastVisibleIndex = 1, rowStart = 2, prefetchDistance = 10))
+
+        // feed 级开关一票否决，调用点不必自己再判一遍
+        assertFalse(feed.copy(hasMore = false).shouldPrefetchRow(lastVisibleIndex = 49, rowStart = 2, prefetchDistance = 5))
+        assertFalse(feed.copy(loadingMore = true).shouldPrefetchRow(lastVisibleIndex = 49, rowStart = 2, prefetchDistance = 5))
+        assertFalse(feed.copy(loadMoreFailed = true).shouldPrefetchRow(lastVisibleIndex = 49, rowStart = 2, prefetchDistance = 5))
+        assertFalse(PagedFeed<Int>(hasMore = true).shouldPrefetchRow(lastVisibleIndex = 0, rowStart = 0, prefetchDistance = 5))
     }
 
     @Test
