@@ -736,7 +736,8 @@ internal fun CouiBrowseScreen(
 /**
  * 每周连载更新：与首页同一个接口（serialization），一页一页追加。
  *
- * 失败时卡片下方给原因、卡内给重试；只有第一页时与旧页一样先显示加载中。
+ * 标题与卡片拆开，空态/失败态直接用公共三态件，不再各写一套「标题 + 单行 Item」；
+ * 失败时卡片下方仍给原因、卡内给可点的重试行（由 [CouiErrorGroup] 提供）。
  * 续页脚在卡外单独成项：[CouiLoadMoreFooter] 自带卡片，套进本 Group 会变成卡中卡。
  */
 @Composable
@@ -747,38 +748,19 @@ private fun CouiWeeklyGroup(
     onRetry: () -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
-    val colors = CouiTheme.colorScheme
-    Group(title = "每周连载更新", footer = failure) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CouiGroupTitle(title = "每周连载更新")
         when {
-            loading && feed.items.isEmpty() -> Item(
-                title = {
-                    Text(
-                        text = "正在加载每周更新…",
-                        kind = CouiTextKind.Body,
-                        color = colors.onSurfaceVariant,
-                        textAlign = TextAlign.Start,
-                    )
-                },
+            loading && feed.items.isEmpty() -> CouiLoadingGroup(text = "正在加载每周更新…")
+
+            failure != null && feed.items.isEmpty() -> CouiErrorGroup(
+                message = failure,
+                onRetry = onRetry,
             )
 
-            failure != null && feed.items.isEmpty() -> Item(
-                title = { Text(text = "重新加载", kind = CouiTextKind.Body, textAlign = TextAlign.Start) },
-                trailing = {
-                    Icon(
-                        imageVector = CouiIcons.Refresh,
-                        contentDescription = "重试",
-                        modifier = Modifier.size(20.dp),
-                        tint = colors.accent,
-                    )
-                },
-                onClick = onRetry,
-            )
+            feed.items.isEmpty() -> CouiEmptyGroup(text = "暂无每周更新")
 
-            feed.items.isEmpty() -> Item(
-                title = { Text(text = "暂无每周更新", kind = CouiTextKind.Body, textAlign = TextAlign.Start) },
-            )
-
-            else -> {
+            else -> Group(footer = failure) {
                 feed.items.forEachIndexed { index, result ->
                     if (index > 0) Divider()
                     CouiBrowseResultRow(
