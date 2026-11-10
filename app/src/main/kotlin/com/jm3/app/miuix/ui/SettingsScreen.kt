@@ -59,17 +59,6 @@ import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private fun ThemeMode.label(): String = when (this) {
-    ThemeMode.SYSTEM -> "跟随系统"
-    ThemeMode.LIGHT -> "浅色"
-    ThemeMode.DARK -> "深色"
-}
-
-private fun PaginationMode.label(): String = when (this) {
-    PaginationMode.INFINITE -> "无限滚动"
-    PaginationMode.CLICK -> "点击翻页"
-}
-
 /** 版本号连点触发隐藏诊断的阈值与窗口。 */
 private const val DIAGNOSTIC_TAPS = 5
 private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
@@ -280,7 +269,7 @@ fun SettingsScreen(
                     },
                 )
                 TabRow(
-                    tabs = ThemeMode.entries.map { it.label() },
+                    tabs = ThemeMode.entries.map { it.displayName },
                     selectedTabIndex = ThemeMode.entries.indexOf(themeMode),
                     onTabSelected = { index ->
                         ThemeMode.entries.getOrNull(index)?.let(onThemeModeChange)
@@ -332,7 +321,7 @@ fun SettingsScreen(
                         PaginationMode.CLICK -> "列表底部显示上一页/下一页"
                     },
                     items = PaginationMode.entries.mapIndexed { index, mode ->
-                        DropdownItem(text = mode.label(), selected = mode == paginationMode)
+                        DropdownItem(text = mode.displayName, selected = mode == paginationMode)
                     },
                     selectedIndex = PaginationMode.entries.indexOf(paginationMode),
                     showValue = false,
@@ -395,7 +384,7 @@ fun SettingsScreen(
                     )
                 }
                 ReaderSettingsSection(
-                    repository = deps.preferences.repository,
+                    state = rememberReaderSettingsState(deps.preferences.repository),
                     spreadAllowed = readerSpreadAllowed,
                 )
             }
@@ -550,10 +539,10 @@ fun SettingsScreen(
                         value = domainLatency.joinToString("\n") { (domain, ms) -> "$domain · ${ms}ms" }
                             .ifBlank { "尚未完成线路探活" },
                     )
-                    DiagnosticRow(label = "分页模式", value = paginationMode.label())
+                    DiagnosticRow(label = "分页模式", value = paginationMode.displayName)
                     DiagnosticRow(
                         label = "主题",
-                        value = themeMode.label() + if (dynamicColor) " · 动态取色" else "",
+                        value = themeMode.displayName + if (dynamicColor) " · 动态取色" else "",
                     )
                 }
             }

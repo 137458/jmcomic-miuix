@@ -1,12 +1,16 @@
 package com.jm3.core.settings
 
 /** 主题模式：跟随系统/浅色/深色。 */
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class ThemeMode(val displayName: String) {
+    SYSTEM("跟随系统"),
+    LIGHT("浅色"),
+    DARK("深色"),
+}
 
 /** 列表分页模式：无限滚动 / 点击翻页（原版设置项）。 */
-enum class PaginationMode(val label: String) {
-    INFINITE("上拉加载更多"),
-    CLICK("点击切换分页"),
+enum class PaginationMode(val label: String, val displayName: String) {
+    INFINITE("上拉加载更多", "无限滚动"),
+    CLICK("点击切换分页", "点击翻页"),
 }
 
 /**

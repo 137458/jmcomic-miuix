@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.jm3.app.miuix.ui.coui.page
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,10 +35,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +70,9 @@ import com.jm3.app.miuix.ui.checkInFailureCopy
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.formatCheckInSummary
 import com.jm3.app.miuix.ui.planLoad
@@ -257,8 +269,7 @@ internal fun CouiMineScreen(
                 .couiVerticalScroll(scrollState)
                 // 折叠补偿后的留白进滚动内容内侧；Scaffold 原始 padding 被 consume，不能再整体平移视口
                 .padding(contentPadding)
-                .consumeWindowInsets(innerPadding)
-                .padding(bottom = 24.dp),
+                .consumeWindowInsets(innerPadding),
         ) {
             MineAccountCard(
                 user = user,
@@ -384,16 +395,16 @@ internal fun CouiMineScreen(
             onDismissRequest = { confirmLogout = false },
             title = "退出登录",
             message = "确定要登出账号吗？",
-            confirmAction = CouiDialogAction(
-                text = "确认退出",
-                onClick = {
-                    confirmLogout = false
-                    scope.launch {
-                        deps.account.logout()
+            confirmAction = couiDestructiveConfirmAction(text = "确认退出") {
+                confirmLogout = false
+                scope.launch {
+                    if (runCatchingSuspending { deps.account.logout() }.isSuccess) {
                         snackbarHostState.showSnackbar("已退出登录")
+                    } else {
+                        snackbarHostState.showSnackbar("退出登录失败，请稍后重试")
                     }
-                },
-            ),
+                }
+            },
             dismissAction = CouiDialogAction(text = "取消", onClick = { confirmLogout = false }),
         )
     }
@@ -487,14 +498,37 @@ private fun MineLoginCapsule(onOpenLogin: () -> Unit) {
     val scheme = CouiTheme.colorScheme
     Box(
         modifier = Modifier
+            // 触摸目标扩到 48dp，视觉尺寸不变；可点区放在裁剪之前，背景不会被撑到 48dp
+            .couiPressable(minTouchTarget = CouiMinTouchTarget) { onOpenLogin() }
             .clip(CouiCapsuleShape)
             .background(scheme.accent)
-            .clickable(onClick = onOpenLogin)
             .padding(horizontal = 18.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = "登录", kind = CouiTextKind.PreferenceValue, color = scheme.onAccent)
     }
+}
+
+/** 库没有进度件：用旋转的刷新图标表达忙碌，尺寸与行内文字对齐。 */
+@Composable
+private fun MineBusySpinner() {
+    val scheme = CouiTheme.colorScheme
+    val transition = rememberInfiniteTransition(label = "checkInBusy")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 900, easing = LinearEasing)),
+        label = "checkInBusyAngle",
+    )
+    Icon(
+        imageVector = CouiIcons.Refresh,
+        // 行标题已播报「签到中…」，图标不再重复出声
+        contentDescription = null,
+        modifier = Modifier
+            .size(16.dp)
+            .graphicsLayer(rotationZ = angle),
+        tint = scheme.accent,
+    )
 }
 
 /** 未读角标沿用胶囊语言；三位以上收敛成 99+，避免撑宽右侧槽位。 */
@@ -632,7 +666,9 @@ private fun MineCheckInGroup(
                 },
                 // 已签到只去掉点击、不置灰：禁用态会让人以为这一行坏了
                 trailing = {
-                    if (signedToday) {
+                    if (busy) {
+                        MineBusySpinner()
+                    } else if (signedToday) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = CouiIcons.Check,
@@ -674,7 +710,13 @@ private fun MineCheckInGroup(
                             .fillMaxWidth()
                             .height(4.dp)
                             .clip(CouiCapsuleShape)
-                            .background(scheme.outlineVariant),
+                            .background(scheme.outlineVariant)
+                            .semantics {
+                                progressBarRangeInfo = ProgressBarRangeInfo(
+                                    current = display.progress.coerceIn(0f, 1f),
+                                    range = 0f..1f,
+                                )
+                            },
                     ) {
                         Box(
                             modifier = Modifier

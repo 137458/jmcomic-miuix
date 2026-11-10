@@ -4,9 +4,10 @@ package com.jm3.app.miuix.ui.coui.page
 
 import android.os.Build
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,8 +15,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,14 +35,22 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.couiButtonFeedback
+import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
 import com.itos.coui.scroll.couiVerticalScroll
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.slider.Slider
 import com.itos.coui.switch.Switch
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
@@ -50,15 +60,23 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.ReaderSettingsSection
+import com.jm3.app.miuix.ui.ReaderSettingsState
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
+import com.jm3.app.miuix.ui.prefetchPagesLabel
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.readerBrightnessLabel
+import com.jm3.app.miuix.ui.readerBrightnessSliderValue
+import com.jm3.app.miuix.ui.rememberReaderSettingsState
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.resolvePaginationSelection
+import com.jm3.app.miuix.ui.settingsSummary
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.reader.ReaderSpreadPolicy
 import com.jm3.core.runCatchingSuspending
@@ -67,25 +85,19 @@ import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.PaginationMode
+import com.jm3.core.settings.ReaderImageQuality
+import com.jm3.core.settings.ReaderPreferences
+import com.jm3.core.settings.ReaderSpreadMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
 import com.jm3.core.settings.WideScreenNavigation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
-private fun ThemeMode.couiLabel(): String = when (this) {
-    ThemeMode.SYSTEM -> "跟随系统"
-    ThemeMode.LIGHT -> "浅色"
-    ThemeMode.DARK -> "深色"
-}
-
-private fun PaginationMode.couiLabel(): String = when (this) {
-    PaginationMode.INFINITE -> "无限滚动"
-    PaginationMode.CLICK -> "点击翻页"
-}
+/** 输入框与卡片同源的圆角：由库的卡片半径派生，避免另写字面量。 */
+private val SettingsInputShape = CouiShape(CouiPageDefaults.shape.radius / 2)
 
 private fun UiSkin.couiSummary(): String = when (this) {
     UiSkin.HYPEROS -> "HyperOS：液态玻璃折射与饱和高光"
@@ -102,9 +114,10 @@ private const val CLEAR_CONFIRM_TIMEOUT_MS = 5000L
 /**
  * 设置页当前打开的选择面板。
  *
- * 五个枚举型设置共用一套「标题 + 选项 + 完成/取消」的 COUI 弹窗，
+ * 五个枚举型设置共用一套「标题 + 选项 + 完成」的 COUI 弹窗，
  * 用一个可空状态描述当前打开哪一格，避免并行布尔互相叠加出两个弹窗。
- * 阅读器分项不在此列：它们已交给设置中心共用的 ReaderSettingsSection 自行弹层。
+ * 阅读器分项不在此列：它们由本页的 CouiReaderSettingsSection 自己管面板，
+ * 状态与写盘则与设置中心共用 ReaderSettingsState。
  */
 private enum class SettingsPicker {
     PAGINATION_MODE,
@@ -182,6 +195,8 @@ fun CouiSettingsScreen(
             widthDp,
             windowDp.height.toLayoutDpInt(),
         )
+        // 阅读设置七项的状态与写盘交给共享 holder，本页只负责用库控件渲染
+        val readerState = rememberReaderSettingsState(repository)
         // 版本号连点进入隐藏诊断
         var diagnostics by remember { mutableStateOf(false) }
         var versionTapCount by remember { mutableIntStateOf(0) }
@@ -292,8 +307,9 @@ fun CouiSettingsScreen(
                 // 写入即归一（去协议头/路径/空白项并去重），读回的就是真正生效的线路表；
                 // 失败也必须解锁按钮，否则本页会永久停在「应用中…」。
                 val result = runCatchingSuspending {
-                    deps.settings.setApiDomains(domainsInput.value.split("\n"))
-                    val applied = deps.settings.apiDomains()
+                    // 线路与其余设置项同源：一律经 repository（deps.settings 是它的别名）
+                    repository.setApiDomains(domainsInput.value.split("\n"))
+                    val applied = repository.apiDomains()
                     deps.applyDomains(applied)
                     applied
                 }
@@ -316,7 +332,7 @@ fun CouiSettingsScreen(
         LaunchedEffect(Unit) {
             if (!loadedSaved) {
                 loadedSaved = true
-                val saved = deps.settings.apiDomains()
+                val saved = repository.apiDomains()
                 domainsInput.value = saved.joinToString("\n")
                 activeDomains.value = saved.joinToString("、")
             }
@@ -386,8 +402,7 @@ fun CouiSettingsScreen(
                         .couiVerticalScroll(scrollState)
                         // 顶栏的高与折叠位移由 state 参与计算，正文才会跟着顶栏一起让位
                         .padding(scrollBehavior.state.contentPadding(innerPadding, LocalDensity.current))
-                        .consumeWindowInsets(innerPadding)
-                        .padding(bottom = 24.dp),
+                        .consumeWindowInsets(innerPadding),
                 ) {
                     Group(title = "主题") {
                         Item(
@@ -400,7 +415,7 @@ fun CouiSettingsScreen(
                                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                         ) {
                             CouiSegmentedCapsules(
-                                items = ThemeMode.entries.map { it.couiLabel() },
+                                items = ThemeMode.entries.map { it.displayName },
                                 selectedIndex = ThemeMode.entries.indexOf(themeMode),
                                 onSelect = { index ->
                                     ThemeMode.entries.getOrNull(index)
@@ -419,6 +434,13 @@ fun CouiSettingsScreen(
                         )
                         Divider()
                         Item(
+                            // 整行即开关：toggleable 提供点击、Role.Switch 与开/关播报，
+                            // Switch 只呈现状态，避免同一控件出现两份点击语义
+                            modifier = Modifier.couiSwitchRow(
+                                value = dynamicColor,
+                                onValueChange = onDynamicColorChange,
+                                enabled = dynamicColorSupported,
+                            ),
                             title = { SettingsRowTitle("动态取色") },
                             summary = {
                                 SettingsRowSummary(
@@ -432,7 +454,7 @@ fun CouiSettingsScreen(
                             trailing = {
                                 Switch(
                                     checked = dynamicColor,
-                                    onCheckedChange = onDynamicColorChange,
+                                    onCheckedChange = null,
                                     enabled = dynamicColorSupported,
                                 )
                             },
@@ -443,7 +465,7 @@ fun CouiSettingsScreen(
                         Item(
                             title = { SettingsRowTitle("分页模式") },
                             summary = { SettingsRowSummary(paginationModeSummary) },
-                            trailing = { SettingsRowValue(paginationMode.couiLabel()) },
+                            trailing = { SettingsRowValue(paginationMode.displayName) },
                             onClick = { picker = SettingsPicker.PAGINATION_MODE },
                         )
                         Divider()
@@ -471,9 +493,12 @@ fun CouiSettingsScreen(
                         }
                     }
 
-                    // 七项阅读器设置复用设置中心的同一实现：读盘、写盘与文案只维护一处
+                    // 七项阅读器设置与设置中心共用同一份状态与写盘，本页只用 COUI 库控件渲染
                     Group(title = "阅读器") {
-                        ReaderSettingsSection(repository = repository, spreadAllowed = readerSpreadAllowed)
+                        CouiReaderSettingsSection(
+                            state = readerState,
+                            spreadAllowed = readerSpreadAllowed,
+                        )
                     }
 
                     Group(title = "线路") {
@@ -519,19 +544,18 @@ fun CouiSettingsScreen(
                             summary = {
                                 SettingsRowSummary(if (reprobeBusy) "探活中…" else "逐条测速并按延迟排序")
                             },
-                            // 探活要走完整轮域名测速，给出进行中的转圈反馈，避免误以为点击没生效
-                            trailing = {
-                                if (reprobeBusy) CircularProgressIndicator(size = 20.dp)
-                            },
                             onClick = ::reprobeDomains,
                             enabled = !reprobeBusy,
                         )
                         Divider()
-                        // 多行线路输入：库没有多行输入组件，用基础输入框套 COUI 分组卡片
+                        // 多行线路输入：库的输入弹窗写死单行，用基础输入框套 COUI 分组卡片
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                                .padding(
+                                    horizontal = CouiPageDefaults.rowPadding,
+                                    vertical = CouiPageDefaults.contentPadding,
+                                ),
                         ) {
                             SettingsRowTitle("自定义线路")
                             SettingsRowSummary("每行一个域名，留空恢复默认")
@@ -539,19 +563,11 @@ fun CouiSettingsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 8.dp)
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(SettingsInputShape)
                                     .background(scheme.onSurface.copy(alpha = 0.06f))
                                     .padding(horizontal = 12.dp, vertical = 10.dp)
                                     .heightIn(min = 84.dp),
                             ) {
-                                if (domainsInput.value.isEmpty()) {
-                                    Text(
-                                        text = "每行一个域名，留空恢复默认",
-                                        kind = CouiTextKind.PreferenceSummary,
-                                        color = scheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Start,
-                                    )
-                                }
                                 BasicTextField(
                                     value = domainsInput.value,
                                     onValueChange = { domainsInput.value = it },
@@ -559,7 +575,22 @@ fun CouiSettingsScreen(
                                     cursorBrush = SolidColor(scheme.accent),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(min = 64.dp),
+                                        .heightIn(min = 64.dp)
+                                        .semantics { contentDescription = "自定义线路" },
+                                    decorationBox = { innerTextField ->
+                                        // 占位文案进装饰槽：视觉与读屏都归属同一个输入框
+                                        Box {
+                                            if (domainsInput.value.isEmpty()) {
+                                                Text(
+                                                    text = "每行一个域名，例如 api.example.com",
+                                                    kind = CouiTextKind.PreferenceSummary,
+                                                    color = scheme.onSurfaceVariant,
+                                                    textAlign = TextAlign.Start,
+                                                )
+                                            }
+                                            innerTextField()
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -593,7 +624,6 @@ fun CouiSettingsScreen(
                         Item(
                             title = { SettingsRowTitle("版本") },
                             summary = { SettingsRowSummary(versionName) },
-                            trailing = { SettingsRowValue(versionCode.toString()) },
                             onClick = {
                                 versionTapCount += 1
                                 if (versionTapCount >= DIAGNOSTIC_TAPS) {
@@ -655,7 +685,7 @@ fun CouiSettingsScreen(
 
             SettingsPicker.PAGINATION_MODE -> SettingsChoiceDialog(
                 title = "分页模式",
-                options = PaginationMode.entries.map { it.couiLabel() },
+                options = PaginationMode.entries.map { it.displayName },
                 selectedIndex = PaginationMode.entries.indexOf(paginationMode),
                 onSelect = { index ->
                     resolvePaginationSelection(deps.preferences.paginationMode, index)
@@ -727,10 +757,10 @@ fun CouiSettingsScreen(
                             value = domainLatency.joinToString("\n") { (domain, ms) -> domain + " · " + ms + "ms" }
                                 .ifBlank { "尚未完成线路探活" },
                         )
-                        SettingsDiagnosticLine(label = "分页模式", value = paginationMode.couiLabel())
+                        SettingsDiagnosticLine(label = "分页模式", value = paginationMode.displayName)
                         SettingsDiagnosticLine(
                             label = "主题",
-                            value = themeMode.couiLabel() + if (dynamicColor) " · 动态取色" else "",
+                            value = themeMode.displayName + if (dynamicColor) " · 动态取色" else "",
                         )
                     }
                 }
@@ -743,27 +773,34 @@ fun CouiSettingsScreen(
                 onDismissRequest = { if (!clearing) clearTarget = null },
                 title = pendingClear.title,
                 message = pendingClear.description,
-                confirmAction = CouiDialogAction(
+                confirmAction = couiDestructiveConfirmAction(
                     text = if (clearing) "清空中…" else "确认清空",
                     enabled = !clearing,
-                    onClick = {
-                        if (!clearing) {
-                            clearing = true
-                            scope.launch {
-                                try {
-                                    when (pendingClear) {
-                                        ClearTarget.HISTORY -> deps.history.clear()
-                                        ClearTarget.DOWNLOADS -> deps.downloadManager.clearAll()
-                                    }
-                                    snackbarHostState.showSnackbar(pendingClear.doneMessage)
-                                } finally {
-                                    clearing = false
-                                    clearTarget = null
+                ) {
+                    if (!clearing) {
+                        clearing = true
+                        scope.launch {
+                            // 下载清理包含数据库写，失败要让用户看见，而不是静默地当作已完成
+                            val result = runCatchingSuspending {
+                                when (pendingClear) {
+                                    ClearTarget.HISTORY -> deps.history.clear()
+                                    ClearTarget.DOWNLOADS -> deps.downloadManager.clearAll()
                                 }
                             }
+                            // showSnackbar 会挂起到提示消失：先收弹窗再提示，
+                            // 否则确认框会一直盖在提示条上直到提示自动消失
+                            clearing = false
+                            clearTarget = null
+                            snackbarHostState.showSnackbar(
+                                if (result.isSuccess) {
+                                    pendingClear.doneMessage
+                                } else {
+                                    "清空失败：" + (result.exceptionOrNull()?.message ?: "未知错误")
+                                },
+                            )
                         }
-                    },
-                ),
+                    }
+                },
                 dismissAction = CouiDialogAction(text = "取消", onClick = { if (!clearing) clearTarget = null }),
             )
         }
@@ -781,14 +818,14 @@ fun CouiSettingsScreen(
     }
 }
 
-/** 顶栏返回键：40dp 圆形容器，热区与图标都不依赖顶栏默认的按钮样式。 */
+/** 顶栏返回键：40dp 圆形容器，热区由共享件补到 48dp，视觉尺寸不变。 */
 @Composable
 private fun SettingsBackButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(40.dp)
             .clip(CircleShape)
-            .clickable(onClick = onClick),
+            .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -826,6 +863,34 @@ private fun SettingsRowValue(text: String) {
     )
 }
 
+/**
+ * 整行开关：库 Switch 传 null 回调后只呈现状态、不再自带 toggleable，
+ * 点击、开关角色与开/关播报由这里统一承担；反馈层与 toggleable 共用同一个
+ * interactionSource（库的用法约定），按压蒙层与普通设置行一致。
+ */
+@Composable
+private fun Modifier.couiSwitchRow(
+    value: Boolean,
+    onValueChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+): Modifier {
+    val interactionSource = remember { MutableInteractionSource() }
+    return this
+        .couiButtonFeedback(
+            dark = CouiKitTheme.isDark,
+            interactionSource = interactionSource,
+            enabled = enabled,
+        )
+        .toggleable(
+            value = value,
+            interactionSource = interactionSource,
+            indication = null,
+            enabled = enabled,
+            role = Role.Switch,
+            onValueChange = onValueChange,
+        )
+}
+
 /** 诊断行：标签在上、值在下，长值自动换行。 */
 @Composable
 private fun SettingsDiagnosticLine(label: String, value: String) {
@@ -843,11 +908,178 @@ private fun SettingsDiagnosticLine(label: String, value: String) {
     }
 }
 
+/** 阅读器内联分项的选择面板。 */
+private enum class ReaderPicker {
+    DIRECTION,
+    SPREAD,
+    IMAGE_QUALITY,
+    PREFETCH_PAGES,
+}
+
 /**
- * 枚举型设置的选择面板：Row + 选中勾，确认与取消都不改设置。
+ * 阅读设置七项在 COUI 皮肤下的渲染：状态与写盘由 [ReaderSettingsState] 承载，
+ * 这里只用库控件（Item/Switch/Slider/Dialog），不引 Miuix 偏好件。
+ */
+@Composable
+private fun CouiReaderSettingsSection(
+    state: ReaderSettingsState,
+    spreadAllowed: Boolean,
+) {
+    val scope = rememberCoroutineScope()
+    var choice by remember { mutableStateOf<ReaderPicker?>(null) }
+
+    Item(
+        title = { SettingsRowTitle("默认阅读方向") },
+        summary = {
+            SettingsRowSummary(
+                if (state.horizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",
+            )
+        },
+        trailing = { SettingsRowValue(if (state.horizontal) "左右翻页" else "纵向长图") },
+        onClick = { choice = ReaderPicker.DIRECTION },
+    )
+    Divider()
+    // 双页是大屏横屏的附加排布：窗口不够宽或竖屏时整行不渲染
+    if (spreadAllowed) {
+        Item(
+            title = { SettingsRowTitle("双页阅读") },
+            summary = {
+                SettingsRowSummary(
+                    if (state.spread == ReaderSpreadMode.DOUBLE) {
+                        "大屏横屏下两页并排，按左右翻页生效"
+                    } else {
+                        "单页显示，可按左右翻页"
+                    },
+                )
+            },
+            trailing = { SettingsRowValue(state.spread.label) },
+            onClick = { choice = ReaderPicker.SPREAD },
+        )
+        Divider()
+    }
+    Item(
+        // 整行即开关：开/关状态由 toggleable 播报，Switch 只呈现视觉
+        modifier = Modifier.couiSwitchRow(
+            value = state.volumeKeyPaging,
+            onValueChange = { checked -> scope.launch { state.applyVolumeKeyPaging(checked) } },
+        ),
+        title = { SettingsRowTitle("音量键翻页") },
+        summary = { SettingsRowSummary("关闭后音量键恢复调节系统音量") },
+        trailing = { Switch(checked = state.volumeKeyPaging, onCheckedChange = null) },
+    )
+    Divider()
+    Item(
+        modifier = Modifier.couiSwitchRow(
+            value = state.keepScreenOn,
+            onValueChange = { checked -> scope.launch { state.applyKeepScreenOn(checked) } },
+        ),
+        title = { SettingsRowTitle("阅读时保持亮屏") },
+        summary = { SettingsRowSummary("阅读页不自动息屏") },
+        trailing = { Switch(checked = state.keepScreenOn, onCheckedChange = null) },
+    )
+    Divider()
+    // 亮度拖动期间只改本地值，松手才落盘；0 表示跟随系统
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = CouiPageDefaults.rowPadding,
+                vertical = CouiPageDefaults.contentPadding,
+            ),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            SettingsRowTitle("阅读亮度", modifier = Modifier.weight(1f))
+            SettingsRowValue(readerBrightnessLabel(state.brightness))
+        }
+        SettingsRowSummary("0 表示跟随系统亮度，只在阅读页生效")
+        Slider(
+            value = readerBrightnessSliderValue(state.brightness),
+            onValueChange = state::previewBrightness,
+            onValueChangeFinished = { scope.launch { state.commitBrightness() } },
+            valueRange = 0f..ReaderPreferences.MAX_BRIGHTNESS.toFloat(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+        )
+    }
+    Divider()
+    Item(
+        title = { SettingsRowTitle("图片质量") },
+        summary = { SettingsRowSummary(state.imageQuality.settingsSummary()) },
+        trailing = { SettingsRowValue(state.imageQuality.label) },
+        onClick = { choice = ReaderPicker.IMAGE_QUALITY },
+    )
+    Divider()
+    Item(
+        title = { SettingsRowTitle("预取页数") },
+        summary = {
+            SettingsRowSummary(
+                if (state.prefetchPages == 0) {
+                    "不提前加载后续页"
+                } else {
+                    "提前加载当前页之后的 " + state.prefetchPages + " 页"
+                },
+            )
+        },
+        trailing = { SettingsRowValue(prefetchPagesLabel(state.prefetchPages)) },
+        onClick = { choice = ReaderPicker.PREFETCH_PAGES },
+    )
+
+    when (choice) {
+        ReaderPicker.DIRECTION -> SettingsChoiceDialog(
+            title = "默认阅读方向",
+            options = listOf("纵向长图", "左右翻页"),
+            selectedIndex = if (state.horizontal) 1 else 0,
+            onSelect = { index -> scope.launch { state.applyHorizontal(index == 1) } },
+            onDismiss = { choice = null },
+        )
+
+        ReaderPicker.SPREAD -> SettingsChoiceDialog(
+            title = "双页阅读",
+            options = ReaderSpreadMode.entries.map { it.label },
+            selectedIndex = ReaderSpreadMode.entries.indexOf(state.spread),
+            onSelect = { index ->
+                ReaderSpreadMode.entries.getOrNull(index)?.let { mode ->
+                    scope.launch { state.applySpread(mode) }
+                }
+            },
+            onDismiss = { choice = null },
+        )
+
+        ReaderPicker.IMAGE_QUALITY -> SettingsChoiceDialog(
+            title = "图片质量",
+            options = ReaderImageQuality.entries.map { it.label },
+            summaries = ReaderImageQuality.entries.map { it.settingsSummary() },
+            selectedIndex = ReaderImageQuality.entries.indexOf(state.imageQuality),
+            onSelect = { index ->
+                ReaderImageQuality.entries.getOrNull(index)?.let { quality ->
+                    scope.launch { state.applyImageQuality(quality) }
+                }
+            },
+            onDismiss = { choice = null },
+        )
+
+        ReaderPicker.PREFETCH_PAGES -> SettingsChoiceDialog(
+            title = "预取页数",
+            options = ReaderPreferences.PREFETCH_OPTIONS.map { prefetchPagesLabel(it) },
+            selectedIndex = ReaderPreferences.PREFETCH_OPTIONS.indexOf(state.prefetchPages),
+            onSelect = { index ->
+                ReaderPreferences.PREFETCH_OPTIONS.getOrNull(index)?.let { pages ->
+                    scope.launch { state.applyPrefetchPages(pages) }
+                }
+            },
+            onDismiss = { choice = null },
+        )
+
+        null -> Unit
+    }
+}
+
+/**
+ * 枚举型设置的选择面板：Item 行 + 选中勾。
  *
  * 选项直接点即生效并关闭，与 COUI 原厂列表选择的手感一致；
- * 「完成」与「取消」都只负责关闭，避免用户以为还要再确认一次。
+ * 因此只保留一个「完成」作为关闭动作，不再提供行为等价的「取消」。
  */
 @Composable
 private fun SettingsChoiceDialog(
@@ -863,13 +1095,14 @@ private fun SettingsChoiceDialog(
         onDismissRequest = onDismiss,
         title = title,
         confirmAction = CouiDialogAction(text = "完成", onClick = onDismiss),
-        dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
     ) {
-        Group {
+        // 单选列表对读屏暴露为可选组：每行播报自身是否选中
+        Group(modifier = Modifier.selectableGroup()) {
             options.forEachIndexed { index, label ->
                 if (index > 0) Divider()
                 val summary = summaries.getOrNull(index)?.takeIf { it.isNotBlank() }
                 Item(
+                    modifier = Modifier.semantics { selected = index == selectedIndex },
                     title = { SettingsRowTitle(label) },
                     summary = if (summary == null) {
                         null
@@ -878,9 +1111,10 @@ private fun SettingsChoiceDialog(
                     },
                     trailing = {
                         if (index == selectedIndex) {
+                            // 选中态已由 semantics.selected 播报，勾只做视觉标记
                             Icon(
                                 imageVector = CouiIcons.Check,
-                                contentDescription = "已选",
+                                contentDescription = null,
                                 modifier = Modifier.size(20.dp),
                                 tint = scheme.accent,
                             )
