@@ -2,6 +2,7 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
+import android.graphics.BlendMode
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
@@ -36,6 +37,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.shadow
@@ -539,6 +541,13 @@ private fun CouiPlainNavigationBar(
                 val selected = index == selectedIndex
                 val press = rememberCouiPressMotion()
                 val interactionSource = remember { MutableInteractionSource() }
+                val (lightInput, drawLight) = rememberCouiSpotlight(
+                    interactive = true,
+                    preset = SpotlightPreset.ChipTab,
+                    dark = CouiTheme.isDark,
+                    blendMode = if (CouiTheme.isDark) BlendMode.PLUS else BlendMode.SRC_OVER,
+                    cancelOnConsumedMove = true,
+                )
 
                 Box(
                     modifier = Modifier
@@ -557,6 +566,10 @@ private fun CouiPlainNavigationBar(
                                 Color.Transparent
                             },
                         )
+                        .then(lightInput)
+                        .drawBehind {
+                            drawLight?.invoke(this)
+                        }
                         .couiPressMotion(press = press, cancelOnConsumedMove = true)
                         .selectable(
                             selected = selected,
@@ -626,6 +639,13 @@ internal fun CouiNavigationRail(
             val selected = index == selectedIndex
             val press = rememberCouiPressMotion()
             val interactionSource = remember { MutableInteractionSource() }
+            val (lightInput, drawLight) = rememberCouiSpotlight(
+                interactive = true,
+                preset = SpotlightPreset.ChipTab,
+                dark = CouiTheme.isDark,
+                blendMode = if (CouiTheme.isDark) BlendMode.PLUS else BlendMode.SRC_OVER,
+                cancelOnConsumedMove = true,
+            )
 
             Column(
                 modifier = Modifier
@@ -637,6 +657,10 @@ internal fun CouiNavigationRail(
                     }
                     .clip(CouiCapsuleShape)
                     .background(if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else Color.Transparent)
+                    .then(lightInput)
+                    .drawBehind {
+                        drawLight?.invoke(this)
+                    }
                     .couiPressMotion(press = press, cancelOnConsumedMove = true)
                     .selectable(
                         selected = selected,

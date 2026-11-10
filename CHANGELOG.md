@@ -51,7 +51,7 @@
 
 ### 修复
 
-- 修复了 COUI 底栏与侧栏按压时周围出现黑色方块阴影的问题：排查定位第三方库底层 `NavigationBar` 其私有函数 `FloatingNode` 硬编码调用 `rememberCouiSpotlight`（凝光视效）通过 `Canvas.drawPaint` 配合 `BlendMode.OVERLAY` 绘制且未做圆角裁剪导致的未受限黑色直角方块，将底栏统一收敛为自研纯净底栏，为每个 Tab 项与侧栏项配置硬件级胶囊裁剪、原厂弹性微缩放反馈与显式 `indication = null`，彻底根除底栏及侧栏按压时的所有直角黑块与矩形涟漪。
+- 修复了 COUI 底栏与侧栏按压时周围出现黑色方块阴影的问题：排查定位官方库底层 `NavigationBar` 私有实现硬编码 `BlendMode.OVERLAY` 在透明缓冲上 `Canvas.drawPaint` 产生的黑色矩形塌陷；为底栏与侧栏各 Tab 项接入原厂凝光视效（`rememberCouiSpotlight`），安全指定 `BlendMode.PLUS`（暗色）与 `BlendMode.SRC_OVER`（亮色），配合连续曲率胶囊硬件级裁剪、原厂弹性微缩放反馈与显式 `indication = null`，在完整保留跟手凝光流光视效的同时，彻底根除按压时的直角黑块与矩形涟漪。
 - 修复了 COUI 组件按压时周围出现黑色方块阴影的问题：排查定位半透明黑块自绘在热区扩展前的缺陷，为 `Modifier.couiPressable` 引入形状裁剪约束并在扩展触区前执行硬件级裁剪；分段胶囊组件清空 Compose 默认外层 48dp 矩形涟漪指示器，所有标签、封面卡片、顶栏按钮与列表行按压反馈严格限制在自身圆角边界内。
 - 修复了更新提示弹窗在 ColorOS 风格下延续 Miuix 样式的问题：`UpdateAvailableDialog` 按当前界面皮肤分流，ColorOS 模式下使用 COUI 原生 `Dialog`、水生蓝主操作按钮与 COUI 连续曲率卡片容器，消除跨皮肤弹窗混用。
 - 修复了 COUI 详情在作品没有封面时仍画一块空白封面框、把标题挤到右侧的问题：无封面时不再占位，与 Miuix 详情页一致。
