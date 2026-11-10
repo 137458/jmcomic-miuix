@@ -809,32 +809,35 @@ private fun CouiAlbumHeroCard(
             .background(scheme.card),
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            // 头图圆角跟着皮肤走：飞行两端的圆角必须一致，写死常量会在切皮肤时整体位移
-            val heroCorner = LocalSkin.current.shapes.cardCorner
-            // 头图尺寸直接取共享的解码尺寸（144x192dp）：列表卡、飞行覆盖层与头图共用同一条 Coil 内存缓存，
-            // 显示尺寸一旦小于解码尺寸，缓存位图就会被当缩略图放大复用，这里不再另立 108x144 的局部常量
-            Box(
-                modifier = Modifier
-                    .size(width = HERO_COVER_WIDTH_DP.dp, height = HERO_COVER_HEIGHT_DP.dp)
-                    .clip(RoundedCornerShape(heroCorner))
-                    .background(scheme.container)
-                    .albumHeroHeader(albumId, coverUrl, heroCorner.value),
-            ) {
-                AlbumCoverImage(
-                    url = coverUrl,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    crossfade = false,
-                    skeleton = true,
-                    onState = { state ->
-                        // 头图首帧落地即告知转场层：此时共享元素的位置与尺寸才是可信的
-                        if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) {
-                            heroHost?.markHeaderReady(albumId)
-                        }
-                    },
-                )
+            // 没有封面就不占位：留一个空色块既不像卡片，也会把标题挤到右边（与 Miuix 详情页同口径）
+            if (!coverUrl.isNullOrBlank()) {
+                // 头图圆角跟着皮肤走：飞行两端的圆角必须一致，写死常量会在切皮肤时整体位移
+                val heroCorner = LocalSkin.current.shapes.cardCorner
+                // 头图尺寸直接取共享的解码尺寸（144x192dp）：列表卡、飞行覆盖层与头图共用同一条 Coil 内存缓存，
+                // 显示尺寸一旦小于解码尺寸，缓存位图就会被当缩略图放大复用，这里不再另立 108x144 的局部常量
+                Box(
+                    modifier = Modifier
+                        .size(width = HERO_COVER_WIDTH_DP.dp, height = HERO_COVER_HEIGHT_DP.dp)
+                        .clip(RoundedCornerShape(heroCorner))
+                        .background(scheme.container)
+                        .albumHeroHeader(albumId, coverUrl, heroCorner.value),
+                ) {
+                    AlbumCoverImage(
+                        url = coverUrl,
+                        contentDescription = title,
+                        modifier = Modifier.fillMaxSize(),
+                        crossfade = false,
+                        skeleton = true,
+                        onState = { state ->
+                            // 头图首帧落地即告知转场层：此时共享元素的位置与尺寸才是可信的
+                            if (state is AsyncImagePainter.State.Success || state is AsyncImagePainter.State.Error) {
+                                heroHost?.markHeaderReady(albumId)
+                            }
+                        },
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
             }
-            Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title.ifBlank { "作品详情" },
