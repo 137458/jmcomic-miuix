@@ -501,10 +501,9 @@ private fun MineLoginCapsule(onOpenLogin: () -> Unit) {
     val scheme = CouiTheme.colorScheme
     Box(
         modifier = Modifier
-            // 触摸目标扩到 48dp，视觉尺寸不变；可点区放在裁剪之前，背景不会被撑到 48dp
-            .couiPressable(minTouchTarget = CouiMinTouchTarget) { onOpenLogin() }
             .clip(CouiCapsuleShape)
             .background(scheme.accent)
+            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) { onOpenLogin() }
             .padding(horizontal = 18.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {

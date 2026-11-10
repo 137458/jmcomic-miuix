@@ -715,9 +715,9 @@ private fun CouiTopBarIconButton(
         val scheme = CouiKitTheme.colorScheme
         Box(
             modifier = Modifier
-                .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onClick)
                 .size(44.dp)
-                .clip(CircleShape),
+                .clip(CircleShape)
+                .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -752,10 +752,10 @@ private fun CouiCapsuleAction(
     }
     Box(
         modifier = modifier
-            .couiPressable(enabled = enabled, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .heightIn(min = 32.dp)
             .clip(CouiCapsuleShape)
             .background(background)
+            .couiPressable(shape = CouiCapsuleShape, enabled = enabled, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -848,11 +848,11 @@ private fun CouiAlbumHeroCard(
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier
-                            .couiPressable(minTouchTarget = CouiMinTouchTarget) {
-                                onOpenSearch(authors.first(), SearchScope.AUTHOR)
-                            }
                             .clip(CouiCapsuleShape)
                             .background(scheme.accent.copy(alpha = CouiSelectedContainerAlpha))
+                            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                                onOpenSearch(authors.first(), SearchScope.AUTHOR)
+                            }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -897,11 +897,11 @@ private fun CouiAlbumHeroCard(
                 tags.forEach { tag ->
                     Box(
                         modifier = Modifier
-                            .couiPressable(minTouchTarget = CouiMinTouchTarget) {
-                                onOpenSearch(tag, SearchScope.TAG)
-                            }
                             .clip(CouiCapsuleShape)
                             .background(scheme.onSurface.copy(alpha = 0.06f))
+                            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                                onOpenSearch(tag, SearchScope.TAG)
+                            }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                     ) {
                         Text(
@@ -1029,7 +1029,8 @@ private fun CouiDescriptionGroup(
                 color = scheme.accent,
                 maxLines = 1,
                 modifier = Modifier
-                    .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onCopy)
+                    .clip(CouiCapsuleShape)
+                    .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onCopy)
                     .padding(horizontal = 8.dp, vertical = 2.dp),
             )
             if (text.length > COUI_DESCRIPTION_COLLAPSE_THRESHOLD) {
@@ -1039,7 +1040,8 @@ private fun CouiDescriptionGroup(
                     color = scheme.accent,
                     maxLines = 1,
                     modifier = Modifier
-                        .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
+                        .clip(CouiCapsuleShape)
+                        .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
                         .padding(start = 4.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
                 )
             }
@@ -1193,6 +1195,7 @@ private fun CouiPreviewGroup(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(plan.pages, key = { it.index }) { page ->
+                val previewShape = RoundedCornerShape(LocalSkin.current.shapes.controlCorner)
                 AsyncImage(
                     model = page,
                     imageLoader = imageLoader,
@@ -1201,9 +1204,9 @@ private fun CouiPreviewGroup(
                     modifier = Modifier
                         .size(width = 104.dp, height = 140.dp)
                         // 缩略图不参与飞行，圆角取皮肤的控制件圆角（ENGINEERING.md:93）
-                        .clip(RoundedCornerShape(LocalSkin.current.shapes.controlCorner))
+                        .clip(previewShape)
                         .background(scheme.container)
-                        .couiPressable { onOpenPage(page.index + 1) },
+                        .couiPressable(shape = previewShape) { onOpenPage(page.index + 1) },
                 )
             }
         }
@@ -1227,10 +1230,12 @@ private fun CouiRelatedGroup(
         ) {
             items(related, key = { it.id }) { item ->
                 val subtitle = item.authors.joinToString(" / ")
+                val itemShape = RoundedCornerShape(LocalSkin.current.shapes.controlCorner)
                 Column(
                     modifier = Modifier
                         .width(104.dp)
-                        .couiPressable { onOpenAlbum(item.id) },
+                        .clip(itemShape)
+                        .couiPressable(shape = itemShape) { onOpenAlbum(item.id) },
                 ) {
                     Box(
                         modifier = Modifier
@@ -1467,8 +1472,9 @@ private fun CouiCommentRow(
                     maxLines = 1,
                     textAlign = TextAlign.Start,
                     modifier = Modifier
-                        .couiPressable(minTouchTarget = CouiMinTouchTarget) { reply(item) }
-                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                        .clip(CouiCapsuleShape)
+                        .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) { reply(item) }
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
                 )
             }
         }
@@ -1582,11 +1588,12 @@ private fun CouiDialogRow(
     danger: Boolean = false,
 ) {
     val scheme = CouiKitTheme.colorScheme
+    val rowShape = CouiShape(16.dp, 3f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onClick)
-            .clip(CouiShape(16.dp, 3f))
+            .clip(rowShape)
+            .couiPressable(shape = rowShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1693,18 +1700,23 @@ private fun CouiRepliesToggle(
     val indentDepth = row.depth.coerceAtMost(COUI_COMMENT_MAX_INDENT_DEPTH)
     // 与父评论的正文起点对齐：外层缩进 + 头像宽度 + 头像与正文的间隔
     val contentStart = 16.dp + (indentDepth * 12).dp + (if (row.depth == 0) 40.dp else 30.dp) + 10.dp
-    Text(
-        text = if (row.expanded) "收起回复" else "展开 ${row.hiddenCount} 条回复",
-        kind = CouiTextKind.PreferenceValue,
-        color = scheme.accent,
-        maxLines = 1,
-        textAlign = TextAlign.Start,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
-            .padding(start = contentStart, end = 16.dp, bottom = 10.dp)
-            .padding(horizontal = 2.dp, vertical = 4.dp),
-    )
+            .padding(start = contentStart, end = 16.dp, bottom = 10.dp),
+    ) {
+        Text(
+            text = if (row.expanded) "收起回复" else "展开 ${row.hiddenCount} 条回复",
+            kind = CouiTextKind.PreferenceValue,
+            color = scheme.accent,
+            maxLines = 1,
+            textAlign = TextAlign.Start,
+            modifier = Modifier
+                .clip(CouiCapsuleShape)
+                .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+    }
 }
 
 /** 评论行：懒列表里的一行要么是一条评论，要么是它折起来的回复入口。 */

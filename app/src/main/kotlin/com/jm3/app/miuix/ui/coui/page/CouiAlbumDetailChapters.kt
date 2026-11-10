@@ -17,6 +17,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Item
+import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
@@ -169,7 +170,8 @@ internal fun LazyListScope.couiChapterItems(
                         color = scheme.accent,
                         maxLines = 1,
                         modifier = Modifier
-                            .couiPressable(minTouchTarget = CouiMinTouchTarget) {
+                            .clip(CouiCapsuleShape)
+                            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
                                 couiChapterBatchToggleIds(plan, expandedGroups).forEach { groupId ->
                                     onToggleGroup(groupId)
                                 }
@@ -273,11 +275,11 @@ private fun CouiChapterRowCard(
                 trailing = {
                     Box(
                         modifier = Modifier
-                            .couiPressable(minTouchTarget = CouiMinTouchTarget) {
-                                onDownload(row.chapter, row.title)
-                            }
                             .size(32.dp)
-                            .clip(CircleShape),
+                            .clip(CircleShape)
+                            .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget) {
+                                onDownload(row.chapter, row.title)
+                            },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(

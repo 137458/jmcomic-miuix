@@ -39,10 +39,12 @@ class CouiThemeTest {
         assertEquals(colors.background, scheme.background)
         assertEquals(colors.primary, scheme.accent)
         assertEquals(colors.onSurface, scheme.onSurface)
+        assertEquals(colors.onPrimaryVariant, scheme.accentOnSurface)
+        assertEquals(colors.onPrimaryVariant, scheme.menuCheckboxAccent)
     }
 
     @Test
-    fun `深浅切换只改卡片来源，其余映射保持一致`() {
+    fun `深浅切换卡片与次级强调色按模式取值`() {
         val skin = skinTokensFor(UiSkin.COLOROS)
         val light = couiColorSchemeOf(skin.lightColors, isDark = false)
         val dark = couiColorSchemeOf(skin.darkColors, isDark = true)
@@ -51,5 +53,7 @@ class CouiThemeTest {
         assertEquals(skin.lightColors.surface, light.card)
         assertEquals(skin.darkColors.primary, dark.accent)
         assertEquals(skin.lightColors.primary, light.accent)
+        assertEquals(skin.darkColors.onPrimaryVariant, dark.accentOnSurface)
+        assertEquals(skin.lightColors.primary, light.accentOnSurface)
     }
 }

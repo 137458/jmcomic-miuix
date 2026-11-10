@@ -29,10 +29,10 @@ internal fun couiColorSchemeOf(skinColors: Colors, isDark: Boolean): CouiColorSc
     onSurface = skinColors.onSurface,
     onSurfaceVariant = skinColors.onBackgroundVariant,
     outlineVariant = skinColors.dividerLine,
-    accentOnSurface = skinColors.primary,
+    accentOnSurface = if (isDark) skinColors.onPrimaryVariant else skinColors.primary,
     menuSurface = skinColors.surfaceContainer,
     checkboxAccent = skinColors.primary,
-    menuCheckboxAccent = skinColors.primary,
+    menuCheckboxAccent = if (isDark) skinColors.onPrimaryVariant else skinColors.primary,
     background = skinColors.background,
     card = if (isDark) skinColors.surfaceContainerHigh else skinColors.surface,
 )

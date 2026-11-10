@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,9 +21,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -404,20 +408,34 @@ fun CouiHomeScreen(
             )
         },
         floatingActionButton = {
-            // API34 的原厂 Fab 只在降级分支下发这个 local，Unspecified 会让图标不上色
             val fallback = LocalCouiFallbackContentColor.current
             val iconTint = if (fallback == Color.Unspecified) CouiTheme.colorScheme.onAccent else fallback
-            CouiFab(
-                onClick = { openRandom() },
-                // 库的 FAB 槽是整屏 Box 且不设默认对齐（Scaffold.kt:99-110），不写 align 会落在左上角
-                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            val showBackToTop by remember { derivedStateOf { lazyState.firstVisibleItemIndex > 2 } }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.End,
             ) {
-                Icon(
-                    imageVector = CouiIcons.Shuffle,
-                    contentDescription = "随机看一部",
-                    modifier = Modifier.size(24.dp),
-                    tint = iconTint,
-                )
+                if (showBackToTop) {
+                    CouiFab(
+                        icon = CouiIcons.Back,
+                        contentDescription = "回到顶部",
+                        rotationDegrees = 90f,
+                        onClick = { scope.launch { lazyState.animateScrollToItem(0) } },
+                    )
+                }
+                CouiFab(
+                    onClick = { openRandom() },
+                ) {
+                    Icon(
+                        imageVector = CouiIcons.Shuffle,
+                        contentDescription = "随机看一部",
+                        modifier = Modifier.size(24.dp),
+                        tint = iconTint,
+                    )
+                }
             }
         },
     ) { innerPadding ->
@@ -469,10 +487,37 @@ fun CouiHomeScreen(
                 }
             }
             item(key = "coui-home-title") {
+                val homeColors = CouiTheme.colorScheme
                 CouiGroupTitle(
                     title = if (searching) "搜索结果" else "最近更新",
                     actions = {
-                        CouiRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (!searching) {
+                                Text(
+                                    text = "每周必看",
+                                    kind = CouiTextKind.Description,
+                                    color = homeColors.accent,
+                                    modifier = Modifier
+                                        .clip(CouiCapsuleShape)
+                                        .background(homeColors.accent.copy(alpha = 0.12f))
+                                        .couiPressable(shape = CouiCapsuleShape, onClick = onOpenWeek)
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                )
+                            }
+                            Text(
+                                text = "帮助",
+                                kind = CouiTextKind.Description,
+                                color = homeColors.onSurfaceVariant,
+                                modifier = Modifier
+                                    .clip(CouiCapsuleShape)
+                                    .couiPressable(shape = CouiCapsuleShape) { showSearchHelp = true }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                            CouiRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
+                        }
                     },
                 )
             }
@@ -714,7 +759,7 @@ private fun CouiTagCapsule(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(colors.container)
-            .couiPressable(onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -731,35 +776,60 @@ private fun CouiAlbumRows(feed: PagedFeed<SearchResult>, onOpenAlbum: (String) -
     }
 }
 
-/** 单个作品行：封面当 icon，标题/作者走 Item 自带的两级字阶。虚拟化列表逐行下发时用它。 */
+/** 单个作品行：采用标准 3:4 比例漫画封面，标题/作者两级字阶，带省略号与稳定行距。 */
 @Composable
 private fun CouiAlbumRow(album: SearchResult, onClick: () -> Unit) {
-    Item(
-        icon = { CouiAlbumCover(url = album.coverUrl, title = album.title) },
-        iconSize = 52.dp,
-        title = {
+    val colors = CouiTheme.colorScheme
+    val cardCorner = LocalSkin.current.shapes.cardCorner
+    val rowShape = RoundedCornerShape(cardCorner)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(rowShape)
+            .couiPressable(shape = rowShape, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 60.dp, height = 80.dp)
+                .clip(RoundedCornerShape(cardCorner))
+                .background(colors.container),
+        ) {
+            AlbumCoverImage(
+                url = album.coverUrl,
+                contentDescription = album.title,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
                 text = album.title,
                 kind = CouiTextKind.PreferenceTitle,
+                color = colors.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-        },
-        summary = {
-            Text(
-                text = metaOf(album),
-                kind = CouiTextKind.PreferenceSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        onClick = onClick,
-    )
+            val meta = metaOf(album)
+            if (meta.isNotBlank()) {
+                Text(
+                    text = meta,
+                    kind = CouiTextKind.PreferenceSummary,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
 }
 
 @Composable
 private fun CouiAlbumCover(url: String?, title: String) {
-    // 圆角取皮肤卡圆角、解码走统一封面入口，与详情头图落在同一条内存缓存上
     val cardCorner = LocalSkin.current.shapes.cardCorner
     Box(
         modifier = Modifier
@@ -783,7 +853,7 @@ private fun CouiRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .couiPressable(enabled = !refreshing, onClick = onRefresh)
+            .couiPressable(shape = CouiCapsuleShape, enabled = !refreshing, onClick = onRefresh)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -806,7 +876,7 @@ private fun CouiHeaderTextAction(text: String, onClick: () -> Unit) {
         color = CouiTheme.colorScheme.accent,
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .couiPressable(onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
     )
 }
@@ -816,9 +886,9 @@ private fun CouiHeaderTextAction(text: String, onClick: () -> Unit) {
 private fun CouiRowIconAction(icon: ImageVector, description: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .size(32.dp)
-            .clip(CouiCapsuleShape),
+            .clip(CircleShape)
+            .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.takeOrElse
@@ -163,20 +165,44 @@ fun couiDestructiveConfirmAction(
 fun Modifier.couiPressable(
     enabled: Boolean = true,
     role: Role = Role.Button,
+    shape: Shape? = null,
     minTouchTarget: Dp = 0.dp,
     scaleOnPress: Boolean = false,
     onClick: () -> Unit,
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
     val press = if (scaleOnPress) rememberCouiPressMotion() else null
-    val base = this
-        .couiMinimumTouchTarget(minTouchTarget)
-        .couiButtonFeedback(
+    val visualFeedback = if (shape != null) {
+        Modifier
+            .clip(shape)
+            .couiButtonFeedback(
+                dark = CouiTheme.isDark,
+                interactionSource = interactionSource,
+                enabled = enabled,
+                list = false,
+            )
+    } else {
+        Modifier.couiButtonFeedback(
             dark = CouiTheme.isDark,
             interactionSource = interactionSource,
             enabled = enabled,
             list = false,
         )
+    }
+    val scaledFeedback = if (press != null) {
+        visualFeedback
+            .couiPressMotion(press = press, enabled = enabled, cancelOnConsumedMove = true)
+            .graphicsLayer {
+                scaleX = press.scale.value
+                scaleY = press.scale.value
+            }
+    } else {
+        visualFeedback
+    }
+
+    return this
+        .then(scaledFeedback)
+        .couiMinimumTouchTarget(minTouchTarget)
         .clickable(
             interactionSource = interactionSource,
             indication = null,
@@ -184,13 +210,6 @@ fun Modifier.couiPressable(
             role = role,
             onClick = onClick,
         )
-    if (press == null) return base
-    return base
-        .couiPressMotion(press = press, enabled = enabled, cancelOnConsumedMove = true)
-        .graphicsLayer {
-            scaleX = press.scale.value
-            scaleY = press.scale.value
-        }
 }
 
 /**
@@ -718,6 +737,7 @@ fun CouiSegmentedCapsules(
                 dark = CouiTheme.isDark,
                 cancelOnConsumedMove = true,
             )
+            val capsuleInteraction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -725,7 +745,13 @@ fun CouiSegmentedCapsules(
                     .height(CouiMinTouchTarget)
                     .couiPressMotion(press = press, cancelOnConsumedMove = true)
                     .then(lightInput)
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) }),
+                    .selectable(
+                        selected = selected,
+                        interactionSource = capsuleInteraction,
+                        indication = null,
+                        role = Role.Tab,
+                        onClick = { onSelect(index) },
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -736,7 +762,7 @@ fun CouiSegmentedCapsules(
                             scaleX = press.scale.value
                             scaleY = press.scale.value
                         }
-                        .clip(CouiCapsuleShape)
+                        .clip(RoundedCornerShape(20.dp))
                         .background(
                             if (selected) {
                                 colors.accent.copy(alpha = CouiSelectedContainerAlpha)

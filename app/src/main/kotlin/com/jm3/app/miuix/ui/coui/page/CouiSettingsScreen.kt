@@ -837,7 +837,7 @@ private fun SettingsBackButton(onClick: () -> Unit) {
         modifier = Modifier
             .size(40.dp)
             .clip(CircleShape)
-            .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onClick),
+            .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

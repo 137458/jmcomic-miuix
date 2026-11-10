@@ -1,16 +1,20 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -19,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -29,8 +34,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogActionStyle
+import com.itos.coui.dialog.CouiDialogDefaults
+import com.itos.coui.dialog.Dialog as CouiDialog
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.update.UpdateDownloadState
+import com.jm3.core.settings.UiSkin
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
 import com.jm3.core.update.ReleaseInfo
@@ -294,8 +307,181 @@ internal fun UpdateAvailableDialog(
     onIgnore: ((version: String) -> Unit)? = null,
     onCancelDownload: (() -> Unit)? = null,
 ) {
-    // remember 的 key 只能放稳定值：onIgnore / onCancelDownload 是函数引用，父级每次重组都可能是新
-    // lambda，拿它们当 key 会让 plan 在每次重组时白算一遍。plan 真正需要的只是两个布尔。
+    val skin = LocalSkin.current
+    if (skin.id == UiSkin.COLOROS) {
+        CouiUpdateAvailableDialog(
+            show = show,
+            currentVersion = currentVersion,
+            release = release,
+            downloadState = downloadState,
+            onDismiss = onDismiss,
+            onDownload = onDownload,
+            onOpenRelease = onOpenRelease,
+            onIgnore = onIgnore,
+            onCancelDownload = onCancelDownload,
+        )
+    } else {
+        MiuixUpdateAvailableDialog(
+            show = show,
+            currentVersion = currentVersion,
+            release = release,
+            downloadState = downloadState,
+            onDismiss = onDismiss,
+            onDownload = onDownload,
+            onOpenRelease = onOpenRelease,
+            onIgnore = onIgnore,
+            onCancelDownload = onCancelDownload,
+        )
+    }
+}
+
+@Composable
+private fun CouiUpdateAvailableDialog(
+    show: Boolean,
+    currentVersion: String,
+    release: ReleaseInfo,
+    downloadState: UpdateDownloadState,
+    onDismiss: () -> Unit,
+    onDownload: () -> Unit,
+    onOpenRelease: () -> Unit,
+    onIgnore: ((version: String) -> Unit)?,
+    onCancelDownload: (() -> Unit)?,
+) {
+    val canIgnore = onIgnore != null
+    val canCancelDownload = onCancelDownload != null
+    val plan = remember(currentVersion, release, downloadState, canIgnore, canCancelDownload) {
+        buildUpdateDialogPlan(
+            currentVersion = currentVersion,
+            release = release,
+            downloadState = downloadState,
+            canIgnore = canIgnore,
+            canCancelDownload = canCancelDownload,
+        )
+    }
+    var notesExpanded by remember(show, release.tagName) { mutableStateOf(false) }
+    val notesState = remember(release.notes, notesExpanded) {
+        updateDialogNotesState(release.notes, notesExpanded, UPDATE_NOTES_PREVIEW_LINES)
+    }
+    val downloading = downloadState is UpdateDownloadState.Downloading
+    val scrollState = rememberScrollState()
+    val skin = LocalSkin.current
+    val colors = CouiKitTheme.colorScheme
+
+    CouiDialog(
+        visible = show,
+        title = "发现新版本",
+        dark = CouiKitTheme.isDark,
+        onDismissRequest = onDismiss,
+        confirmAction = CouiDialogAction(
+            text = plan.primaryText,
+            onClick = { if (release.apk != null) onDownload() else onOpenRelease() },
+            enabled = !downloading,
+            style = CouiDialogActionStyle.Primary,
+            colors = CouiDialogDefaults.primaryActionColors(colors.accent),
+        ),
+        dismissAction = CouiDialogAction(
+            text = if (plan.showCancelDownload) "取消下载" else plan.dismissText,
+            onClick = { if (plan.showCancelDownload) onCancelDownload?.invoke() else onDismiss() },
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = DialogBodyMaxHeight)
+                .verticalScroll(scrollState),
+        ) {
+            if (plan.summary.isNotBlank()) {
+                Text(
+                    text = plan.summary,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = colors.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            if (plan.showProgress) {
+                Text(
+                    text = plan.progressDetail.orEmpty(),
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = colors.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(colors.container),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth((plan.progressFraction ?: 0f).coerceIn(0f, 1f))
+                            .fillMaxHeight()
+                            .background(colors.accent),
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            if (plan.hasNotes) {
+                Text(
+                    text = "更新说明",
+                    style = MiuixTheme.textStyles.title4,
+                    color = colors.onSurface,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(skin.shapes.cardCorner))
+                        .background(colors.card)
+                        .padding(DialogCardPadding),
+                ) {
+                    Column {
+                        MarkdownNotes(
+                            markdown = notesState.visibleMarkdown,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (notesExpanded || notesState.hiddenLineCount > 0) {
+                            Text(
+                                text = if (notesExpanded) "收起说明" else "展开全部（还有 ${notesState.hiddenLineCount} 行）",
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = colors.accent,
+                                modifier = Modifier
+                                    .clip(CouiCapsuleShape)
+                                    .couiPressable(shape = CouiCapsuleShape) { notesExpanded = !notesExpanded }
+                                    .padding(top = NotesBlockSpacing, bottom = 4.dp),
+                            )
+                        }
+                    }
+                }
+            }
+            if (plan.showIgnore) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "忽略此版本",
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive,
+                    modifier = Modifier
+                        .clip(CouiCapsuleShape)
+                        .couiPressable(shape = CouiCapsuleShape) { onIgnore?.invoke(release.version) }
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiuixUpdateAvailableDialog(
+    show: Boolean,
+    currentVersion: String,
+    release: ReleaseInfo,
+    downloadState: UpdateDownloadState,
+    onDismiss: () -> Unit,
+    onDownload: () -> Unit,
+    onOpenRelease: () -> Unit,
+    onIgnore: ((version: String) -> Unit)?,
+    onCancelDownload: (() -> Unit)?,
+) {
     val canIgnore = onIgnore != null
     val canCancelDownload = onCancelDownload != null
     val plan = remember(currentVersion, release, downloadState, canIgnore, canCancelDownload) {

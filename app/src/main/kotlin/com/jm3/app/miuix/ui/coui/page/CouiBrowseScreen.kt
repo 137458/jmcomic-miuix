@@ -10,15 +10,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -569,29 +575,35 @@ internal fun CouiBrowseScreen(
                 }
                 if (mode == BrowseMode.CATEGORY) {
                     item(key = "coui-browse-categories") {
-                        Group(title = "分类", footer = "当前顺序：${order.label}") {
-                            BrowseCategory.entries.forEachIndexed { index, option ->
-                                if (index > 0) Divider()
-                                Item(
-                                    title = {
-                                        Text(
-                                            text = option.label,
-                                            kind = CouiTextKind.Body,
-                                            textAlign = TextAlign.Start,
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(BrowseCategory.entries) { option ->
+                                val selected = option == category
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(
+                                            if (selected) colors.accent.copy(alpha = 0.15f)
+                                            else colors.card,
                                         )
-                                    },
-                                    trailing = {
-                                        if (option == category) {
-                                            Icon(
-                                                imageVector = CouiIcons.Check,
-                                                contentDescription = "已选中",
-                                                modifier = Modifier.size(18.dp),
-                                                tint = colors.accent,
-                                            )
-                                        }
-                                    },
-                                    onClick = { categoryValue = option.apiValue },
-                                )
+                                        .couiPressable(
+                                            shape = RoundedCornerShape(16.dp),
+                                            onClick = { categoryValue = option.apiValue },
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = option.label,
+                                        kind = CouiTextKind.Body,
+                                        color = if (selected) colors.accent else colors.onSurface,
+                                    )
+                                }
                             }
                         }
                     }
@@ -795,7 +807,7 @@ private fun CouiMoreCategoriesGroup(
                         color = CouiTheme.colorScheme.accent,
                         modifier = Modifier
                             .clip(CouiCapsuleShape)
-                            .couiPressable(onClick = onToggle)
+                            .couiPressable(shape = CouiCapsuleShape, onClick = onToggle)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
@@ -857,7 +869,7 @@ private fun CouiTagChip(
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(CouiTheme.colorScheme.container)
-            .couiPressable(onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }
@@ -913,9 +925,9 @@ private fun CouiTagNavGroup(
 private fun CouiTopBarBackButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .couiPressable(minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .size(40.dp)
-            .clip(CircleShape),
+            .clip(CircleShape)
+            .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -927,52 +939,73 @@ private fun CouiTopBarBackButton(onClick: () -> Unit) {
     }
 }
 
-/** 作品行：封面当 icon，名次只在榜单模式出现。 */
+/** 作品行：标准 3:4 比例漫画封面，名次在榜单模式出现。 */
 @Composable
 private fun CouiBrowseResultRow(
     result: SearchResult,
     rank: Int?,
     onClick: () -> Unit,
 ) {
-    Item(
-        icon = { CouiBrowseCover(coverUrl = result.coverUrl, title = result.title) },
-        // 默认 24dp 的图标位放不下封面，这里按行高给到 44dp
-        iconSize = 44.dp,
-        title = {
+    val colors = CouiTheme.colorScheme
+    val cardCorner = LocalSkin.current.shapes.cardCorner
+    val rowShape = RoundedCornerShape(cardCorner)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(rowShape)
+            .couiPressable(shape = rowShape, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (rank != null) {
+            Box(
+                modifier = Modifier.width(32.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    text = rank.toString(),
+                    kind = CouiTextKind.Stepper,
+                    color = if (rank <= 3) colors.accent else colors.onSurfaceVariant,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(width = 60.dp, height = 80.dp)
+                .clip(RoundedCornerShape(cardCorner))
+                .background(colors.container),
+        ) {
+            AlbumCoverImage(
+                url = result.coverUrl,
+                contentDescription = result.title,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
                 text = result.title,
-                kind = CouiTextKind.Body,
+                kind = CouiTextKind.PreferenceTitle,
+                color = colors.onSurface,
                 textAlign = TextAlign.Start,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-        },
-        summary = {
-            // 作者行可能为空（接口不给作者），空 Composable 不占行高
             if (result.authors.isNotEmpty()) {
                 Text(
                     text = result.authors.joinToString(" / "),
                     kind = CouiTextKind.Description,
+                    color = colors.onSurfaceVariant,
                     textAlign = TextAlign.Start,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        },
-        trailing = {
-            if (rank != null) {
-                Text(
-                    text = rank.toString(),
-                    kind = CouiTextKind.Stepper,
-                    color = if (rank <= 3) {
-                        CouiTheme.colorScheme.accent
-                    } else {
-                        CouiTheme.colorScheme.onSurfaceVariant
-                    },
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-        },
-        onClick = onClick,
-    )
+        }
+    }
 }
 
 /** 封面缩略图：沿用统一封面入口，形状取皮肤卡圆角。 */
