@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,10 +41,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itos.coui.effect.CouiFloatingRenderer
@@ -64,6 +67,7 @@ import com.itos.coui.theme.LocalCouiContentColor
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.bottomBarShape
+import com.jm3.core.paging.PagedFeed
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
 import top.yukonga.miuix.kmp.basic.Icon
@@ -85,8 +89,9 @@ fun CouiAppScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val bottomBar = LocalCouiBottomBar.current
+    // 库 Scaffold 的 windowInsets 只含系统栏，IME 避让按库要求由宿主缩小视口（Scaffold.kt:45）
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.imePadding(),
         topBar = topBar,
         bottomBar = { bottomBar?.invoke() },
         floatingActionButton = floatingActionButton,
@@ -94,20 +99,28 @@ fun CouiAppScaffold(
     )
 }
 
+/** 可点件最小触摸目标：无障碍基线 48dp，低于它的可见按钮靠留白补足触区。 */
+internal val CouiMinTouchTarget = 48.dp
+
 /**
  * 按压反馈 + 无涟漪点击：COUI 页面里所有自绘可点区域的统一入口。
  *
  * 反馈由库的 [couiButtonFeedback] 给出（按压缩放与悬停锁），点击指示器置空，
  * 避免在实底卡片上再叠一层涟漪。语义角色由调用方决定，默认按钮。
+ *
+ * @param minTouchTarget 补足触区的最小边长；调用方把本修饰符写在固定尺寸之前，
+ * 视觉内容仍按原尺寸居中，只有可点范围变大。
  */
 @Composable
 fun Modifier.couiPressable(
     enabled: Boolean = true,
     role: Role = Role.Button,
+    minTouchTarget: Dp = 0.dp,
     onClick: () -> Unit,
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
     return this
+        .couiMinimumTouchTarget(minTouchTarget)
         .couiButtonFeedback(
             dark = CouiTheme.isDark,
             interactionSource = interactionSource,
@@ -121,6 +134,30 @@ fun Modifier.couiPressable(
             role = role,
             onClick = onClick,
         )
+}
+
+/**
+ * 把可点区域补到 [target]：内层按原尺寸测量，外层报补足后的边长并居中放置。
+ *
+ * 触摸命中按布局节点的最终尺寸判定，因此触区随外层一起变大，可见内容不缩放。
+ */
+private fun Modifier.couiMinimumTouchTarget(target: Dp): Modifier {
+    if (target <= 0.dp) return this
+    return layout { measurable, constraints ->
+        val targetPx = target.roundToPx()
+        val placeable = measurable.measure(constraints)
+        val width = placeable.width
+            .coerceAtLeast(targetPx)
+            .coerceAtMost(constraints.maxWidth)
+            .coerceAtLeast(constraints.minWidth)
+        val height = placeable.height
+            .coerceAtLeast(targetPx)
+            .coerceAtMost(constraints.maxHeight)
+            .coerceAtLeast(constraints.minHeight)
+        layout(width, height) {
+            placeable.place((width - placeable.width) / 2, (height - placeable.height) / 2)
+        }
+    }
 }
 
 /** 加载态：单行说明卡片；首屏与分页都能直接放，尺寸由库 Group/Item 的 CouiPageDefaults 决定。 */
@@ -233,6 +270,27 @@ fun CouiLoadMoreFooter(
     }
 }
 
+/**
+ * 分页脚：直接吃整份 [PagedFeed]，调用方只交状态机与失败文案。
+ *
+ * 四分支由状态机推出，页面不再各自把 loadingMore/loadMoreFailed/hasMore 翻成三个布尔。
+ */
+@Composable
+fun CouiLoadMoreFooter(
+    feed: PagedFeed<*>,
+    errorMessage: String,
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit,
+) {
+    CouiLoadMoreFooter(
+        loading = feed.loadingMore,
+        error = if (feed.loadMoreFailed) errorMessage else null,
+        endReached = !feed.hasMore,
+        modifier = modifier,
+        onRetry = onRetry,
+    )
+}
+
 /** 库浮动材质导航栏需要 API 34：库内 CouiFloatingRenderer 依赖 34 起的模糊与渲染能力。 */
 internal const val CouiLibraryNavBarMinSdk = 34
 
@@ -242,8 +300,8 @@ private val CouiBarVisualGap = 8.dp
 /** 悬浮档投影半径，与液态玻璃底栏同一族。 */
 private val CouiBarShadowRadius = 10.dp
 
-/** 选中容器透明度：底栏与侧栏共用，保证两种导航形态的选中观感一致。 */
-private val CouiSelectedContainerAlpha = 0.14f
+/** 选中容器透明度：底栏、侧栏与分段胶囊共用，保证所有选中观感一致。 */
+internal const val CouiSelectedContainerAlpha = 0.14f
 
 /** 侧栏宽度：只放图标列，横向固定不参与伸缩。 */
 private val CouiRailWidth = 88.dp
@@ -470,7 +528,7 @@ fun CouiFab(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    if (Build.VERSION.SDK_INT >= 34) {
+    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
         val renderer = remember { CouiFloatingRenderer.standalone() }
         // 原厂 Fab 自己下发内容色，但页面统一读 LocalCouiFallbackContentColor；
         // 这里把原厂内容色补进该 local，两种 API 分支取到同一个颜色。
@@ -557,9 +615,10 @@ fun CouiSegmentedCapsules(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(36.dp)
+                    // 36dp 可见高度 + 容器上下各 4dp 内衬 = 44dp；再抬到 40dp 让整段触区过 48dp
+                    .height(40.dp)
                     .clip(CouiCapsuleShape)
-                    .background(if (selected) colors.accent.copy(alpha = 0.16f) else Color.Transparent)
+                    .background(if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else Color.Transparent)
                     .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) }),
                 contentAlignment = Alignment.Center,
             ) {

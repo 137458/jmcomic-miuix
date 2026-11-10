@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,12 +97,15 @@ fun CouiGroupRow(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = CouiPageDefaults.themeColors()
-    val shape = CouiRowShape(
-        radius = CouiPageDefaults.shape.radius,
-        roundTop = isFirst,
-        roundBottom = isLast,
-        cornerWeight = CouiPageDefaults.shape.cornerWeight,
-    )
+    // 行卡形状只在首末行变化时重造：每次重组新建 Shape 会让 clip 层跟着重建
+    val shape = remember(isFirst, isLast) {
+        CouiRowShape(
+            radius = CouiPageDefaults.shape.radius,
+            roundTop = isFirst,
+            roundBottom = isLast,
+            cornerWeight = CouiPageDefaults.shape.cornerWeight,
+        )
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -120,7 +124,7 @@ fun CouiGroupRow(
  *
  * 采样密度与 CouiShape 相同（线段相对曲线的误差上限 0.05px），因此与 [Group] 的整卡圆角逐像素贴合。
  */
-private class CouiRowShape(
+private data class CouiRowShape(
     private val radius: Dp,
     private val roundTop: Boolean,
     private val roundBottom: Boolean,

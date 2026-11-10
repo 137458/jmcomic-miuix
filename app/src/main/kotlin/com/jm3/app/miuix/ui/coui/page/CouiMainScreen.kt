@@ -121,24 +121,30 @@ fun CouiMainScreen(
         }
         val useRail = wideScreenNavigation == WideScreenNavigation.RAIL
 
-        val navItems = CouiMainTab.entries.map { item ->
-            CouiNavigationItem(
-                title = item.label,
-                icon = when (item) {
-                    CouiMainTab.HOME -> CouiIcons.Home
-                    CouiMainTab.CATEGORY -> CouiIcons.Category
-                    CouiMainTab.RANK -> CouiIcons.Rank
-                    CouiMainTab.MINE -> CouiIcons.Mine
-                },
-            )
+        // 导航项只随枚举变化：不 remember 会让主框架每次重组都新建列表，连带四页整树重组
+        val navItems = remember {
+            CouiMainTab.entries.map { item ->
+                CouiNavigationItem(
+                    title = item.label,
+                    icon = when (item) {
+                        CouiMainTab.HOME -> CouiIcons.Home
+                        CouiMainTab.CATEGORY -> CouiIcons.Category
+                        CouiMainTab.RANK -> CouiIcons.Rank
+                        CouiMainTab.MINE -> CouiIcons.Mine
+                    },
+                )
+            }
         }
-        val bottomBar: @Composable () -> Unit = {
-            CouiNavigationBar(
-                items = navItems,
-                selectedIndex = tab,
-                onSelect = { tab = it },
-                tokens = tokens,
-            )
+        // 底栏 lambda 同理由 token 决定，选中项在 lambda 内读 tab，切页只重组底栏自身
+        val bottomBar: @Composable () -> Unit = remember(navItems, tokens) {
+            {
+                CouiNavigationBar(
+                    items = navItems,
+                    selectedIndex = tab,
+                    onSelect = { tab = it },
+                    tokens = tokens,
+                )
+            }
         }
         // 侧栏模式不向页面下发底栏槽位：页面的 Scaffold 取到 null，bottomBar 槽位自然留空
         val barSlot: (@Composable () -> Unit)? = if (useRail) null else bottomBar
