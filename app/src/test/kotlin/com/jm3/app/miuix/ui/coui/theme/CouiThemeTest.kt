@@ -29,11 +29,12 @@ class CouiThemeTest {
     }
 
     @Test
-    fun `COUI 深色卡片落到容器层`() {
+    fun `COUI 深色卡片落到容器高亮层`() {
         val colors = skinTokensFor(UiSkin.HYPEROS).darkColors
         val scheme = couiColorSchemeOf(colors, isDark = true)
 
-        assertEquals(colors.surfaceContainer, scheme.card)
+        // 深色下页面底色已经压到容器层附近，卡片必须再上一档才有可见层级
+        assertEquals(colors.surfaceContainerHigh, scheme.card)
         assertEquals(colors.surfaceContainer, scheme.container)
         assertEquals(colors.background, scheme.background)
         assertEquals(colors.primary, scheme.accent)
@@ -46,7 +47,7 @@ class CouiThemeTest {
         val light = couiColorSchemeOf(skin.lightColors, isDark = false)
         val dark = couiColorSchemeOf(skin.darkColors, isDark = true)
 
-        assertEquals(skin.darkColors.surfaceContainer, dark.card)
+        assertEquals(skin.darkColors.surfaceContainerHigh, dark.card)
         assertEquals(skin.lightColors.surface, light.card)
         assertEquals(skin.darkColors.primary, dark.accent)
         assertEquals(skin.lightColors.primary, light.accent)

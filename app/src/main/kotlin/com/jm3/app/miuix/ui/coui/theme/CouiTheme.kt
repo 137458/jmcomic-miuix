@@ -34,7 +34,7 @@ internal fun couiColorSchemeOf(skinColors: Colors, isDark: Boolean): CouiColorSc
     checkboxAccent = skinColors.primary,
     menuCheckboxAccent = skinColors.primary,
     background = skinColors.background,
-    card = if (isDark) skinColors.surfaceContainer else skinColors.surface,
+    card = if (isDark) skinColors.surfaceContainerHigh else skinColors.surface,
 )
 
 /**
