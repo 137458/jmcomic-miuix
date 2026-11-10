@@ -6,23 +6,22 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -62,7 +61,6 @@ import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CollapsingTopAppBar
 import com.itos.coui.topappbar.rememberCouiCollapsingAppBarState
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.HomeSideData
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
@@ -79,6 +77,10 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
+import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
+import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
+import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
 import com.jm3.app.miuix.ui.coui.component.LocalCouiFallbackContentColor
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -86,10 +88,13 @@ import com.jm3.app.miuix.ui.isShowingSearchResults
 import com.jm3.app.miuix.ui.mutateSearchHistory
 import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.readSearchHistory
-import com.jm3.app.miuix.ui.skin.LocalSkin
+import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
+import com.jm3.core.model.BrowseCategory
+import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
@@ -102,23 +107,39 @@ import top.yukonga.miuix.kmp.basic.Icon
 private const val SERIAL_CAROUSEL_LIMIT = 12
 private const val HOT_TAG_COLLAPSED = 8
 
-/** 列表头部固定占两个 item：热词行 / 搜索头，以及分组标题行；feed 行从下标 2 起。 */
-private const val HOME_FEED_ROW_START = 2
+/** 单条横滑轨道最多铺多少张卡：再多也只是多滑几下，收益低于首屏的组装成本。 */
+private const val TRACK_CARD_LIMIT = 12
 
 private const val HOME_LOAD_MORE_FAILED = "更多内容没有加载成功"
 
 private const val SEARCH_LOAD_MORE_FAILED = "更多结果没有加载成功"
 
+/** 排行榜入口轨道的标题：口径与榜单页默认筛选一致（全部书籍、本周、最多喜欢）。 */
+private const val RANK_TRACK_TITLE = "排行榜 · 本周最多喜欢"
+
 private val SortLabels: List<String> = BrowseOrder.entries.map { it.label }
 
 /**
- * COUI 首页：折叠顶栏 + 搜索栏 + 分组式发现流 / 搜索结果。
+ * 首页横滑轨道：一条轨道 = 一个标题 + 一行竖卡。
+ *
+ * 轨道数据都来自真实接口（连载更新 / 随机推荐 / 榜单），空数据时整条轨道不出，
+ * 不用占位卡凑数。
+ */
+private data class CouiHomeTrackData(
+    val key: String,
+    val title: String,
+    val items: List<SearchResult>,
+    val ranked: Boolean,
+)
+
+/**
+ * COUI 首页：折叠顶栏 + 搜索栏 + 三条横滑轨道 + 分组式发现流 / 搜索结果。
  *
  * 数据编排与 HyperOS 首页同源：同一份 SessionCache 键、同一个 PagedFeed 状态机、
  * 同一套 AuthCall 结局翻译，切皮肤后列表与输入状态不会丢。
  *
- * 视觉全部交给 COUI 原厂组件：顶栏用 CollapsingTopAppBar，正文按分组语义拆成 LazyColumn 的
- * item，分组标题与逐行卡片由 CouiGroupTitle / CouiGroupRow 复刻。COUI 没有下拉刷新组件，
+ * 视觉全部交给 COUI 原厂组件：顶栏用 CollapsingTopAppBar，发现流按分组语义拆成 LazyColumn 的
+ * item，轨道用 LazyRow + CouiWorkGridCard，结果行用 CouiWorkRowCard。COUI 没有下拉刷新组件，
  * 刷新因此变成分组标题行上的显式按钮。
  *
  * 列表走 LazyColumn 而不是 Group + couiVerticalScroll：分组内容一多，Column 会把所有行都组合
@@ -151,6 +172,7 @@ fun CouiHomeScreen(
     var hotTags by remember { mutableStateOf(sessionCache.homeSide.hotTags) }
     var serialUpdates by remember { mutableStateOf(sessionCache.homeSide.serialUpdates) }
     var randomPicks by remember { mutableStateOf(sessionCache.homeSide.randomPicks) }
+    var rankPicks by remember { mutableStateOf(sessionCache.homeSide.rankPicks) }
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var showAllTags by remember { mutableStateOf(false) }
     var showSearchHelp by remember { mutableStateOf(false) }
@@ -184,7 +206,7 @@ fun CouiHomeScreen(
         hotTags = tags
         serialUpdates = updates
         randomPicks = picks
-        sessionCache.homeSide = HomeSideData(tags, updates, picks)
+        sessionCache.homeSide = HomeSideData(tags, updates, picks, rankPicks)
     }
 
     fun requestSearch(page: Int, byTag: Boolean, text: String, sort: BrowseOrder): SearchPage =
@@ -363,16 +385,54 @@ fun CouiHomeScreen(
         }
     }
 
+    // 榜单轨道单独一次请求：失败就整条轨道不出现（入口是增强项，不能拖住首屏发现流）
+    LaunchedEffect(gateway, authCall) {
+        // 命中缓存就不再请求：切 tab 回来首帧直接有轨道
+        if (sessionCache.homeSide.rankPicks.isNotEmpty()) return@LaunchedEffect
+        val rank = authCall
+            .call {
+                gateway.browse(
+                    BrowseFilter(
+                        category = BrowseCategory.ALL,
+                        order = BrowseOrder.MOST_LIKED,
+                        time = BrowseTime.WEEK,
+                    ),
+                    1,
+                )
+            }
+            .orDegrade<SearchPage?>(null)
+        rankPicks = rank?.items?.take(TRACK_CARD_LIMIT).orEmpty()
+        if (rankPicks.isNotEmpty()) sessionCache.homeSide = sessionCache.homeSide.copy(rankPicks = rankPicks)
+    }
+
     PaginationModeReloadEffect(mode) { _ ->
         if (searching) rememberResults(ListState.Loading) else rememberFeed(ListState.Loading)
         refresh()
     }
 
+    // 轨道条数随数据变化，结果行的起点不能写死：头部一块 + 若干条轨道 + 分组标题
+    val tracks: List<CouiHomeTrackData> = if (searching) {
+        emptyList()
+    } else {
+        buildList {
+            if (serialUpdates.isNotEmpty()) {
+                add(CouiHomeTrackData("serial", "连更追踪", serialUpdates, ranked = false))
+            }
+            if (randomPicks.isNotEmpty()) {
+                add(CouiHomeTrackData("random", "随机推荐", randomPicks, ranked = false))
+            }
+            if (rankPicks.isNotEmpty()) {
+                add(CouiHomeTrackData("rank", RANK_TRACK_TITLE, rankPicks, ranked = true))
+            }
+        }
+    }
+    val feedRowStart = 1 + tracks.size + 1
+
     // 虚拟化后没有单一滚动位置可读，改看可见项：采集在 CouiFeedPrefetchEffect，
     // 本页只交 feed 与结果行起点；请求幂等仍由 beginLoadMore 保证。
     CouiFeedPrefetchEffect(
         feed = activeFeed(),
-        rowStart = HOME_FEED_ROW_START,
+        rowStart = feedRowStart,
         listState = lazyState,
         enabled = !clickPaging,
         onPrefetch = ::loadMore,
@@ -453,13 +513,14 @@ fun CouiHomeScreen(
             )
         }
         val feedState = if (searching) results else feed
+        // 大屏按 LocalWideLayout 的断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding，
+        // 页面不再自写宽度常量；窄屏该内衬为 0，行为与旧页一致
         LazyColumn(
             state = lazyState,
-            modifier = Modifier.fillMaxSize().consumeWindowInsets(innerPadding),
+            modifier = Modifier.fillMaxSize().readableWidth().consumeWindowInsets(innerPadding),
             contentPadding = contentPadding,
             overscrollEffect = rememberCouiOverscrollEffect(),
         ) {
-            // 头部两块固定占位（热词 / 搜索头 + 标题），feed 行下标因此恒从 HOME_FEED_ROW_START 起
             item(key = "coui-home-head") {
                 if (searching) {
                     CouiSearchHeader(
@@ -484,6 +545,12 @@ fun CouiHomeScreen(
                             runSearch(tag, byTag = true, sort = order)
                         },
                     )
+                }
+            }
+            // 三条横滑轨道排在发现流之前：先给「今天有什么可看」，再给完整清单
+            tracks.forEach { track ->
+                item(key = "coui-home-track-${track.key}") {
+                    CouiHomeTrackSection(track = track, onOpenAlbum = ::openAlbum)
                 }
             }
             item(key = "coui-home-title") {
@@ -562,7 +629,7 @@ fun CouiHomeScreen(
                             key = { _, album -> "coui-home-row-${album.id}" },
                         ) { index, album ->
                             CouiGroupRow(isFirst = index == 0, isLast = index == items.lastIndex) {
-                                CouiAlbumRow(album = album, onClick = { openAlbum(album.id) })
+                                CouiWorkFeedRow(album = album, onClick = { openAlbum(album.id) })
                             }
                         }
                         item(key = "coui-home-paging") {
@@ -589,22 +656,8 @@ fun CouiHomeScreen(
                     }
                 }
             }
-            // 侧栏三块只在首页态出现，搜索结果下保持与旧页一致的清爽
+            // 搜索历史与更多入口只在首页态出现，搜索结果下保持与旧页一致的清爽
             if (!searching) {
-                if (serialUpdates.isNotEmpty()) {
-                    item(key = "coui-home-serial") {
-                        Group(title = "连更追踪") {
-                            CouiAlbumRows(feed = serialUpdates.asFeed(), onOpenAlbum = ::openAlbum)
-                        }
-                    }
-                }
-                if (randomPicks.isNotEmpty()) {
-                    item(key = "coui-home-random") {
-                        Group(title = "随机推荐") {
-                            CouiAlbumRows(feed = randomPicks.asFeed(), onOpenAlbum = ::openAlbum)
-                        }
-                    }
-                }
                 item(key = "coui-home-history") {
                     Group(
                         title = "首页发现",
@@ -694,6 +747,54 @@ fun CouiHomeScreen(
     }
 }
 
+/**
+ * 一条横滑轨道：标题 + 一行竖卡。
+ *
+ * 卡片宽度由 CouiWorkGridCard 自己固定成 112dp，轨道这边只负责首尾留白与卡片间距；
+ * 名次徽章只画在封面左上角（金银铜前三名由 CouiWorkRankBadge 判定），首页不重复报数。
+ */
+@Composable
+private fun CouiHomeTrackSection(
+    track: CouiHomeTrackData,
+    onOpenAlbum: (String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CouiGroupTitle(title = track.title)
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = CouiPageDefaults.horizontalMargin),
+            horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+        ) {
+            itemsIndexed(
+                items = track.items,
+                key = { _, album -> "coui-home-track-${track.key}-${album.id}" },
+            ) { index, album ->
+                val badge: (@Composable BoxScope.() -> Unit)? = if (track.ranked) {
+                    {
+                        CouiWorkRankBadge(
+                            rank = index + 1,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(CouiWorkCardTokens.BadgeInset),
+                        )
+                    }
+                } else {
+                    null
+                }
+                CouiWorkGridCard(
+                    title = album.title,
+                    coverUrl = album.coverUrl,
+                    onClick = { onOpenAlbum(album.id) },
+                    albumId = album.id,
+                    subtitle = album.authors.firstOrNull(),
+                    category = album.category,
+                    badge = badge,
+                )
+            }
+        }
+    }
+}
+
 /** 搜索头：排序胶囊 + 结果摘要；标题行与分页脚由 LazyColumn 单独下发。 */
 @Composable
 private fun CouiSearchHeader(
@@ -767,82 +868,34 @@ private fun CouiTagCapsule(text: String, onClick: () -> Unit) {
     }
 }
 
-/** 分组内的整段作品行：侧栏这几组条数有限，仍由 Group 的整卡包住。 */
+/**
+ * 作品行：发现流与搜索结果共用同一张 CouiWorkRowCard。
+ *
+ * 作者进次级行、分类用强调色、标签另起一行，三级信息都在卡内，不再自绘 60×80 缩略图；
+ * 行卡自带按压弹簧、触点点亮与 hero 共享元素，调用方只交数据与点击。
+ */
 @Composable
-private fun CouiAlbumRows(feed: PagedFeed<SearchResult>, onOpenAlbum: (String) -> Unit) {
-    feed.items.forEachIndexed { index, album ->
-        if (index > 0) Divider()
-        CouiAlbumRow(album = album, onClick = { onOpenAlbum(album.id) })
-    }
-}
-
-/** 单个作品行：采用标准 3:4 比例漫画封面，标题/作者两级字阶，带省略号与稳定行距。 */
-@Composable
-private fun CouiAlbumRow(album: SearchResult, onClick: () -> Unit) {
-    val colors = CouiTheme.colorScheme
-    val cardCorner = LocalSkin.current.shapes.cardCorner
-    val rowShape = RoundedCornerShape(cardCorner)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(rowShape)
-            .couiPressable(shape = rowShape, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(width = 60.dp, height = 80.dp)
-                .clip(RoundedCornerShape(cardCorner))
-                .background(colors.container),
-        ) {
-            AlbumCoverImage(
-                url = album.coverUrl,
-                contentDescription = album.title,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Spacer(modifier = Modifier.width(14.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = album.title,
-                kind = CouiTextKind.PreferenceTitle,
-                color = colors.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val meta = metaOf(album)
-            if (meta.isNotBlank()) {
+private fun CouiWorkFeedRow(album: SearchResult, onClick: () -> Unit) {
+    val tags = album.tags.take(3).joinToString(" · ")
+    CouiWorkRowCard(
+        coverUrl = album.coverUrl,
+        title = album.title,
+        onClick = onClick,
+        albumId = album.id,
+        subtitle = album.authors.joinToString(" / ").ifBlank { null },
+        category = album.category,
+        content = {
+            if (tags.isNotEmpty()) {
                 Text(
-                    text = meta,
-                    kind = CouiTextKind.PreferenceSummary,
-                    color = colors.onSurfaceVariant,
+                    text = tags,
+                    kind = CouiTextKind.Description,
+                    color = CouiTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun CouiAlbumCover(url: String?, title: String) {
-    val cardCorner = LocalSkin.current.shapes.cardCorner
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(cardCorner))
-            .background(CouiTheme.colorScheme.container),
-    ) {
-        AlbumCoverImage(
-            url = url,
-            contentDescription = title,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
+        },
+    )
 }
 
 /** 分组标题行里的刷新入口：COUI 没有下拉刷新，加载反馈只靠文案与禁用态。 */
@@ -942,14 +995,3 @@ private fun searchSummary(query: String, byTag: Boolean, total: Int?): String {
     val head = if (byTag) "标签：$query" else "“$query”"
     return if (total != null && total > 0) "$head · 共 $total 个结果" else head
 }
-
-/** 行摘要：作者加前两个标签，标签比作者更能说明题材与更新方向。 */
-private fun metaOf(album: SearchResult): String {
-    val authors = album.authors.joinToString(" / ").ifBlank { "未知作者" }
-    val tags = album.tags.take(2).joinToString(" / ")
-    return if (tags.isEmpty()) authors else "$authors · $tags"
-}
-
-/** 侧栏列表不是分页数据，包一层空的 PagedFeed 让它们与主列表共用同一套行渲染。 */
-private fun List<SearchResult>.asFeed(): PagedFeed<SearchResult> =
-    PagedFeed<SearchResult>(items = this, page = 1, hasMore = false)

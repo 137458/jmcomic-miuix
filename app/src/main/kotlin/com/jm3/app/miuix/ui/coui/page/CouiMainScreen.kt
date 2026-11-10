@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.navigation.CouiNavigationItem
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.BrowseMode
 import com.jm3.app.miuix.ui.GlassSnackbarHost
@@ -160,8 +162,11 @@ fun CouiMainScreen(
                                 fadeOut(tween(CouiMotion.TabCrossfadeMs))
                         },
                         label = "couiMainTab",
-                        // 只录制页签正文：底栏在转场之外绘制，采样源里不包含底栏自身
-                        modifier = Modifier.fillMaxSize().couiBackdrop(backdrop),
+                        // 只录制页签正文：底栏在转场之外绘制，底色垫在采样层保证 Backdrop 不录制透明像素
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(CouiKitTheme.colorScheme.background)
+                            .couiBackdrop(backdrop),
                     ) { currentTab ->
                         pageState.SaveableStateProvider(currentTab) {
                             when (currentTab) {

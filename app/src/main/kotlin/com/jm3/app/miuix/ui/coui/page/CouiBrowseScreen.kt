@@ -11,12 +11,13 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -37,11 +38,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Footer
@@ -49,14 +50,12 @@ import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.BrowseMode
 import com.jm3.app.miuix.ui.BrowsePageKey
 import com.jm3.app.miuix.ui.ListState
@@ -73,14 +72,17 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
+import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.planLoad
-import com.jm3.app.miuix.ui.skin.LocalSkin
+import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseCategory
 import com.jm3.core.model.BrowseFilter
@@ -468,8 +470,10 @@ internal fun CouiBrowseScreen(
         }
         LazyColumn(
             state = lazyState,
+            // 大屏按 LocalWideLayout 断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding
             modifier = Modifier
                 .fillMaxSize()
+                .readableWidth()
                 .consumeWindowInsets(innerPadding),
             contentPadding = contentPadding,
             overscrollEffect = rememberCouiOverscrollEffect(),
@@ -575,37 +579,14 @@ internal fun CouiBrowseScreen(
                 }
                 if (mode == BrowseMode.CATEGORY) {
                     item(key = "coui-browse-categories") {
-                        LazyRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(BrowseCategory.entries) { option ->
-                                val selected = option == category
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(
-                                            if (selected) colors.accent.copy(alpha = 0.15f)
-                                            else colors.card,
-                                        )
-                                        .couiPressable(
-                                            shape = RoundedCornerShape(16.dp),
-                                            onClick = { categoryValue = option.apiValue },
-                                        )
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = option.label,
-                                        kind = CouiTextKind.Body,
-                                        color = if (selected) colors.accent else colors.onSurface,
-                                    )
-                                }
-                            }
-                        }
+                        // 9 个主分类塞不进 CouiSegmentedCapsules（它按 weight 等分且不横向滚动），
+                        // 这里保留可滑动的分类轨道，但选中态与分段胶囊同源：同一枚 accent 14% 容器、
+                        // 40dp 段高与 PreferenceValue 字阶，视觉上仍是同一套分段控件。
+                        CouiCategoryRail(
+                            options = BrowseCategory.entries,
+                            selected = category,
+                            onSelect = { categoryValue = it.apiValue },
+                        )
                     }
                     // 分类树给的标签区块原来排在无限列表尾部，滚不到；上移到结果之前，默认只展开一块
                     item(key = "coui-browse-more-categories") {
@@ -855,6 +836,46 @@ private fun CouiCategoryBlock(
     }
 }
 
+/** 分类轨道：横向滚动的一等分胶囊，选中态复用 CouiSegmentedCapsules 的容器色与段高。 */
+@Composable
+private fun CouiCategoryRail(
+    options: List<BrowseCategory>,
+    selected: BrowseCategory,
+    onSelect: (BrowseCategory) -> Unit,
+) {
+    val colors = CouiTheme.colorScheme
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        items(options) { option ->
+            val active = option == selected
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        if (active) colors.accent.copy(alpha = CouiSelectedContainerAlpha)
+                        else Color.Transparent,
+                    )
+                    .couiPressable(shape = RoundedCornerShape(20.dp), onClick = { onSelect(option) })
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = option.label,
+                    kind = CouiTextKind.PreferenceValue,
+                    color = if (active) colors.accent else colors.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
 /** 标签胶囊：容器色底 + 胶囊裁剪，按压反馈走 couiPressable。 */
 @Composable
 private fun CouiTagChip(
@@ -939,89 +960,39 @@ private fun CouiTopBarBackButton(onClick: () -> Unit) {
     }
 }
 
-/** 作品行：标准 3:4 比例漫画封面，名次在榜单模式出现。 */
+/**
+ * 作品行：统一走 [CouiWorkRowCard]，榜单名次落在行首槽位。
+ *
+ * 名次由调用点按全局偏移算出（[displayRank]），前三名交给 [CouiWorkRankBadge] 上金银铜，
+ * 其余名次沿用它自带的次要文字档；页面不再自绘 60×80 缩略图与名次列。
+ */
 @Composable
 private fun CouiBrowseResultRow(
     result: SearchResult,
     rank: Int?,
     onClick: () -> Unit,
 ) {
-    val colors = CouiTheme.colorScheme
-    val cardCorner = LocalSkin.current.shapes.cardCorner
-    val rowShape = RoundedCornerShape(cardCorner)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(rowShape)
-            .couiPressable(shape = rowShape, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (rank != null) {
+    val rankSlot: (@Composable RowScope.() -> Unit)? = if (rank == null) {
+        null
+    } else {
+        {
             Box(
-                modifier = Modifier.width(32.dp),
+                modifier = Modifier
+                    .width(48.dp)
+                    .padding(start = 12.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                Text(
-                    text = rank.toString(),
-                    kind = CouiTextKind.Stepper,
-                    color = if (rank <= 3) colors.accent else colors.onSurfaceVariant,
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .size(width = 60.dp, height = 80.dp)
-                .clip(RoundedCornerShape(cardCorner))
-                .background(colors.container),
-        ) {
-            AlbumCoverImage(
-                url = result.coverUrl,
-                contentDescription = result.title,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = result.title,
-                kind = CouiTextKind.PreferenceTitle,
-                color = colors.onSurface,
-                textAlign = TextAlign.Start,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (result.authors.isNotEmpty()) {
-                Text(
-                    text = result.authors.joinToString(" / "),
-                    kind = CouiTextKind.Description,
-                    color = colors.onSurfaceVariant,
-                    textAlign = TextAlign.Start,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                CouiWorkRankBadge(rank = rank)
             }
         }
     }
-}
-
-/** 封面缩略图：沿用统一封面入口，形状取皮肤卡圆角。 */
-@Composable
-private fun CouiBrowseCover(coverUrl: String?, title: String) {
-    val cardCorner = LocalSkin.current.shapes.cardCorner
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(CouiShape(cardCorner))
-            .background(CouiTheme.colorScheme.container),
-    ) {
-        AlbumCoverImage(
-            url = coverUrl,
-            contentDescription = title,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
+    CouiWorkRowCard(
+        coverUrl = result.coverUrl,
+        title = result.title,
+        onClick = onClick,
+        albumId = result.id,
+        subtitle = result.authors.joinToString(" / ").ifBlank { null },
+        category = result.category,
+        leading = rankSlot,
+    )
 }

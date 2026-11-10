@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
@@ -38,7 +37,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,8 +46,11 @@ import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
-import com.itos.coui.radiobutton.RadioButton
 import com.itos.coui.layout.Item
+import com.itos.coui.menu.CouiMenuItem
+import com.itos.coui.menu.Menu
+import com.itos.coui.menu.couiMenuAnchor
+import com.itos.coui.menu.rememberCouiMenuAnchor
 import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.slider.Slider
@@ -116,25 +117,9 @@ private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
 private const val CLEAR_CONFIRM_TIMEOUT_MS = 5000L
 
 /**
- * 设置页当前打开的选择面板。
- *
- * 五个枚举型设置共用一套「标题 + 选项 + 完成」的 COUI 弹窗，
- * 用一个可空状态描述当前打开哪一格，避免并行布尔互相叠加出两个弹窗。
- * 阅读器分项不在此列：它们由本页的 CouiReaderSettingsSection 自己管面板，
- * 状态与写盘则与设置中心共用 ReaderSettingsState。
- */
-private enum class SettingsPicker {
-    PAGINATION_MODE,
-    BOTTOM_BAR_SIZE,
-    BOTTOM_BAR_FORM,
-    WIDE_SCREEN_NAVIGATION,
-    UI_SKIN,
-}
-
-/**
  * COUI 设置页：整页按 COUI-Kit 原厂语言重做，业务语义与存储完全沿用现有实现。
  *
- * 分组用 Group/Item 行、枚举选择用带选中勾的 COUI Dialog、主题模式用胶囊分段控件；
+ * 分组用 Group/Item 行、枚举选择用锚点气泡菜单、主题模式用胶囊分段控件；
  * 读写一律经 [ScreenDeps.preferences] 与既有回调，不新增键、不改 null 语义。
  * 本页是独立路由，不在主框架内，所以自己持有一套 CouiTheme 与 Scaffold。
  */
@@ -176,7 +161,6 @@ fun CouiSettingsScreen(
         var clearTarget by rememberSaveable { mutableStateOf<ClearTarget?>(null) }
         var clearing by remember { mutableStateOf(false) }
         var showDisclaimer by rememberSaveable { mutableStateOf(false) }
-        var picker by rememberSaveable { mutableStateOf<SettingsPicker?>(null) }
 
         // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
         val paginationMode = deps.preferences.paginationMode
@@ -425,11 +409,13 @@ fun CouiSettingsScreen(
                             )
                         }
                         Divider()
-                        Item(
-                            title = { SettingsRowTitle("界面风格") },
-                            summary = { SettingsRowSummary(uiSkin.couiSummary()) },
-                            trailing = { SettingsRowValue(uiSkin.label) },
-                            onClick = { picker = SettingsPicker.UI_SKIN },
+                        CouiChoiceItem(
+                            title = "界面风格",
+                            summary = uiSkin.couiSummary(),
+                            value = uiSkin.label,
+                            options = UiSkin.entries.map { it to it.label },
+                            current = uiSkin,
+                            onSelect = onUiSkinChange,
                         )
                         Divider()
                         Item(
@@ -461,33 +447,49 @@ fun CouiSettingsScreen(
                     }
 
                     Group(title = "通用") {
-                        Item(
-                            title = { SettingsRowTitle("分页模式") },
-                            summary = { SettingsRowSummary(paginationModeSummary) },
-                            trailing = { SettingsRowValue(paginationMode.displayName) },
-                            onClick = { picker = SettingsPicker.PAGINATION_MODE },
+                        CouiChoiceItem(
+                            title = "分页模式",
+                            summary = paginationModeSummary,
+                            value = paginationMode.displayName,
+                            options = PaginationMode.entries.map { it to it.displayName },
+                            current = paginationMode,
+                            onSelect = { mode ->
+                                // 选择解析要按枚举下标复算，才能沿用「已是最新则不写盘」的既有语义
+                                resolvePaginationSelection(
+                                    deps.preferences.paginationMode,
+                                    PaginationMode.entries.indexOf(mode),
+                                )?.takeIf { it.changed }?.let { applyPaginationMode(it.mode) }
+                            },
                         )
                         Divider()
-                        Item(
-                            title = { SettingsRowTitle("底栏尺寸") },
-                            summary = { SettingsRowSummary(bottomBarSizeSummary) },
-                            trailing = { SettingsRowValue(bottomBarSizeOption.label) },
-                            onClick = { picker = SettingsPicker.BOTTOM_BAR_SIZE },
+                        CouiChoiceItem(
+                            title = "底栏尺寸",
+                            summary = bottomBarSizeSummary,
+                            value = bottomBarSizeOption.label,
+                            options = BottomBarSize.entries.map {
+                                it to if (it == BottomBarSize.STANDARD) "普通（自适应）" else it.label
+                            },
+                            current = bottomBarSizeOption,
+                            onSelect = ::applyBottomBarSize,
                         )
                         Divider()
-                        Item(
-                            title = { SettingsRowTitle("底栏形态") },
-                            summary = { SettingsRowSummary(bottomBarFormSummary) },
-                            trailing = { SettingsRowValue(bottomBarForm.label) },
-                            onClick = { picker = SettingsPicker.BOTTOM_BAR_FORM },
+                        CouiChoiceItem(
+                            title = "底栏形态",
+                            summary = bottomBarFormSummary,
+                            value = bottomBarForm.label,
+                            options = BottomBarForm.entries.map { it to it.label },
+                            current = bottomBarForm,
+                            onSelect = ::applyBottomBarForm,
                         )
                         if (showWideScreenNavigation) {
                             Divider()
-                            Item(
-                                title = { SettingsRowTitle("宽屏导航") },
-                                summary = { SettingsRowSummary(wideScreenNavigationSummary) },
-                                trailing = { SettingsRowValue(wideScreenNavigation.label) },
-                                onClick = { picker = SettingsPicker.WIDE_SCREEN_NAVIGATION },
+                            CouiChoiceItem(
+                                title = "宽屏导航",
+                                summary = wideScreenNavigationSummary,
+                                value = wideScreenNavigation.label,
+                                options = WideScreenNavigation.entries.map { it to it.label },
+                                current = wideScreenNavigation,
+                                onSelect = ::applyWideScreenNavigation,
                             )
                         }
                     }
@@ -664,73 +666,6 @@ fun CouiSettingsScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
             )
-        }
-
-        // 界面风格：沿用原数据流与存储键，只在选中不同项时回调一次。
-        // 退场窗口：picker 置空后组合仍需留一份可渲染内容，弹窗才能播完窗口动画；
-        // 故内容取「当前或上一个」面板，可见性只跟随当前值。
-        var lastPicker by remember { mutableStateOf<SettingsPicker?>(null) }
-        SideEffect { if (picker != null) lastPicker = picker }
-        val openPicker = picker ?: lastPicker
-        val pickerVisible = picker != null
-        when (openPicker) {
-            SettingsPicker.UI_SKIN -> SettingsChoiceDialog(
-                visible = pickerVisible,
-                title = "界面风格",
-                options = UiSkin.entries.map { it.label },
-                summaries = UiSkin.entries.map { it.couiSummary() },
-                selectedIndex = UiSkin.entries.indexOf(uiSkin),
-                onSelect = { index ->
-                    UiSkin.entries.getOrNull(index)?.let { skin ->
-                        if (skin != uiSkin) onUiSkinChange(skin)
-                    }
-                },
-                onDismiss = { picker = null },
-            )
-
-            SettingsPicker.PAGINATION_MODE -> SettingsChoiceDialog(
-                visible = pickerVisible,
-                title = "分页模式",
-                options = PaginationMode.entries.map { it.displayName },
-                selectedIndex = PaginationMode.entries.indexOf(paginationMode),
-                onSelect = { index ->
-                    resolvePaginationSelection(deps.preferences.paginationMode, index)
-                        ?.takeIf { it.changed }
-                        ?.let { applyPaginationMode(it.mode) }
-                },
-                onDismiss = { picker = null },
-            )
-
-            SettingsPicker.BOTTOM_BAR_SIZE -> SettingsChoiceDialog(
-                visible = pickerVisible,
-                title = "底栏尺寸",
-                options = BottomBarSize.entries.map { if (it == BottomBarSize.STANDARD) "普通（自适应）" else it.label },
-                selectedIndex = BottomBarSize.entries.indexOf(bottomBarSizeOption),
-                onSelect = { index -> BottomBarSize.entries.getOrNull(index)?.let { applyBottomBarSize(it) } },
-                onDismiss = { picker = null },
-            )
-
-            SettingsPicker.BOTTOM_BAR_FORM -> SettingsChoiceDialog(
-                visible = pickerVisible,
-                title = "底栏形态",
-                options = BottomBarForm.entries.map { it.label },
-                selectedIndex = BottomBarForm.entries.indexOf(bottomBarForm),
-                onSelect = { index -> BottomBarForm.entries.getOrNull(index)?.let { applyBottomBarForm(it) } },
-                onDismiss = { picker = null },
-            )
-
-            SettingsPicker.WIDE_SCREEN_NAVIGATION -> SettingsChoiceDialog(
-                visible = pickerVisible,
-                title = "宽屏导航",
-                options = WideScreenNavigation.entries.map { it.label },
-                selectedIndex = WideScreenNavigation.entries.indexOf(wideScreenNavigation),
-                onSelect = { index ->
-                    WideScreenNavigation.entries.getOrNull(index)?.let { applyWideScreenNavigation(it) }
-                },
-                onDismiss = { picker = null },
-            )
-
-            null -> Unit
         }
 
         // 隐藏诊断：版本号连点 5 次打开，只读汇总运行环境与线路状态
@@ -920,17 +855,9 @@ private fun SettingsDiagnosticLine(label: String, value: String) {
     }
 }
 
-/** 阅读器内联分项的选择面板。 */
-private enum class ReaderPicker {
-    DIRECTION,
-    SPREAD,
-    IMAGE_QUALITY,
-    PREFETCH_PAGES,
-}
-
 /**
  * 阅读设置七项在 COUI 皮肤下的渲染：状态与写盘由 [ReaderSettingsState] 承载，
- * 这里只用库控件（Item/Switch/Slider/Dialog），不引 Miuix 偏好件。
+ * 这里只用库控件（Item/Switch/Slider/锚点菜单），不引 Miuix 偏好件。
  */
 @Composable
 private fun CouiReaderSettingsSection(
@@ -938,34 +865,29 @@ private fun CouiReaderSettingsSection(
     spreadAllowed: Boolean,
 ) {
     val scope = rememberCoroutineScope()
-    var choice by remember { mutableStateOf<ReaderPicker?>(null) }
 
-    Item(
-        title = { SettingsRowTitle("默认阅读方向") },
-        summary = {
-            SettingsRowSummary(
-                if (state.horizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",
-            )
-        },
-        trailing = { SettingsRowValue(if (state.horizontal) "左右翻页" else "纵向长图") },
-        onClick = { choice = ReaderPicker.DIRECTION },
+    CouiChoiceItem(
+        title = "默认阅读方向",
+        summary = if (state.horizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",
+        value = if (state.horizontal) "左右翻页" else "纵向长图",
+        options = listOf(false to "纵向长图", true to "左右翻页"),
+        current = state.horizontal,
+        onSelect = { horizontal -> scope.launch { state.applyHorizontal(horizontal) } },
     )
     Divider()
     // 双页是大屏横屏的附加排布：窗口不够宽或竖屏时整行不渲染
     if (spreadAllowed) {
-        Item(
-            title = { SettingsRowTitle("双页阅读") },
-            summary = {
-                SettingsRowSummary(
-                    if (state.spread == ReaderSpreadMode.DOUBLE) {
-                        "大屏横屏下两页并排，按左右翻页生效"
-                    } else {
-                        "单页显示，可按左右翻页"
-                    },
-                )
+        CouiChoiceItem(
+            title = "双页阅读",
+            summary = if (state.spread == ReaderSpreadMode.DOUBLE) {
+                "大屏横屏下两页并排，按左右翻页生效"
+            } else {
+                "单页显示，可按左右翻页"
             },
-            trailing = { SettingsRowValue(state.spread.label) },
-            onClick = { choice = ReaderPicker.SPREAD },
+            value = state.spread.label,
+            options = ReaderSpreadMode.entries.map { it to it.label },
+            current = state.spread,
+            onSelect = { mode -> scope.launch { state.applySpread(mode) } },
         )
         Divider()
     }
@@ -1015,125 +937,72 @@ private fun CouiReaderSettingsSection(
         )
     }
     Divider()
-    Item(
-        title = { SettingsRowTitle("图片质量") },
-        summary = { SettingsRowSummary(state.imageQuality.settingsSummary()) },
-        trailing = { SettingsRowValue(state.imageQuality.label) },
-        onClick = { choice = ReaderPicker.IMAGE_QUALITY },
+    CouiChoiceItem(
+        title = "图片质量",
+        summary = state.imageQuality.settingsSummary(),
+        value = state.imageQuality.label,
+        options = ReaderImageQuality.entries.map { it to it.label },
+        current = state.imageQuality,
+        onSelect = { quality -> scope.launch { state.applyImageQuality(quality) } },
     )
     Divider()
-    Item(
-        title = { SettingsRowTitle("预取页数") },
-        summary = {
-            SettingsRowSummary(
-                if (state.prefetchPages == 0) {
-                    "不提前加载后续页"
-                } else {
-                    "提前加载当前页之后的 " + state.prefetchPages + " 页"
-                },
-            )
+    CouiChoiceItem(
+        title = "预取页数",
+        summary = if (state.prefetchPages == 0) {
+            "不提前加载后续页"
+        } else {
+            "提前加载当前页之后的 " + state.prefetchPages + " 页"
         },
-        trailing = { SettingsRowValue(prefetchPagesLabel(state.prefetchPages)) },
-        onClick = { choice = ReaderPicker.PREFETCH_PAGES },
+        value = prefetchPagesLabel(state.prefetchPages),
+        options = ReaderPreferences.PREFETCH_OPTIONS.map { it to prefetchPagesLabel(it) },
+        current = state.prefetchPages,
+        onSelect = { pages -> scope.launch { state.applyPrefetchPages(pages) } },
     )
 
-    when (choice) {
-        ReaderPicker.DIRECTION -> SettingsChoiceDialog(
-            title = "默认阅读方向",
-            options = listOf("纵向长图", "左右翻页"),
-            selectedIndex = if (state.horizontal) 1 else 0,
-            onSelect = { index -> scope.launch { state.applyHorizontal(index == 1) } },
-            onDismiss = { choice = null },
-        )
-
-        ReaderPicker.SPREAD -> SettingsChoiceDialog(
-            title = "双页阅读",
-            options = ReaderSpreadMode.entries.map { it.label },
-            selectedIndex = ReaderSpreadMode.entries.indexOf(state.spread),
-            onSelect = { index ->
-                ReaderSpreadMode.entries.getOrNull(index)?.let { mode ->
-                    scope.launch { state.applySpread(mode) }
-                }
-            },
-            onDismiss = { choice = null },
-        )
-
-        ReaderPicker.IMAGE_QUALITY -> SettingsChoiceDialog(
-            title = "图片质量",
-            options = ReaderImageQuality.entries.map { it.label },
-            summaries = ReaderImageQuality.entries.map { it.settingsSummary() },
-            selectedIndex = ReaderImageQuality.entries.indexOf(state.imageQuality),
-            onSelect = { index ->
-                ReaderImageQuality.entries.getOrNull(index)?.let { quality ->
-                    scope.launch { state.applyImageQuality(quality) }
-                }
-            },
-            onDismiss = { choice = null },
-        )
-
-        ReaderPicker.PREFETCH_PAGES -> SettingsChoiceDialog(
-            title = "预取页数",
-            options = ReaderPreferences.PREFETCH_OPTIONS.map { prefetchPagesLabel(it) },
-            selectedIndex = ReaderPreferences.PREFETCH_OPTIONS.indexOf(state.prefetchPages),
-            onSelect = { index ->
-                ReaderPreferences.PREFETCH_OPTIONS.getOrNull(index)?.let { pages ->
-                    scope.launch { state.applyPrefetchPages(pages) }
-                }
-            },
-            onDismiss = { choice = null },
-        )
-
-        null -> Unit
-    }
 }
 
 /**
- * 枚举型设置的选择面板：Item 行 + 选中勾。
+ * 枚举型设置行：整行既是入口也是锚点，点击后贴着该行弹出 COUI 菜单。
  *
- * 选项直接点即生效并关闭，与 COUI 原厂列表选择的手感一致；
- * 因此只保留一个「完成」作为关闭动作，不再提供行为等价的「取消」。
+ * 每行各持一个 [com.itos.coui.menu.CouiMenuAnchor]，触点坐标随滚动与布局变化重算，
+ * 菜单因此总能贴住被点的那一行；选项点选即生效并收起，选中项以勾呈现。
  */
 @Composable
-private fun SettingsChoiceDialog(
+private fun <T> CouiChoiceItem(
     title: String,
-    options: List<String>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit,
-    visible: Boolean = true,
-    summaries: List<String> = emptyList(),
+    summary: String,
+    value: String,
+    options: List<Pair<T, String>>,
+    current: T,
+    onSelect: (T) -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        visible = visible,
-        title = title,
-        confirmAction = CouiDialogAction(text = "完成", onClick = onDismiss),
+    val anchor = rememberCouiMenuAnchor()
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .couiMenuAnchor(anchor),
     ) {
-        // 单选列表对读屏暴露为可选组：每行播报自身是否选中
-        Group(modifier = Modifier.selectableGroup()) {
-            options.forEachIndexed { index, label ->
-                if (index > 0) Divider()
-                val summary = summaries.getOrNull(index)?.takeIf { it.isNotBlank() }
-                Item(
-                    modifier = Modifier.semantics { selected = index == selectedIndex },
-                    title = { SettingsRowTitle(label) },
-                    summary = if (summary == null) {
-                        null
-                    } else {
-                        { SettingsRowSummary(summary) }
-                    },
-                    trailing = {
-                        // 原厂单选列每行都有圈：库的 RadioButton 只负责画（300ms 双段曲线 + 选中脉冲），
-                        // 点击与语义仍由外层 selectable 提供，选中态已由 semantics.selected 播报
-                        RadioButton(selected = index == selectedIndex)
-                    },
-                    onClick = {
-                        onSelect(index)
-                        onDismiss()
-                    },
-                )
-            }
-        }
+        Item(
+            title = { SettingsRowTitle(title) },
+            summary = { SettingsRowSummary(summary) },
+            trailing = { SettingsRowValue(value) },
+            onClick = { anchor.open { expanded = true } },
+        )
+        Menu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            anchor = anchor,
+            headerText = title,
+            items = options.map { (option, label) ->
+                CouiMenuItem(value = option, text = label, selected = option == current)
+            },
+            onItemClick = { item ->
+                expanded = false
+                // 与原有弹窗一致：选中项重复点不重复写盘
+                if (item.value != current) onSelect(item.value)
+            },
+        )
     }
 }
 

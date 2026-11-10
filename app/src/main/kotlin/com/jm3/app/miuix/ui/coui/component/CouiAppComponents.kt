@@ -7,7 +7,9 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -31,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -48,6 +51,7 @@ import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +68,8 @@ import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.floatingactionbutton.Fab
+import com.itos.coui.input.CouiHapticFeedback
+import com.itos.coui.input.performCouiHapticFeedback
 import com.itos.coui.layout.Footer
 import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
@@ -841,6 +847,27 @@ fun CouiSegmentedCapsules(
                         maxLines = 1,
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 按压即触觉：手指按下（[PressInteraction.Press]）时触发一次 COUI 触觉，而不是等抬起的点击。
+ *
+ * 供自己拼手势的组件使用（作品卡、融合滑动行、个性化横幅等）；[couiPressable] 已内置同一段逻辑。
+ * ROM 不支持该触觉时库侧返回 false，这里不重试也不报错。
+ */
+@Composable
+fun CouiPressHapticEffect(
+    interactionSource: InteractionSource,
+    feedback: CouiHapticFeedback = CouiHapticFeedback.Switch,
+) {
+    val view = LocalView.current
+    LaunchedEffect(interactionSource, feedback, view) {
+        interactionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Press) {
+                view.performCouiHapticFeedback(feedback)
             }
         }
     }

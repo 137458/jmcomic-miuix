@@ -50,10 +50,11 @@ internal data class HomeSideData(
     val hotTags: List<String> = emptyList(),
     val serialUpdates: List<SearchResult> = emptyList(),
     val randomPicks: List<SearchResult> = emptyList(),
+    val rankPicks: List<SearchResult> = emptyList(),
 ) {
-    /** 三份都空时首屏不需要再请求侧栏。 */
+    /** 四份都空时首屏不需要再请求侧栏。 */
     val isEmpty: Boolean
-        get() = hotTags.isEmpty() && serialUpdates.isEmpty() && randomPicks.isEmpty()
+        get() = hotTags.isEmpty() && serialUpdates.isEmpty() && randomPicks.isEmpty() && rankPicks.isEmpty()
 }
 
 /**

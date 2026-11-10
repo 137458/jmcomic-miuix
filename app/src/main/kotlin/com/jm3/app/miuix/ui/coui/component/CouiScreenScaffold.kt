@@ -1,0 +1,193 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package com.jm3.app.miuix.ui.coui.component
+
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.itos.coui.layout.CouiPageDefaults
+import com.itos.coui.theme.CouiTheme
+import com.itos.coui.topappbar.CouiTopAppBarDefaults
+import com.itos.coui.topappbar.CouiTopAppBarScrollBehavior
+import com.itos.coui.topappbar.LargeTopAppBar
+import com.itos.coui.topappbar.TopAppBarButton
+import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import top.yukonga.miuix.kmp.basic.Icon
+
+// 顶栏按钮尺寸与 52dp 的 COUI 顶栏配套；图标沿用 22dp，和主框架底栏图标同档。
+private val CouiTopBarButtonSize = 40.dp
+private val CouiTopBarIconSize = 22.dp
+
+/**
+ * 二级页面骨架：折叠大标题顶栏 + 返回键 + 动作槽 + FAB，并把顶栏折叠位移换算成正文留白。
+ *
+ * 相比直接拼 [CouiAppScaffold] + [LargeTopAppBar]，这里收口三件事：
+ * 1. nestedScroll 只在这里挂一次，页面不再各写一遍（漏挂的表现是滚动时顶栏不动）；
+ * 2. [content] 拿到的是已按折叠状态修正、并带上左右内容边距的 [PaddingValues]，
+ *    可直接交给 LazyColumn/LazyRow 的 contentPadding，也可用 Modifier.padding；
+ *    拿到的必须是修正后的 padding：直接消费 Scaffold 原始 padding 会让正文在顶栏下方留一段死白；
+ * 3. 返回键与动作按钮的尺寸、触区、着色统一，避免每页各写一套。
+ *
+ * @param onBack 为空表示这是一级页面，不画返回键。
+ * @param scrollBehavior 需要按列表滚动范围控制折叠时传入（见 [rememberCouiScreenScrollBehavior]）。
+ * @param horizontalPadding 正文左右边距；铺满屏幕的内容（整幅栅格、全出血轮播）传 0.dp。
+ */
+@Composable
+fun CouiScreenScaffold(
+    title: String,
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
+    backContentDescription: String = "返回",
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
+    scrollBehavior: CouiTopAppBarScrollBehavior = rememberCouiScreenScrollBehavior(),
+    horizontalPadding: Dp = CouiPageDefaults.horizontalMargin,
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    CouiAppScaffold(
+        modifier = modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeTopAppBar(
+                title = { CouiTopBarTitle(text = title) },
+                navigationIcon = {
+                    if (onBack != null) {
+                        CouiTopBarBackButton(onClick = onBack, contentDescription = backContentDescription)
+                    }
+                },
+                actions = actions ?: {},
+                scrollBehavior = scrollBehavior,
+                colors = couiTopAppBarColors(),
+            )
+        },
+        floatingActionButton = floatingActionButton,
+    ) { innerPadding ->
+        content(couiScreenContentPadding(scrollBehavior, innerPadding, horizontalPadding))
+    }
+}
+
+/**
+ * 记住可恢复的折叠行为；[canScroll] 读取正文的实际滚动范围，短内容时不会把顶栏折叠成收不回来的状态。
+ * 库侧每帧用 SideEffect 更新同一份状态，因此传入普通 lambda 即可，不必记忆。
+ */
+@Composable
+fun rememberCouiScreenScrollBehavior(canScroll: () -> Boolean = { true }): CouiTopAppBarScrollBehavior =
+    CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(canScroll)
+
+/**
+ * 顶栏折叠后的正文留白：Scaffold 的 windowInsets 留白 + 顶栏折叠位移，再补上左右内容边距。
+ * 只在页面正文内调用，不要再用返回的 padding 去平移整个视口。
+ */
+@Composable
+fun couiScreenContentPadding(
+    scrollBehavior: CouiTopAppBarScrollBehavior,
+    innerPadding: PaddingValues,
+    horizontalPadding: Dp = CouiPageDefaults.horizontalMargin,
+): PaddingValues {
+    val density = LocalDensity.current
+    // 库侧已把顶部留白与折叠位移合在一起并把负值收敛到 0，这里只补左右边距，不重复做加减
+    val corrected = scrollBehavior.state.contentPadding(innerPadding, density)
+    return PaddingValues(
+        start = horizontalPadding,
+        top = corrected.calculateTopPadding(),
+        end = horizontalPadding,
+        bottom = corrected.calculateBottomPadding(),
+    )
+}
+
+/**
+ * 顶栏返回键：40dp 圆形触区（外扩到 48dp 最小触区），图标取 COUI 图标集。
+ * 页面不要再自己画返回键，低版本与高版本的顶栏边距才对得上。
+ */
+@Composable
+fun CouiTopBarBackButton(
+    onClick: () -> Unit,
+    contentDescription: String = "返回",
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(CouiTopBarButtonSize)
+            .clip(CircleShape)
+            .couiPressable(
+                shape = CircleShape,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = CouiIcons.Back,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(CouiTopBarIconSize),
+            tint = CouiTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/**
+ * 顶栏动作按钮：API 34 起用原厂顶栏按钮（自带浮动材质与触点点亮），低版本退回同等尺寸的自绘图标位。
+ * 必须在顶栏的 actions 槽内调用：原厂按钮要求顶栏效果作用域提供背景源。
+ */
+@Composable
+fun CouiTopBarAction(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
+        CouiTopBarAction34(icon = icon, contentDescription = contentDescription, onClick = onClick)
+    } else {
+        Box(
+            modifier = modifier
+                .size(CouiTopBarButtonSize)
+                .clip(CircleShape)
+                .couiPressable(
+                    shape = CircleShape,
+                    minTouchTarget = CouiMinTouchTarget,
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(CouiTopBarIconSize),
+                tint = CouiTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+@RequiresApi(CouiLibraryNavBarMinSdk)
+@Composable
+private fun CouiTopBarAction34(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    TopAppBarButton(onClick = onClick) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(CouiTopBarIconSize),
+        )
+    }
+}
