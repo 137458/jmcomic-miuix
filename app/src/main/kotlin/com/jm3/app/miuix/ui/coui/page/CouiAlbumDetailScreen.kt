@@ -47,7 +47,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -338,23 +337,12 @@ private fun CouiAlbumDetailScreenBody(
     // 这里沿用首页/浏览页的触底预取：最后一个可见项进入末尾提前量区间就取下一页
     val activeCommentListState = if (wideDetail) commentListState else singleListState
     val loadMoreFeed by rememberUpdatedState(commentFeed)
-    LaunchedEffect(activeCommentListState) {
-        snapshotFlow {
-            val visible = activeCommentListState.layoutInfo.visibleItemsInfo
-            val rowHeightDp = if (visible.isEmpty()) {
-                0f
-            } else {
-                visible.sumOf { it.size }.toFloat() / visible.size / density.density
-            }
-            Triple(visible.lastOrNull()?.index ?: -1, activeCommentListState.layoutInfo.totalItemsCount, rowHeightDp)
-        }.collect { (lastIndex, totalCount, rowHeightDp) ->
-            if (lastIndex < 0) return@collect
-            val feed = loadMoreFeed ?: return@collect
-            if (!feed.canLoadMore || feed.loadMoreFailed) return@collect
-            val distance = prefetchItemCount(COUI_LOAD_MORE_PREFETCH_DP.toFloat(), rowHeightDp)
-            if (!shouldPrefetch(lastIndex, totalCount, distance)) return@collect
-            stateHolder.loadMoreComments()
-        }
+    CouiPrefetchEffect(listState = activeCommentListState) { lastIndex, totalCount, distance ->
+        if (lastIndex < 0) return@CouiPrefetchEffect
+        val feed = loadMoreFeed ?: return@CouiPrefetchEffect
+        if (!feed.canLoadMore || feed.loadMoreFailed) return@CouiPrefetchEffect
+        if (!shouldPrefetch(lastIndex, totalCount, distance)) return@CouiPrefetchEffect
+        stateHolder.loadMoreComments()
     }
     // 归一化转场坐标系：NavDisplay 进场矩阵会平移整页，根坐标必须由本页自己上报
     var rootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }

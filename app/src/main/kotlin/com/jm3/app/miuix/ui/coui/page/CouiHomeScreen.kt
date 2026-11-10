@@ -28,9 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -366,29 +364,15 @@ fun CouiHomeScreen(
         refresh()
     }
 
-    // 虚拟化后没有单一滚动位置可读，改看可见项：把「最后可见项在 feed 里的下标」交给
-    // CouiFeedPolicy 判定，提前量按实测行高换算成条数；请求幂等由 beginLoadMore 保证。
-    val pagingFeed by rememberUpdatedState(activeFeed())
-    val latestLoadMore by rememberUpdatedState(::loadMore)
-    LaunchedEffect(lazyState, clickPaging) {
-        if (clickPaging) return@LaunchedEffect
-        snapshotFlow {
-            val visible = lazyState.layoutInfo.visibleItemsInfo
-            val rowHeightDp = if (visible.isEmpty()) {
-                0f
-            } else {
-                visible.sumOf { it.size }.toFloat() / visible.size / density.density
-            }
-            visible.lastOrNull()?.index to rowHeightDp
-        }.collect { (lastIndex, rowHeightDp) ->
-            val current = pagingFeed ?: return@collect
-            val distance = prefetchItemCount(COUI_LOAD_MORE_PREFETCH_DP.toFloat(), rowHeightDp)
-            // feed 级开关（还能不能加载、上次是否失败）由 core 判据一并处理
-            if (current.shouldPrefetchRow(lastIndex ?: return@collect, HOME_FEED_ROW_START, distance)) {
-                latestLoadMore()
-            }
-        }
-    }
+    // 虚拟化后没有单一滚动位置可读，改看可见项：采集在 CouiFeedPrefetchEffect，
+    // 本页只交 feed 与结果行起点；请求幂等仍由 beginLoadMore 保证。
+    CouiFeedPrefetchEffect(
+        feed = activeFeed(),
+        rowStart = HOME_FEED_ROW_START,
+        listState = lazyState,
+        enabled = !clickPaging,
+        onPrefetch = ::loadMore,
+    )
 
     CouiAppScaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(header.nestedScrollConnection),

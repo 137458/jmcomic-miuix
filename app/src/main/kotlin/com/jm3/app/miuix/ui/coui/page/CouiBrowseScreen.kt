@@ -27,9 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -384,33 +382,17 @@ internal fun CouiBrowseScreen(
     /*
      * 触底预取：把懒列表下标换算成结果行下标再判提前量。
      * 周更与更多分类已经排在结果列表之前，行起点只由这串固定条目决定，追加一页后不会漂移；
-     * 提前量按可见行实测高度折成行数，换字号或换设备都不用改常量。
+     * 采集与行高换算在 CouiFeedPrefetchEffect，本页只交当前 feed、行起点与取下一页的动作。
      */
-    val latestRowStart by rememberUpdatedState(
-        if (tagKeyword != null) TAG_FEED_ROW_START else browseHeadCount,
+    val browseTagView = tagKeyword != null
+    CouiFeedPrefetchEffect(
+        feed = if (browseTagView) tagFeed else (state as? ListState.Loaded)?.feed,
+        rowStart = if (browseTagView) TAG_FEED_ROW_START else browseHeadCount,
+        listState = lazyState,
+        enabled = !clickPaging,
+        restartKey = listKey to tagKeyword,
+        onPrefetch = { if (browseTagView) loadMoreTag() else loadMore() },
     )
-    LaunchedEffect(listKey, clickPaging, tagKeyword) {
-        if (clickPaging) return@LaunchedEffect
-        val tagView = tagKeyword != null
-        snapshotFlow {
-            val visible = lazyState.layoutInfo.visibleItemsInfo
-            val rowHeightDp = if (visible.isEmpty()) {
-                0f
-            } else {
-                visible.sumOf { it.size }.toFloat() / visible.size / density.density
-            }
-            visible.lastOrNull()?.index to rowHeightDp
-        }.collect { (lastIndex, rowHeightDp) ->
-            if (lastIndex == null) return@collect
-            val feed = if (tagView) tagFeed else (state as? ListState.Loaded)?.feed
-            if (feed == null) return@collect
-            val distance = prefetchItemCount(COUI_LOAD_MORE_PREFETCH_DP.toFloat(), rowHeightDp)
-            // feed 级开关（还能不能加载、上次是否失败）由 core 判据一并处理
-            if (feed.shouldPrefetchRow(lastIndex, latestRowStart, distance)) {
-                if (tagView) loadMoreTag() else loadMore()
-            }
-        }
-    }
 
     val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
         canScroll = { lazyState.canScrollForward || lazyState.canScrollBackward },
