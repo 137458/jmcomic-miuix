@@ -116,4 +116,19 @@ class FlattenCommentsTest {
         val keys = rows.map { it.key }
         assertEquals(keys.size, keys.toSet().size)
     }
+
+    @Test
+    fun `重复 id 的评论只保留首次整棵子树`() {
+        val rows = flattenComments(
+            roots = listOf(
+                comment("a", replies = listOf(comment("a1"), comment("a2"), comment("a3"))),
+                comment("a", replies = listOf(comment("a9"))),
+                comment("b"),
+            ),
+        )
+
+        assertEquals(listOf("a", "a1", "a2", "reply-toggle-a", "b"), rows.map { it.key })
+        val keys = rows.map { it.key }
+        assertEquals(keys.size, keys.toSet().size)
+    }
 }

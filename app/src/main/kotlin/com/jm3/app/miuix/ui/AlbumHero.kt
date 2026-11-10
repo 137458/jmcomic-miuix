@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import android.content.Context
@@ -43,6 +44,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.snapshotFlow
 import kotlin.math.roundToInt
+import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
+import top.yukonga.miuix.kmp.nav.transition.NavRole
 import top.yukonga.miuix.kmp.squircle.squircleClip
 
 /**
@@ -540,6 +543,69 @@ fun Modifier.albumHeroCover(
 @Composable
 fun Modifier.albumHeroCover(albumId: String, url: String?, cornerDp: Float): Modifier =
     albumHeroCover(albumId = albumId, url = url, title = null, cornerDp = cornerDp)
+
+/**
+ * 详情页的共享元素反向飞行：把导航层的退出进度接到 [AlbumHeroHost] 上。
+ *
+ * 预测性返回的 `relativeDepth` 与页面 alpha 同源（退出时 0 → -1）：手势移动多少、封面回飞多少；
+ * 取消回弹时收场并把 origin 放回去，提交时随页面销毁收场。
+ * 只有返回手势进行中（gesture 非空）或页面已标记出栈（[NavRole.Outgoing]）才算退出信号；
+ * 进场（Incoming）与静止（Top）都不满足，避免进场结束后误起一段停在进度 0、此后不再收场的反向飞行。
+ * 起飞/推进/收场的判定在 [planHeroBackwardCommand]，Miuix 与 COUI 两套皮肤共用这一份编排。
+ */
+@Composable
+fun AlbumDetailHeroFlightEffect(albumId: String) {
+    val heroHost = LocalAlbumHeroHost.current
+    if (heroHost != null) {
+        val navScope by rememberUpdatedState(LocalNavTransitionScope.current)
+        LaunchedEffect(heroHost, albumId) {
+            var startFailed = false
+            snapshotFlow {
+                val scope = navScope
+                val exit = (-scope.relativeDepth).coerceIn(0f, 1f)
+                exit to (scope.gesture != null || scope.role == NavRole.Outgoing)
+            }.collect { (exit, popping) ->
+                val ownFlightId = heroHost.flight
+                    ?.takeIf { it.albumId == albumId && heroHost.isBackwardFlight(it.id) }
+                    ?.id
+                val hostBusy = heroHost.flight != null || heroHost.pending != null
+                when (val command = planHeroBackwardCommand(exit, popping, startFailed, ownFlightId, hostBusy)) {
+                    is HeroBackwardCommand.FinishOwnFlight -> {
+                        heroHost.finishFlight(command.flightId)
+                        heroHost.restoreOrigin(albumId)
+                        startFailed = false
+                    }
+
+                    is HeroBackwardCommand.AdvanceOwnFlight ->
+                        heroHost.setBackwardProgress(command.flightId, command.progress)
+
+                    is HeroBackwardCommand.StartFlight -> {
+                        if (heroHost.startBackward(albumId)) {
+                            heroHost.flight
+                                ?.takeIf { it.albumId == albumId && heroHost.isBackwardFlight(it.id) }
+                                ?.let { heroHost.setBackwardProgress(it.id, command.progress) }
+                        } else {
+                            // 拿不到两端矩形就不飞，退化成普通页转场；startBackward 会移除 origin，这里放回去
+                            startFailed = true
+                            heroHost.restoreOrigin(albumId)
+                        }
+                    }
+
+                    HeroBackwardCommand.ResetAttempt -> startFailed = false
+                    HeroBackwardCommand.Idle -> Unit
+                }
+            }
+        }
+        DisposableEffect(heroHost, albumId) {
+            onDispose {
+                val flight = heroHost.flight
+                if (flight != null && flight.albumId == albumId && heroHost.isBackwardFlight(flight.id)) {
+                    heroHost.finishFlight(flight.id)
+                }
+            }
+        }
+    }
+}
 
 /** 详情侧头图：登记根坐标矩形，飞行期间隐藏自己。 */
 @Composable

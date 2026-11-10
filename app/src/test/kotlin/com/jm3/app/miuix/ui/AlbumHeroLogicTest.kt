@@ -206,4 +206,68 @@ class AlbumHeroLogicTest {
         assertTrue(HERO_PENDING_TIMEOUT_MS > HERO_FLIGHT_DURATION_MS)
         assertTrue(HERO_PENDING_TIMEOUT_MS <= 3000L)
     }
+
+    @Test
+    fun 没有退出信号时不起飞() {
+        assertEquals(
+            HeroBackwardCommand.Idle,
+            planHeroBackwardCommand(exit = 0.3f, popping = false, startFailed = false, ownFlightId = null, hostBusy = false),
+        )
+    }
+
+    @Test
+    fun 退出信号成立且没有飞行占位时起飞() {
+        assertEquals(
+            HeroBackwardCommand.StartFlight(0.4f),
+            planHeroBackwardCommand(exit = 0.4f, popping = true, startFailed = false, ownFlightId = null, hostBusy = false),
+        )
+    }
+
+    @Test
+    fun 已有飞行或待飞占位时不起飞() {
+        assertEquals(
+            HeroBackwardCommand.Idle,
+            planHeroBackwardCommand(exit = 0.5f, popping = true, startFailed = false, ownFlightId = null, hostBusy = true),
+        )
+    }
+
+    @Test
+    fun 自己的反向飞行跟随退出进度() {
+        assertEquals(
+            HeroBackwardCommand.AdvanceOwnFlight(7, 0.6f),
+            planHeroBackwardCommand(exit = 0.6f, popping = true, startFailed = false, ownFlightId = 7, hostBusy = true),
+        )
+    }
+
+    @Test
+    fun 取消手势回到静息时收场() {
+        assertEquals(
+            HeroBackwardCommand.FinishOwnFlight(7),
+            planHeroBackwardCommand(exit = 0.005f, popping = false, startFailed = false, ownFlightId = 7, hostBusy = true),
+        )
+    }
+
+    @Test
+    fun 起飞失败后本轮不再重试且回弹后复位() {
+        assertEquals(
+            HeroBackwardCommand.Idle,
+            planHeroBackwardCommand(exit = 0.4f, popping = true, startFailed = true, ownFlightId = null, hostBusy = false),
+        )
+        assertEquals(
+            HeroBackwardCommand.ResetAttempt,
+            planHeroBackwardCommand(exit = 0f, popping = false, startFailed = true, ownFlightId = null, hostBusy = false),
+        )
+    }
+
+    @Test
+    fun 退出进度夹到零到一() {
+        assertEquals(
+            HeroBackwardCommand.StartFlight(1f),
+            planHeroBackwardCommand(exit = 1.6f, popping = true, startFailed = false, ownFlightId = null, hostBusy = false),
+        )
+        assertEquals(
+            HeroBackwardCommand.ResetAttempt,
+            planHeroBackwardCommand(exit = -0.5f, popping = false, startFailed = false, ownFlightId = null, hostBusy = false),
+        )
+    }
 }

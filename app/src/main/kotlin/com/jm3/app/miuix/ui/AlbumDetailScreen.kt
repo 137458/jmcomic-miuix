@@ -27,16 +27,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,8 +79,6 @@ import com.jm3.core.model.PageImage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.reader.ChapterGroups
-import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
-import top.yukonga.miuix.kmp.nav.transition.NavRole
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -223,61 +218,9 @@ internal fun AlbumDetailScreen(
     }
 
     val heroHost = LocalAlbumHeroHost.current
-    // 预测性返回：用导航层暴露的 relativeDepth 直接驱动封面逆向飞行。
-    // 它与页面 alpha 同源（退出时 0 → -1），手势移动多少、封面回飞多少；取消回弹，提交时随页面销毁收场。
-    val navScope by rememberUpdatedState(LocalNavTransitionScope.current)
-    if (heroHost != null) {
-        LaunchedEffect(heroHost, albumId) {
-            // 起飞条件只能是“明确的退出信号”：返回手势进行中（gesture 非空），或本页已被标记为正在出栈（Outgoing）。
-            // 进场（Incoming）与静止（Top）都不满足，避免进场结束后误起一段停在进度 0、此后不再收场的反向飞行。
-            var startFailed = false
-            snapshotFlow {
-                val scope = navScope
-                val exit = (-scope.relativeDepth).coerceIn(0f, 1f)
-                exit to (scope.gesture != null || scope.role == NavRole.Outgoing)
-            }.collect { (exit, popping) ->
-                val own = heroHost.flight?.takeIf {
-                    it.albumId == albumId && heroHost.isBackwardFlight(it.id)
-                }
-                if (own != null) {
-                    if (exit <= 0.01f && !popping) {
-                        // 回弹到静息（取消手势或程序化返回尚未起步）：收场并把 origin 放回去，
-                        // 取消后不残留、下一次返回仍能起飞；提交中的飞行不在这里拆，等页面销毁时收场
-                        heroHost.finishFlight(own.id)
-                        heroHost.restoreOrigin(albumId)
-                        startFailed = false
-                    } else {
-                        heroHost.setBackwardProgress(own.id, exit)
-                    }
-                    return@collect
-                }
-                if (exit <= 0.01f) {
-                    startFailed = false
-                    return@collect
-                }
-                if (!popping || startFailed) return@collect
-                // 正向飞行或待飞尚未收场时先让它完成，避免两段飞行互相顶掉
-                if (heroHost.flight != null || heroHost.pending != null) return@collect
-                if (!heroHost.startBackward(albumId)) {
-                    // 拿不到两端矩形就不飞，退化成普通页转场；startBackward 会移除 origin，这里放回去
-                    startFailed = true
-                    heroHost.restoreOrigin(albumId)
-                    return@collect
-                }
-                heroHost.flight
-                    ?.takeIf { it.albumId == albumId && heroHost.isBackwardFlight(it.id) }
-                    ?.let { heroHost.setBackwardProgress(it.id, exit) }
-            }
-        }
-        DisposableEffect(heroHost, albumId) {
-            onDispose {
-                val flight = heroHost.flight
-                if (flight != null && flight.albumId == albumId && heroHost.isBackwardFlight(flight.id)) {
-                    heroHost.finishFlight(flight.id)
-                }
-            }
-        }
-    }
+    // 预测性返回：封面逆向飞行的编排（退出进度 → 起飞/推进/收场）与 COUI 详情页共用一份，
+    // 判定在 planHeroBackwardCommand，这里只负责接线。
+    AlbumDetailHeroFlightEffect(albumId)
     val effectiveCoverUrl = initialCoverUrl?.takeIf { it.isNotBlank() } ?: heroHost?.coverUrl(albumId)?.takeIf { it.isNotBlank() }
     val effectiveTitle = initialTitle?.takeIf { it.isNotBlank() } ?: heroHost?.albumTitle(albumId)?.takeIf { it.isNotBlank() }
 
@@ -439,9 +382,11 @@ internal fun AlbumDetailScreen(
             SmallTitle(text = if (total != null) "评论（$total）" else "评论")
         }
         item(key = "comment-composer") {
+            // 草稿只订阅独立流：输入时不会重建整张评论列表
+            val draft by stateHolder.commentDraft.collectAsState()
             CommentComposer(
                 loggedIn = user != null,
-                text = uiState.commentText,
+                text = draft,
                 busy = uiState.commentBusy,
                 onTextChange = stateHolder::setCommentText,
                 onLogin = onOpenLogin,

@@ -14,6 +14,7 @@ import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,7 +50,6 @@ data class AlbumDetailViewState(
     val readPhotoIds: Set<String> = emptySet(),
     val descriptionExpanded: Boolean = false,
     val expandedGroups: Set<String> = emptySet(),
-    val commentText: String = "",
     val commentBusy: Boolean = false,
     val replyTarget: CommentItem? = null,
     val replyBusy: Boolean = false,
@@ -77,8 +77,22 @@ internal class AlbumDetailStateHolder(
     private val _uiState = MutableStateFlow(AlbumDetailViewState())
     val uiState: StateFlow<AlbumDetailViewState> = _uiState.asStateFlow()
 
+    /**
+     * 评论输入框的草稿：每次按键都会变，放进 [AlbumDetailViewState] 会让整页（含两栏列表）跟着重组。
+     * 独立成流后只有输入框自己 collect，其余区域不参与。
+     */
+    private val _commentDraft = MutableStateFlow("")
+    val commentDraft: StateFlow<String> = _commentDraft.asStateFlow()
+
     /** 最近一次进入页面时的登录用户：refresh() 不带 uid，靠它把追踪态的重拉接回同一次刷新。 */
     private var lastUserUid: String? = null
+
+    /** 已经按哪一次登录态装过首屏：重复进入同一登录态直接跳过，换登录态才重装。 */
+    private var loadedUid: String? = null
+    private var hasLoaded = false
+
+    /** 首屏四段装载的协程：换登录态时先取消在飞的这一次，避免两套请求相互覆盖状态。 */
+    private var loadJob: Job? = null
 
     /** 动作型调用的统一落点：失效提示并给登录入口，失败给「动作：原因」。 */
     private suspend fun report(outcome: SessionOutcome<*>, failurePrefix: String) {
@@ -86,8 +100,13 @@ internal class AlbumDetailStateHolder(
     }
 
     fun loadAll(userUid: String?) {
+        // 冷启动时账号先回填 null、随后再给真实 uid：同一份首屏不该装两遍
+        if (hasLoaded && userUid == loadedUid) return
+        hasLoaded = true
+        loadedUid = userUid
         lastUserUid = userUid
-        scope.launch {
+        loadJob?.cancel()
+        loadJob = scope.launch {
             loadDetail()
             loadComments()
             loadHistory()
@@ -352,7 +371,7 @@ internal class AlbumDetailStateHolder(
     }
 
     fun setCommentText(text: String) {
-        _uiState.update { it.copy(commentText = text) }
+        _commentDraft.value = text
     }
 
     fun setReplyTarget(target: CommentItem?) {
@@ -360,14 +379,14 @@ internal class AlbumDetailStateHolder(
     }
 
     fun postComment() {
-        val text = _uiState.value.commentText.trim()
+        val text = _commentDraft.value.trim()
         if (text.isEmpty() || _uiState.value.commentBusy) return
         _uiState.update { it.copy(commentBusy = true) }
         scope.launch {
             val outcome = authCall.call { gateway.postComment(albumId, text) }
             _uiState.update { it.copy(commentBusy = false) }
             if (outcome is SessionOutcome.Ok) {
-                _uiState.update { it.copy(commentText = "") }
+                _commentDraft.value = ""
                 showMessage("评论已发表")
                 loadComments()
             } else {

@@ -108,6 +108,57 @@ fun planForwardFlight(
     )
 }
 
+/** 退出进度小于此值即视为「回到静息」：手势已取消，且页面仍是顶层。 */
+internal const val HERO_EXIT_EPSILON: Float = 0.01f
+
+/** 反向飞行编排的一次决策；[AlbumDetailHeroFlightEffect] 只负责把命令执行到 host 上。 */
+internal sealed interface HeroBackwardCommand {
+    /** 自己的反向飞行要收场：结束飞行，并把列表封面放回可见。 */
+    data class FinishOwnFlight(val flightId: Int) : HeroBackwardCommand
+
+    /** 自己的反向飞行继续跟着退出进度走。 */
+    data class AdvanceOwnFlight(val flightId: Int, val progress: Float) : HeroBackwardCommand
+
+    /** 退出信号成立且没有别的飞行占位：去 host.startBackward 起飞。 */
+    data class StartFlight(val progress: Float) : HeroBackwardCommand
+
+    /** 回到静息：清掉上一轮的起飞失败标记，下一次返回仍能尝试。 */
+    data object ResetAttempt : HeroBackwardCommand
+
+    /** 保持现状：没有明确退出信号、已有别的飞行在飞，或本轮已经失败过。 */
+    data object Idle : HeroBackwardCommand
+}
+
+/**
+ * 反向飞行的纯判定：导航层的退出进度、本页是否在出栈、host 是否有飞行在飞，三者决定下一步。
+ *
+ * @param exit 退出进度 0..1（`-relativeDepth`，与页面 alpha 同源）
+ * @param popping 是否已有明确退出信号（返回手势进行中，或页面已被标记出栈）
+ * @param startFailed 本轮退出是否已经尝试起飞并失败过
+ * @param ownFlightId 本页自己的反向飞行 id；非空表示它已经在飞
+ * @param hostBusy 是否已有正向/反向飞行或待飞记录占着 host
+ */
+internal fun planHeroBackwardCommand(
+    exit: Float,
+    popping: Boolean,
+    startFailed: Boolean,
+    ownFlightId: Int?,
+    hostBusy: Boolean,
+): HeroBackwardCommand {
+    val progress = exit.coerceIn(0f, 1f)
+    if (ownFlightId != null) {
+        return if (progress <= HERO_EXIT_EPSILON && !popping) {
+            HeroBackwardCommand.FinishOwnFlight(ownFlightId)
+        } else {
+            HeroBackwardCommand.AdvanceOwnFlight(ownFlightId, progress)
+        }
+    }
+    if (progress <= HERO_EXIT_EPSILON) return HeroBackwardCommand.ResetAttempt
+    if (!popping || startFailed) return HeroBackwardCommand.Idle
+    if (hostBusy) return HeroBackwardCommand.Idle
+    return HeroBackwardCommand.StartFlight(progress)
+}
+
 /** 反向飞行：起点是详情页头图当前矩形，终点是列表卡片仍登记的矩形。 */
 fun planBackwardFlight(
     id: Int,

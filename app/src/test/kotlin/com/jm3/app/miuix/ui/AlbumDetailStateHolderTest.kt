@@ -329,9 +329,68 @@ class AlbumDetailStateHolderTest {
         advanceUntilIdle()
 
         assertEquals("精彩作品！", postText)
-        assertEquals("", holder.uiState.value.commentText)
+        assertEquals("", holder.commentDraft.value)
         assertEquals("评论已发表", messages.lastOrNull())
         assertTrue(commentsFetchCount > 0)
+
+        testScope.cancel()
+    }
+
+    @Test
+    fun 评论草稿只走独立流不进页面状态() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = fakeGateway(),
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = {},
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
+        )
+
+        val before = holder.uiState.value
+        holder.setCommentText("草稿")
+
+        assertEquals("草稿", holder.commentDraft.value)
+        assertEquals(before, holder.uiState.value, "草稿不进 uiState，否则每个按键整页重组")
+
+        testScope.cancel()
+    }
+
+    @Test
+    fun 同一登录态重复进入只装载一次首屏() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        var albumCalls = 0
+        var commentCalls = 0
+        val gateway = fakeGateway(
+            onAlbum = { albumCalls++; sampleAlbum(it) },
+            onComments = { _, _ -> commentCalls++; CommentPage(0, emptyList()) },
+        )
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = gateway,
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = {},
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
+        )
+
+        holder.loadAll(userUid = null)
+        advanceUntilIdle()
+        holder.loadAll(userUid = null)
+        advanceUntilIdle()
+
+        assertEquals(1, albumCalls, "同一登录态重进不应再发首屏请求")
+        assertEquals(1, commentCalls)
+
+        // 登录态回填是另一套数据（收藏/喜欢/追更都按 uid 拉），必须重装
+        holder.loadAll(userUid = "user_1")
+        advanceUntilIdle()
+        assertEquals(2, albumCalls)
 
         testScope.cancel()
     }
