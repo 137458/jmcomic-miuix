@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -435,13 +436,11 @@ internal fun couiUsesLibraryNavBar(tokens: GlassBottomBarTokens, sdkInt: Int): B
         sdkInt >= CouiLibraryNavBarMinSdk
 
 /**
- * COUI 底栏：普通档悬浮形态在 API 34 及以上交给库的浮动材质，其余组合按 token 自绘。
+ * COUI 底栏：自研无黑块阴影、支持连续曲率胶囊裁剪与原厂弹性缩放反馈的纯净底栏。
  *
- * 库的 [CouiNavigationItem] 没有角标槽位（NavigationBar.kt:103），底栏因此不做角标；
- * 需要提示未读时由页面正文承担，不在这里追加自绘角标去改库的行内布局。
- *
- * 底栏由主框架单实例绘制：backdrop 由主框架录制页面正文后显式传入，
- * 库分支据此采样当前页内容做浮动材质。
+ * 库底栏存在严重渲染缺陷（其私有函数 FloatingNode 硬编码了未裁剪的 Spotlight，在 API 34+
+ * 按压时通过 Canvas.drawPaint 必现未受限的直角黑色方块阴影）。统一走此自研底栏，
+ * 消除第三方库凝光直角黑块与 Compose 默认未裁剪矩形 Ripple。
  */
 @Composable
 internal fun CouiNavigationBar(
@@ -452,27 +451,16 @@ internal fun CouiNavigationBar(
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
 ) {
-    // 版本判断写在条件最前面：库底栏带 @RequiresApi(34)，这样调用点才能过 lint 的 API 检查
-    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk && couiUsesLibraryNavBar(tokens, Build.VERSION.SDK_INT)) {
-        CouiLibraryNavigationBar(
-            items = items,
-            selectedIndex = selectedIndex,
-            onSelect = onSelect,
-            backdrop = backdrop,
-            modifier = modifier,
-        )
-    } else {
-        CouiPlainNavigationBar(
-            items = items,
-            selectedIndex = selectedIndex,
-            onSelect = onSelect,
-            tokens = tokens,
-            modifier = modifier,
-        )
-    }
+    CouiPlainNavigationBar(
+        items = items,
+        selectedIndex = selectedIndex,
+        onSelect = onSelect,
+        tokens = tokens,
+        modifier = modifier,
+    )
 }
 
-/** 库浮动材质底栏：只在 API 34 及以上、且 token 判定交给库时进入。 */
+/** 库浮动材质底栏保留为内部后备。 */
 @RequiresApi(34)
 @Composable
 private fun CouiLibraryNavigationBar(
@@ -482,11 +470,9 @@ private fun CouiLibraryNavigationBar(
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
 ) {
-    // 底栏是三主体融合节点（条身 + 选中胶囊 + 附件位），库在这里要求 renderer.surfaceCount == 3
     val renderer = remember { CouiFloatingRenderer() }
     NavigationBar(
         modifier = modifier,
-        // 库的 LocalCouiBackdrop 是 internal，页面侧取不到，必须由录制正文的主框架显式传入
         backdrop = backdrop,
         renderer = renderer,
         items = items,
@@ -497,10 +483,10 @@ private fun CouiLibraryNavigationBar(
 }
 
 /**
- * 自绘底栏：条高、图标、字号、横向边距与内边距全部读 token。
+ * 自研底栏：条高、图标、字号、横向边距与内边距全部读 token。
  *
- * 悬浮形态是胶囊加投影，贴底形态是通栏加上圆角、无投影（token 的投影透明度为 0）；
- * 系统导航栏 inset 只让位不遮挡，两种形态都先让出底边安全区。
+ * 悬浮形态是胶囊加投影，贴底形态是通栏加上圆角、无投影；
+ * 采用硬件级圆角裁剪并消除默认 Ripple，彻底杜绝按压黑块阴影。
  */
 @Composable
 private fun CouiPlainNavigationBar(
@@ -512,7 +498,9 @@ private fun CouiPlainNavigationBar(
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
     val shape = bottomBarShape(tokens)
-    Row(
+    val tabShape = RoundedCornerShape(tokens.indicatorHeight / 2)
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
@@ -521,55 +509,87 @@ private fun CouiPlainNavigationBar(
                 end = tokens.horizontalMargin,
                 top = if (tokens.floating) CouiBarVisualGap else 0.dp,
                 bottom = if (tokens.floating) CouiBarVisualGap else 0.dp,
-            )
-            .then(
-                if (tokens.floating) {
-                    Modifier.dropShadow(
-                        shape = shape,
-                        shadow = Shadow(
-                            radius = CouiBarShadowRadius,
-                            color = Color.Black,
-                            alpha = if (CouiTheme.isDark) tokens.shadowAlphaDark else tokens.shadowAlphaLight,
-                        ),
-                    )
-                } else {
-                    Modifier
-                },
-            )
-            .clip(shape)
-            .background(colors.container)
-            .height(tokens.height)
-            .selectableGroup(),
-        verticalAlignment = Alignment.CenterVertically,
+            ),
+        contentAlignment = Alignment.BottomCenter,
     ) {
-        items.forEachIndexed { index, item ->
-            val selected = index == selectedIndex
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(tokens.indicatorHeight)
-                    .clip(CouiCapsuleShape)
-                    .background(if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else Color.Transparent)
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) })
-                    .padding(horizontal = tokens.innerPadding),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = if (selected) item.selectedIcon else item.icon,
-                    // 选中项的文字标签常显，图标不再重复播报；未选中项只有图标，仍需要名称
-                    contentDescription = if (selected) null else item.title,
-                    modifier = Modifier.size(tokens.iconSize),
-                    tint = if (selected) colors.accent else colors.onSurfaceVariant,
+        Row(
+            modifier = (if (tokens.floating) Modifier.widthIn(max = 540.dp) else Modifier)
+                .fillMaxWidth()
+                .then(
+                    if (tokens.floating) {
+                        Modifier.dropShadow(
+                            shape = shape,
+                            shadow = Shadow(
+                                radius = CouiBarShadowRadius,
+                                color = Color.Black,
+                                alpha = if (CouiTheme.isDark) tokens.shadowAlphaDark else tokens.shadowAlphaLight,
+                            ),
+                        )
+                    } else {
+                        Modifier
+                    },
                 )
-                if (selected) {
-                    Spacer(Modifier.width(6.dp))
-                    BasicText(
-                        text = item.title,
-                        style = TextStyle(fontSize = tokens.labelSize, fontWeight = FontWeight.Medium),
-                        color = { colors.accent },
-                        maxLines = 1,
-                    )
+                .clip(shape)
+                .background(colors.container)
+                .height(tokens.height)
+                .selectableGroup(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items.forEachIndexed { index, item ->
+                val selected = index == selectedIndex
+                val press = rememberCouiPressMotion()
+                val interactionSource = remember { MutableInteractionSource() }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(tokens.indicatorHeight)
+                        .padding(horizontal = tokens.innerPadding)
+                        .graphicsLayer {
+                            scaleX = press.scale.value
+                            scaleY = press.scale.value
+                        }
+                        .clip(tabShape)
+                        .background(
+                            if (selected) {
+                                colors.accent.copy(alpha = CouiSelectedContainerAlpha)
+                            } else {
+                                Color.Transparent
+                            },
+                        )
+                        .couiPressMotion(press = press, cancelOnConsumedMove = true)
+                        .selectable(
+                            selected = selected,
+                            interactionSource = interactionSource,
+                            indication = null,
+                            role = Role.Tab,
+                            onClick = { onSelect(index) },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = if (selected) item.selectedIcon else item.icon,
+                            contentDescription = if (selected) null else item.title,
+                            modifier = Modifier.size(tokens.iconSize),
+                            tint = if (selected) colors.accent else colors.onSurfaceVariant,
+                        )
+                        if (selected) {
+                            Spacer(Modifier.width(6.dp))
+                            BasicText(
+                                text = item.title,
+                                style = TextStyle(
+                                    fontSize = tokens.labelSize,
+                                    fontWeight = FontWeight.Medium,
+                                ),
+                                color = { colors.accent },
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -579,8 +599,8 @@ private fun CouiPlainNavigationBar(
 /**
  * 宽屏侧栏：88dp 贴左固定宽度，图标与文字纵向等距排列，选中项取强调色容器。
  *
- * 顶部让出状态栏、底部让出导航栏，正文由 Row 的剩余空间接管，因此这里不写横向 padding；
- * 库的 [CouiNavigationItem] 无角标槽位，侧栏同样不做角标。
+ * 顶部让出状态栏、底部让出导航栏，正文由 Row 的剩余空间接管；
+ * 显式传入 indication = null 与连续曲率裁剪，杜绝按压方块阴影。
  */
 @Composable
 internal fun CouiNavigationRail(
@@ -604,13 +624,27 @@ internal fun CouiNavigationRail(
     ) {
         items.forEachIndexed { index, item ->
             val selected = index == selectedIndex
+            val press = rememberCouiPressMotion()
+            val interactionSource = remember { MutableInteractionSource() }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = CouiRailItemMargin)
+                    .graphicsLayer {
+                        scaleX = press.scale.value
+                        scaleY = press.scale.value
+                    }
                     .clip(CouiCapsuleShape)
                     .background(if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else Color.Transparent)
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) })
+                    .couiPressMotion(press = press, cancelOnConsumedMove = true)
+                    .selectable(
+                        selected = selected,
+                        interactionSource = interactionSource,
+                        indication = null,
+                        role = Role.Tab,
+                        onClick = { onSelect(index) },
+                    )
                     .padding(vertical = CouiRailItemVerticalPadding),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
