@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: ISC
+
 /*
  * CouiIcons —— Compose 线性图标集合（stroke-only，24dp / 24x24 viewport）。
  *

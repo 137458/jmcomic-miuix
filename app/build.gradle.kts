@@ -106,7 +106,6 @@ dependencies {
     implementation(libs.miuix.squircle)
 
     implementation(libs.coui)
-    implementation(libs.coui.icons)
 
     // 无 AWT 的 Android 环境必须提供 ImageProcessor SPI 实现
     implementation(libs.jmcomic.android.support) {

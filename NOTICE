@@ -24,4 +24,14 @@ app/src/main/kotlin/com/jm3/app/miuix/ui/glass/ 下的以下文件源自 Apache 
 上述文件头部均带 "SPDX-License-Identifier: Apache-2.0"。
 Apache License 2.0 全文见 https://www.apache.org/licenses/LICENSE-2.0 。
 
+app/src/main/kotlin/com/jm3/app/miuix/ui/coui/icon/CouiIcons.kt 由 Lucide
+（https://lucide.dev，lucide-static v1.70.0）的 SVG 路径生成，源自 ISC License，
+保留 "SPDX-License-Identifier: ISC" 标注并按其分发。
+
+依赖库说明
+
+COUI-Kit（io.github.itoseo:coui 0.0.1-alpha9）以依赖形式使用，未复制其源码，
+按 Mozilla Public License 2.0（MPL-2.0）分发；许可证全文见
+https://www.mozilla.org/en-US/MPL/2.0/ 。
+
 其余依赖的许可证见设置页「开源许可」清单与应用打包的 META-INF 声明。
