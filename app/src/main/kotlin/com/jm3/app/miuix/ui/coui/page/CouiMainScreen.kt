@@ -25,13 +25,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.itos.coui.backdrop.couiBackdrop
+import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.navigation.CouiNavigationItem
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.BrowseMode
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.coui.component.CouiNavigationBar
 import com.jm3.app.miuix.ui.coui.component.CouiNavigationRail
-import com.jm3.app.miuix.ui.coui.component.LocalCouiBottomBar
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -64,12 +65,11 @@ internal fun couiBottomBarClearance(useRail: Boolean, tokens: GlassBottomBarToke
 /**
  * COUI 主框架：只负责皮肤、页签转场与导航容器装配。
  *
- * 每个页签都是独立的 COUI 页面，各自持有 Scaffold（顶栏、正文、FAB），
- * 底栏由这里装配后经 [LocalCouiBottomBar] 下发，页面在自身 Scaffold 的 bottomBar 槽位取用，
- * 使得浮动材质始终采样当前页正文，而不是跨页共享一层固定的背景。
+ * 每个页签都是独立的 COUI 页面，各自持有 Scaffold（顶栏、正文、FAB）；
+ * 底栏只在这里装配一份，画在页签转场之外，转场期不会随淡入淡出被组合两次或淡成半透明。
+ * 页面按 [LocalFloatingBarContentPadding] 在自身 Scaffold 里留出等高净空，FAB 随 innerPadding 上抬。
  *
- * 宽屏选侧栏时改为左侧 88dp 侧栏 + 右侧正文：正文横向由 Row 的剩余空间接管，
- * 且不下发底栏槽位，页面自然不再渲染底栏。
+ * 宽屏选侧栏时改为左侧 88dp 侧栏 + 右侧正文：正文横向由 Row 的剩余空间接管，且不绘制底栏。
  *
  * 页签状态、滚动位置与搜索态全部留在各自页面内，切页只做淡入淡出，返回时不重建。
  */
@@ -135,23 +135,11 @@ fun CouiMainScreen(
                 )
             }
         }
-        // 底栏 lambda 同理由 token 决定，选中项在 lambda 内读 tab，切页只重组底栏自身
-        val bottomBar: @Composable () -> Unit = remember(navItems, tokens) {
-            {
-                CouiNavigationBar(
-                    items = navItems,
-                    selectedIndex = tab,
-                    onSelect = { tab = it },
-                    tokens = tokens,
-                )
-            }
-        }
-        // 侧栏模式不向页面下发底栏槽位：页面的 Scaffold 取到 null，bottomBar 槽位自然留空
-        val barSlot: (@Composable () -> Unit)? = if (useRail) null else bottomBar
+        // 底栏只画一份：转场期不再随两个页面各组合一次，浮动材质由这一份 backdrop 采样正文
+        val backdrop = rememberCouiBackdrop()
         val pageState = rememberSaveableStateHolder()
 
         CompositionLocalProvider(
-            LocalCouiBottomBar provides barSlot,
             LocalFloatingBarContentPadding provides couiBottomBarClearance(useRail, tokens),
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
@@ -172,7 +160,8 @@ fun CouiMainScreen(
                                 fadeOut(tween(CouiMotion.TabCrossfadeMs))
                         },
                         label = "couiMainTab",
-                        modifier = Modifier.fillMaxSize(),
+                        // 只录制页签正文：底栏在转场之外绘制，采样源里不包含底栏自身
+                        modifier = Modifier.fillMaxSize().couiBackdrop(backdrop),
                     ) { currentTab ->
                         pageState.SaveableStateProvider(currentTab) {
                             when (currentTab) {
@@ -211,6 +200,17 @@ fun CouiMainScreen(
                                 )
                             }
                         }
+                    }
+                    // 底栏画在页签转场之外：只此一份，选中态在内部读 tab，切页只重组底栏自身
+                    if (!useRail) {
+                        CouiNavigationBar(
+                            items = navItems,
+                            selectedIndex = tab,
+                            onSelect = { tab = it },
+                            tokens = tokens,
+                            backdrop = backdrop,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
                     }
                     // 提示条宿主按 LocalFloatingBarContentPadding 自行上抬，这里只定位到底部居中
                     GlassSnackbarHost(

@@ -49,6 +49,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itos.coui.backdrop.CouiBackdrop
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogActionStyle
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.floatingactionbutton.Fab
@@ -66,20 +70,19 @@ import com.itos.coui.theme.CouiTheme
 import com.itos.coui.theme.LocalCouiContentColor
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
+import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.bottomBarShape
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
 import top.yukonga.miuix.kmp.basic.Icon
 
-/** 底栏槽位：页签共用同一组导航项，但每个页面各自持有 Scaffold。 */
-val LocalCouiBottomBar = staticCompositionLocalOf<(@Composable () -> Unit)?> { null }
-
 /**
- * COUI 页面骨架：顶栏、底栏、FAB 都在本页 Scaffold 装配。
+ * COUI 页面骨架：顶栏、底栏净空与 FAB 都在本页 Scaffold 装配。
  *
- * 底栏经 [LocalCouiBottomBar] 从主框架下发，落在本页 bottomBar 槽位，
- * 浮动材质因此采样当前页正文，而不是跨页共享的一层固定背景。
+ * 底栏由主框架单实例绘制在页面之上，转场期不会随两个页面各组合一份；
+ * 这里只按它公布的净空值在 bottomBar 槽位留出等高占位，
+ * 让正文的 innerPadding 与 FAB 位置一起抬到底栏之上。
  */
 @Composable
 fun CouiAppScaffold(
@@ -88,12 +91,22 @@ fun CouiAppScaffold(
     floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    val bottomBar = LocalCouiBottomBar.current
+    // 净空值不含系统导航栏 inset，占位也要让出同一条底部安全区
+    val barClearance = LocalFloatingBarContentPadding.current
     // 库 Scaffold 的 windowInsets 只含系统栏，IME 避让按库要求由宿主缩小视口（Scaffold.kt:45）
     Scaffold(
         modifier = modifier.imePadding(),
         topBar = topBar,
-        bottomBar = { bottomBar?.invoke() },
+        bottomBar = {
+            if (barClearance > 0.dp) {
+                Spacer(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(barClearance)
+                        .navigationBarsPadding(),
+                )
+            }
+        },
         floatingActionButton = floatingActionButton,
         content = content,
     )
@@ -101,6 +114,29 @@ fun CouiAppScaffold(
 
 /** 可点件最小触摸目标：无障碍基线 48dp，低于它的可见按钮靠留白补足触区。 */
 internal val CouiMinTouchTarget = 48.dp
+
+/**
+ * 破坏性确认按钮：红底白字的主操作。
+ *
+ * 库把破坏性文字色只留给 neutral 槽，而 neutral 属于第三个按钮；两按钮弹窗里
+ * confirmAction 是必填项，只能用 Primary 样式并显式注入主题的破坏性配色，
+ * 按钮顺序仍是取消在左、确认在右。
+ */
+@Composable
+fun couiDestructiveConfirmAction(
+    text: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+): CouiDialogAction {
+    val destructive = CouiDialogDefaults.themeColors(CouiTheme.isDark).destructive
+    return CouiDialogAction(
+        text = text,
+        enabled = enabled,
+        style = CouiDialogActionStyle.Primary,
+        colors = CouiDialogDefaults.primaryActionColors(destructive),
+        onClick = onClick,
+    )
+}
 
 /**
  * 按压反馈 + 无涟漪点击：COUI 页面里所有自绘可点区域的统一入口。
@@ -332,6 +368,9 @@ internal fun couiUsesLibraryNavBar(tokens: GlassBottomBarTokens, sdkInt: Int): B
  *
  * 库的 [CouiNavigationItem] 没有角标槽位（NavigationBar.kt:103），底栏因此不做角标；
  * 需要提示未读时由页面正文承担，不在这里追加自绘角标去改库的行内布局。
+ *
+ * 底栏由主框架单实例绘制：backdrop 由主框架录制页面正文后显式传入，
+ * 库分支据此采样当前页内容做浮动材质。
  */
 @Composable
 internal fun CouiNavigationBar(
@@ -339,6 +378,7 @@ internal fun CouiNavigationBar(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     tokens: GlassBottomBarTokens,
+    backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
 ) {
     // 版本判断写在条件最前面：库底栏带 @RequiresApi(34)，这样调用点才能过 lint 的 API 检查
@@ -347,6 +387,7 @@ internal fun CouiNavigationBar(
             items = items,
             selectedIndex = selectedIndex,
             onSelect = onSelect,
+            backdrop = backdrop,
             modifier = modifier,
         )
     } else {
@@ -367,12 +408,15 @@ private fun CouiLibraryNavigationBar(
     items: List<CouiNavigationItem>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
 ) {
     // 底栏是三主体融合节点（条身 + 选中胶囊 + 附件位），库在这里要求 renderer.surfaceCount == 3
     val renderer = remember { CouiFloatingRenderer() }
     NavigationBar(
         modifier = modifier,
+        // 库的 LocalCouiBackdrop 是 internal，页面侧取不到，必须由录制正文的主框架显式传入
+        backdrop = backdrop,
         renderer = renderer,
         items = items,
         selectedIndex = selectedIndex,
@@ -606,7 +650,7 @@ fun CouiSegmentedCapsules(
             .fillMaxWidth()
             .clip(CouiCapsuleShape)
             .background(colors.container)
-            .padding(4.dp)
+            .padding(horizontal = 4.dp)
             .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -615,22 +659,35 @@ fun CouiSegmentedCapsules(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    // 36dp 可见高度 + 容器上下各 4dp 内衬 = 44dp；再抬到 40dp 让整段触区过 48dp
-                    .height(40.dp)
-                    .clip(CouiCapsuleShape)
-                    .background(if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else Color.Transparent)
+                    // 触区按 48dp 起算，胶囊本体 40dp 居中；容器只留横向内衬，段高不再凑数
+                    .height(CouiMinTouchTarget)
                     .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) }),
                 contentAlignment = Alignment.Center,
             ) {
-                BasicText(
-                    text = label,
-                    style = TextStyle(
-                        fontSize = 14.sp,
-                        fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-                    ),
-                    color = { if (selected) colors.accent else colors.onSurfaceVariant },
-                    maxLines = 1,
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .clip(CouiCapsuleShape)
+                        .background(
+                            if (selected) {
+                                colors.accent.copy(alpha = CouiSelectedContainerAlpha)
+                            } else {
+                                Color.Transparent
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BasicText(
+                        text = label,
+                        style = TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                        ),
+                        color = { if (selected) colors.accent else colors.onSurfaceVariant },
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
