@@ -381,6 +381,8 @@ fun CouiHomeScreen(
                 state = header,
                 searchState = searchState,
                 title = "JMComic",
+                // 顶栏自绘底默认透明 + 叠 40% 黑渐变，用皮肤页底色替代，避免滚动时透出正文
+                backgroundColor = CouiTheme.colorScheme.background,
                 searchBar = {
                     SearchBar(
                         state = searchState,
@@ -405,7 +407,11 @@ fun CouiHomeScreen(
             // API34 的原厂 Fab 只在降级分支下发这个 local，Unspecified 会让图标不上色
             val fallback = LocalCouiFallbackContentColor.current
             val iconTint = if (fallback == Color.Unspecified) CouiTheme.colorScheme.onAccent else fallback
-            CouiFab(onClick = { openRandom() }) {
+            CouiFab(
+                onClick = { openRandom() },
+                // 库的 FAB 槽是整屏 Box 且不设默认对齐（Scaffold.kt:99-110），不写 align 会落在左上角
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            ) {
                 Icon(
                     imageVector = CouiIcons.Shuffle,
                     contentDescription = "随机看一部",
@@ -624,21 +630,21 @@ fun CouiHomeScreen(
         }
     }
 
-    if (showSearchHelp) {
-        Dialog(
-            onDismissRequest = { showSearchHelp = false },
-            confirmAction = CouiDialogAction(text = "知道了", onClick = { showSearchHelp = false }),
-            title = "搜索语法",
-            message = "空格、加号与减号决定关键词之间的关系。",
+    Dialog(
+        onDismissRequest = { showSearchHelp = false },
+        // visible 非空时退场窗口由库持有；外层 if 会在关闭瞬间把弹窗抽走，动画来不及播
+        visible = showSearchHelp,
+        confirmAction = CouiDialogAction(text = "知道了", onClick = { showSearchHelp = false }),
+        title = "搜索语法",
+        message = "空格、加号与减号决定关键词之间的关系。",
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                CouiSyntaxRow(expression = "全彩 人妻", meaning = "同时包含这两个关键词（空格分隔）")
-                CouiSyntaxRow(expression = "全彩 +人妻", meaning = "两个关键词都必须包含")
-                CouiSyntaxRow(expression = "全彩 -人妻", meaning = "包含「全彩」，排除「人妻」")
-            }
+            CouiSyntaxRow(expression = "全彩 人妻", meaning = "同时包含这两个关键词（空格分隔）")
+            CouiSyntaxRow(expression = "全彩 +人妻", meaning = "两个关键词都必须包含")
+            CouiSyntaxRow(expression = "全彩 -人妻", meaning = "包含「全彩」，排除「人妻」")
         }
     }
 }

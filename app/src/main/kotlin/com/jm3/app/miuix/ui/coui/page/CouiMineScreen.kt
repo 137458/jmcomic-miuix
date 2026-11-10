@@ -71,6 +71,8 @@ import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -254,8 +256,9 @@ internal fun CouiMineScreen(
         modifier = Modifier.fillMaxSize().nestedScroll(header.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { Text(text = "我的", kind = CouiTextKind.PageTitle) },
+                title = { CouiTopBarTitle(text = "我的") },
                 scrollBehavior = topBarBehavior,
+                colors = couiTopAppBarColors(),
             )
         },
     ) { innerPadding ->
@@ -390,24 +393,24 @@ internal fun CouiMineScreen(
     }
 
     // 登出属于会话级操作：与清空本地数据一致，采用二次确认
-    if (confirmLogout) {
-        Dialog(
-            onDismissRequest = { confirmLogout = false },
-            title = "退出登录",
-            message = "确定要登出账号吗？",
-            confirmAction = couiDestructiveConfirmAction(text = "确认退出") {
-                confirmLogout = false
-                scope.launch {
-                    if (runCatchingSuspending { deps.account.logout() }.isSuccess) {
-                        snackbarHostState.showSnackbar("已退出登录")
-                    } else {
-                        snackbarHostState.showSnackbar("退出登录失败，请稍后重试")
-                    }
+    Dialog(
+        onDismissRequest = { confirmLogout = false },
+        // 退场动画由库按 visible 驱动，外层 if 会让弹窗在关闭瞬间直接消失
+        visible = confirmLogout,
+        title = "退出登录",
+        message = "确定要登出账号吗？",
+        confirmAction = couiDestructiveConfirmAction(text = "确认退出") {
+            confirmLogout = false
+            scope.launch {
+                if (runCatchingSuspending { deps.account.logout() }.isSuccess) {
+                    snackbarHostState.showSnackbar("已退出登录")
+                } else {
+                    snackbarHostState.showSnackbar("退出登录失败，请稍后重试")
                 }
-            },
-            dismissAction = CouiDialogAction(text = "取消", onClick = { confirmLogout = false }),
-        )
-    }
+            }
+        },
+        dismissAction = CouiDialogAction(text = "取消", onClick = { confirmLogout = false }),
+    )
 }
 
 /** 顶部个人卡：头像、昵称、等级与未读提示；未登录时右侧换成登录胶囊。 */

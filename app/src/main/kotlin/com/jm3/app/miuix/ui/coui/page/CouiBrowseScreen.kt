@@ -68,6 +68,8 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.orDegrade
@@ -426,21 +428,14 @@ internal fun CouiBrowseScreen(
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = {
-                    Text(
-                        text = if (keyword == null) mode.title else "标签：$keyword",
-                        kind = CouiTextKind.PageTitle,
-                        modifier = Modifier,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
+                title = { CouiTopBarTitle(text = if (keyword == null) mode.title else "标签：$keyword") },
                 navigationIcon = {
                     if (keyword != null) {
                         CouiTopBarBackButton(onClick = { tagKeyword = null })
                     }
                 },
                 scrollBehavior = scrollBehavior,
+                colors = couiTopAppBarColors(),
             )
         },
         floatingActionButton = {
@@ -451,6 +446,7 @@ internal fun CouiBrowseScreen(
                     // 标签视图里的刷新重发标签检索，不把用户弹回分类浏览
                     if (keyword == null) refresh() else loadTag(keyword)
                 },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
             )
         },
     ) { innerPadding ->

@@ -20,6 +20,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -47,6 +48,7 @@ import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
+import com.itos.coui.radiobutton.RadioButton
 import com.itos.coui.layout.Item
 import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiShape
@@ -64,6 +66,8 @@ import com.jm3.app.miuix.ui.ReaderSettingsState
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -381,15 +385,10 @@ fun CouiSettingsScreen(
                     // 顶栏必须写在 Scaffold 的 topBar 槽位：库在那里提供 backdrop，
                     // 自己提到外面会拿不到采样源，直接抛 checkNotNull。
                     LargeTopAppBar(
-                        title = {
-                            Text(
-                                text = "设置",
-                                kind = CouiTextKind.PageTitle,
-                                textAlign = TextAlign.Start,
-                            )
-                        },
+                        title = { CouiTopBarTitle(text = "设置", textAlign = TextAlign.Start) },
                         navigationIcon = { SettingsBackButton(onClick = onBack) },
                         scrollBehavior = scrollBehavior,
+                        colors = couiTopAppBarColors(),
                     )
                 },
             ) { innerPadding ->
@@ -668,9 +667,15 @@ fun CouiSettingsScreen(
         }
 
         // 界面风格：沿用原数据流与存储键，只在选中不同项时回调一次。
-        val openPicker = picker
+        // 退场窗口：picker 置空后组合仍需留一份可渲染内容，弹窗才能播完窗口动画；
+        // 故内容取「当前或上一个」面板，可见性只跟随当前值。
+        var lastPicker by remember { mutableStateOf<SettingsPicker?>(null) }
+        SideEffect { if (picker != null) lastPicker = picker }
+        val openPicker = picker ?: lastPicker
+        val pickerVisible = picker != null
         when (openPicker) {
             SettingsPicker.UI_SKIN -> SettingsChoiceDialog(
+                visible = pickerVisible,
                 title = "界面风格",
                 options = UiSkin.entries.map { it.label },
                 summaries = UiSkin.entries.map { it.couiSummary() },
@@ -684,6 +689,7 @@ fun CouiSettingsScreen(
             )
 
             SettingsPicker.PAGINATION_MODE -> SettingsChoiceDialog(
+                visible = pickerVisible,
                 title = "分页模式",
                 options = PaginationMode.entries.map { it.displayName },
                 selectedIndex = PaginationMode.entries.indexOf(paginationMode),
@@ -696,6 +702,7 @@ fun CouiSettingsScreen(
             )
 
             SettingsPicker.BOTTOM_BAR_SIZE -> SettingsChoiceDialog(
+                visible = pickerVisible,
                 title = "底栏尺寸",
                 options = BottomBarSize.entries.map { if (it == BottomBarSize.STANDARD) "普通（自适应）" else it.label },
                 selectedIndex = BottomBarSize.entries.indexOf(bottomBarSizeOption),
@@ -704,6 +711,7 @@ fun CouiSettingsScreen(
             )
 
             SettingsPicker.BOTTOM_BAR_FORM -> SettingsChoiceDialog(
+                visible = pickerVisible,
                 title = "底栏形态",
                 options = BottomBarForm.entries.map { it.label },
                 selectedIndex = BottomBarForm.entries.indexOf(bottomBarForm),
@@ -712,6 +720,7 @@ fun CouiSettingsScreen(
             )
 
             SettingsPicker.WIDE_SCREEN_NAVIGATION -> SettingsChoiceDialog(
+                visible = pickerVisible,
                 title = "宽屏导航",
                 options = WideScreenNavigation.entries.map { it.label },
                 selectedIndex = WideScreenNavigation.entries.indexOf(wideScreenNavigation),
@@ -725,52 +734,56 @@ fun CouiSettingsScreen(
         }
 
         // 隐藏诊断：版本号连点 5 次打开，只读汇总运行环境与线路状态
-        if (diagnostics) {
-            Dialog(
-                onDismissRequest = { diagnostics = false },
-                title = "诊断信息",
-                confirmAction = CouiDialogAction(text = "知道了", onClick = { diagnostics = false }),
-            ) {
-                Group {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                    ) {
-                        SettingsDiagnosticLine(label = "包名", value = context.packageName)
-                        SettingsDiagnosticLine(label = "版本", value = versionName + " (" + versionCode + ")")
-                        SettingsDiagnosticLine(
-                            label = "设备",
-                            value = Build.MANUFACTURER + " " + Build.MODEL,
-                        )
-                        SettingsDiagnosticLine(
-                            label = "系统",
-                            value = "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")",
-                        )
-                        SettingsDiagnosticLine(label = "当前线路", value = usedDomain ?: "未解析")
-                        SettingsDiagnosticLine(
-                            label = "自定义线路",
-                            value = activeDomains.value.ifBlank { "默认（自动解析）" },
-                        )
-                        SettingsDiagnosticLine(
-                            label = "线路延迟",
-                            value = domainLatency.joinToString("\n") { (domain, ms) -> domain + " · " + ms + "ms" }
-                                .ifBlank { "尚未完成线路探活" },
-                        )
-                        SettingsDiagnosticLine(label = "分页模式", value = paginationMode.displayName)
-                        SettingsDiagnosticLine(
-                            label = "主题",
-                            value = themeMode.displayName + if (dynamicColor) " · 动态取色" else "",
-                        )
-                    }
+        // 退场窗口由库持有：外层 if 会在关闭瞬间把弹窗抽走，动画来不及播
+        Dialog(
+            onDismissRequest = { diagnostics = false },
+            visible = diagnostics,
+            title = "诊断信息",
+            confirmAction = CouiDialogAction(text = "知道了", onClick = { diagnostics = false }),
+        ) {
+            Group {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                ) {
+                    SettingsDiagnosticLine(label = "包名", value = context.packageName)
+                    SettingsDiagnosticLine(label = "版本", value = versionName + " (" + versionCode + ")")
+                    SettingsDiagnosticLine(
+                        label = "设备",
+                        value = Build.MANUFACTURER + " " + Build.MODEL,
+                    )
+                    SettingsDiagnosticLine(
+                        label = "系统",
+                        value = "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")",
+                    )
+                    SettingsDiagnosticLine(label = "当前线路", value = usedDomain ?: "未解析")
+                    SettingsDiagnosticLine(
+                        label = "自定义线路",
+                        value = activeDomains.value.ifBlank { "默认（自动解析）" },
+                    )
+                    SettingsDiagnosticLine(
+                        label = "线路延迟",
+                        value = domainLatency.joinToString("\n") { (domain, ms) -> domain + " · " + ms + "ms" }
+                            .ifBlank { "尚未完成线路探活" },
+                    )
+                    SettingsDiagnosticLine(label = "分页模式", value = paginationMode.displayName)
+                    SettingsDiagnosticLine(
+                        label = "主题",
+                        value = themeMode.displayName + if (dynamicColor) " · 动态取色" else "",
+                    )
                 }
             }
         }
 
-        val pendingClear = clearTarget
+        // 退场窗口：clearTarget 置空后组合仍需留一份可渲染内容，弹窗才能播完窗口动画
+        var lastClearTarget by remember { mutableStateOf<ClearTarget?>(null) }
+        SideEffect { if (clearTarget != null) lastClearTarget = clearTarget }
+        val pendingClear = clearTarget ?: lastClearTarget
         if (pendingClear != null) {
             Dialog(
                 onDismissRequest = { if (!clearing) clearTarget = null },
+                visible = clearTarget != null,
                 title = pendingClear.title,
                 message = pendingClear.description,
                 confirmAction = couiDestructiveConfirmAction(
@@ -805,16 +818,15 @@ fun CouiSettingsScreen(
             )
         }
 
-        if (showDisclaimer) {
-            Dialog(
-                onDismissRequest = { showDisclaimer = false },
-                title = "免责声明",
-                message = "本应用为第三方客户端，与禁漫官方无关，仅供学习交流；" +
-                    "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +
-                    "未满 18 周岁（或当地法定年龄）请勿使用；因使用本应用产生的一切后果由使用者自行承担。",
-                confirmAction = CouiDialogAction(text = "知道了", onClick = { showDisclaimer = false }),
-            )
-        }
+        Dialog(
+            onDismissRequest = { showDisclaimer = false },
+            visible = showDisclaimer,
+            title = "免责声明",
+            message = "本应用为第三方客户端，与禁漫官方无关，仅供学习交流；" +
+                "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +
+                "未满 18 周岁（或当地法定年龄）请勿使用；因使用本应用产生的一切后果由使用者自行承担。",
+            confirmAction = CouiDialogAction(text = "知道了", onClick = { showDisclaimer = false }),
+        )
     }
 }
 
@@ -1088,11 +1100,12 @@ private fun SettingsChoiceDialog(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
+    visible: Boolean = true,
     summaries: List<String> = emptyList(),
 ) {
-    val scheme = CouiKitTheme.colorScheme
     Dialog(
         onDismissRequest = onDismiss,
+        visible = visible,
         title = title,
         confirmAction = CouiDialogAction(text = "完成", onClick = onDismiss),
     ) {
@@ -1110,15 +1123,9 @@ private fun SettingsChoiceDialog(
                         { SettingsRowSummary(summary) }
                     },
                     trailing = {
-                        if (index == selectedIndex) {
-                            // 选中态已由 semantics.selected 播报，勾只做视觉标记
-                            Icon(
-                                imageVector = CouiIcons.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = scheme.accent,
-                            )
-                        }
+                        // 原厂单选列每行都有圈：库的 RadioButton 只负责画（300ms 双段曲线 + 选中脉冲），
+                        // 点击与语义仍由外层 selectable 提供，选中态已由 semantics.selected 播报
+                        RadioButton(selected = index == selectedIndex)
                     },
                     onClick = {
                         onSelect(index)

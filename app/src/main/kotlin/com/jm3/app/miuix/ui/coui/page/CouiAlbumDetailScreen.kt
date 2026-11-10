@@ -111,6 +111,8 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -359,14 +361,8 @@ private fun CouiAlbumDetailScreenBody(
                     .nestedScroll(appBarBehavior.nestedScrollConnection),
                 topBar = {
                     LargeTopAppBar(
-                        title = {
-                            // 顶栏槽位已下发 HomeTitle/Toolbar 字阶，这里必须用会继承 LocalTextStyle 的 BasicText
-                            BasicText(
-                                text = currentTitle,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
+                        // 槽内必须接顶栏下发的字阶（LocalCouiTextStyle），否则折叠后按 16sp 比例缩成 7sp
+                        title = { CouiTopBarTitle(text = currentTitle) },
                         navigationIcon = {
                             CouiTopBarIconButton(
                                 icon = CouiIcons.Back,
@@ -391,6 +387,7 @@ private fun CouiAlbumDetailScreenBody(
                             }
                         },
                         scrollBehavior = appBarBehavior,
+                        colors = couiTopAppBarColors(),
                     )
                 },
             ) { innerPadding ->
@@ -1547,10 +1544,11 @@ private fun CouiFolderDialog(
     onPick: (folderId: String) -> Unit,
     onCancelFavorite: () -> Unit,
 ) {
-    if (!visible) return
     val scheme = CouiKitTheme.colorScheme
     Dialog(
         onDismissRequest = onDismiss,
+        // 提前 return 会连同退场窗口一起撤掉：visible 交给库，弹窗在组合中留到动画播完
+        visible = visible,
         confirmAction = CouiDialogAction(
             text = "关闭",
             onClick = onDismiss,
@@ -1633,11 +1631,12 @@ private fun CouiReplyDialog(
     onDismiss: () -> Unit,
     onSend: (String) -> Unit,
 ) {
-    if (!visible) return
     val scheme = CouiKitTheme.colorScheme
-    var replyText by remember { mutableStateOf("") }
+    // 输入草稿按开关次数重置：visible 非空后组合不会再被卸载，remember 需跟着 visible 换代
+    var replyText by remember(visible) { mutableStateOf("") }
     Dialog(
         onDismissRequest = onDismiss,
+        visible = visible,
         confirmAction = CouiDialogAction(
             text = if (busy) "发送中…" else "发送",
             onClick = { onSend(replyText) },

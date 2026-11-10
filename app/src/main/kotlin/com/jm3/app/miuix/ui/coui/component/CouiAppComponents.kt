@@ -34,6 +34,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -46,28 +47,36 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.effect.CouiFloatingRenderer
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.floatingactionbutton.Fab
 import com.itos.coui.layout.Footer
 import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
 import com.itos.coui.layout.Scaffold
+import com.itos.coui.motion.couiPressMotion
+import com.itos.coui.motion.rememberCouiPressMotion
 import com.itos.coui.navigation.CouiNavigationItem
 import com.itos.coui.navigation.NavigationBar
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
+import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiColorScheme
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.theme.LocalCouiContentColor
+import com.itos.coui.theme.LocalCouiTextStyle
+import com.itos.coui.topappbar.CouiTopAppBarColors
+import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
@@ -141,21 +150,26 @@ fun couiDestructiveConfirmAction(
 /**
  * 按压反馈 + 无涟漪点击：COUI 页面里所有自绘可点区域的统一入口。
  *
- * 反馈由库的 [couiButtonFeedback] 给出（按压缩放与悬停锁），点击指示器置空，
- * 避免在实底卡片上再叠一层涟漪。语义角色由调用方决定，默认按钮。
+ * 反馈分两层：库的 [couiButtonFeedback] 给 hover/focus/press 蒙层，[couiPressMotion] 给原厂
+ * 按压缩放（按面积与宽高比取 0.85–0.97，宽条走糖果曲线）。列表行只叠蒙层，
+ * 整行随按下缩放会压过行内的滑选与长按，所以缩放由 [scaleOnPress] 显式打开。
+ * 点击指示器置空，避免在实底卡片上再叠一层涟漪。语义角色由调用方决定，默认按钮。
  *
  * @param minTouchTarget 补足触区的最小边长；调用方把本修饰符写在固定尺寸之前，
  * 视觉内容仍按原尺寸居中，只有可点范围变大。
+ * @param scaleOnPress 小型控件（标签、图标键、胶囊）打开原厂缩放；整行列表项保持关闭。
  */
 @Composable
 fun Modifier.couiPressable(
     enabled: Boolean = true,
     role: Role = Role.Button,
     minTouchTarget: Dp = 0.dp,
+    scaleOnPress: Boolean = false,
     onClick: () -> Unit,
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
-    return this
+    val press = if (scaleOnPress) rememberCouiPressMotion() else null
+    val base = this
         .couiMinimumTouchTarget(minTouchTarget)
         .couiButtonFeedback(
             dark = CouiTheme.isDark,
@@ -170,6 +184,13 @@ fun Modifier.couiPressable(
             role = role,
             onClick = onClick,
         )
+    if (press == null) return base
+    return base
+        .couiPressMotion(press = press, enabled = enabled, cancelOnConsumedMove = true)
+        .graphicsLayer {
+            scaleX = press.scale.value
+            scaleY = press.scale.value
+        }
 }
 
 /**
@@ -177,6 +198,37 @@ fun Modifier.couiPressable(
  *
  * 触摸命中按布局节点的最终尺寸判定，因此触区随外层一起变大，可见内容不缩放。
  */
+/**
+ * 顶栏标题槽的标准写法。
+ *
+ * COUI 顶栏会把标题字号、字重与颜色下发到 [LocalCouiTextStyle]，折叠时再按
+ * collapsedTitleSize/expandedTitleSize 的比值整体缩放这个样式。槽内若用 Compose 默认字号的
+ * BasicText，作者拿不到这套字阶（详情页曾因此落回 16sp），所以统一走本函数。
+ */
+@Composable
+fun CouiTopBarTitle(text: String, modifier: Modifier = Modifier, textAlign: TextAlign? = null) {
+    val style = LocalCouiTextStyle.current
+    BasicText(
+        text = text,
+        modifier = modifier,
+        style = if (textAlign == null) style else style.copy(textAlign = textAlign),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/**
+ * 顶栏底色取皮肤页面底色。
+ *
+ * 库默认背景是纯黑/纯白，深色下还会叠一层 40% 黑渐变（TopAppBarSurface），在自带绿调的
+ * 页底上就是一条黑带；这里改用皮肤 background，让顶栏与正文同底。
+ */
+@Composable
+fun couiTopAppBarColors(): CouiTopAppBarColors = CouiTopAppBarDefaults.colors(
+    backgroundColor = CouiTheme.colorSchemeFor(CouiTheme.isDark).background,
+    dark = CouiTheme.isDark,
+)
+
 private fun Modifier.couiMinimumTouchTarget(target: Dp): Modifier {
     if (target <= 0.dp) return this
     return layout { measurable, constraints ->
@@ -636,6 +688,8 @@ val LocalCouiFallbackContentColor = staticCompositionLocalOf<Color> { Color.Unsp
  * 胶囊分段选择：页面内切换用，替代需要独立背景源的 ChipTabRow。
  *
  * 选中态取强调色容器，未选中态取分组容器色，高度与 COUI 行高对齐。
+ * 反馈按库的 ChipTab 预设拼：每段一个有界触区 + 原厂按压缩放 + 触点点亮
+ * （[SpotlightPreset.ChipTab]），文本走 [CouiTextKind.PreferenceValue] 档，不再写字面量字号。
  */
 @Composable
 fun CouiSegmentedCapsules(
@@ -645,6 +699,7 @@ fun CouiSegmentedCapsules(
     modifier: Modifier = Modifier,
 ) {
     val colors: CouiColorScheme = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val labelStyle = rememberCouiTextStyle(CouiTextKind.PreferenceValue)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -656,11 +711,20 @@ fun CouiSegmentedCapsules(
     ) {
         items.forEachIndexed { index, label ->
             val selected = index == selectedIndex
+            val press = rememberCouiPressMotion()
+            val (lightInput, drawLight) = rememberCouiSpotlight(
+                interactive = true,
+                preset = SpotlightPreset.ChipTab,
+                dark = CouiTheme.isDark,
+                cancelOnConsumedMove = true,
+            )
             Box(
                 modifier = Modifier
                     .weight(1f)
                     // 触区按 48dp 起算，胶囊本体 40dp 居中；容器只留横向内衬，段高不再凑数
                     .height(CouiMinTouchTarget)
+                    .couiPressMotion(press = press, cancelOnConsumedMove = true)
+                    .then(lightInput)
                     .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) }),
                 contentAlignment = Alignment.Center,
             ) {
@@ -668,6 +732,10 @@ fun CouiSegmentedCapsules(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(40.dp)
+                        .graphicsLayer {
+                            scaleX = press.scale.value
+                            scaleY = press.scale.value
+                        }
                         .clip(CouiCapsuleShape)
                         .background(
                             if (selected) {
@@ -675,15 +743,16 @@ fun CouiSegmentedCapsules(
                             } else {
                                 Color.Transparent
                             },
-                        ),
+                        )
+                        .drawWithContent {
+                            drawContent()
+                            drawLight?.invoke(this)
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     BasicText(
                         text = label,
-                        style = TextStyle(
-                            fontSize = 14.sp,
-                            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-                        ),
+                        style = labelStyle,
                         color = { if (selected) colors.accent else colors.onSurfaceVariant },
                         maxLines = 1,
                     )
