@@ -508,7 +508,8 @@ fun SettingsScreen(
                 )
                 BasicComponent(
                     title = "开源组件",
-                    summary = "jmcomic-api (MIT) · Miuix (Apache-2.0) · Coil (Apache-2.0) · Jetpack Compose (Apache-2.0)",
+                    summary = "jmcomic-api (MIT) · Miuix (Apache-2.0) · Coil (Apache-2.0) · Jetpack Compose (Apache-2.0) · " +
+                        "COUI-Kit (MPL-2.0) · Lucide (ISC)",
                 )
                 ArrowPreference(
                     title = "免责声明",

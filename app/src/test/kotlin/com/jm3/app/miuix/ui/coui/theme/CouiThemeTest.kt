@@ -1,59 +1,54 @@
 package com.jm3.app.miuix.ui.coui.theme
 
-import com.jm3.app.miuix.ui.skin.SkinShapes
 import com.jm3.app.miuix.ui.skin.skinTokensFor
 import com.jm3.core.settings.UiSkin
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class CouiThemeTest {
 
     @Test
-    fun `COUI 形状逐项取自皮肤契约`() {
-        val skin = skinTokensFor(UiSkin.COLOROS)
-        val shapes = couiShapesOf(skin.shapes)
+    fun `COUI 浅色色板逐项取自皮肤`() {
+        val colors = skinTokensFor(UiSkin.COLOROS).lightColors
+        val scheme = couiColorSchemeOf(colors, isDark = false)
 
-        assertEquals(skin.shapes.cardCorner.value, shapes.card.value)
-        assertEquals(skin.shapes.controlCorner.value, shapes.control.value)
-        assertEquals(skin.shapes.controlCorner.value, shapes.nested.value)
-        assertEquals(skin.shapes.capsuleCorner.value, shapes.pill.value)
-        assertEquals(skin.shapes.cardCorner.value, shapes.search.value)
-        assertEquals(skin.shapes.sheetCorner.value, shapes.sheet.value)
-        // ColorOS 提供独立对话曲面，直接沿用而非另立数值
-        assertEquals(26f, shapes.dialog.value)
+        assertEquals(colors.primary, scheme.accent)
+        assertEquals(colors.onPrimary, scheme.onAccent)
+        assertEquals(colors.surface, scheme.surface)
+        assertEquals(colors.surfaceContainer, scheme.container)
+        assertEquals(colors.onSurface, scheme.onSurface)
+        assertEquals(colors.onBackgroundVariant, scheme.onSurfaceVariant)
+        assertEquals(colors.dividerLine, scheme.outlineVariant)
+        assertEquals(colors.primary, scheme.accentOnSurface)
+        assertEquals(colors.surfaceContainer, scheme.menuSurface)
+        assertEquals(colors.primary, scheme.checkboxAccent)
+        assertEquals(colors.primary, scheme.menuCheckboxAccent)
+        assertEquals(colors.background, scheme.background)
+        // 浅色下卡片与页面面板同色，靠分组间距区分层级
+        assertEquals(colors.surface, scheme.card)
     }
 
     @Test
-    fun `未提供对话曲面时回落到面板曲率`() {
-        val shapes = couiShapesOf(SkinShapes())
+    fun `COUI 深色卡片落到容器层`() {
+        val colors = skinTokensFor(UiSkin.HYPEROS).darkColors
+        val scheme = couiColorSchemeOf(colors, isDark = true)
 
-        assertEquals(16f, shapes.card.value)
-        assertEquals(12f, shapes.control.value)
-        assertEquals(999f, shapes.pill.value)
-        assertEquals(28f, shapes.sheet.value)
-        assertEquals(shapes.sheet.value, shapes.dialog.value)
+        assertEquals(colors.surfaceContainer, scheme.card)
+        assertEquals(colors.surfaceContainer, scheme.container)
+        assertEquals(colors.background, scheme.background)
+        assertEquals(colors.primary, scheme.accent)
+        assertEquals(colors.onSurface, scheme.onSurface)
     }
 
     @Test
-    fun `COUI 色板由皮肤色板派生`() {
+    fun `深浅切换只改卡片来源，其余映射保持一致`() {
         val skin = skinTokensFor(UiSkin.COLOROS)
-        val light = couiColorsOf(skin.lightColors, isDark = false)
+        val light = couiColorSchemeOf(skin.lightColors, isDark = false)
+        val dark = couiColorSchemeOf(skin.darkColors, isDark = true)
 
-        assertEquals(skin.lightColors.surfaceContainer, light.card)
-        assertEquals(skin.lightColors.surfaceVariant, light.nestedCard)
-        assertEquals(skin.lightColors.outline, light.cardBorder)
-        assertEquals(skin.lightColors.primary, light.accent)
-        assertEquals(skin.lightColors.tertiaryContainer, light.accentContainer)
-        assertEquals(skin.lightColors.onSurface, light.textPrimary)
-        assertEquals(skin.lightColors.dividerLine, light.divider)
-        assertEquals(skin.lightColors.error, light.error)
-        assertFalse(light.isDark)
-
-        val dark = couiColorsOf(skin.darkColors, isDark = true)
         assertEquals(skin.darkColors.surfaceContainer, dark.card)
-        assertEquals(skin.darkColors.background, dark.backgroundTop)
-        assertTrue(dark.isDark)
+        assertEquals(skin.lightColors.surface, light.card)
+        assertEquals(skin.darkColors.primary, dark.accent)
+        assertEquals(skin.lightColors.primary, light.accent)
     }
 }

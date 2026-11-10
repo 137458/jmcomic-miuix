@@ -6,18 +6,19 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,9 +26,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -50,6 +54,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -58,10 +64,12 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
@@ -70,12 +78,11 @@ import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog
-import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
-import com.itos.coui.scroll.couiVerticalScroll
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
@@ -84,6 +91,7 @@ import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
+import com.itos.coui.topappbar.TopAppBarButton
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.AlbumDetailStateHolder
@@ -93,13 +101,20 @@ import com.jm3.app.miuix.ui.CommentsUiState
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalAlbumDetailRootCoordinates
 import com.jm3.app.miuix.ui.LocalAlbumHeroHost
+import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.ui.albumHeroHeader
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
+import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
+import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberReaderImageLoader
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.AlbumPreviewPlan
 import com.jm3.core.ChapterLabels
 import com.jm3.core.Jm3Gateway
@@ -114,7 +129,6 @@ import com.jm3.core.model.CommentSegment
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
-import com.jm3.core.paging.PagedFeed
 import com.jm3.core.reader.ChapterGroups
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
@@ -130,10 +144,6 @@ import top.yukonga.miuix.kmp.nav.transition.NavRole
 private val COUI_HERO_COVER_WIDTH = 108.dp
 /** 封面高：与宽度组成 3:4，和列表页封面比例保持一致。 */
 private val COUI_HERO_COVER_HEIGHT = 144.dp
-/** 封面圆角：头部卡片内部再收一层圆角，避免封面与卡边贴合显得生硬。 */
-private val COUI_HERO_COVER_RADIUS = 16.dp
-/** 头部卡片是自绘容器，圆角跟随 COUI 页面形状，保证与 Group 卡片同一视觉家族。 */
-private val COUI_HERO_CORNER_DP = 16f
 /** 简介折叠阈值：短简介没有折叠的必要，只有超过这个长度才给出展开入口。 */
 private const val COUI_DESCRIPTION_COLLAPSE_THRESHOLD = 80
 /** 折叠态默认展示的回复条数；超出部分由「展开 N 条回复」控制。 */
@@ -146,11 +156,17 @@ private const val COUI_COMMENT_BODY_MAX_LINES = 12
 private const val COUI_COMMENT_BADGE_DESCRIPTION = "徽章"
 
 /**
- * COUI 作品详情页：头部信息卡、阅读操作、简介、作品信息、预览、章节、相关作品与评论区。
+ * COUI 作品详情页：头部信息卡、阅读操作、简介、预览、章节、作品信息、相关作品与评论区。
  *
  * 业务编排全部复用 [AlbumDetailStateHolder]（加载、收藏/取消收藏、喜欢、追踪、评论分页与发送、
  * 章节分组展开态、续读记录），本文件只负责 COUI 原厂视觉：折叠大标题顶栏、Group/Item 分组行、
- * 胶囊动作、CouiTextKind 字阶与 COUI 回弹滚动。
+ * 胶囊动作、CouiTextKind 字阶与 COUI 回弹。
+ *
+ * 整页是一张 LazyColumn：头部、操作、简介、预览条、章节、信息、相关各成 item，评论按行摊平后
+ * 逐条成 item（[flattenComments]），长评论区因此只组合可见行。宽屏（[LocalWideLayout] 的
+ * twoPaneDetail）拆成左「作品」右「评论」两栏，各持一份 LazyListState。
+ * 唯一做不到的是 COUI 的短页强回弹：库里靠覆写 canScrollForward 伪造可滚动性，LazyListState
+ * 没有这个口子，短页只保留原生回弹。
  */
 @Composable
 internal fun CouiAlbumDetailScreen(
@@ -353,13 +369,53 @@ private fun CouiAlbumDetailScreenBody(
         ?: effectiveTitle?.takeIf { it.isNotBlank() }
         ?: "详情"
     val resumeId = uiState.latestPhotoId?.takeIf { id -> loadedDetail?.chapters?.any { it.id == id } == true }
+    // 评论折叠态由页面持有：摊平只认集合里的 id，展开/收起只重算行表
+    var expandedReplyIds by remember(albumId) { mutableStateOf(emptySet<String>()) }
+    val commentFeed = (uiState.commentsState as? CommentsUiState.Loaded)?.feed
+    val commentRows = remember(commentFeed?.items, expandedReplyIds) {
+        flattenComments(commentFeed?.items.orEmpty(), expandedReplyIds)
+    }
 
-    val scrollState = rememberScrollState()
-    // 正文可滚动范围决定了顶栏能否折叠：短页保持展开，避免标题被无意义的位移压扁
+    // 宽屏两栏：左栏作品信息与章节，右栏评论；两栏各自持有滚动状态，互不牵连
+    val wideDetail = LocalWideLayout.current.twoPaneDetail
+    val singleListState = rememberLazyListState()
+    val mainListState = rememberLazyListState()
+    val commentListState = rememberLazyListState()
+    // 正文可滚动范围决定顶栏能否折叠：短页保持展开，避免标题被无意义的位移压扁。
+    // 懒列表没有 canScrollForward 覆写口，COUI 的短页强回弹在这里无法复现，只保留原生回弹
     val appBarBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
-        canScroll = { scrollState.maxValue > 0 },
+        canScroll = {
+            if (wideDetail) {
+                mainListState.canScrollForward || mainListState.canScrollBackward ||
+                    commentListState.canScrollForward || commentListState.canScrollBackward
+            } else {
+                singleListState.canScrollForward || singleListState.canScrollBackward
+            }
+        },
     )
     val density = LocalDensity.current
+    // 评论分页：公共分页脚只报进度与重试，没有「点一下再拉一页」的脚位，
+    // 这里沿用首页/浏览页的触底预取：最后一个可见项进入末尾提前量区间就取下一页
+    val activeCommentListState = if (wideDetail) commentListState else singleListState
+    val loadMoreFeed by rememberUpdatedState(commentFeed)
+    LaunchedEffect(activeCommentListState) {
+        snapshotFlow {
+            val visible = activeCommentListState.layoutInfo.visibleItemsInfo
+            val rowHeightDp = if (visible.isEmpty()) {
+                0f
+            } else {
+                visible.sumOf { it.size }.toFloat() / visible.size / density.density
+            }
+            Triple(visible.lastOrNull()?.index ?: -1, activeCommentListState.layoutInfo.totalItemsCount, rowHeightDp)
+        }.collect { (lastIndex, totalCount, rowHeightDp) ->
+            if (lastIndex < 0) return@collect
+            val feed = loadMoreFeed ?: return@collect
+            if (!feed.canLoadMore || feed.loadMoreFailed) return@collect
+            val distance = prefetchItemCount(COUI_LOAD_MORE_PREFETCH_DP.toFloat(), rowHeightDp)
+            if (!shouldPrefetch(lastIndex, totalCount, distance)) return@collect
+            stateHolder.loadMoreComments()
+        }
+    }
     // 归一化转场坐标系：NavDisplay 进场矩阵会平移整页，根坐标必须由本页自己上报
     var rootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
@@ -410,34 +466,35 @@ private fun CouiAlbumDetailScreenBody(
                     )
                 },
             ) { innerPadding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .readableWidth()
-                        .couiVerticalScroll(scrollState)
-                        .padding(appBarBehavior.state.contentPadding(innerPadding, density))
-                        .consumeWindowInsets(innerPadding)
-                        .padding(bottom = 24.dp),
-                ) {
-                    CouiAlbumHeroCard(
-                        albumId = albumId,
-                        detail = loadedDetail,
-                        fallbackTitle = effectiveTitle,
-                        fallbackCoverUrl = effectiveCoverUrl,
-                        onOpenSearch = onOpenSearch,
-                    )
-                    when (val albumState = uiState.albumState) {
-                        is AlbumUiState.Loading -> CouiLoadingGroup()
-
-                        is AlbumUiState.Failed -> CouiNoticeGroup(
-                            message = if (albumState.sessionExpired) {
-                                SessionOutcome.Expired.message
-                            } else {
-                                albumState.message
-                            },
-                            actionText = if (albumState.sessionExpired) "去登录" else "重试",
-                            onAction = if (albumState.sessionExpired) onOpenLogin else stateHolder::refresh,
+                // 顶栏补偿留白由折叠状态给出，再补页面底部的呼吸位；懒列表用内容留白而不是 padding，
+                // 这样滚到顶时内容贴着顶栏滑走，而不是在列表外留一条死白
+                val contentPadding = appBarBehavior.state
+                    .contentPadding(innerPadding, density)
+                    .couiWithBottomPadding(24.dp)
+                // 同一份构建器既服务窄屏单栏，也服务宽屏左栏；顺序固定「头部 → 操作 → 简介 → 预览 → 章节 → 信息 → 相关」
+                val mainItems: LazyListScope.() -> Unit = {
+                    item(key = "hero") {
+                        CouiAlbumHeroCard(
+                            albumId = albumId,
+                            detail = loadedDetail,
+                            fallbackTitle = effectiveTitle,
+                            fallbackCoverUrl = effectiveCoverUrl,
+                            onOpenSearch = onOpenSearch,
                         )
+                    }
+                    when (val albumState = uiState.albumState) {
+                        is AlbumUiState.Loading -> item(key = "album-loading") {
+                            CouiLoadingGroup()
+                        }
+
+                        is AlbumUiState.Failed -> item(key = "album-failed") {
+                            val expired = albumState.sessionExpired
+                            CouiErrorGroup(
+                                message = if (expired) SessionOutcome.Expired.message else albumState.message,
+                                // 会话失效时重试只会再吃一次 401，入口直接给登录，与整屏失效同口径
+                                onRetry = if (expired) onOpenLogin else stateHolder::refresh,
+                            )
+                        }
 
                         is AlbumUiState.Loaded -> {
                             val detail = albumState.detail
@@ -447,77 +504,200 @@ private fun CouiAlbumDetailScreenBody(
                             } else {
                                 fun() { downloadAll(detail.id, detail.chapters) }
                             }
-                            CouiReadActionsGroup(
-                                detail = detail,
-                                resumeId = resumeId,
-                                loggedIn = user != null,
-                                favorited = uiState.favorited,
-                                liked = sessionCache.engagement.likedOf(albumId) ?: uiState.liked,
-                                tracking = uiState.tracking,
-                                trackingBusy = uiState.trackingBusy,
-                                onRead = onOpenReader,
-                                onFavorite = {
-                                    if (!uiState.favoriteBusy) stateHolder.onFavoriteClick(user != null, onOpenLogin)
-                                },
-                                onLike = {
-                                    if (!uiState.likeBusy) stateHolder.like(user != null, onOpenLogin)
-                                },
-                                onTrack = {
-                                    if (!uiState.trackingBusy && uiState.tracking != null) {
-                                        stateHolder.toggleTracking(user != null, onOpenLogin)
-                                    }
-                                },
-                                onDownloadAll = downloadAllAction,
-                            )
-                            if (detail.description.isNotBlank()) {
-                                CouiDescriptionGroup(
-                                    text = detail.description,
-                                    expanded = uiState.descriptionExpanded,
-                                    onToggle = { stateHolder.setDescriptionExpanded(!uiState.descriptionExpanded) },
-                                    onCopy = { copyText("简介", detail.description) },
+                            item(key = "read-actions") {
+                                CouiReadActionsGroup(
+                                    detail = detail,
+                                    resumeId = resumeId,
+                                    loggedIn = user != null,
+                                    favorited = uiState.favorited,
+                                    liked = sessionCache.engagement.likedOf(albumId) ?: uiState.liked,
+                                    tracking = uiState.tracking,
+                                    trackingBusy = uiState.trackingBusy,
+                                    onRead = onOpenReader,
+                                    onFavorite = {
+                                        if (!uiState.favoriteBusy) stateHolder.onFavoriteClick(user != null, onOpenLogin)
+                                    },
+                                    onLike = {
+                                        if (!uiState.likeBusy) stateHolder.like(user != null, onOpenLogin)
+                                    },
+                                    onTrack = {
+                                        if (!uiState.trackingBusy) stateHolder.toggleTracking(user != null, onOpenLogin)
+                                    },
+                                    onDownloadAll = downloadAllAction,
                                 )
                             }
-                            CouiChaptersGroup(
-                                detail = detail,
-                                expandedGroups = uiState.expandedGroups,
-                                resumeId = resumeId,
-                                readPhotoIds = uiState.readPhotoIds,
-                                onToggleGroup = stateHolder::toggleGroup,
-                                onRead = { photoId -> onOpenReader(photoId, null) },
-                                onDownload = { chapter, title -> downloadChapter(chapter, detail.id, title) },
-                            )
-                            CouiInfoGroup(
-                                detail = detail,
-                                displayId = detail.id.trim().takeIf { it.isNotBlank() && it != "-1" } ?: albumId,
-                                onOpenSearch = onOpenSearch,
-                                onCopy = { label, value -> copyText(label, value) },
-                            )
+                            if (detail.description.isNotBlank()) {
+                                item(key = "description") {
+                                    CouiDescriptionGroup(
+                                        text = detail.description,
+                                        expanded = uiState.descriptionExpanded,
+                                        onToggle = { stateHolder.setDescriptionExpanded(!uiState.descriptionExpanded) },
+                                        onCopy = { copyText("简介", detail.description) },
+                                    )
+                                }
+                            }
                             previewPlan?.let { plan ->
-                                CouiPreviewGroup(
-                                    plan = plan,
-                                    imageLoader = previewImageLoader,
-                                    onOpenPage = { page -> onOpenReader(plan.chapterId, page) },
+                                item(key = "preview") {
+                                    CouiPreviewGroup(
+                                        plan = plan,
+                                        imageLoader = previewImageLoader,
+                                        onOpenPage = { page -> onOpenReader(plan.chapterId, page) },
+                                    )
+                                }
+                            }
+                            item(key = "chapters") {
+                                CouiChaptersGroup(
+                                    detail = detail,
+                                    expandedGroups = uiState.expandedGroups,
+                                    resumeId = resumeId,
+                                    readPhotoIds = uiState.readPhotoIds,
+                                    onToggleGroup = stateHolder::toggleGroup,
+                                    onRead = { photoId -> onOpenReader(photoId, null) },
+                                    onDownload = { chapter, title -> downloadChapter(chapter, detail.id, title) },
+                                )
+                            }
+                            item(key = "info") {
+                                CouiInfoGroup(
+                                    detail = detail,
+                                    displayId = detail.id.trim().takeIf { it.isNotBlank() && it != "-1" } ?: albumId,
+                                    onOpenSearch = onOpenSearch,
+                                    onCopy = { label, value -> copyText(label, value) },
                                 )
                             }
                             if (detail.related.isNotEmpty()) {
-                                CouiRelatedGroup(related = detail.related, onOpenAlbum = onOpenAlbum)
+                                item(key = "related") {
+                                    CouiRelatedGroup(related = detail.related, onOpenAlbum = onOpenAlbum)
+                                }
                             }
-                            CouiCommentsGroup(
+                        }
+                    }
+                }
+                // 评论区按项拆开：标题行、输入卡、每条评论与分页脚各自成项，长评论区才会真正按需组合
+                val commentItems: LazyListScope.() -> Unit = {
+                    val commentsState = uiState.commentsState
+                    val commentTotal = (commentsState as? CommentsUiState.Loaded)?.feed?.total
+                        ?: loadedDetail?.commentCount?.takeIf { it > 0 }
+                    item(key = "comments-title") {
+                        CouiSectionTitle(
+                            title = if (commentTotal != null && commentTotal > 0) {
+                                "评论（$commentTotal）"
+                            } else {
+                                "评论"
+                            },
+                        )
+                    }
+                    item(key = "comments-composer") {
+                        CouiCommentCardSegment(first = true, last = commentRows.isEmpty()) {
+                            CouiCommentComposer(
                                 loggedIn = user != null,
-                                commentText = uiState.commentText,
-                                commentBusy = uiState.commentBusy,
-                                commentsState = uiState.commentsState,
-                                fallbackCount = detail.commentCount,
+                                text = uiState.commentText,
+                                busy = uiState.commentBusy,
                                 onTextChange = stateHolder::setCommentText,
                                 onLogin = onOpenLogin,
                                 onSend = stateHolder::postComment,
-                                onReply = { comment ->
-                                    if (user == null) onOpenLogin() else stateHolder.setReplyTarget(comment)
-                                },
-                                onReload = stateHolder::reloadComments,
-                                onLoadMore = stateHolder::loadMoreComments,
                             )
                         }
+                    }
+                    when (commentsState) {
+                        is CommentsUiState.Loading -> item(key = "comments-loading") {
+                            CouiLoadingGroup(text = "评论加载中…")
+                        }
+
+                        is CommentsUiState.Failed -> item(key = "comments-failed") {
+                            val expired = commentsState.sessionExpired
+                            CouiErrorGroup(
+                                message = if (expired) SessionOutcome.Expired.message else commentsState.message,
+                                onRetry = if (expired) onOpenLogin else stateHolder::reloadComments,
+                            )
+                        }
+
+                        is CommentsUiState.Loaded -> if (commentsState.feed.items.isEmpty()) {
+                            item(key = "comments-empty") {
+                                CouiEmptyGroup(text = "暂无评论，来抢沙发")
+                            }
+                        }
+                    }
+                    itemsIndexed(commentRows, key = { _, row -> row.key }) { index, row ->
+                        CouiCommentCardSegment(first = false, last = index == commentRows.lastIndex) {
+                            when (row) {
+                                is CommentRow.Comment -> {
+                                    if (row.depth == 0) Divider()
+                                    CouiCommentRow(
+                                        item = row.item,
+                                        depth = row.depth,
+                                        onReply = { comment ->
+                                            if (user == null) onOpenLogin() else stateHolder.setReplyTarget(comment)
+                                        },
+                                    )
+                                }
+
+                                is CommentRow.RepliesToggle -> CouiRepliesToggle(
+                                    row = row,
+                                    onToggle = {
+                                        // 只记录被点开的那一条：不在集合里就退回默认的两条可见回复
+                                        expandedReplyIds = if (row.parentId in expandedReplyIds) {
+                                            expandedReplyIds - row.parentId
+                                        } else {
+                                            expandedReplyIds + row.parentId
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    val feed = (commentsState as? CommentsUiState.Loaded)?.feed
+                    if (feed != null && feed.items.isNotEmpty()) {
+                        item(key = "comments-footer") {
+                            CouiLoadMoreFooter(
+                                loading = feed.loadingMore,
+                                error = if (feed.loadMoreFailed) "加载更多评论失败" else null,
+                                endReached = !feed.hasMore,
+                                onRetry = stateHolder::loadMoreComments,
+                            )
+                        }
+                    }
+                }
+                if (wideDetail) {
+                    // 宽屏两栏：左栏承载作品信息与章节，右栏独占评论；两栏各自滚动、互不牵扯
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .readableWidth()
+                            .consumeWindowInsets(innerPadding),
+                    ) {
+                        LazyColumn(
+                            state = mainListState,
+                            modifier = Modifier
+                                .weight(0.38f)
+                                .fillMaxHeight(),
+                            contentPadding = contentPadding,
+                            overscrollEffect = rememberCouiOverscrollEffect(),
+                        ) {
+                            couiInclude(mainItems)
+                        }
+                        LazyColumn(
+                            state = commentListState,
+                            modifier = Modifier
+                                .weight(0.62f)
+                                .fillMaxHeight(),
+                            contentPadding = contentPadding,
+                            overscrollEffect = rememberCouiOverscrollEffect(),
+                        ) {
+                            couiInclude(commentItems)
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        state = singleListState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .readableWidth()
+                            .consumeWindowInsets(innerPadding),
+                        contentPadding = contentPadding,
+                        overscrollEffect = rememberCouiOverscrollEffect(),
+                    ) {
+                        couiInclude(mainItems)
+                        couiInclude(commentItems)
                     }
                 }
             }
@@ -526,7 +706,6 @@ private fun CouiAlbumDetailScreenBody(
             GlassSnackbarHost(
                 state = snackbarHostState,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                backdrop = null,
             )
 
             // 收藏夹选择面板：未收藏=加入，已收藏=移动，并保留取消收藏
@@ -550,54 +729,39 @@ private fun CouiAlbumDetailScreenBody(
     }
 }
 
-/** 顶栏图标位：COUI 的 TopAppBarButton 需要 API 34 的工具栏背景，这里用最小可点的图标位代替。 */
+/** 顶栏图标位：API 34 起顶栏自带工具栏背景作用域，直接用库的 [TopAppBarButton]；更低版本回落成 44dp 自绘图标位。 */
 @Composable
 private fun CouiTopBarIconButton(
     icon: ImageVector,
     description: String,
     onClick: () -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .couiPressable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = description,
-            modifier = Modifier.size(22.dp),
-            tint = scheme.onSurface,
-        )
+    // 库内 TopAppBarButton 依赖 LocalCouiToolbarBackdrop（顶栏内部提供），低版本没有该作用域
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        TopAppBarButton(onClick = onClick) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    } else {
+        val scheme = CouiKitTheme.colorScheme
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .couiPressable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                modifier = Modifier.size(22.dp),
+                tint = scheme.onSurface,
+            )
+        }
     }
-}
-
-/**
- * 统一按压反馈：COUI 项目用的是原厂按压动效，不能挂 Material 涟漪，
- * 所以所有自绘可点区域都走同一条「按压 + 去涟漪点击」链。
- */
-@Composable
-private fun Modifier.couiPressable(
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-): Modifier {
-    val source = remember { MutableInteractionSource() }
-    return this
-        .couiButtonFeedback(
-            dark = CouiKitTheme.isDark,
-            interactionSource = source,
-            enabled = enabled,
-            list = false,
-        )
-        .clickable(
-            interactionSource = source,
-            indication = null,
-            enabled = enabled,
-            role = Role.Button,
-            onClick = onClick,
-        )
 }
 
 /** 胶囊动作：收藏/喜欢/追更/下载与评论发表共用，选中态用强调色实底。 */
@@ -676,12 +840,14 @@ private fun CouiAlbumHeroCard(
             .background(scheme.card),
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            // 头图圆角跟着皮肤走：飞行两端的圆角必须一致，写死常量会在切皮肤时整体位移
+            val heroCorner = LocalSkin.current.shapes.cardCorner
             Box(
                 modifier = Modifier
                     .size(width = COUI_HERO_COVER_WIDTH, height = COUI_HERO_COVER_HEIGHT)
-                    .clip(RoundedCornerShape(COUI_HERO_COVER_RADIUS))
+                    .clip(RoundedCornerShape(heroCorner))
                     .background(scheme.container)
-                    .albumHeroHeader(albumId, coverUrl, COUI_HERO_CORNER_DP),
+                    .albumHeroHeader(albumId, coverUrl, heroCorner.value),
             ) {
                 AlbumCoverImage(
                     url = coverUrl,
@@ -850,14 +1016,15 @@ private fun CouiReadActionsGroup(
                 accent = liked,
                 onClick = onLike,
             )
-            if (loggedIn && tracking != null) {
+            // 追踪态是单独请求，失败过就一直是 null；入口不能跟着消失，否则用户得重进页面才能追更
+            if (loggedIn) {
                 CouiCapsuleAction(
                     text = when {
                         trackingBusy -> "处理中…"
-                        tracking -> "追更中"
+                        tracking == true -> "追更中"
                         else -> "追更"
                     },
-                    accent = tracking,
+                    accent = tracking == true,
                     enabled = !trackingBusy,
                     onClick = onTrack,
                 )
@@ -944,7 +1111,7 @@ private fun CouiInfoGroup(
         if (works.isNotEmpty()) {
             CouiInfoRow(
                 title = "作品",
-                value = works.first(),
+                value = works.joinToString("、"),
                 onClick = { onOpenSearch(works.first(), SearchScope.WORK) },
             )
             Divider()
@@ -952,7 +1119,7 @@ private fun CouiInfoGroup(
         if (actors.isNotEmpty()) {
             CouiInfoRow(
                 title = "登场人物",
-                value = actors.first(),
+                value = actors.joinToString("、"),
                 onClick = { onOpenSearch(actors.first(), SearchScope.ACTOR) },
             )
             Divider()
@@ -1015,7 +1182,7 @@ private fun CouiInfoRow(
                     text = value,
                     kind = CouiTextKind.PreferenceValue,
                     color = scheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.End,
                 )
@@ -1058,7 +1225,8 @@ private fun CouiPreviewGroup(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(width = 104.dp, height = 140.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        // 缩略图不参与飞行，圆角取皮肤的控制件圆角（ENGINEERING.md:93）
+                        .clip(RoundedCornerShape(LocalSkin.current.shapes.controlCorner))
                         .background(scheme.container)
                         .couiPressable { onOpenPage(page.index + 1) },
                 )
@@ -1240,7 +1408,8 @@ private fun CouiRelatedGroup(
                     Box(
                         modifier = Modifier
                             .size(width = 104.dp, height = 138.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            // 缩略图不参与飞行，圆角取皮肤的控制件圆角（ENGINEERING.md:93）
+                            .clip(RoundedCornerShape(LocalSkin.current.shapes.controlCorner))
                             .background(scheme.container),
                     ) {
                         AsyncImage(
@@ -1269,95 +1438,6 @@ private fun CouiRelatedGroup(
                             textAlign = TextAlign.Start,
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-/** 评论：输入区 + 列表 + 加载更多，三部分都在同一个 Group 卡片内，避免碎成多张卡。 */
-@Composable
-private fun CouiCommentsGroup(
-    loggedIn: Boolean,
-    commentText: String,
-    commentBusy: Boolean,
-    commentsState: CommentsUiState,
-    fallbackCount: Int,
-    onTextChange: (String) -> Unit,
-    onLogin: () -> Unit,
-    onSend: () -> Unit,
-    onReply: (CommentItem) -> Unit,
-    onReload: () -> Unit,
-    onLoadMore: () -> Unit,
-) {
-    val scheme = CouiKitTheme.colorScheme
-    val total = (commentsState as? CommentsUiState.Loaded)?.feed?.total
-    val titleCount = total ?: fallbackCount.takeIf { it > 0 }
-    Group(title = if (titleCount != null && titleCount > 0) "评论（$titleCount）" else "评论") {
-        CouiCommentComposer(
-            loggedIn = loggedIn,
-            text = commentText,
-            busy = commentBusy,
-            onTextChange = onTextChange,
-            onLogin = onLogin,
-            onSend = onSend,
-        )
-        Divider()
-        when (commentsState) {
-            is CommentsUiState.Loading -> Item(
-                title = {
-                    Text(
-                        text = "评论加载中…",
-                        kind = CouiTextKind.PreferenceTitle,
-                        color = scheme.onSurfaceVariant,
-                        textAlign = TextAlign.Start,
-                    )
-                },
-            )
-
-            is CommentsUiState.Failed -> Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            ) {
-                Text(
-                    text = if (commentsState.sessionExpired) {
-                        SessionOutcome.Expired.message
-                    } else {
-                        commentsState.message
-                    },
-                    kind = CouiTextKind.Body,
-                    color = scheme.onSurface,
-                    textAlign = TextAlign.Start,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                CouiCapsuleAction(
-                    text = if (commentsState.sessionExpired) "去登录" else "重试",
-                    accent = true,
-                    onClick = if (commentsState.sessionExpired) onLogin else onReload,
-                )
-            }
-
-            is CommentsUiState.Loaded -> {
-                val feed = commentsState.feed
-                if (feed.items.isEmpty()) {
-                    Item(
-                        title = {
-                            Text(
-                                text = "暂无评论，来抢沙发",
-                                kind = CouiTextKind.PreferenceTitle,
-                                color = scheme.onSurfaceVariant,
-                                textAlign = TextAlign.Start,
-                            )
-                        },
-                    )
-                } else {
-                    feed.items.forEach { comment ->
-                        Divider()
-                        CouiCommentRow(item = comment, onReply = onReply)
-                    }
-                    Divider()
-                    CouiLoadMoreRow(feed = feed, onLoadMore = onLoadMore)
                 }
             }
         }
@@ -1450,45 +1530,7 @@ private fun CouiCommentComposer(
     }
 }
 
-/** 评论分页脚：把 PagedFeed 的三种尾部状态压成一行可点文字，替代旧皮肤的分页组件。 */
-@Composable
-private fun CouiLoadMoreRow(
-    feed: PagedFeed<*>,
-    onLoadMore: () -> Unit,
-) {
-    val scheme = CouiKitTheme.colorScheme
-    val label = when {
-        feed.loadingMore -> "加载中…"
-        feed.loadMoreFailed -> "加载失败，点击重试"
-        feed.canLoadMore -> "加载更多评论"
-        else -> "没有更多评论了"
-    }
-    val actionable = !feed.loadingMore && (feed.canLoadMore || feed.loadMoreFailed)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            kind = CouiTextKind.PreferenceValue,
-            color = if (actionable) scheme.accent else scheme.onSurfaceVariant,
-            modifier = Modifier
-                .clip(CouiCapsuleShape)
-                .then(
-                    if (actionable) {
-                        Modifier.couiPressable { onLoadMore() }
-                    } else {
-                        Modifier
-                    },
-                )
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        )
-    }
-}
-
-/** 评论单条：头像 + 等级/称号 + 徽章 + 分段正文，回复默认折叠 2 条；回复区带缩进线并可继续回复。 */
+/** 评论单条：头像 + 等级/称号 + 徽章 + 分段正文。回复不在这里递归，已由 [flattenComments] 摊平后逐行入列表。 */
 @Composable
 private fun CouiCommentRow(
     item: CommentItem,
@@ -1498,7 +1540,6 @@ private fun CouiCommentRow(
     val scheme = CouiKitTheme.colorScheme
     // 缩进只按层级累加到上限：层级仍然逐层传下去（回复线照画），但不再继续吃掉正文宽度
     val indentDepth = depth.coerceAtMost(COUI_COMMENT_MAX_INDENT_DEPTH)
-    var repliesExpanded by remember(item.id) { mutableStateOf(item.replies.size <= COUI_COMMENT_VISIBLE_REPLIES) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1602,29 +1643,6 @@ private fun CouiCommentRow(
                         .couiPressable { reply(item) }
                         .padding(horizontal = 2.dp, vertical = 4.dp),
                 )
-            }
-            if (item.replies.isNotEmpty()) {
-                val shown = if (repliesExpanded) {
-                    item.replies
-                } else {
-                    item.replies.take(COUI_COMMENT_VISIBLE_REPLIES)
-                }
-                shown.forEach { child ->
-                    CouiCommentRow(item = child, depth = depth + 1, onReply = onReply)
-                }
-                if (item.replies.size > COUI_COMMENT_VISIBLE_REPLIES) {
-                    val hiddenCount = item.replies.size - COUI_COMMENT_VISIBLE_REPLIES
-                    Text(
-                        text = if (repliesExpanded) "收起回复" else "展开 $hiddenCount 条回复",
-                        kind = CouiTextKind.PreferenceValue,
-                        color = scheme.accent,
-                        maxLines = 1,
-                        textAlign = TextAlign.Start,
-                        modifier = Modifier
-                            .couiPressable { repliesExpanded = !repliesExpanded }
-                            .padding(horizontal = 2.dp, vertical = 4.dp),
-                    )
-                }
             }
         }
     }
@@ -1832,46 +1850,153 @@ private fun CouiReplyDialog(
     }
 }
 
-/** 详情加载中的占位：只用一行 COUI 文字，避免引入 Miuix 的进度指示器。 */
+/** 评论区卡片的一段：评论按行拆进懒列表后，整卡外观改为逐段拼接，首段补上圆角、末段补下圆角。 */
 @Composable
-private fun CouiLoadingGroup() {
-    val scheme = CouiKitTheme.colorScheme
-    Group {
-        Item(
-            title = {
-                Text(
-                    text = "加载中…",
-                    kind = CouiTextKind.PreferenceTitle,
-                    color = scheme.onSurfaceVariant,
-                    textAlign = TextAlign.Start,
-                )
-            },
-        )
+private fun CouiCommentCardSegment(
+    first: Boolean,
+    last: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
+            .clip(couiCommentSegmentShape(first, last))
+            .background(CouiKitTheme.colorScheme.card),
+        content = content,
+    )
+}
+
+/** 分段卡片的轮廓：首段只有上圆角、末段只有下圆角，中间段是直角，拼起来才是一张整卡。 */
+private fun couiCommentSegmentShape(first: Boolean, last: Boolean): Shape {
+    val radius = CouiPageDefaults.shape.radius
+    return when {
+        first && last -> CouiPageDefaults.shape
+        first -> RoundedCornerShape(topStart = radius, topEnd = radius)
+        last -> RoundedCornerShape(bottomStart = radius, bottomEnd = radius)
+        else -> RectangleShape
     }
 }
 
-/** 失败提示：文案 + 单个胶囊动作（去登录 / 重试）。 */
+/** 分组标题：与库内 Group 标题同字号同间距，但自己成项，评论区才能在懒列表里分段。 */
 @Composable
-private fun CouiNoticeGroup(
-    message: String,
-    actionText: String,
-    onAction: () -> Unit,
-) {
-    val scheme = CouiKitTheme.colorScheme
-    Group {
-        Column(
+private fun CouiSectionTitle(title: String) {
+    Column(modifier = Modifier.padding(top = CouiPageDefaults.categoryTopSpacing)) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 32.dp, vertical = 8.dp)
+                .heightIn(min = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = message,
-                kind = CouiTextKind.Body,
-                color = scheme.onSurface,
+                text = title,
+                kind = CouiTextKind.GroupTitle,
+                color = CouiKitTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
                 textAlign = TextAlign.Start,
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { heading() },
             )
-            Spacer(modifier = Modifier.height(12.dp))
-            CouiCapsuleAction(text = actionText, accent = true, onClick = onAction)
         }
     }
+}
+
+/** 折叠回复的入口：单独成行，缩进跟着父评论走；展开态只影响这一条父评论。 */
+@Composable
+private fun CouiRepliesToggle(
+    row: CommentRow.RepliesToggle,
+    onToggle: () -> Unit,
+) {
+    val scheme = CouiKitTheme.colorScheme
+    val indentDepth = row.depth.coerceAtMost(COUI_COMMENT_MAX_INDENT_DEPTH)
+    // 与父评论的正文起点对齐：外层缩进 + 头像宽度 + 头像与正文的间隔
+    val contentStart = 16.dp + (indentDepth * 12).dp + (if (row.depth == 0) 40.dp else 30.dp) + 10.dp
+    Text(
+        text = if (row.expanded) "收起回复" else "展开 ${row.hiddenCount} 条回复",
+        kind = CouiTextKind.PreferenceValue,
+        color = scheme.accent,
+        maxLines = 1,
+        textAlign = TextAlign.Start,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = contentStart, end = 16.dp, bottom = 10.dp)
+            .couiPressable(onClick = onToggle)
+            .padding(horizontal = 2.dp, vertical = 4.dp),
+    )
+}
+
+/** 评论行：懒列表里的一行要么是一条评论，要么是它折起来的回复入口。 */
+internal sealed interface CommentRow {
+    /** 懒列表的稳定键：同一棵评论树内唯一。 */
+    val key: String
+
+    /** 一条评论；[depth] 为回复层级，顶层评论为 0。 */
+    data class Comment(val item: CommentItem, val depth: Int) : CommentRow {
+        override val key: String get() = item.id
+    }
+
+    /** 「展开 N 条回复」行；[expanded] 表示这一支当前是否铺开。 */
+    data class RepliesToggle(
+        val parentId: String,
+        val depth: Int,
+        val hiddenCount: Int,
+        val expanded: Boolean,
+    ) : CommentRow {
+        override val key: String get() = "reply-toggle-$parentId"
+    }
+}
+
+/**
+ * 把整棵评论树摊成懒列表的行序列：父评论先出，回复紧跟其后并逐层加深。
+ *
+ * 折叠态只由 [expandedIds] 决定：未展开的父评论只铺 [visibleReplies] 条回复；
+ * 回复多于该阈值时始终补一行 [CommentRow.RepliesToggle]，展开后回复全出、该行换成「收起回复」。
+ * 摊平结果只依赖入参，页面重组不会留下隐式的展开状态。
+ */
+internal fun flattenComments(
+    roots: List<CommentItem>,
+    expandedIds: Set<String> = emptySet(),
+    visibleReplies: Int = COUI_COMMENT_VISIBLE_REPLIES,
+): List<CommentRow> {
+    val rows = ArrayList<CommentRow>()
+    fun append(items: List<CommentItem>, depth: Int) {
+        items.forEach { item ->
+            rows += CommentRow.Comment(item, depth)
+            val replies = item.replies
+            if (replies.isEmpty()) return@forEach
+            val expanded = item.id in expandedIds
+            val shown = if (expanded) replies else replies.take(visibleReplies)
+            append(shown, depth + 1)
+            if (replies.size > visibleReplies) {
+                rows += CommentRow.RepliesToggle(
+                    parentId = item.id,
+                    depth = depth,
+                    hiddenCount = replies.size - visibleReplies,
+                    expanded = expanded,
+                )
+            }
+        }
+    }
+    append(roots, 0)
+    return rows
+}
+
+/** 在已有内容留白上再补一段底部留白：PaddingValues 没有加法，四向委托后只加 bottom。 */
+private fun PaddingValues.couiWithBottomPadding(extra: Dp): PaddingValues = object : PaddingValues {
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+        this@couiWithBottomPadding.calculateLeftPadding(layoutDirection)
+
+    override fun calculateTopPadding(): Dp = this@couiWithBottomPadding.calculateTopPadding()
+
+    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+        this@couiWithBottomPadding.calculateRightPadding(layoutDirection)
+
+    override fun calculateBottomPadding(): Dp = this@couiWithBottomPadding.calculateBottomPadding() + extra
+}
+
+/** 把预先拼好的懒列表内容装进当前列表作用域：窄屏单栏与宽屏两栏共用同一份构建器。 */
+private fun LazyListScope.couiInclude(content: LazyListScope.() -> Unit) {
+    content(this)
 }

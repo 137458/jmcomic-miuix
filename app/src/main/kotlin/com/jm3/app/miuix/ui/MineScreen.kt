@@ -38,7 +38,6 @@ import com.jm3.core.session.UnreadBadge
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -167,21 +166,22 @@ fun MineScreen(
             checkInBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    // 签到请求已成功落地；回读即便遇到服务端/CDN缓存未及时更新，也按乐观成功处理，避免误报「未生效」
+                    // 请求已成功落地，但回读可能撞上服务端/CDN 缓存延迟：两次都没标记时按乐观补签展示
                     var refreshed = refreshCheckInStatus(uid)
                     if (refreshed != null && !refreshed.isSignedOn(today.dayOfMonth)) {
                         delay(400)
                         val retry = refreshCheckInStatus(uid)
                         if (retry != null) refreshed = retry
                     }
-                    val (updatedStatus, snackbarText) = resolveCheckInSuccess(
+                    val resolution = resolveCheckInResult(
                         current = checkInStatus,
                         refreshed = refreshed,
                         todayDayOfMonth = today.dayOfMonth,
                     )
-                    updatedStatus?.let { checkInStatus = it }
-                    checkedInOn = today
-                    snackbarHostState.showSnackbar(snackbarText)
+                    resolution.status?.let { checkInStatus = it }
+                    // 回读为 null 时没有任何证据说明今天已落账，不能锁死按钮，否则当天无法重试
+                    if (resolution.markToday) checkedInOn = today
+                    snackbarHostState.showSnackbar(resolution.message)
                 }
 
                 SessionOutcome.Expired -> applyCheckInPlan(
@@ -251,14 +251,9 @@ fun MineScreen(
                             )
                         }
                         status != null -> {
-                            val today = LocalDate.now()
-                            // 「今日已签到」由记录里当天的标记推导，切页重建后依旧成立；
-                            // checkedInOn 只兜住接口回读延迟，且按日期比较，跨过午夜会自动失效。
-                            val signedToday = checkedInOn == today || status.isSignedOn(today.dayOfMonth)
-                            // 今天之前仍未签到的日期就是漏签；只做提示，不参与进度计算
-                            val missedDays = status.days.count {
-                                it.dayOfMonth < today.dayOfMonth && !it.signed
-                            }
+                            // 今日已签、漏签天数与进度统一交给纯函数推导，与 COUI 页共用同一口径
+                            val display = checkInDisplay(status, checkedInOn, LocalDate.now())
+                            val signedToday = display.signedToday
                             val rowOnClick: (() -> Unit)? = if (checkInBusy || signedToday) {
                                 null
                             } else {
@@ -312,19 +307,18 @@ fun MineScreen(
                                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                         )
                                         Text(
-                                            text = "${status.signedDays}/${status.totalDays} 天 · " +
-                                                "${(status.progress * 100).roundToInt()}%",
+                                            text = display.progressLabel,
                                             style = MiuixTheme.textStyles.footnote1,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                         )
                                     }
                                     LinearProgressIndicator(
-                                        progress = status.progress,
+                                        progress = display.progress,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
-                                    if (missedDays > 0) {
+                                    if (display.missedDays > 0) {
                                         Text(
-                                            text = "本月已有 $missedDays 天未签到",
+                                            text = "本月已有 ${display.missedDays} 天未签到",
                                             style = MiuixTheme.textStyles.footnote2,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                         )

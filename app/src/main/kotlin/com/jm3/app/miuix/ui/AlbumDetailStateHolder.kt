@@ -77,12 +77,16 @@ internal class AlbumDetailStateHolder(
     private val _uiState = MutableStateFlow(AlbumDetailViewState())
     val uiState: StateFlow<AlbumDetailViewState> = _uiState.asStateFlow()
 
+    /** 最近一次进入页面时的登录用户：refresh() 不带 uid，靠它把追踪态的重拉接回同一次刷新。 */
+    private var lastUserUid: String? = null
+
     /** 动作型调用的统一落点：失效提示并给登录入口，失败给「动作：原因」。 */
     private suspend fun report(outcome: SessionOutcome<*>, failurePrefix: String) {
         outcome.notifyAction({ showMessage(it) }, failurePrefix, onExpired = onOpenLogin)
     }
 
     fun loadAll(userUid: String?) {
+        lastUserUid = userUid
         scope.launch {
             loadDetail()
             loadComments()
@@ -181,6 +185,7 @@ internal class AlbumDetailStateHolder(
     }
 
     suspend fun loadTracking(userUid: String?) {
+        lastUserUid = userUid
         if (userUid == null) {
             _uiState.update { it.copy(tracking = null) }
             return
@@ -191,6 +196,12 @@ internal class AlbumDetailStateHolder(
         _uiState.update { it.copy(tracking = isTrack) }
     }
 
+    /**
+     * 下拉刷新与失败重试的共用入口。
+     *
+     * 追踪态与详情分开取：首屏那次会话闸门没放行时它会是 null，之后不重拉就永久停在 null，
+     * 追更入口也就一直是禁用态。所以刷新必须把它一并补拉，uid 用最近一次 loadAll 的记录。
+     */
     fun refresh() {
         if (_uiState.value.pullRefreshing) return
         _uiState.update { it.copy(pullRefreshing = true) }
@@ -199,6 +210,7 @@ internal class AlbumDetailStateHolder(
                 loadDetail()
                 loadComments()
                 loadHistory()
+                loadTracking(lastUserUid)
             } finally {
                 _uiState.update { it.copy(pullRefreshing = false) }
             }

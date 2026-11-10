@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,7 +41,6 @@ import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
 import com.itos.coui.scroll.couiVerticalScroll
-import com.itos.coui.slider.Slider
 import com.itos.coui.switch.Switch
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
@@ -52,18 +50,15 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.ReaderSettingsSection
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
-import com.jm3.app.miuix.ui.prefetchPagesLabel
-import com.jm3.app.miuix.ui.readerBrightnessFromSlider
-import com.jm3.app.miuix.ui.readerBrightnessLabel
-import com.jm3.app.miuix.ui.readerBrightnessSliderValue
+import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.resolvePaginationSelection
-import com.jm3.app.miuix.ui.settingsSummary
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.reader.ReaderSpreadPolicy
 import com.jm3.core.runCatchingSuspending
@@ -72,14 +67,12 @@ import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.PaginationMode
-import com.jm3.core.settings.ReaderImageQuality
-import com.jm3.core.settings.ReaderPreferences
-import com.jm3.core.settings.ReaderSpreadMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
 import com.jm3.core.settings.WideScreenNavigation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
@@ -109,8 +102,9 @@ private const val CLEAR_CONFIRM_TIMEOUT_MS = 5000L
 /**
  * 设置页当前打开的选择面板。
  *
- * 九个枚举型设置共用一套「标题 + 选项 + 完成/取消」的 COUI 弹窗，
+ * 五个枚举型设置共用一套「标题 + 选项 + 完成/取消」的 COUI 弹窗，
  * 用一个可空状态描述当前打开哪一格，避免并行布尔互相叠加出两个弹窗。
+ * 阅读器分项不在此列：它们已交给设置中心共用的 ReaderSettingsSection 自行弹层。
  */
 private enum class SettingsPicker {
     PAGINATION_MODE,
@@ -118,10 +112,6 @@ private enum class SettingsPicker {
     BOTTOM_BAR_FORM,
     WIDE_SCREEN_NAVIGATION,
     UI_SKIN,
-    READER_DIRECTION,
-    READER_SPREAD,
-    READER_IMAGE_QUALITY,
-    READER_PREFETCH,
 }
 
 /**
@@ -165,7 +155,7 @@ fun CouiSettingsScreen(
         var reprobeBusy by remember { mutableStateOf(false) }
         var diagError by remember { mutableStateOf<String?>(null) }
 
-        // 破坏性操作二次确认：3 秒未确认自动复位；清空执行中不自动关，等任务结束。
+        // 破坏性操作二次确认：5 秒未确认自动复位；清空执行中不自动关，等任务结束。
         var clearTarget by rememberSaveable { mutableStateOf<ClearTarget?>(null) }
         var clearing by remember { mutableStateOf(false) }
         var showDisclaimer by rememberSaveable { mutableStateOf(false) }
@@ -197,15 +187,6 @@ fun CouiSettingsScreen(
         var versionTapCount by remember { mutableIntStateOf(0) }
         // 诊断读取的代号：进页、探活、应用线路都会触发，只让最后一次写的旧结果落不到界面
         var diagnosticsRequest by remember { mutableIntStateOf(0) }
-
-        // 阅读器七项：与设置中心共用同一份存储键与归一规则，COUI 侧只换容器不换语义
-        var readerHorizontal by remember { mutableStateOf(false) }
-        var readerSpread by remember { mutableStateOf(ReaderSpreadMode.SINGLE) }
-        var readerVolumeKeyPaging by remember { mutableStateOf(true) }
-        var readerKeepScreenOn by remember { mutableStateOf(true) }
-        var readerBrightness by remember { mutableIntStateOf(ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) }
-        var readerImageQuality by remember { mutableStateOf(ReaderImageQuality.STANDARD) }
-        var readerPrefetchPages by remember { mutableIntStateOf(ReaderPreferences.DEFAULT_PREFETCH_PAGES) }
 
         val versionName = remember {
             @Suppress("DEPRECATION")
@@ -333,14 +314,6 @@ fun CouiSettingsScreen(
         }
 
         LaunchedEffect(Unit) {
-            // 阅读器设置只在进页时读一次：页面内的修改直接以本地状态为准并写盘
-            readerHorizontal = repository.readerHorizontal()
-            readerSpread = repository.readerSpread()
-            readerVolumeKeyPaging = repository.readerVolumeKeyPaging()
-            readerKeepScreenOn = repository.readerKeepScreenOn()
-            readerBrightness = repository.readerBrightness()
-            readerImageQuality = repository.readerImageQuality()
-            readerPrefetchPages = repository.readerPrefetchPages()
             if (!loadedSaved) {
                 loadedSaved = true
                 val saved = deps.settings.apiDomains()
@@ -407,6 +380,8 @@ fun CouiSettingsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        // 宽屏下留出可读栏宽，和设置中心保持一致
+                        .readableWidth()
                         .nestedScroll(scrollBehavior.nestedScrollConnection)
                         .couiVerticalScroll(scrollState)
                         // 顶栏的高与折叠位移由 state 参与计算，正文才会跟着顶栏一起让位
@@ -496,109 +471,9 @@ fun CouiSettingsScreen(
                         }
                     }
 
+                    // 七项阅读器设置复用设置中心的同一实现：读盘、写盘与文案只维护一处
                     Group(title = "阅读器") {
-                        Item(
-                            title = { SettingsRowTitle("默认阅读方向") },
-                            summary = {
-                                SettingsRowSummary(
-                                    if (readerHorizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",
-                                )
-                            },
-                            trailing = { SettingsRowValue(if (readerHorizontal) "左右翻页" else "纵向长图") },
-                            onClick = { picker = SettingsPicker.READER_DIRECTION },
-                        )
-                        // 双页是大屏横屏的附加排布：窗口不够宽或竖屏时整行不渲染，避免给手机增加噪音
-                        if (readerSpreadAllowed) {
-                            Divider()
-                            Item(
-                                title = { SettingsRowTitle("双页阅读") },
-                                summary = {
-                                    SettingsRowSummary(
-                                        if (readerSpread == ReaderSpreadMode.DOUBLE) {
-                                            "大屏横屏下两页并排，按左右翻页生效"
-                                        } else {
-                                            "单页显示，可按左右翻页"
-                                        },
-                                    )
-                                },
-                                trailing = { SettingsRowValue(readerSpread.label) },
-                                onClick = { picker = SettingsPicker.READER_SPREAD },
-                            )
-                        }
-                        Divider()
-                        Item(
-                            title = { SettingsRowTitle("音量键翻页") },
-                            summary = { SettingsRowSummary("关闭后音量键恢复调节系统音量") },
-                            trailing = {
-                                Switch(
-                                    checked = readerVolumeKeyPaging,
-                                    onCheckedChange = { enabled ->
-                                        readerVolumeKeyPaging = enabled
-                                        scope.launch { repository.setReaderVolumeKeyPaging(enabled) }
-                                    },
-                                )
-                            },
-                        )
-                        Divider()
-                        Item(
-                            title = { SettingsRowTitle("阅读时保持亮屏") },
-                            summary = { SettingsRowSummary("阅读页不自动息屏") },
-                            trailing = {
-                                Switch(
-                                    checked = readerKeepScreenOn,
-                                    onCheckedChange = { enabled ->
-                                        readerKeepScreenOn = enabled
-                                        scope.launch { repository.setReaderKeepScreenOn(enabled) }
-                                    },
-                                )
-                            },
-                        )
-                        Divider()
-                        // 滑杆不挂在 Item.trailing 上：行内只有 48dp 高，拖拽区会挤在一起
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                SettingsRowTitle("阅读亮度", modifier = Modifier.weight(1f))
-                                SettingsRowValue(readerBrightnessLabel(readerBrightness))
-                            }
-                            SettingsRowSummary("0 表示跟随系统亮度，只在阅读页生效")
-                            Slider(
-                                value = readerBrightnessSliderValue(readerBrightness),
-                                onValueChange = { raw -> readerBrightness = readerBrightnessFromSlider(raw) },
-                                valueRange = 0f..ReaderPreferences.MAX_BRIGHTNESS.toFloat(),
-                                onValueChangeFinished = {
-                                    scope.launch { repository.setReaderBrightness(readerBrightness) }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp),
-                            )
-                        }
-                        Divider()
-                        Item(
-                            title = { SettingsRowTitle("图片质量") },
-                            summary = { SettingsRowSummary(readerImageQuality.settingsSummary()) },
-                            trailing = { SettingsRowValue(readerImageQuality.label) },
-                            onClick = { picker = SettingsPicker.READER_IMAGE_QUALITY },
-                        )
-                        Divider()
-                        Item(
-                            title = { SettingsRowTitle("预取页数") },
-                            summary = {
-                                SettingsRowSummary(
-                                    if (readerPrefetchPages == 0) {
-                                        "不提前加载后续页"
-                                    } else {
-                                        "提前加载当前页之后的 " + readerPrefetchPages + " 页"
-                                    },
-                                )
-                            },
-                            trailing = { SettingsRowValue(prefetchPagesLabel(readerPrefetchPages)) },
-                            onClick = { picker = SettingsPicker.READER_PREFETCH },
-                        )
+                        ReaderSettingsSection(repository = repository, spreadAllowed = readerSpreadAllowed)
                     }
 
                     Group(title = "线路") {
@@ -643,6 +518,10 @@ fun CouiSettingsScreen(
                             title = { SettingsRowTitle("重新探活") },
                             summary = {
                                 SettingsRowSummary(if (reprobeBusy) "探活中…" else "逐条测速并按延迟排序")
+                            },
+                            // 探活要走完整轮域名测速，给出进行中的转圈反馈，避免误以为点击没生效
+                            trailing = {
+                                if (reprobeBusy) CircularProgressIndicator(size = 20.dp)
                             },
                             onClick = ::reprobeDomains,
                             enabled = !reprobeBusy,
@@ -734,7 +613,8 @@ fun CouiSettingsScreen(
                             title = { SettingsRowTitle("开源组件") },
                             summary = {
                                 SettingsRowSummary(
-                                    "jmcomic-api (MIT) · Miuix (Apache-2.0) · Coil (Apache-2.0) · Jetpack Compose (Apache-2.0)",
+                                    "jmcomic-api (MIT) · Miuix (Apache-2.0) · Coil (Apache-2.0) · Jetpack Compose (Apache-2.0) · " +
+                                        "COUI-Kit (MPL-2.0) · Lucide (ISC)",
                                 )
                             },
                         )
@@ -751,7 +631,6 @@ fun CouiSettingsScreen(
             // 提示条叠在正文之上：它不属于 Scaffold 槽位，不能进滚动内容，否则会跟着一起滚走
             GlassSnackbarHost(
                 state = snackbarHostState,
-                backdrop = null,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
@@ -808,66 +687,6 @@ fun CouiSettingsScreen(
                 selectedIndex = WideScreenNavigation.entries.indexOf(wideScreenNavigation),
                 onSelect = { index ->
                     WideScreenNavigation.entries.getOrNull(index)?.let { applyWideScreenNavigation(it) }
-                },
-                onDismiss = { picker = null },
-            )
-
-            SettingsPicker.READER_DIRECTION -> SettingsChoiceDialog(
-                title = "默认阅读方向",
-                options = listOf("纵向长图", "左右翻页"),
-                selectedIndex = if (readerHorizontal) 1 else 0,
-                onSelect = { index ->
-                    val next = index == 1
-                    if (next != readerHorizontal) {
-                        readerHorizontal = next
-                        scope.launch { repository.setReaderHorizontal(next) }
-                    }
-                },
-                onDismiss = { picker = null },
-            )
-
-            SettingsPicker.READER_SPREAD -> SettingsChoiceDialog(
-                title = "双页阅读",
-                options = ReaderSpreadMode.entries.map { it.label },
-                selectedIndex = ReaderSpreadMode.entries.indexOf(readerSpread),
-                onSelect = { index ->
-                    ReaderSpreadMode.entries.getOrNull(index)?.let { mode ->
-                        if (mode != readerSpread) {
-                            readerSpread = mode
-                            scope.launch { repository.setReaderSpread(mode) }
-                        }
-                    }
-                },
-                onDismiss = { picker = null },
-            )
-
-            SettingsPicker.READER_IMAGE_QUALITY -> SettingsChoiceDialog(
-                title = "图片质量",
-                options = ReaderImageQuality.entries.map { it.label },
-                summaries = ReaderImageQuality.entries.map { it.settingsSummary() },
-                selectedIndex = ReaderImageQuality.entries.indexOf(readerImageQuality),
-                onSelect = { index ->
-                    ReaderImageQuality.entries.getOrNull(index)?.let { quality ->
-                        if (quality != readerImageQuality) {
-                            readerImageQuality = quality
-                            scope.launch { repository.setReaderImageQuality(quality) }
-                        }
-                    }
-                },
-                onDismiss = { picker = null },
-            )
-
-            SettingsPicker.READER_PREFETCH -> SettingsChoiceDialog(
-                title = "预取页数",
-                options = ReaderPreferences.PREFETCH_OPTIONS.map { prefetchPagesLabel(it) },
-                selectedIndex = ReaderPreferences.PREFETCH_OPTIONS.indexOf(readerPrefetchPages),
-                onSelect = { index ->
-                    ReaderPreferences.PREFETCH_OPTIONS.getOrNull(index)?.let { pages ->
-                        if (pages != readerPrefetchPages) {
-                            readerPrefetchPages = pages
-                            scope.launch { repository.setReaderPrefetchPages(pages) }
-                        }
-                    }
                 },
                 onDismiss = { picker = null },
             )

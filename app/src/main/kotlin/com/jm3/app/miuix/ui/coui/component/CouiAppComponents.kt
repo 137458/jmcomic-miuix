@@ -3,19 +3,24 @@
 package com.jm3.app.miuix.ui.coui.component
 
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -28,25 +33,39 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itos.coui.effect.CouiFloatingRenderer
+import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.floatingactionbutton.Fab
+import com.itos.coui.layout.Footer
+import com.itos.coui.layout.Group
+import com.itos.coui.layout.Item
 import com.itos.coui.layout.Scaffold
 import com.itos.coui.navigation.CouiNavigationItem
 import com.itos.coui.navigation.NavigationBar
 import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiColorScheme
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.theme.LocalCouiContentColor
+import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
+import com.jm3.app.miuix.ui.glass.bottomBarShape
+import com.jm3.core.settings.BottomBarForm
+import com.jm3.core.settings.BottomBarSize
 import top.yukonga.miuix.kmp.basic.Icon
 
 /** 底栏槽位：页签共用同一组导航项，但每个页面各自持有 Scaffold。 */
@@ -75,53 +94,279 @@ fun CouiAppScaffold(
     )
 }
 
-/** COUI 底栏：API 34 及以上使用原厂浮动材质，低版本退回同色系实底胶囊。 */
+/**
+ * 按压反馈 + 无涟漪点击：COUI 页面里所有自绘可点区域的统一入口。
+ *
+ * 反馈由库的 [couiButtonFeedback] 给出（按压缩放与悬停锁），点击指示器置空，
+ * 避免在实底卡片上再叠一层涟漪。语义角色由调用方决定，默认按钮。
+ */
 @Composable
-fun CouiNavigationBar(
+fun Modifier.couiPressable(
+    enabled: Boolean = true,
+    role: Role = Role.Button,
+    onClick: () -> Unit,
+): Modifier {
+    val interactionSource = remember { MutableInteractionSource() }
+    return this
+        .couiButtonFeedback(
+            dark = CouiTheme.isDark,
+            interactionSource = interactionSource,
+            enabled = enabled,
+            list = false,
+        )
+        .clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            enabled = enabled,
+            role = role,
+            onClick = onClick,
+        )
+}
+
+/** 加载态：单行说明卡片；首屏与分页都能直接放，尺寸由库 Group/Item 的 CouiPageDefaults 决定。 */
+@Composable
+fun CouiLoadingGroup(
+    modifier: Modifier = Modifier,
+    text: String = "正在加载…",
+) {
+    Group(modifier = modifier) {
+        Item(
+            title = {
+                Text(text = text, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+            },
+        )
+    }
+}
+
+/** 空态：单行说明卡片；文案由页面给出（例如「这里还没有作品」）。 */
+@Composable
+fun CouiEmptyGroup(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Group(modifier = modifier) {
+        Item(
+            title = {
+                Text(text = text, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+            },
+        )
+    }
+}
+
+/** 失败态：标题给结论、脚注给原因，「重试」行始终可见且可点。 */
+@Composable
+fun CouiErrorGroup(
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    Group(modifier = modifier, title = "加载失败", footer = message) {
+        Item(
+            title = {
+                Text(text = "重试", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+            },
+            trailing = {
+                Icon(
+                    imageVector = CouiIcons.Refresh,
+                    // 行标题已念出「重试」，图标不再重复播报
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.accent,
+                )
+            },
+            onClick = onRetry,
+        )
+    }
+}
+
+/**
+ * 分页脚：滚动到底时报告续页状态。
+ *
+ * error 非空时给可点的「重新加载」行；loading 与 endReached 只报进度与到底；
+ * 三者皆否表示还有下一页但尚未触发加载，此时只留一条提示文案，不做可点行。
+ */
+@Composable
+fun CouiLoadMoreFooter(
+    loading: Boolean,
+    error: String?,
+    endReached: Boolean,
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit,
+) {
+    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    when {
+        error != null -> Group(modifier = modifier, footer = error) {
+            Item(
+                title = {
+                    Text(text = "重新加载", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                },
+                trailing = {
+                    Icon(
+                        imageVector = CouiIcons.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = colors.accent,
+                    )
+                },
+                onClick = onRetry,
+            )
+        }
+
+        loading -> Group(modifier = modifier, footer = "正在获取下一页…") {
+            Item(
+                title = {
+                    Text(text = "正在加载更多…", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                },
+            )
+        }
+
+        endReached -> Group(modifier = modifier, footer = "没有更多了") {
+            Item(
+                title = {
+                    Text(text = "已经到底了", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                },
+            )
+        }
+
+        else -> Footer(modifier = modifier, text = "继续上滑自动加载下一页")
+    }
+}
+
+/** 库浮动材质导航栏需要 API 34：库内 CouiFloatingRenderer 依赖 34 起的模糊与渲染能力。 */
+internal const val CouiLibraryNavBarMinSdk = 34
+
+/** 悬浮档视觉间隙：条身与屏幕底边之间的留白（系统导航栏 inset 另计）。 */
+private val CouiBarVisualGap = 8.dp
+
+/** 悬浮档投影半径，与液态玻璃底栏同一族。 */
+private val CouiBarShadowRadius = 10.dp
+
+/** 选中容器透明度：底栏与侧栏共用，保证两种导航形态的选中观感一致。 */
+private val CouiSelectedContainerAlpha = 0.14f
+
+/** 侧栏宽度：只放图标列，横向固定不参与伸缩。 */
+private val CouiRailWidth = 88.dp
+
+/** 侧栏项与栏边之间的横向留白。 */
+private val CouiRailItemMargin = 8.dp
+
+/** 侧栏项内上下留白。 */
+private val CouiRailItemVerticalPadding = 10.dp
+
+/** 侧栏图标与文字之间的间距。 */
+private val CouiRailLabelSpacing = 4.dp
+
+/**
+ * 是否交给库的浮动材质导航栏渲染。
+ *
+ * 只有「普通档 + 悬浮形态 + API 34 及以上」这一种组合保持库渲染：偏大档要靠 token 放大条高、
+ * 图标与字号，贴底档要通栏与上圆角，低版本没有原厂浮动材质，三者都只能按 token 自绘。
+ * sdkInt 由调用方传入，纯函数在 JVM 单测里可覆盖全部组合。
+ */
+internal fun couiUsesLibraryNavBar(tokens: GlassBottomBarTokens, sdkInt: Int): Boolean =
+    tokens.size == BottomBarSize.STANDARD &&
+        tokens.form == BottomBarForm.FLOATING &&
+        sdkInt >= CouiLibraryNavBarMinSdk
+
+/**
+ * COUI 底栏：普通档悬浮形态在 API 34 及以上交给库的浮动材质，其余组合按 token 自绘。
+ *
+ * 库的 [CouiNavigationItem] 没有角标槽位（NavigationBar.kt:103），底栏因此不做角标；
+ * 需要提示未读时由页面正文承担，不在这里追加自绘角标去改库的行内布局。
+ */
+@Composable
+internal fun CouiNavigationBar(
     items: List<CouiNavigationItem>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    tokens: GlassBottomBarTokens,
     modifier: Modifier = Modifier,
 ) {
-    if (Build.VERSION.SDK_INT >= 34) {
-        val renderer = remember { CouiFloatingRenderer() }
-        NavigationBar(
-            modifier = modifier,
-            renderer = renderer,
+    // 版本判断写在条件最前面：库底栏带 @RequiresApi(34)，这样调用点才能过 lint 的 API 检查
+    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk && couiUsesLibraryNavBar(tokens, Build.VERSION.SDK_INT)) {
+        CouiLibraryNavigationBar(
             items = items,
             selectedIndex = selectedIndex,
-            dark = CouiTheme.isDark,
-            onSelection = onSelect,
+            onSelect = onSelect,
+            modifier = modifier,
         )
     } else {
         CouiPlainNavigationBar(
             items = items,
             selectedIndex = selectedIndex,
             onSelect = onSelect,
+            tokens = tokens,
             modifier = modifier,
         )
     }
 }
 
+/** 库浮动材质底栏：只在 API 34 及以上、且 token 判定交给库时进入。 */
+@RequiresApi(34)
 @Composable
-private fun CouiPlainNavigationBar(
+private fun CouiLibraryNavigationBar(
     items: List<CouiNavigationItem>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 底栏是三主体融合节点（条身 + 选中胶囊 + 附件位），库在这里要求 renderer.surfaceCount == 3
+    val renderer = remember { CouiFloatingRenderer() }
+    NavigationBar(
+        modifier = modifier,
+        renderer = renderer,
+        items = items,
+        selectedIndex = selectedIndex,
+        dark = CouiTheme.isDark,
+        onSelection = onSelect,
+    )
+}
+
+/**
+ * 自绘底栏：条高、图标、字号、横向边距与内边距全部读 token。
+ *
+ * 悬浮形态是胶囊加投影，贴底形态是通栏加上圆角、无投影（token 的投影透明度为 0）；
+ * 系统导航栏 inset 只让位不遮挡，两种形态都先让出底边安全区。
+ */
+@Composable
+private fun CouiPlainNavigationBar(
+    items: List<CouiNavigationItem>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    tokens: GlassBottomBarTokens,
+    modifier: Modifier = Modifier,
+) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val shape = bottomBarShape(tokens)
     Row(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
-            .shadow(elevation = 12.dp, shape = CouiCapsuleShape, clip = false)
-            .clip(CouiCapsuleShape)
+            .padding(
+                start = tokens.horizontalMargin,
+                end = tokens.horizontalMargin,
+                top = if (tokens.floating) CouiBarVisualGap else 0.dp,
+                bottom = if (tokens.floating) CouiBarVisualGap else 0.dp,
+            )
+            .then(
+                if (tokens.floating) {
+                    Modifier.dropShadow(
+                        shape = shape,
+                        shadow = Shadow(
+                            radius = CouiBarShadowRadius,
+                            color = Color.Black,
+                            alpha = if (CouiTheme.isDark) tokens.shadowAlphaDark else tokens.shadowAlphaLight,
+                        ),
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .clip(shape)
             .background(colors.container)
-            .height(56.dp)
+            .height(tokens.height)
             .selectableGroup(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         items.forEachIndexed { index, item ->
@@ -129,29 +374,89 @@ private fun CouiPlainNavigationBar(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .height(44.dp)
+                    .height(tokens.indicatorHeight)
                     .clip(CouiCapsuleShape)
-                    .background(if (selected) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
+                    .background(if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else Color.Transparent)
                     .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) })
-                    .padding(horizontal = 6.dp),
+                    .padding(horizontal = tokens.innerPadding),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = item.icon,
+                    imageVector = if (selected) item.selectedIcon else item.icon,
                     contentDescription = item.title,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(tokens.iconSize),
                     tint = if (selected) colors.accent else colors.onSurfaceVariant,
                 )
                 if (selected) {
                     Spacer(Modifier.width(6.dp))
                     BasicText(
                         text = item.title,
-                        style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+                        style = TextStyle(fontSize = tokens.labelSize, fontWeight = FontWeight.Medium),
                         color = { colors.accent },
                         maxLines = 1,
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 宽屏侧栏：88dp 贴左固定宽度，图标与文字纵向等距排列，选中项取强调色容器。
+ *
+ * 顶部让出状态栏、底部让出导航栏，正文由 Row 的剩余空间接管，因此这里不写横向 padding；
+ * 库的 [CouiNavigationItem] 无角标槽位，侧栏同样不做角标。
+ */
+@Composable
+internal fun CouiNavigationRail(
+    items: List<CouiNavigationItem>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    tokens: GlassBottomBarTokens,
+    modifier: Modifier = Modifier,
+) {
+    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    Column(
+        modifier = modifier
+            .width(CouiRailWidth)
+            .fillMaxHeight()
+            .background(colors.container)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .selectableGroup(),
+        verticalArrangement = Arrangement.SpaceEvenly,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        items.forEachIndexed { index, item ->
+            val selected = index == selectedIndex
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = CouiRailItemMargin)
+                    .clip(CouiCapsuleShape)
+                    .background(if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else Color.Transparent)
+                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) })
+                    .padding(vertical = CouiRailItemVerticalPadding),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(
+                    imageVector = if (selected) item.selectedIcon else item.icon,
+                    // 文字标签常显，图标不再重复播报
+                    contentDescription = null,
+                    modifier = Modifier.size(tokens.iconSize),
+                    tint = if (selected) colors.accent else colors.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(CouiRailLabelSpacing))
+                BasicText(
+                    text = item.title,
+                    style = TextStyle(
+                        fontSize = tokens.labelSize,
+                        fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                    ),
+                    color = { if (selected) colors.accent else colors.onSurfaceVariant },
+                    maxLines = 1,
+                )
             }
         }
     }

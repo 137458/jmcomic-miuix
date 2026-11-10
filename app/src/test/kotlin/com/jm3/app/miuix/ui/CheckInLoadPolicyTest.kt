@@ -1,14 +1,19 @@
 package com.jm3.app.miuix.ui
 
 import com.jm3.core.LOGIN_EXPIRED_MESSAGE
+import com.jm3.core.model.CheckInDay
+import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.session.SessionOutcome
 import io.github.jukomu.jmcomic.api.exception.JmClientInitializationException
 import io.github.jukomu.jmcomic.api.exception.NetworkException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
@@ -185,58 +190,170 @@ class CheckInLoadPolicyTest {
     }
 
     @Test
+    fun `回读失败时保留现有状态且不把今天记为已签`() {
+        val todayDay = 15
+        val current = checkInStatus(
+            signedDays = 9,
+            days = listOf(CheckInDay(dayOfMonth = todayDay, signed = false, bonus = false)),
+        )
+
+        val result = resolveCheckInResult(current = current, refreshed = null, todayDayOfMonth = todayDay)
+
+        assertSame(current, result.status)
+        assertFalse(result.markToday)
+        assertFalse(result.status?.isSignedOn(todayDay) == true)
+        assertEquals("签到已提交，暂时无法确认状态", result.message)
+    }
+
+    @Test
+    fun `回读失败且没有现存状态时不伪造签到结果`() {
+        val result = resolveCheckInResult(current = null, refreshed = null, todayDayOfMonth = 15)
+
+        assertNull(result.status)
+        assertFalse(result.markToday)
+        assertEquals("签到已提交，暂时无法确认状态", result.message)
+    }
+
+    @Test
     fun `回读已包含当天签到时直接采纳刷新状态`() {
         val todayDay = 15
-        val refreshed = com.jm3.core.model.DailyCheckInStatus(
-            dailyId = 1,
-            eventName = "Daily",
-            currentProgress = "10/30",
+        val refreshed = checkInStatus(
             signedDays = 10,
-            totalDays = 30,
-            days = listOf(com.jm3.core.model.CheckInDay(dayOfMonth = todayDay, signed = true, bonus = false)),
+            days = listOf(CheckInDay(dayOfMonth = todayDay, signed = true, bonus = false)),
         )
 
-        val (status, message) = resolveCheckInSuccess(current = null, refreshed = refreshed, todayDayOfMonth = todayDay)
-        assertEquals("签到成功", message)
-        assertTrue(status?.isSignedOn(todayDay) == true)
-        assertEquals(10, status?.signedDays)
+        val result = resolveCheckInResult(current = null, refreshed = refreshed, todayDayOfMonth = todayDay)
+
+        assertSame(refreshed, result.status)
+        assertTrue(result.markToday)
+        assertEquals("签到成功", result.message)
+        assertTrue(result.status?.isSignedOn(todayDay) == true)
+        assertEquals(10, result.status?.signedDays)
     }
 
     @Test
-    fun `回读遇CDN缓存未标记当天时乐观记入并提示成功`() {
+    fun `回读已含当天时已签天数不重复累加`() {
         val todayDay = 15
-        val cachedRefreshed = com.jm3.core.model.DailyCheckInStatus(
-            dailyId = 1,
-            eventName = "Daily",
-            currentProgress = "9/30",
-            signedDays = 9,
-            totalDays = 30,
-            days = listOf(com.jm3.core.model.CheckInDay(dayOfMonth = todayDay, signed = false, bonus = false)),
+        val refreshed = checkInStatus(
+            signedDays = 10,
+            days = listOf(CheckInDay(dayOfMonth = todayDay, signed = true, bonus = false)),
         )
 
-        val (status, message) = resolveCheckInSuccess(current = null, refreshed = cachedRefreshed, todayDayOfMonth = todayDay)
-        assertEquals("签到成功", message)
-        assertTrue(status?.isSignedOn(todayDay) == true)
-        assertEquals(10, status?.signedDays)
+        val result = resolveCheckInResult(current = null, refreshed = refreshed, todayDayOfMonth = todayDay)
+
+        assertEquals(10, result.status?.signedDays)
+        assertEquals(1, result.status?.days?.size)
     }
 
     @Test
-    fun `回读失败时按当前状态乐观标记当天并提示成功`() {
+    fun `回读遇CDN缓存未标记当天时乐观补签并提示稍后更新`() {
         val todayDay = 15
-        val current = com.jm3.core.model.DailyCheckInStatus(
-            dailyId = 1,
-            eventName = "Daily",
-            currentProgress = "9/30",
+        val cachedRefreshed = checkInStatus(
             signedDays = 9,
-            totalDays = 30,
-            days = listOf(com.jm3.core.model.CheckInDay(dayOfMonth = todayDay, signed = false, bonus = false)),
+            days = listOf(CheckInDay(dayOfMonth = todayDay, signed = false, bonus = false)),
         )
 
-        val (status, message) = resolveCheckInSuccess(current = current, refreshed = null, todayDayOfMonth = todayDay)
-        assertEquals("签到成功", message)
-        assertTrue(status?.isSignedOn(todayDay) == true)
-        assertEquals(10, status?.signedDays)
+        val result = resolveCheckInResult(current = null, refreshed = cachedRefreshed, todayDayOfMonth = todayDay)
+
+        assertEquals("签到已提交，日历稍后更新", result.message)
+        assertTrue(result.markToday)
+        assertTrue(result.status?.isSignedOn(todayDay) == true)
+        assertEquals(10, result.status?.signedDays)
+        // 日历里已有当天条目时只改标记，不重复追加
+        assertEquals(1, result.status?.days?.size)
+        // 原始回读对象不被就地改写
+        assertFalse(cachedRefreshed.isSignedOn(todayDay))
     }
+
+    @Test
+    fun `乐观补签时日历缺少当天会追加一天的记录`() {
+        val todayDay = 15
+        val refreshed = checkInStatus(
+            signedDays = 9,
+            days = listOf(CheckInDay(dayOfMonth = 14, signed = true, bonus = false)),
+        )
+
+        val result = resolveCheckInResult(current = refreshed, refreshed = refreshed, todayDayOfMonth = todayDay)
+
+        val days = result.status?.days ?: error("乐观补签必须给出状态")
+        assertEquals(listOf(14, 15), days.map { it.dayOfMonth })
+        assertEquals(CheckInDay(dayOfMonth = todayDay, signed = true, bonus = false), days.last())
+        assertEquals(10, result.status?.signedDays)
+    }
+
+    @Test
+    fun `签到展示按当天标记与回读日期判定今日已签`() {
+        val today = LocalDate.of(2026, 11, 15)
+        val signedStatus = checkInStatus(
+            days = listOf(CheckInDay(dayOfMonth = 15, signed = true, bonus = false)),
+        )
+
+        assertTrue(checkInDisplay(signedStatus, checkedInOn = null, today = today).signedToday)
+        // 回读还没刷出当天标记时由 checkedInOn 兜住
+        assertTrue(checkInDisplay(checkInStatus(), checkedInOn = today, today = today).signedToday)
+        // checkedInOn 按日期比较，跨过午夜自动失效
+        assertFalse(checkInDisplay(checkInStatus(), checkedInOn = today.minusDays(1), today = today).signedToday)
+        assertFalse(checkInDisplay(null, checkedInOn = null, today = today).signedToday)
+    }
+
+    @Test
+    fun `签到展示只统计今天之前的漏签天数`() {
+        val today = LocalDate.of(2026, 11, 15)
+        val status = checkInStatus(
+            days = listOf(
+                CheckInDay(dayOfMonth = 10, signed = true, bonus = false),
+                CheckInDay(dayOfMonth = 11, signed = false, bonus = false),
+                CheckInDay(dayOfMonth = 12, signed = false, bonus = false),
+                CheckInDay(dayOfMonth = 15, signed = false, bonus = false),
+                CheckInDay(dayOfMonth = 18, signed = false, bonus = false),
+            ),
+        )
+
+        // 当天与未来日期都不算漏签
+        assertEquals(2, checkInDisplay(status, checkedInOn = null, today = today).missedDays)
+        assertEquals(0, checkInDisplay(null, checkedInOn = null, today = today).missedDays)
+    }
+
+    @Test
+    fun `签到展示按已签天数算出整数百分比与副标题`() {
+        val today = LocalDate.of(2026, 11, 15)
+
+        val partial = checkInDisplay(checkInStatus(signedDays = 10, totalDays = 30), checkedInOn = null, today = today)
+        assertEquals(1f / 3f, partial.progress, 1e-6f)
+        assertEquals(33, partial.progressPercent)
+        assertEquals("10/30 天 · 33%", partial.progressLabel)
+
+        val full = checkInDisplay(checkInStatus(signedDays = 7, totalDays = 7), checkedInOn = null, today = today)
+        assertEquals(100, full.progressPercent)
+        assertEquals("7/7 天 · 100%", full.progressLabel)
+    }
+
+    @Test
+    fun `无签到状态时展示为未签且进度归零`() {
+        val today = LocalDate.of(2026, 11, 15)
+
+        val display = checkInDisplay(null, checkedInOn = null, today = today)
+
+        assertFalse(display.signedToday)
+        assertEquals(0, display.missedDays)
+        assertEquals(0f, display.progress)
+        assertEquals(0, display.progressPercent)
+        assertEquals("0/0 天 · 0%", display.progressLabel)
+    }
+
+    /** 构造签到状态：日历缺省为「昨天已签」，便于区分「当天缺条目」与「当天未签」。 */
+    private fun checkInStatus(
+        signedDays: Int = 9,
+        totalDays: Int = 30,
+        days: List<CheckInDay> = listOf(CheckInDay(dayOfMonth = 14, signed = true, bonus = false)),
+    ): DailyCheckInStatus = DailyCheckInStatus(
+        dailyId = 1,
+        eventName = "Daily",
+        currentProgress = "$signedDays/$totalDays",
+        signedDays = signedDays,
+        totalDays = totalDays,
+        days = days,
+    )
 
     private companion object {
         const val FALLBACK = "签到状态加载失败，请稍后重试"

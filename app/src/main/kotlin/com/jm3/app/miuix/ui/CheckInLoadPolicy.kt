@@ -1,7 +1,11 @@
 package com.jm3.app.miuix.ui
 
 import com.jm3.app.miuix.failureCopy
+import com.jm3.core.model.CheckInDay
+import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.session.SessionOutcome
+import java.time.LocalDate
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /**
@@ -66,28 +70,91 @@ internal fun checkInFailureCopy(failure: SessionOutcome.Failed, fallback: String
     failureCopy(failure, fallback)
 
 /**
- * 签到成功后的状态落地：当签到接口返回成功时，即便服务端日历因 CDN 缓存（常见约 30 秒）
- * 尚未置上当天标记，也乐观记入当日本地日历并提示「签到成功」，不误报「未生效」。
+ * 签到结果的落地结论：[status] 是采纳后的状态，[markToday] 表示能否把今天记为已签，
+ * [message] 是给用户的提示。三者一起返回，调用点不再各自拼一套口径。
  */
-internal fun resolveCheckInSuccess(
-    current: com.jm3.core.model.DailyCheckInStatus?,
-    refreshed: com.jm3.core.model.DailyCheckInStatus?,
-    todayDayOfMonth: Int,
-): Pair<com.jm3.core.model.DailyCheckInStatus?, String> {
-    val base = refreshed ?: current
-    if (base == null) return null to "签到成功"
-    if (base.isSignedOn(todayDayOfMonth)) return base to "签到成功"
+internal data class CheckInResolution(
+    val status: DailyCheckInStatus?,
+    val markToday: Boolean,
+    val message: String,
+)
 
-    val updatedDays = base.days.map { day ->
-        if (day.dayOfMonth == todayDayOfMonth) day.copy(signed = true) else day
-    }.let { list ->
-        if (list.none { it.dayOfMonth == todayDayOfMonth }) {
-            list + com.jm3.core.model.CheckInDay(dayOfMonth = todayDayOfMonth, signed = true, bonus = false)
-        } else list
+/**
+ * 汇总签到结果：接口返回成功只说明请求已送达，是否真的落账要以回读到的日历为准。
+ *
+ * - 回读整体失败：状态不可知，保留调用方现有状态且不标记今天，当天还能重试；
+ * - 回读已含今天：直接采纳刷新结果，不重复累加已签天数；
+ * - 回读成功但日历未标记：服务端写入或 CDN 缓存（常见约 30 秒）有延迟，
+ *   乐观补上当天并说明「稍后更新」，避免把已送达的签到误报成「未生效」。
+ */
+internal fun resolveCheckInResult(
+    current: DailyCheckInStatus?,
+    refreshed: DailyCheckInStatus?,
+    todayDayOfMonth: Int,
+): CheckInResolution {
+    if (refreshed == null) {
+        return CheckInResolution(
+            status = current,
+            markToday = false,
+            message = "签到已提交，暂时无法确认状态",
+        )
     }
-    val updated = base.copy(
-        signedDays = base.signedDays + 1,
-        days = updatedDays,
+    if (refreshed.isSignedOn(todayDayOfMonth)) {
+        return CheckInResolution(status = refreshed, markToday = true, message = "签到成功")
+    }
+    return CheckInResolution(
+        status = refreshed.markSignedOn(todayDayOfMonth),
+        markToday = true,
+        message = "签到已提交，日历稍后更新",
     )
-    return updated to "签到成功"
+}
+
+/** 在日历上补记 [dayOfMonth]：已有当天条目只改标记，缺省则追加一天，已签天数同步加一。 */
+private fun DailyCheckInStatus.markSignedOn(dayOfMonth: Int): DailyCheckInStatus {
+    val hasDay = days.any { it.dayOfMonth == dayOfMonth }
+    val updatedDays = if (hasDay) {
+        days.map { if (it.dayOfMonth == dayOfMonth) it.copy(signed = true) else it }
+    } else {
+        days + CheckInDay(dayOfMonth = dayOfMonth, signed = true, bonus = false)
+    }
+    return copy(signedDays = signedDays + 1, days = updatedDays)
+}
+
+/**
+ * 签到卡展示数据：今天是否已签、本月漏签天数与月度进度。
+ * 两页共用同一份推导，避免「已签」与进度各算一遍后互相矛盾。
+ */
+internal data class CheckInDisplay(
+    val signedToday: Boolean,
+    val missedDays: Int,
+    /** 进度条取值（0..1）；没有签到数据时为 0。 */
+    val progress: Float,
+    /** 已签占比的整数百分比，与进度条同源。 */
+    val progressPercent: Int,
+    /** 进度副标题，如「10/30 天 · 33%」。 */
+    val progressLabel: String,
+)
+
+/**
+ * 由签到状态推导展示数据。
+ *
+ * [checkedInOn] 只在接口回读之前兜住「刚签完」的瞬时态，按日期比较，跨过午夜自动失效；
+ * 已签天数只取 record 自算的 signedDays，不叠加活动返回的百分比字符串。
+ */
+internal fun checkInDisplay(
+    status: DailyCheckInStatus?,
+    checkedInOn: LocalDate?,
+    today: LocalDate,
+): CheckInDisplay {
+    val signedToday = checkedInOn == today || status?.isSignedOn(today.dayOfMonth) == true
+    val missedDays = status?.days?.count { it.dayOfMonth < today.dayOfMonth && !it.signed } ?: 0
+    val progress = status?.progress ?: 0f
+    val percent = (progress * 100).roundToInt()
+    return CheckInDisplay(
+        signedToday = signedToday,
+        missedDays = missedDays,
+        progress = progress,
+        progressPercent = percent,
+        progressLabel = "${status?.signedDays ?: 0}/${status?.totalDays ?: 0} 天 · $percent%",
+    )
 }

@@ -56,12 +56,15 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.awaitGatewayReady
+import com.jm3.app.miuix.ui.checkInDisplay
 import com.jm3.app.miuix.ui.checkInFailureCopy
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.formatCheckInSummary
 import com.jm3.app.miuix.ui.planLoad
-import com.jm3.app.miuix.ui.resolveCheckInSuccess
+import com.jm3.app.miuix.ui.resolveCheckInResult
 import com.jm3.app.miuix.ui.retryCheckInLoad
 import com.jm3.core.Jm3Log
 import com.jm3.core.download.activeDownloadCount
@@ -71,7 +74,6 @@ import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.UnreadBadge
 import java.time.LocalDate
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
@@ -192,21 +194,22 @@ internal fun CouiMineScreen(
             checkInBusy = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    // 签到请求已成功落地；回读即便遇到服务端/CDN 缓存未及时更新，也按乐观成功处理，避免误报「未生效」
+                    // 请求已成功落地，但回读可能撞上服务端/CDN 缓存延迟：两次都没标记时按乐观补签展示
                     var refreshed = refreshCheckInStatus(uid)
                     if (refreshed != null && !refreshed.isSignedOn(today.dayOfMonth)) {
                         delay(400)
                         val retry = refreshCheckInStatus(uid)
                         if (retry != null) refreshed = retry
                     }
-                    val (updatedStatus, snackbarText) = resolveCheckInSuccess(
+                    val resolution = resolveCheckInResult(
                         current = checkInStatus,
                         refreshed = refreshed,
                         todayDayOfMonth = today.dayOfMonth,
                     )
-                    updatedStatus?.let { checkInStatus = it }
-                    checkedInOn = today
-                    snackbarHostState.showSnackbar(snackbarText)
+                    resolution.status?.let { checkInStatus = it }
+                    // 回读为 null 时没有任何证据说明今天已落账，不能锁死按钮，否则当天无法重试
+                    if (resolution.markToday) checkedInOn = today
+                    snackbarHostState.showSnackbar(resolution.message)
                 }
 
                 SessionOutcome.Expired -> applyCheckInPlan(
@@ -586,10 +589,10 @@ private fun MineCheckInGroup(
     // COUI 调色板没有语义错误色，这里沿用全项目既有的 MIUIX 主题 token（只取颜色，不取组件）
     val errorColor = MiuixTheme.colorScheme.error
     val today = LocalDate.now()
-    Group(title = "每日签到") {
-        when {
-            // 会话失效时重试必然再吃一次 401，唯一动作只能是去登录
-            expiredMessage != null -> Item(
+    when {
+        // 会话失效时重试必然再吃一次 401，唯一动作只能是去登录
+        expiredMessage != null -> Group(title = "每日签到") {
+            Item(
                 icon = { MineGroupIcon(CouiIcons.Lock) },
                 title = { Text(text = "需要重新登录", kind = CouiTextKind.PreferenceTitle) },
                 summary = {
@@ -600,131 +603,113 @@ private fun MineCheckInGroup(
                 },
                 onClick = onOpenLogin,
             )
+        }
 
-            status != null -> {
-                // 「今日已签到」由记录里当天的标记推导，切页重建后依旧成立；
-                // checkedInOn 只兜住接口回读延迟，且按日期比较，跨过午夜会自动失效
-                val signedToday = checkedInOn == today || status.isSignedOn(today.dayOfMonth)
-                // 今天之前仍未签到的日期就是漏签；只做提示，不参与进度计算
-                val missedDays = status.days.count { it.dayOfMonth < today.dayOfMonth && !it.signed }
-                val checkInAction: () -> Unit = { onCheckIn(status) }
-                val rowClick: (() -> Unit)? = if (busy || signedToday) null else checkInAction
-                Item(
-                    icon = { MineGroupIcon(CouiIcons.Check) },
-                    title = {
+        status != null -> Group(title = "每日签到") {
+            // 今日已签、漏签天数与进度统一交给纯函数推导，与 Miuix 我的页共用同一口径
+            val display = checkInDisplay(status, checkedInOn, today)
+            val signedToday = display.signedToday
+            val checkInAction: () -> Unit = { onCheckIn(status) }
+            val rowClick: (() -> Unit)? = if (busy || signedToday) null else checkInAction
+            Item(
+                icon = { MineGroupIcon(CouiIcons.Check) },
+                title = {
+                    Text(
+                        text = when {
+                            busy -> "签到中…"
+                            signedToday -> "今日已签到"
+                            else -> "立即签到"
+                        },
+                        kind = CouiTextKind.PreferenceTitle,
+                    )
+                },
+                summary = {
+                    Text(
+                        text = formatCheckInSummary(status.eventName, signedToday),
+                        kind = CouiTextKind.PreferenceSummary,
+                        color = scheme.onSurfaceVariant,
+                    )
+                },
+                // 已签到只去掉点击、不置灰：禁用态会让人以为这一行坏了
+                trailing = {
+                    if (signedToday) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = CouiIcons.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = scheme.accent,
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(text = "已签到", kind = CouiTextKind.PreferenceValue, color = scheme.accent)
+                        }
+                    }
+                },
+                onClick = rowClick,
+            )
+            // 进度按 signedDays/totalDays 换算，不用接口返回的 currentProgress 文案百分比，两者会互相矛盾；
+            // totalDays 为 0 时不画 0/0，避免读成「签到坏了」
+            if (status.totalDays > 0) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = CouiPageDefaults.rowPadding)
+                        .padding(bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(text = "本月签到", kind = CouiTextKind.PreferenceSummary, color = scheme.onSurfaceVariant)
                         Text(
-                            text = when {
-                                busy -> "签到中…"
-                                signedToday -> "今日已签到"
-                                else -> "立即签到"
-                            },
-                            kind = CouiTextKind.PreferenceTitle,
-                        )
-                    },
-                    summary = {
-                        Text(
-                            text = formatCheckInSummary(status.eventName, signedToday),
+                            text = display.progressLabel,
                             kind = CouiTextKind.PreferenceSummary,
                             color = scheme.onSurfaceVariant,
                         )
-                    },
-                    // 已签到只去掉点击、不置灰：禁用态会让人以为这一行坏了
-                    trailing = {
-                        if (signedToday) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = CouiIcons.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = scheme.accent,
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(text = "已签到", kind = CouiTextKind.PreferenceValue, color = scheme.accent)
-                            }
-                        }
-                    },
-                    onClick = rowClick,
-                )
-                // 进度只有一处来源：记录自算的已签天数，不叠加接口返回的活动百分比（两者会互相矛盾）；
-                // totalDays 为 0 时不画 0/0，避免读成「签到坏了」
-                if (status.totalDays > 0) {
-                    Column(
+                    }
+                    // 进度条按胶囊轮廓绘制，与 COUI 的圆角语言保持一致
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = CouiPageDefaults.rowPadding)
-                            .padding(bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                            .height(4.dp)
+                            .clip(CouiCapsuleShape)
+                            .background(scheme.outlineVariant),
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(text = "本月签到", kind = CouiTextKind.PreferenceSummary, color = scheme.onSurfaceVariant)
-                            Text(
-                                text = "${status.signedDays}/${status.totalDays} 天 · " +
-                                    "${(status.progress * 100).roundToInt()}%",
-                                kind = CouiTextKind.PreferenceSummary,
-                                color = scheme.onSurfaceVariant,
-                            )
-                        }
-                        // 进度条按胶囊轮廓绘制，与 COUI 的圆角语言保持一致
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
+                                .fillMaxWidth(display.progress.coerceIn(0f, 1f))
+                                .fillMaxHeight()
                                 .clip(CouiCapsuleShape)
-                                .background(scheme.outlineVariant),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(status.progress.coerceIn(0f, 1f))
-                                    .fillMaxHeight()
-                                    .clip(CouiCapsuleShape)
-                                    .background(scheme.accent),
-                            )
-                        }
-                        if (missedDays > 0) {
-                            Text(
-                                text = "本月已有 $missedDays 天未签到",
-                                kind = CouiTextKind.Description,
-                                color = scheme.onSurfaceVariant,
-                            )
-                        }
+                                .background(scheme.accent),
+                        )
+                    }
+                    if (display.missedDays > 0) {
+                        Text(
+                            text = "本月已有 ${display.missedDays} 天未签到",
+                            kind = CouiTextKind.Description,
+                            color = scheme.onSurfaceVariant,
+                        )
                     }
                 }
-                if (error != null) {
-                    Text(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = CouiPageDefaults.rowPadding, end = CouiPageDefaults.rowPadding, bottom = 12.dp),
-                        text = error,
-                        kind = CouiTextKind.PreferenceSummary,
-                        color = errorColor,
-                        textAlign = TextAlign.Start,
-                    )
-                }
             }
-
-            loading -> Item(
-                icon = { MineGroupIcon(CouiIcons.Check) },
-                title = { Text(text = "签到", kind = CouiTextKind.PreferenceTitle) },
-                summary = {
-                    Text(text = "正在加载签到状态…", kind = CouiTextKind.PreferenceSummary, color = scheme.onSurfaceVariant)
-                },
-            )
-
-            else -> Item(
-                icon = { MineGroupIcon(CouiIcons.Check) },
-                title = { Text(text = "签到", kind = CouiTextKind.PreferenceTitle) },
-                summary = {
-                    Text(
-                        text = error ?: "暂无签到信息，点击重试",
-                        kind = CouiTextKind.PreferenceSummary,
-                        color = if (error != null) errorColor else scheme.onSurfaceVariant,
-                    )
-                },
-                onClick = onReload,
-            )
+            if (error != null) {
+                Text(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = CouiPageDefaults.rowPadding, end = CouiPageDefaults.rowPadding, bottom = 12.dp),
+                    text = error,
+                    kind = CouiTextKind.PreferenceSummary,
+                    color = errorColor,
+                    textAlign = TextAlign.Start,
+                )
+            }
         }
+
+        // 首屏加载、失败与空态统一用公共状态卡片，避免各页自造一套壳子
+        loading -> CouiLoadingGroup(text = "正在加载签到状态…")
+        error != null -> CouiErrorGroup(message = error, onRetry = onReload)
+        // 回读成功却没有状态：按取数失败处理，保留重试入口
+        else -> CouiErrorGroup(message = "没有取到签到信息，可能是网络波动", onRetry = onReload)
     }
 }
