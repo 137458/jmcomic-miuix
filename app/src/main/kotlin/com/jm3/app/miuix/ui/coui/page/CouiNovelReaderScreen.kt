@@ -416,6 +416,7 @@ fun CouiNovelReaderScreen(
                             SettingsRepository.NOVEL_FONT_SIZE_MAX,
                         label = "字号",
                         wrap = false,
+                        verticalFading = true,
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
