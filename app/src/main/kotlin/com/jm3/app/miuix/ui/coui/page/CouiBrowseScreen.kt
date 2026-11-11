@@ -17,14 +17,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,8 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.itos.coui.effect.SpotlightPreset
@@ -70,14 +66,15 @@ import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
-import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
+import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -99,7 +96,6 @@ import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Icon
 
 /** 标签检索视图里结果行的起始下标：0 是「标签：xxx」标题，其后才是行。 */
 private const val TAG_FEED_ROW_START = 1
@@ -143,8 +139,6 @@ internal fun CouiBrowseScreen(
     val authCall = deps.authCall
     val scope = rememberCoroutineScope()
     val lazyState = rememberLazyListState()
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
     val colors = CouiTheme.colorScheme
 
     var categoryValue by rememberSaveable { mutableStateOf(BrowseCategory.ALL.apiValue) }
@@ -459,16 +453,13 @@ internal fun CouiBrowseScreen(
             )
         },
     ) { innerPadding ->
-        val appBarPadding = scrollBehavior.state.contentPadding(innerPadding, density)
-        val contentPadding = remember(appBarPadding, layoutDirection) {
-            PaddingValues(
-                start = appBarPadding.calculateLeftPadding(layoutDirection),
-                top = appBarPadding.calculateTopPadding(),
-                end = appBarPadding.calculateRightPadding(layoutDirection),
-                // 底栏净空与 FAB 位置由 CouiAppScaffold 的 bottomBar 占位统一让出
-                bottom = appBarPadding.calculateBottomPadding(),
-            )
-        }
+        // 顶栏折叠位移留到测量期读取（含底栏净空），组合期算成字面量会把它冻结在首帧；
+        // 左右内衬保留 Scaffold 自己的净空
+        val contentPadding = couiScreenContentPadding(
+            scrollBehavior = scrollBehavior,
+            innerPadding = innerPadding,
+            horizontalPadding = null,
+        )
         LazyColumn(
             state = lazyState,
             // 大屏按 LocalWideLayout 断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding
@@ -943,25 +934,6 @@ private fun CouiTagNavGroup(
                 }
             }
         }
-    }
-}
-
-/** 顶栏返回键：40dp 圆形容器，热区由 couiPressable 补到 48dp，不依赖顶栏默认的按钮样式。 */
-@Composable
-private fun CouiTopBarBackButton(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = CouiIcons.Back,
-            contentDescription = "返回分类浏览",
-            modifier = Modifier.size(22.dp),
-            tint = CouiTheme.colorScheme.onSurface,
-        )
     }
 }
 

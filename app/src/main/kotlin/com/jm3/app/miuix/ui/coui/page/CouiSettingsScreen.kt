@@ -13,10 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -67,14 +65,12 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ReaderSettingsState
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
-import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
-import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.prefetchPagesLabel
@@ -101,7 +97,6 @@ import com.jm3.core.settings.UiSkin
 import com.jm3.core.settings.WideScreenNavigation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 输入框与卡片同源的圆角：由库的卡片半径派生，避免另写字面量。 */
@@ -373,7 +368,7 @@ fun CouiSettingsScreen(
                     // 自己提到外面会拿不到采样源，直接抛 checkNotNull。
                     LargeTopAppBar(
                         title = { CouiTopBarTitle(text = "设置", textAlign = TextAlign.Start) },
-                        navigationIcon = { SettingsBackButton(onClick = onBack) },
+                        navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
                         scrollBehavior = scrollBehavior,
                         colors = couiTopAppBarColors(),
                     )
@@ -761,25 +756,6 @@ fun CouiSettingsScreen(
                 "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +
                 "未满 18 周岁（或当地法定年龄）请勿使用；因使用本应用产生的一切后果由使用者自行承担。",
             confirmAction = CouiDialogAction(text = "知道了", onClick = { showDisclaimer = false }),
-        )
-    }
-}
-
-/** 顶栏返回键：40dp 圆形容器，热区由共享件补到 48dp，视觉尺寸不变。 */
-@Composable
-private fun SettingsBackButton(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = CouiIcons.Back,
-            contentDescription = "返回",
-            modifier = Modifier.size(22.dp),
-            tint = CouiKitTheme.colorScheme.onSurface,
         )
     }
 }

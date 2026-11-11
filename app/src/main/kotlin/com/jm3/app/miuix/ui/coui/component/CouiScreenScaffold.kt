@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.theme.CouiTheme
@@ -101,30 +103,80 @@ fun rememberCouiScreenScrollBehavior(canScroll: () -> Boolean = { true }): CouiT
 /**
  * 顶栏折叠后的正文留白：Scaffold 的 windowInsets 留白 + 顶栏折叠位移，再补上左右内容边距。
  * 只在页面正文内调用，不要再用返回的 padding 去平移整个视口。
+ *
+ * 返回值是活对象：顶部留白在测量期才读折叠位移。组合期把 calculateTopPadding() 算成字面量，
+ * 会把首次组合那一帧的顶栏高度冻结住——顶栏之后折叠/展开，正文都不再跟随
+ * （切 tab 回到页面时，大标题与搜索框就压在正文首项上）。
+ *
+ * @param horizontalPadding 为空时保留 Scaffold 自己的左右净空。
+ * @param extraBottom 页面在底栏净空之外补的尾部间隙。
  */
 @Composable
 fun couiScreenContentPadding(
     scrollBehavior: CouiTopAppBarScrollBehavior,
     innerPadding: PaddingValues,
-    horizontalPadding: Dp = CouiPageDefaults.horizontalMargin,
+    horizontalPadding: Dp? = CouiPageDefaults.horizontalMargin,
+    extraBottom: Dp = 0.dp,
 ): PaddingValues {
     val density = LocalDensity.current
     // 库侧已把顶部留白与折叠位移合在一起并把负值收敛到 0，这里只补左右边距，不重复做加减
-    val corrected = scrollBehavior.state.contentPadding(innerPadding, density)
-    return PaddingValues(
-        start = horizontalPadding,
-        top = corrected.calculateTopPadding(),
-        end = horizontalPadding,
-        bottom = corrected.calculateBottomPadding(),
-    )
+    return remember(scrollBehavior, innerPadding, density, horizontalPadding, extraBottom) {
+        val corrected = scrollBehavior.state.contentPadding(innerPadding, density)
+        object : PaddingValues {
+            override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+                horizontalPadding ?: corrected.calculateLeftPadding(layoutDirection)
+
+            override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+                horizontalPadding ?: corrected.calculateRightPadding(layoutDirection)
+
+            override fun calculateTopPadding(): Dp = corrected.calculateTopPadding()
+
+            override fun calculateBottomPadding(): Dp = corrected.calculateBottomPadding() + extraBottom
+        }
+    }
 }
 
 /**
- * 顶栏返回键：40dp 圆形触区（外扩到 48dp 最小触区），图标取 COUI 图标集。
+ * 顶栏返回键：API 34 起用原厂顶栏按钮（自带浮动材质与凝光），低版本退回 40dp 自绘圆键。
  * 页面不要再自己画返回键，低版本与高版本的顶栏边距才对得上。
+ * 必须在顶栏的 navigationIcon 槽内调用：原厂按钮要求顶栏效果作用域提供背景源。
  */
 @Composable
 fun CouiTopBarBackButton(
+    onClick: () -> Unit,
+    contentDescription: String = "返回",
+    modifier: Modifier = Modifier,
+) {
+    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
+        CouiTopBarBackButton34(onClick = onClick, contentDescription = contentDescription, modifier = modifier)
+    } else {
+        CouiTopBarPlainBackButton(onClick = onClick, contentDescription = contentDescription, modifier = modifier)
+    }
+}
+
+@RequiresApi(CouiLibraryNavBarMinSdk)
+@Composable
+private fun CouiTopBarBackButton34(
+    onClick: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    TopAppBarButton(modifier = modifier, onClick = onClick) {
+        Icon(
+            imageVector = CouiIcons.Back,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(CouiTopBarIconSize),
+        )
+    }
+}
+
+/**
+ * 自绘圆键形态的返回键：40dp 圆形触区（外扩到 48dp 最小触区），图标取 COUI 图标集。
+ * 供自带浮动材质的外壳使用（阅读器 HUD 栏）：那里不是 COUI 顶栏，没有背景采样源，
+ * 直接用原厂按钮会在取 backdrop 时抛异常。
+ */
+@Composable
+internal fun CouiTopBarPlainBackButton(
     onClick: () -> Unit,
     contentDescription: String = "返回",
     modifier: Modifier = Modifier,

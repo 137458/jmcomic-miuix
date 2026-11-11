@@ -61,7 +61,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -304,7 +304,8 @@ fun CouiNovelReaderScreen(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        CouiTopBarBackButton(onClick = onBack)
+                        // HUD 栏自带浮动材质、不在 COUI 顶栏作用域内，只能用自绘圆键
+                        CouiTopBarPlainBackButton(onClick = onBack)
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
                             Text(
                                 text = chapter?.title ?: "阅读",

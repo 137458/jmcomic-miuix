@@ -33,8 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +61,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -120,8 +119,6 @@ private fun CouiSearchBody(
     val authCall = deps.authCall
     val coroutineScope = rememberCoroutineScope()
     val lazyState = rememberLazyListState()
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
     val scheme = CouiKitTheme.colorScheme
     val pageMode = deps.preferences.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
@@ -220,15 +217,13 @@ private fun CouiSearchBody(
                 )
             },
         ) { innerPadding ->
-            val corrected = scrollBehavior.state.contentPadding(innerPadding, density)
-            val contentPadding = remember(corrected, layoutDirection) {
-                PaddingValues(
-                    start = corrected.calculateLeftPadding(layoutDirection),
-                    top = corrected.calculateTopPadding(),
-                    end = corrected.calculateRightPadding(layoutDirection),
-                    bottom = corrected.calculateBottomPadding() + 24.dp,
-                )
-            }
+            // 折叠位移留到测量期读取：组合期算成字面量会把首帧的顶栏高度冻结住
+            val contentPadding = couiScreenContentPadding(
+                scrollBehavior = scrollBehavior,
+                innerPadding = innerPadding,
+                horizontalPadding = null,
+                extraBottom = 24.dp,
+            )
             LazyColumn(
                 state = lazyState,
                 modifier = Modifier

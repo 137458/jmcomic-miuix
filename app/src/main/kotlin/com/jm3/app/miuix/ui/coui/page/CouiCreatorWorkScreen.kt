@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -35,8 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +65,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -127,8 +125,6 @@ private fun CouiCreatorWorkBody(
     val gateway = deps.gateway
     val authCall = deps.authCall
     val coroutineScope = rememberCoroutineScope()
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
     val wideLayout = LocalWideLayout.current
     val twoPane = wideLayout.twoPaneDetail
     val leftListState = rememberLazyListState()
@@ -269,15 +265,13 @@ private fun CouiCreatorWorkBody(
                 )
             },
         ) { innerPadding ->
-            val corrected = scrollBehavior.state.contentPadding(innerPadding, density)
-            val contentPadding = remember(corrected, layoutDirection) {
-                PaddingValues(
-                    start = corrected.calculateLeftPadding(layoutDirection),
-                    top = corrected.calculateTopPadding(),
-                    end = corrected.calculateRightPadding(layoutDirection),
-                    bottom = corrected.calculateBottomPadding() + 24.dp,
-                )
-            }
+            // 折叠位移留到测量期读取：组合期算成字面量会把首帧的顶栏高度冻结住
+            val contentPadding = couiScreenContentPadding(
+                scrollBehavior = scrollBehavior,
+                innerPadding = innerPadding,
+                horizontalPadding = null,
+                extraBottom = 24.dp,
+            )
             if (twoPane) {
                 Row(
                     modifier = Modifier

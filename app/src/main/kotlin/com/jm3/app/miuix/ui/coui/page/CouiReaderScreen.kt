@@ -126,6 +126,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiLibraryNavBarMinSdk
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
@@ -1066,7 +1067,8 @@ private fun ReaderPages(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CouiTopBarBackButton(onClick = onBack)
+                    // HUD 栏自带浮动材质、不在 COUI 顶栏作用域内，只能用自绘圆键
+                    CouiTopBarPlainBackButton(onClick = onBack)
                     Text(
                         text = photo.title,
                         kind = CouiTextKind.Toolbar,

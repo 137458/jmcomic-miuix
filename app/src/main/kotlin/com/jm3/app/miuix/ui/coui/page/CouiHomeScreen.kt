@@ -40,7 +40,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -182,7 +181,6 @@ fun CouiHomeScreen(
     var listToken by remember { mutableIntStateOf(0) }
 
     val lazyState = rememberLazyListState()
-    val layoutDirection = LocalLayoutDirection.current
     // 折叠顶栏只在列表还能滚的时候才收，短页保持展开
     val header = rememberCouiCollapsingAppBarState(
         canScroll = { lazyState.canScrollForward || lazyState.canScrollBackward },
@@ -267,6 +265,9 @@ fun CouiHomeScreen(
     }
 
     fun openAlbum(albumId: String) {
+        // 跳详情就退出搜索输入态：否则返回首页时顶栏仍是吸顶的搜索形态，
+        // 库侧还会因为 expanded 仍是 true 重新抢焦点、把键盘拉起来
+        searchExpanded = false
         dismissSearchInput()
         onOpenAlbum(albumId)
     }
@@ -501,18 +502,12 @@ fun CouiHomeScreen(
             }
         },
     ) { innerPadding ->
-        val appBarPadding = remember(header, innerPadding, density) {
+        // 顶栏留白改由 LazyColumn 的 contentPadding 承担，正文才能滚到折叠后的顶栏下面。
+        // 折叠位移留到测量期读取：组合期算成字面量会把首次组合那一帧的顶栏高度冻结住，
+        // 之后顶栏展开/收缩正文都不再跟随（切 tab 回首页时标签行被大标题与搜索框压住）。
+        // 底栏净空与 FAB 位置由 CouiAppScaffold 的 bottomBar 占位统一让出。
+        val contentPadding = remember(header, innerPadding, density) {
             header.contentPadding(innerPadding, density)
-        }
-        // 顶栏留白改由 LazyColumn 的 contentPadding 承担，正文才能滚到折叠后的顶栏下面
-        val contentPadding = remember(appBarPadding, layoutDirection) {
-            PaddingValues(
-                start = appBarPadding.calculateLeftPadding(layoutDirection),
-                top = appBarPadding.calculateTopPadding(),
-                end = appBarPadding.calculateRightPadding(layoutDirection),
-                // 底栏净空与 FAB 位置由 CouiAppScaffold 的 bottomBar 占位统一让出
-                bottom = appBarPadding.calculateBottomPadding(),
-            )
         }
         val feedState = if (searching) results else feed
         // 大屏按 LocalWideLayout 的断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding，

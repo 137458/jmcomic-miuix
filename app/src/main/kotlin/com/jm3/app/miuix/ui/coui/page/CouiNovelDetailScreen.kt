@@ -46,8 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -88,6 +86,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -228,8 +227,6 @@ private fun CouiNovelDetailBody(
     val authCall = deps.authCall
     val user by deps.account.user.collectAsState()
     val wideLayout = LocalWideLayout.current
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
     val dateFormat = rememberDateFormatter("yyyy-MM-dd")
     val scope = rememberCoroutineScope()
 
@@ -647,16 +644,13 @@ private fun CouiNovelDetailBody(
                 )
             },
         ) { innerPadding ->
-            val corrected = scrollBehavior.state.contentPadding(innerPadding, density)
-            val imeVisible = WindowInsets.isImeVisible
-            val contentPadding = remember(corrected, layoutDirection, imeVisible) {
-                PaddingValues(
-                    start = corrected.calculateLeftPadding(layoutDirection),
-                    top = corrected.calculateTopPadding(),
-                    end = corrected.calculateRightPadding(layoutDirection),
-                    bottom = corrected.calculateBottomPadding() + if (imeVisible) 0.dp else 24.dp,
-                )
-            }
+            // 折叠位移留到测量期读取：组合期算成字面量会把首帧的顶栏高度冻结住
+            val contentPadding = couiScreenContentPadding(
+                scrollBehavior = scrollBehavior,
+                innerPadding = innerPadding,
+                horizontalPadding = null,
+                extraBottom = if (WindowInsets.isImeVisible) 0.dp else 24.dp,
+            )
             if (wideLayout.twoPaneDetail) {
                 Row(modifier = Modifier.fillMaxSize().readableWidth().consumeWindowInsets(innerPadding)) {
                     LazyColumn(
