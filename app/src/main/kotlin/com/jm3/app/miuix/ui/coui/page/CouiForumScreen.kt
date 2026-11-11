@@ -48,6 +48,7 @@ import coil3.compose.AsyncImage
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
+import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Footer
@@ -549,7 +550,7 @@ private fun CouiForumTopic(
             CouiForumComment(item = reply, depth = depth, onReply = onReply)
         }
         if (albumName != null && albumId != null) {
-            val rowShape = CouiShape(10.dp, 3f)
+            val rowShape = CouiShape(radius = 10.dp, cornerWeight = 3f)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -564,7 +565,7 @@ private fun CouiForumTopic(
                     modifier = Modifier
                         .width(48.dp)
                         .height(64.dp)
-                        .clip(CouiShape(8.dp, 3f))
+                        .clip(CouiShape(radius = 8.dp, cornerWeight = 3f))
                         .background(scheme.card),
                 ) {
                     AlbumCoverImage(
@@ -842,6 +843,8 @@ private fun CouiForumInputDialog(
         dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
         dark = CouiKitTheme.isDark,
         title = title,
+        // 回复框是多行输入，贴底弹出更符合"从下往上写"的直觉；显式声明以免依赖库默认值
+        placement = CouiDialogPlacement.Bottom,
     ) {
         BasicTextField(
             value = draft,
@@ -851,7 +854,7 @@ private fun CouiForumInputDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 96.dp)
-                .clip(CouiShape(16.dp, 3f))
+                .clip(CouiShape(radius = 16.dp, cornerWeight = 3f))
                 .background(scheme.container)
                 .padding(12.dp),
             decorationBox = { innerTextField ->

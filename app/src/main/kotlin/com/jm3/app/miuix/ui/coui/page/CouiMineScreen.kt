@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
@@ -399,6 +400,8 @@ internal fun CouiMineScreen(
         visible = confirmLogout,
         title = "退出登录",
         message = "确定要登出账号吗？",
+        // 会话级强确认走居中弹窗，与「选择/输入」类底部弹窗区分开
+        placement = CouiDialogPlacement.Center,
         confirmAction = couiDestructiveConfirmAction(text = "确认退出") {
             confirmLogout = false
             scope.launch {

@@ -1323,7 +1323,7 @@ private fun CouiCommentComposer(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 84.dp)
-                .clip(CouiShape(16.dp, 3f))
+                .clip(CouiShape(radius = 16.dp, cornerWeight = 3f))
                 .background(scheme.container)
                 .padding(12.dp),
             decorationBox = { innerTextField ->
@@ -1588,7 +1588,7 @@ private fun CouiDialogRow(
     danger: Boolean = false,
 ) {
     val scheme = CouiKitTheme.colorScheme
-    val rowShape = CouiShape(16.dp, 3f)
+    val rowShape = CouiShape(radius = 16.dp, cornerWeight = 3f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1663,7 +1663,7 @@ private fun CouiReplyDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 96.dp)
-                .clip(CouiShape(16.dp, 3f))
+                .clip(CouiShape(radius = 16.dp, cornerWeight = 3f))
                 .background(scheme.container)
                 .padding(12.dp),
             decorationBox = { innerTextField ->

@@ -26,6 +26,7 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.CouiTopAppBarScrollBehavior
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.itos.coui.topappbar.TopAppBarButton
+import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import top.yukonga.miuix.kmp.basic.Icon
 
@@ -41,7 +42,8 @@ private val CouiTopBarIconSize = 22.dp
  * 2. [content] 拿到的是已按折叠状态修正、并带上左右内容边距的 [PaddingValues]，
  *    可直接交给 LazyColumn/LazyRow 的 contentPadding，也可用 Modifier.padding；
  *    拿到的必须是修正后的 padding：直接消费 Scaffold 原始 padding 会让正文在顶栏下方留一段死白；
- * 3. 返回键与动作按钮的尺寸、触区、着色统一，避免每页各写一套。
+ * 3. 返回键与动作按钮的尺寸、触区、着色统一，避免每页各写一套；[actions] 非空时统一包进
+ *    [TopAppBarButtonGroup]，按钮组随顶栏折叠走共享位移。
  *
  * @param onBack 为空表示这是一级页面，不画返回键。
  * @param scrollBehavior 需要按列表滚动范围控制折叠时传入（见 [rememberCouiScreenScrollBehavior]）。
@@ -71,7 +73,13 @@ fun CouiScreenScaffold(
                         CouiTopBarBackButton(onClick = onBack, contentDescription = backContentDescription)
                     }
                 },
-                actions = actions ?: {},
+                actions = {
+                    // 空槽不建组：组内是右对齐 Row，空组会多占一层布局与一次共享位移
+                    val slot = actions
+                    if (slot != null) {
+                        TopAppBarButtonGroup { slot() }
+                    }
+                },
                 scrollBehavior = scrollBehavior,
                 colors = couiTopAppBarColors(),
             )

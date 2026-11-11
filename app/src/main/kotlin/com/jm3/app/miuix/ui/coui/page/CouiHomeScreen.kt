@@ -151,6 +151,7 @@ fun CouiHomeScreen(
     deps: ScreenDeps,
     onOpenAlbum: (String) -> Unit,
     onOpenWeek: () -> Unit,
+    onOpenRanking: () -> Unit,
 ) {
     // 网关与鉴权统一从 ScreenDeps 取，不额外收同源参数
     val gateway = deps.gateway
@@ -550,7 +551,12 @@ fun CouiHomeScreen(
             // 三条横滑轨道排在发现流之前：先给「今天有什么可看」，再给完整清单
             tracks.forEach { track ->
                 item(key = "coui-home-track-${track.key}") {
-                    CouiHomeTrackSection(track = track, onOpenAlbum = ::openAlbum)
+                    CouiHomeTrackSection(
+                        track = track,
+                        onOpenAlbum = ::openAlbum,
+                        // 进榜入口只挂在排名轨道：其余轨道不摆一个没有去处的按钮
+                        onOpenRanking = if (track.ranked) onOpenRanking else null,
+                    )
                 }
             }
             item(key = "coui-home-title") {
@@ -757,9 +763,24 @@ fun CouiHomeScreen(
 private fun CouiHomeTrackSection(
     track: CouiHomeTrackData,
     onOpenAlbum: (String) -> Unit,
+    onOpenRanking: (() -> Unit)? = null,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        CouiGroupTitle(title = track.title)
+        CouiGroupTitle(title = track.title) {
+            if (onOpenRanking != null) {
+                val accent = CouiTheme.colorScheme.accent
+                Text(
+                    text = "查看全部",
+                    kind = CouiTextKind.Description,
+                    color = accent,
+                    modifier = Modifier
+                        .clip(CouiCapsuleShape)
+                        .background(accent.copy(alpha = 0.12f))
+                        .couiPressable(shape = CouiCapsuleShape, onClick = onOpenRanking)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+        }
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = CouiPageDefaults.horizontalMargin),

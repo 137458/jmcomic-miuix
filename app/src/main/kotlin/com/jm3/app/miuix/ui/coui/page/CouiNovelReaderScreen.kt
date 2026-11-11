@@ -41,9 +41,9 @@ import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
+import com.itos.coui.picker.WheelPicker
 import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.slider.Slider
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.text.rememberCouiTextStyle
@@ -73,7 +73,6 @@ import com.jm3.core.paging.PagedFeed
 import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.SettingsRepository
-import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
@@ -298,6 +297,7 @@ fun CouiNovelReaderScreen(
                         .fillMaxWidth()
                         .readableWidth(),
                     height = ReaderHudTopHeight,
+                    diagnosticName = "novelHud/top",
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
@@ -343,6 +343,7 @@ fun CouiNovelReaderScreen(
                         .fillMaxWidth()
                         .readableWidth(),
                     height = ReaderHudBottomHeight,
+                    diagnosticName = "novelHud/bottom",
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -406,17 +407,15 @@ fun CouiNovelReaderScreen(
                         kind = CouiTextKind.PreferenceTitle,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Slider(
+                    // 字号是离散档位，滚轮比滑杆更容易一档一档停准；不环回，避免从最大档直接跳回最小档
+                    WheelPicker(
                         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                        value = fontSize.toFloat(),
-                        onValueChange = { applyFontSize(it.roundToInt()) },
-                        valueRange = SettingsRepository.NOVEL_FONT_SIZE_MIN.toFloat()..
-                            SettingsRepository.NOVEL_FONT_SIZE_MAX.toFloat(),
-                        // 滑杆只停整号字：中间档数就是两端之差减一
-                        steps = (
-                            SettingsRepository.NOVEL_FONT_SIZE_MAX -
-                                SettingsRepository.NOVEL_FONT_SIZE_MIN - 1
-                            ).coerceAtLeast(0),
+                        value = fontSize,
+                        onValueChange = { applyFontSize(it) },
+                        valueRange = SettingsRepository.NOVEL_FONT_SIZE_MIN..
+                            SettingsRepository.NOVEL_FONT_SIZE_MAX,
+                        label = "字号",
+                        wrap = false,
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),

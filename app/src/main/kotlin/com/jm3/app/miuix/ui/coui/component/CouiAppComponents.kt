@@ -161,8 +161,9 @@ fun couiDestructiveConfirmAction(
 /**
  * 按压反馈 + 无涟漪点击：COUI 页面里所有自绘可点区域的统一入口。
  *
- * 反馈分两层：库的 [couiButtonFeedback] 给 hover/focus/press 蒙层，[couiPressMotion] 给原厂
- * 按压缩放（按面积与宽高比取 0.85–0.97，宽条走糖果曲线）。列表行只叠蒙层，
+ * 反馈分三层：库的 [couiButtonFeedback] 给 hover/focus/press 蒙层，[couiPressMotion] 给原厂
+ * 按压缩放（按面积与宽高比取 0.85–0.97，宽条走糖果曲线），按下瞬间再由
+ * [performCouiHapticFeedback] 发一次 COUI 触觉。列表行只叠蒙层，
  * 整行随按下缩放会压过行内的滑选与长按，所以缩放由 [scaleOnPress] 显式打开。
  * 点击指示器置空，避免在实底卡片上再叠一层涟漪。语义角色由调用方决定，默认按钮。
  *
@@ -180,6 +181,21 @@ fun Modifier.couiPressable(
     onClick: () -> Unit,
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
+    val view = LocalView.current
+    // 每次按住只发一次：滑动、长按都不会再触发，避免连续震动
+    LaunchedEffect(interactionSource, view) {
+        var down = false
+        interactionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Press) {
+                if (!down) {
+                    down = true
+                    view.performCouiHapticFeedback(CouiHapticFeedback.Switch)
+                }
+            } else if (interaction is PressInteraction.Release || interaction is PressInteraction.Cancel) {
+                down = false
+            }
+        }
+    }
     val press = if (scaleOnPress) rememberCouiPressMotion() else null
     val visualFeedback = if (shape != null) {
         Modifier
@@ -855,8 +871,8 @@ fun CouiSegmentedCapsules(
 /**
  * 按压即触觉：手指按下（[PressInteraction.Press]）时触发一次 COUI 触觉，而不是等抬起的点击。
  *
- * 供自己拼手势的组件使用（作品卡、融合滑动行、个性化横幅等）；[couiPressable] 已内置同一段逻辑。
- * ROM 不支持该触觉时库侧返回 false，这里不重试也不报错。
+ * 供自己拼手势的组件使用（作品卡、融合滑动行、个性化横幅等）；[couiPressable] 已内置同一段逻辑，
+ * 且同样保证一次按住只触发一次。ROM 不支持该触觉时库侧返回 false，这里不重试也不报错。
  */
 @Composable
 fun CouiPressHapticEffect(

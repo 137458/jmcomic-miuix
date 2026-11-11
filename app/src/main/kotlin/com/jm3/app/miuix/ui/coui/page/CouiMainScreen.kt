@@ -174,6 +174,7 @@ fun CouiMainScreen(
                                     deps = deps,
                                     onOpenAlbum = onOpenAlbum,
                                     onOpenWeek = onOpenWeek,
+                                    onOpenRanking = { tab = CouiMainTab.RANK.ordinal },
                                 )
                                 1 -> CouiBrowseScreen(
                                     deps = deps,

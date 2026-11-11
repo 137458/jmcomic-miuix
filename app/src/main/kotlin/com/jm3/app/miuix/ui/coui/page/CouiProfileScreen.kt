@@ -84,7 +84,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 输入行与卡片同源的圆角：由库的卡片半径派生，避免另写字面量。 */
-private val ProfileInputShape = CouiShape(CouiPageDefaults.shape.radius / 2)
+private val ProfileInputShape = CouiShape(radius = CouiPageDefaults.shape.radius / 2)
 
 /** 资料里只有这两项是固定枚举，其余都是自由文本。 */
 private enum class ProfileSelector(val title: String, val field: String) {
@@ -391,7 +391,7 @@ private fun ProfileHeader(username: String, email: String, photoUrl: String?) {
             .padding(horizontal = CouiPageDefaults.horizontalMargin)
             .padding(top = 8.dp)
             .height(176.dp)
-            .clip(CouiShape(24.dp, 3f)),
+            .clip(CouiShape(radius = 24.dp, cornerWeight = 3f)),
     ) {
         if (!photoUrl.isNullOrBlank()) {
             AsyncImage(

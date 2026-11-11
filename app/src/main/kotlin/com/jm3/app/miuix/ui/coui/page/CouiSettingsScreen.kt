@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
@@ -102,7 +103,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 输入框与卡片同源的圆角：由库的卡片半径派生，避免另写字面量。 */
-private val SettingsInputShape = CouiShape(CouiPageDefaults.shape.radius / 2)
+private val SettingsInputShape = CouiShape(radius = CouiPageDefaults.shape.radius / 2)
 
 private fun UiSkin.couiSummary(): String = when (this) {
     UiSkin.HYPEROS -> "HyperOS：液态玻璃折射与饱和高光"
@@ -417,33 +418,27 @@ fun CouiSettingsScreen(
                             current = uiSkin,
                             onSelect = onUiSkinChange,
                         )
-                        Divider()
-                        Item(
-                            // 整行即开关：toggleable 提供点击、Role.Switch 与开/关播报，
-                            // Switch 只呈现状态，避免同一控件出现两份点击语义
-                            modifier = Modifier.couiSwitchRow(
-                                value = dynamicColor,
-                                onValueChange = onDynamicColorChange,
-                                enabled = dynamicColorSupported,
-                            ),
-                            title = { SettingsRowTitle("动态取色") },
-                            summary = {
-                                SettingsRowSummary(
-                                    if (dynamicColorSupported) {
-                                        "跟随壁纸生成配色（Android 12 及以上）"
-                                    } else {
-                                        "ColorOS 皮肤固定自有色板，动态取色不生效"
-                                    },
-                                )
-                            },
-                            trailing = {
-                                Switch(
-                                    checked = dynamicColor,
-                                    onCheckedChange = null,
-                                    enabled = dynamicColorSupported,
-                                )
-                            },
-                        )
+                        // ColorOS 固定自有色板，动态取色在那边没有落点：整行不进列表，
+                        // 而不是留一个永远禁用的开关解释自己为何无效（HyperOS 分支行为不变）
+                        if (dynamicColorSupported) {
+                            Divider()
+                            Item(
+                                // 整行即开关：toggleable 提供点击、Role.Switch 与开/关播报，
+                                // Switch 只呈现状态，避免同一控件出现两份点击语义
+                                modifier = Modifier.couiSwitchRow(
+                                    value = dynamicColor,
+                                    onValueChange = onDynamicColorChange,
+                                ),
+                                title = { SettingsRowTitle("动态取色") },
+                                summary = { SettingsRowSummary("跟随壁纸生成配色（Android 12 及以上）") },
+                                trailing = {
+                                    Switch(
+                                        checked = dynamicColor,
+                                        onCheckedChange = null,
+                                    )
+                                },
+                            )
+                        }
                     }
 
                     Group(title = "通用") {
@@ -705,7 +700,9 @@ fun CouiSettingsScreen(
                     SettingsDiagnosticLine(label = "分页模式", value = paginationMode.displayName)
                     SettingsDiagnosticLine(
                         label = "主题",
-                        value = themeMode.displayName + if (dynamicColor) " · 动态取色" else "",
+                        // 诊断只报真正生效的项：ColorOS 下这个开关即便存着 true 也不影响取色
+                        value = themeMode.displayName +
+                            if (dynamicColor && dynamicColorSupported) " · 动态取色" else "",
                     )
                 }
             }
@@ -721,6 +718,7 @@ fun CouiSettingsScreen(
                 visible = clearTarget != null,
                 title = pendingClear.title,
                 message = pendingClear.description,
+                placement = CouiDialogPlacement.Center,
                 confirmAction = couiDestructiveConfirmAction(
                     text = if (clearing) "清空中…" else "确认清空",
                     enabled = !clearing,

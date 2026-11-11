@@ -96,6 +96,7 @@ import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.checkbox.Checkbox
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.diagnostic.renderDiagnosticProbe
 import com.itos.coui.effect.CouiFloatingMaterial
 import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.effect.CouiFloatingShadow
@@ -195,6 +196,7 @@ import top.yukonga.miuix.kmp.utils.springAnimateToPage
 
 /** 阅读进度落盘前的静置时长：翻页停下来才写，避免连滚时逐页写设置存储。 */
 private const val PROGRESS_SAVE_DEBOUNCE_MS = 400L
+private const val PageSliderTickMaxPages = 24
 private const val VOLUME_THROTTLE_MS = 150L
 private const val TRACK_MUTE_DAYS_MS = 3L * 24 * 60 * 60 * 1000
 
@@ -1053,6 +1055,7 @@ private fun ReaderPages(
                     .fillMaxWidth()
                     .readableWidth(),
                 height = ReaderHudTopHeight,
+                diagnosticName = "readerHud/top",
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
@@ -1105,6 +1108,7 @@ private fun ReaderPages(
                     .fillMaxWidth()
                     .readableWidth(),
                 height = ReaderHudBottomHeight,
+                diagnosticName = "readerHud/bottom",
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -1199,6 +1203,8 @@ private fun ReaderPages(
                             valueRange = 1f..totalPages.toFloat(),
                             // 滑杆只停整数页：两端各留一档，中间档数就是总页数减二
                             steps = (totalPages - 2).coerceAtLeast(0),
+                            // 短章节把可落位点画出来，页码不用靠猜；长章节点位会密到成带，改回纯滑杆
+                            showTickMarks = totalPages <= PageSliderTickMaxPages,
                         )
                     }
                 }
@@ -1449,27 +1455,39 @@ internal val ReaderHudBottomHeight = 64.dp
 /** HUD 形状：大圆角卡片，观感贴近库底栏，又不必依赖透镜的胶囊限定。 */
 internal val ReaderHudShape = CouiShape(radius = 28.dp, cornerWeight = 2f)
 
+/** 降级底栏的不透明度：太实会挡住正文，太虚又读不清栏内文字。 */
+private const val ReaderHudFallbackAlpha = 0.92f
+
 /** 评论输入框形状：比卡片更方，输入区不宜用大圆角。 */
 internal val ReaderCommentFieldShape = CouiShape(radius = 16.dp, cornerWeight = 3f)
 
 /**
  * HUD 顶/底栏的统一外壳：API 34 起走库的浮动表面（透镜折射、投影与描边一次给全），
- * 更低版本拿不到那套材质，退化成投影加实色卡片。两条路径的高度与内容排布一致，
- * 上层只管给内容，不需要知道自己落在哪一档。
+ * 更低版本拿不到那套材质，退化成投影加半透明卡片：容器色叠 0.92 不透明度，背后正文仍能透出来。
+ * 两条路径的高度与内容排布一致，上层只管给内容，不需要知道自己落在哪一档。
  */
 @Composable
 internal fun ReaderHudBar(
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
     height: Dp,
+    diagnosticName: String,
     content: @Composable () -> Unit,
 ) {
     if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
-        ReaderHudFloatingBar(backdrop = backdrop, modifier = modifier, height = height, content = content)
+        ReaderHudFloatingBar(
+            backdrop = backdrop,
+            modifier = modifier,
+            height = height,
+            diagnosticName = diagnosticName,
+            content = content,
+        )
     } else {
         Box(
             modifier = modifier
                 .height(height)
+                // 探针只在 CouiRenderDiagnostics 开启时生效，生产环境是空操作
+                .renderDiagnosticProbe(diagnosticName)
                 .dropShadow(
                     shape = ReaderHudShape,
                     shadow = Shadow(
@@ -1479,7 +1497,7 @@ internal fun ReaderHudBar(
                     ),
                 )
                 .clip(ReaderHudShape)
-                .background(CouiKitTheme.colorScheme.container),
+                .background(CouiKitTheme.colorScheme.container.copy(alpha = ReaderHudFallbackAlpha)),
             contentAlignment = Alignment.Center,
         ) {
             content()
@@ -1493,6 +1511,7 @@ private fun ReaderHudFloatingBar(
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
     height: Dp,
+    diagnosticName: String,
     content: @Composable () -> Unit,
 ) {
     val dark = CouiKitTheme.isDark
@@ -1508,6 +1527,7 @@ private fun ReaderHudFloatingBar(
     Box(
         modifier = modifier
             .height(height)
+            .renderDiagnosticProbe(diagnosticName)
             .onSizeChanged { bounds = it }
             .couiFloatingSurface(
                 backdrop = backdrop,
