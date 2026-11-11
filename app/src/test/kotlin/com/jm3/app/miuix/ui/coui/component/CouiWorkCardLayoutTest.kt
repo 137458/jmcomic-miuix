@@ -2,6 +2,8 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
@@ -9,6 +11,7 @@ import androidx.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * COUI 作品卡排版契约：
@@ -149,5 +152,38 @@ class CouiWorkCardLayoutTest {
         val labels = couiWorkGridLabels("NOK", null)
         assertEquals("NOK", labels.author)
         assertNull(labels.categoryBadge)
+    }
+
+    @Test
+    fun 卡片独立微边框宽度为半个dp() {
+        assertEquals(0.5.dp, CouiWorkCardTokens.BorderWidth)
+    }
+
+    @Test
+    fun 卡片浅色模式描边色为淡黑() {
+        assertEquals(Color(0x0D000000), CouiWorkCardTokens.BorderLight)
+    }
+
+    @Test
+    fun 卡片深色模式描边色为微光白() {
+        assertEquals(Color(0x26FFFFFF), CouiWorkCardTokens.BorderDark)
+    }
+
+    @Test
+    fun 行卡纵向间距为八() {
+        assertEquals(8.dp, CouiWorkCardTokens.RowSpacing)
+    }
+
+    @Test
+    fun 按暗色标志返回对应的边框样式() {
+        val darkBorder = couiCardBorder(isDark = true)
+        assertEquals(0.5.dp, darkBorder.width)
+        val darkColor = (darkBorder.brush as? SolidColor)?.value
+        assertEquals(Color(0x26FFFFFF), darkColor)
+
+        val lightBorder = couiCardBorder(isDark = false)
+        assertEquals(0.5.dp, lightBorder.width)
+        val lightColor = (lightBorder.brush as? SolidColor)?.value
+        assertEquals(Color(0x0D000000), lightColor)
     }
 }

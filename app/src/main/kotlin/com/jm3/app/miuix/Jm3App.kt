@@ -358,10 +358,11 @@ private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode 
     }
 
 /**
- * 详情页页面变换（HyperOS）：只做 alpha，不做位移。
+ * 详情页页面变换：两套皮肤统一采用只做 alpha 的原地渐变，不做位移。
  *
- * 共享元素按根坐标插值，页面若整宽平移，头图的根坐标矩形每一帧都在变，飞行落点就会漂；
- * 所以这一页和它覆盖的那一页都不平移，位移感交给飞行的封面本身。
+ * 共享元素按根坐标插值，页面若整宽平移，头图的根坐标矩形每一帧都在变，飞行落点就会漂，
+ * 且会出现「页面往右跑、封面往左飞」的视觉撕裂；
+ * 所以这一页和它覆盖的那一页都不平移，位移感与焦点完全交给飞行的封面本身。
  *
  * relativeDepth 是有符号的：进入时新页 -1 → 0、旧页 0 → 1；退出时旧页 0 → -1、下页 1 → 0。
  * 因此同一段 alpha 在两端天然是正反两向，且手势期间由手指直接驱动。
@@ -371,48 +372,72 @@ private val albumDetailFadeTransform: GraphicsLayerScope.(NavTransitionScope) ->
 }
 
 /**
- * 详情页页面变换（COUI）：整页从右缘滑入、向右侧滑出，和系统返回的手感一致。
- *
- * 只做 alpha 的变换在 COUI 上会退化成「幽灵叠影」：这台机器在提交返回手势前不给三方应用手势进度
- * （dispatcher 与系统 OnBackAnimationCallback 收到的 progress 恒为 0），relativeDepth 直到提交才从 0 跳到 -1，
- * 于是整段收场只剩一次半透明交叉淡出。改成位移后：有进度时照旧跟手，没有进度时也是一次干净的滑出。
- * 共享元素的落点由 albumHeroHeader 用详情根坐标抵消同层级祖先变换，页面平移不会把飞行终点带偏。
+ * 普通二级页面页面变换（COUI）：整页从右缘滑入、向右侧滑出，底层页面带 25% 视差位移与轻度变暗。
  */
-private val albumDetailSlideTransform: GraphicsLayerScope.(NavTransitionScope) -> Unit = { scope ->
+private val couiSubPageSlideTransform: GraphicsLayerScope.(NavTransitionScope) -> Unit = { scope ->
     val depth = scope.relativeDepth
+    val factor = if (scope.layoutDirection == LayoutDirection.Rtl) -1f else 1f
     if (depth <= 0f) {
-        val factor = if (scope.layoutDirection == LayoutDirection.Rtl) -1f else 1f
+        // 顶层页面跟随手势向右滑动出栈
         translationX = factor * (-depth).coerceIn(0f, 1f) * scope.layoutSize.width
+    } else {
+        // 底层页面跟随 25% 视差位移与微弱渐隐
+        translationX = -factor * (depth * 0.25f).coerceIn(0f, 1f) * scope.layoutSize.width
+        alpha = (1f - depth * 0.2f).coerceIn(0f, 1f)
     }
 }
 
 /**
  * 详情页转场：push / pop / predictivePop 各声明一段，pop 与 push 是同一个变换（镜像）。
- *
- * 对应 eh 项目 Navigation Compose 的 enterTransition / popEnterTransition 写法；
- * Miuix Nav 没有 AnimatedContentTransitionScope，用 navDirectionalTransition 表达同一语义。
- * 转场形态与物理按皮肤取值：HyperOS 沿用 Miuix 默认的淡入 + 封面飞行，ColorOS 走整页滑动。
+ * 两套皮肤统一走渐变淡出，位移由共享封面主导；转场物理取各自皮肤令牌。
  */
 private fun albumDetailTransitionFor(skin: SkinTokens): NavTransition {
     val motion = skin.motion.navMotionOrDefault()
-    val transform = if (skin.id == UiSkin.COLOROS) albumDetailSlideTransform else albumDetailFadeTransform
     return navDirectionalTransition(
         navGraphicsTransition(
             opaqueDepth = 1f,
             dismissDirection = NavSwipeDirection.None,
-            block = transform,
+            block = albumDetailFadeTransform,
             motion = motion,
         ),
         navGraphicsTransition(
             opaqueDepth = 1f,
             dismissDirection = NavSwipeDirection.None,
-            block = transform,
+            block = albumDetailFadeTransform,
             motion = motion,
         ),
         navGraphicsTransition(
             opaqueDepth = 1f,
             dismissDirection = NavSwipeDirection.LeftToRight,
-            block = transform,
+            block = albumDetailFadeTransform,
+            motion = motion,
+        ),
+    )
+}
+
+/**
+ * 普通二级页转场：ColorOS 下统一采用整页侧滑 + 底层视差，HyperOS 沿用 Miuix 默认。
+ */
+private fun subPageTransitionFor(skin: SkinTokens): NavTransition? {
+    if (skin.id != UiSkin.COLOROS) return null
+    val motion = skin.motion.navMotionOrDefault()
+    return navDirectionalTransition(
+        navGraphicsTransition(
+            opaqueDepth = 1f,
+            dismissDirection = NavSwipeDirection.None,
+            block = couiSubPageSlideTransform,
+            motion = motion,
+        ),
+        navGraphicsTransition(
+            opaqueDepth = 1f,
+            dismissDirection = NavSwipeDirection.None,
+            block = couiSubPageSlideTransform,
+            motion = motion,
+        ),
+        navGraphicsTransition(
+            opaqueDepth = 1f,
+            dismissDirection = NavSwipeDirection.LeftToRight,
+            block = couiSubPageSlideTransform,
             motion = motion,
         ),
     )
@@ -455,6 +480,7 @@ fun Jm3App() {
     // 动态取色只在 HyperOS 生效；ColorOS 固定自有色板，盘上开关值保留以便切回恢复。
     val effectiveDynamicColor = DynamicColorPolicy.effective(uiSkin, dynamicColor)
     val albumDetailTransition = remember(skin) { albumDetailTransitionFor(skin) }
+    val subPageTransition = remember(skin) { subPageTransitionFor(skin) }
     val controller = remember(themeMode, effectiveDynamicColor, skin) {
         ThemeController(
             colorSchemeMode = themeMode.toColorSchemeMode(effectiveDynamicColor),
@@ -468,23 +494,22 @@ fun Jm3App() {
     val heroHost = remember { AlbumHeroHost() }
     // 退栈前先把头图送回列表卡片再出栈；任一端拿不到矩形时退化成普通退栈。
     // 返回手势期间详情页已按手势进度起飞，这里只兜底非手势路径，避免同一段动画被重置。
-    // ColorOS 走整页位移滑出（albumDetailSlideTransform），页面完整退场，不触发反向飞行。
     val popBack: () -> Unit = {
         (backStack.lastOrNull() as? Route.AlbumDetail)?.let { route ->
             val flight = heroHost.flight
             val alreadyFlying = flight != null && flight.albumId == route.albumId && heroHost.isBackwardFlight(flight.id)
-            if (!alreadyFlying && uiSkin != UiSkin.COLOROS) heroHost.startBackward(route.albumId)
+            if (!alreadyFlying) heroHost.startBackward(route.albumId)
         }
         backStack.removeLastOrNull()
     }
     // 兜底：侧滑返回等不经过 popBack 的退出路径，靠栈顶变化补一次反向飞行
     var lastTopAlbumId by remember { mutableStateOf<String?>(null) }
     val topAlbumId = (backStack.lastOrNull() as? Route.AlbumDetail)?.albumId
-    LaunchedEffect(topAlbumId, uiSkin) {
+    LaunchedEffect(topAlbumId) {
         val previous = lastTopAlbumId
         // 上层作品仍然留在栈里（详情 A 里再进详情 B）不算退出，否则会给 A 起一段停在起点的反向飞行
         val stillStacked = previous != null && backStack.any { (it as? Route.AlbumDetail)?.albumId == previous }
-        if (previous != null && !stillStacked && heroHost.flight == null && heroHost.pending == null && uiSkin != UiSkin.COLOROS) {
+        if (previous != null && !stillStacked && heroHost.flight == null && heroHost.pending == null) {
             heroHost.startBackward(previous)
         }
         lastTopAlbumId = topAlbumId
@@ -610,10 +635,16 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Login>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Login>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         LoginScreen(account = Jm3Graph.account, onBack = { backStack.removeLastOrNull() })
                     }
-                    entry<Route.Favorites>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Favorites>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -634,7 +665,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.History>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.History>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -655,7 +689,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Shelf>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -674,7 +711,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Settings>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Settings>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         val openUpdate: () -> Unit = { backStack.add(Route.Update) }
                         val changeThemeMode: (ThemeMode) -> Unit = { mode ->
                             themeModeName = mode.name
@@ -722,7 +762,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Update>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Update>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -740,7 +783,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Week>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Week>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -761,7 +807,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Notifications>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Notifications>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -786,7 +835,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Tracking>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Tracking>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -809,7 +861,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Tasks>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Tasks>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -830,7 +885,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Profile>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Profile>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -851,7 +909,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.WatchHistory>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.WatchHistory>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -874,7 +935,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Forum>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Forum>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -949,7 +1013,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Reader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                    entry<Route.Reader>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) { route ->
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -984,7 +1051,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Novel>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Novel>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -1007,7 +1077,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.NovelDetail>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                    entry<Route.NovelDetail>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) { route ->
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -1040,7 +1113,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.NovelReader>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                    entry<Route.NovelReader>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) { route ->
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -1065,7 +1141,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Library>(swipeDismiss = NavSwipeDirection.LeftToRight) {
+                    entry<Route.Library>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -1090,7 +1169,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Creator>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                    entry<Route.Creator>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) { route ->
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -1116,7 +1198,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.CreatorWork>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                    entry<Route.CreatorWork>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) { route ->
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
@@ -1140,7 +1225,10 @@ fun Jm3App() {
                             },
                         )
                     }
-                    entry<Route.Search>(swipeDismiss = NavSwipeDirection.LeftToRight) { route ->
+                    entry<Route.Search>(
+                        transition = subPageTransition,
+                        swipeDismiss = NavSwipeDirection.LeftToRight,
+                    ) { route ->
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {

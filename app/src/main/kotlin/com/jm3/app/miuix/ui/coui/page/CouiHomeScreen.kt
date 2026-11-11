@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -70,7 +71,6 @@ import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
-import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
@@ -626,11 +626,18 @@ fun CouiHomeScreen(
                         }
                     } else {
                         // key 用作品 id：刷新后行身份不变，滚动位置才能跟着内容走
-                        itemsIndexed(
+                        items(
                             items = items,
-                            key = { _, album -> "coui-home-row-${album.id}" },
-                        ) { index, album ->
-                            CouiGroupRow(isFirst = index == 0, isLast = index == items.lastIndex) {
+                            key = { album -> "coui-home-row-${album.id}" },
+                        ) { album ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        horizontal = CouiPageDefaults.horizontalMargin,
+                                        vertical = CouiWorkCardTokens.RowSpacing / 2,
+                                    ),
+                            ) {
                                 CouiWorkFeedRow(album = album, onClick = { openAlbum(album.id) })
                             }
                         }

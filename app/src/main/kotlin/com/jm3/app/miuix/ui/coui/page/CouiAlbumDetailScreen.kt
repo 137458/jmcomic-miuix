@@ -90,6 +90,7 @@ import com.itos.coui.topappbar.LargeTopAppBar
 import com.itos.coui.topappbar.TopAppBarButton
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.AlbumCoverImage
+import com.jm3.app.miuix.ui.AlbumDetailHeroFlightEffect
 import com.jm3.app.miuix.ui.AlbumDetailStateHolder
 import com.jm3.app.miuix.ui.AlbumUiState
 import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
@@ -294,8 +295,8 @@ private fun CouiAlbumDetailScreenBody(
     }
 
     val heroHost = LocalAlbumHeroHost.current
-    // 预测性返回：ColorOS 采用整页位移平移滑出（见 Jm3App.albumDetailSlideTransform），头图随整页向右滑动自然退场，
-    // 不在此处挂载独立反向飞行，避免头图在滑动期间被提前置空或与整页平移撕裂；HyperOS 保持原飞行编排。
+    // 预测性返回：封面逆向飞行的编排（退出进度 → 起飞/推进/收场），详情页渐隐淡出，位移由共享封面主导
+    AlbumDetailHeroFlightEffect(albumId)
     val effectiveCoverUrl = initialCoverUrl?.takeIf { it.isNotBlank() }
         ?: heroHost?.coverUrl(albumId)?.takeIf { it.isNotBlank() }
     val effectiveTitle = initialTitle?.takeIf { it.isNotBlank() }

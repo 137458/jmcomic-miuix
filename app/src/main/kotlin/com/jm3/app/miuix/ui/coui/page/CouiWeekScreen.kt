@@ -344,21 +344,15 @@ private fun WeekTimelineRow(
         verticalAlignment = Alignment.Top,
     ) {
         Spacer(modifier = Modifier.width(WeekRailWidth))
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(couiWorkCardShape())
-                .background(scheme.card),
-        ) {
-            CouiWorkRowCard(
-                coverUrl = item.coverUrl,
-                title = item.title,
-                onClick = onClick,
-                albumId = item.id,
-                subtitle = item.authors.joinToString(" / "),
-                category = item.category,
-            )
-        }
+        CouiWorkRowCard(
+            coverUrl = item.coverUrl,
+            title = item.title,
+            onClick = onClick,
+            albumId = item.id,
+            subtitle = item.authors.joinToString(" / "),
+            category = item.category,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

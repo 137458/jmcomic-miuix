@@ -406,7 +406,11 @@ private fun CouiCreatorWorkImage(url: String, index: Int) {
 /** 相关作品行：复用作品行卡，副标题给时间，右上角标签给平台。 */
 @Composable
 private fun CouiCreatorRelatedRow(item: CreatorRelatedWork, onClick: () -> Unit) {
-    Row(modifier = Modifier.padding(horizontal = CouiPageDefaults.horizontalMargin)) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 4.dp),
+    ) {
         CouiWorkRowCard(
             coverUrl = item.coverUrl,
             title = item.title,

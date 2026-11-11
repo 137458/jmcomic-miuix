@@ -2,7 +2,9 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -106,11 +108,26 @@ internal object CouiWorkCardTokens {
     val Gold = Color(0xFFFFD700)
     val Silver = Color(0xFFC0C0C0)
     val Bronze = Color(0xFFCD7F32)
+
+    /** 卡片微弱独立描边：0.5dp 呼吸感细边，浅色模式微弱淡黑、深色模式 15% 微光边，拉开卡片与页面底色层次。 */
+    val BorderWidth: Dp = 0.5.dp
+    val BorderLight = Color(0x0D000000)
+    val BorderDark = Color(0x26FFFFFF)
+
+    /** 独立行卡之间的纵向间距。 */
+    val RowSpacing: Dp = 8.dp
 }
 
 /** 封面/卡片圆角：与皮肤 cardCorner 同源，卡片、角标、hero 飞行终点的曲率才一致。 */
 @Composable
 internal fun couiWorkCardShape(): CouiShape = CouiShape(radius = LocalSkin.current.shapes.cardCorner)
+
+/** 独立卡片的自适应边框样式：深色微光白边、浅色高雅淡黑边。 */
+internal fun couiCardBorder(isDark: Boolean): BorderStroke =
+    BorderStroke(
+        width = CouiWorkCardTokens.BorderWidth,
+        color = if (isDark) CouiWorkCardTokens.BorderDark else CouiWorkCardTokens.BorderLight,
+    )
 
 /**
  * 作品封面：3:4 裁剪 + 皮肤曲率 + 骨架屏，可挂共享元素 hero。
@@ -289,11 +306,13 @@ fun CouiWorkGridCard(
     val cornerDp = LocalSkin.current.shapes.cardCorner.value
     // 分类挪出副标题行：正文列只有 80dp，作者与分类挤同一行时作者会被截到只剩一两个字
     val labels = remember(subtitle, category) { couiWorkGridLabels(subtitle, category) }
+    val isDark = CouiTheme.isDark
+    val border = remember(isDark) { couiCardBorder(isDark) }
     CouiPressHapticEffect(interaction)
     Column(
         modifier = modifier
             .width(CouiWorkCardTokens.GridWidth)
-            // 卡片自身是不透明表面：按压缩放、裁剪、垫底色、叠光都落在同一节点上，
+            // 卡片自身是不透明表面：按压缩放、裁剪、垫底色、独立描边、叠光都落在同一节点上，
             // 光才按整卡轮廓折射，缩放也不会只带动封面而露出卡片色环。
             .graphicsLayer {
                 scaleX = press.scale.value
@@ -301,6 +320,7 @@ fun CouiWorkGridCard(
             }
             .clip(shape)
             .background(CouiTheme.colorScheme.card)
+            .border(border, shape)
             .couiPressMotion(press = press, cancelOnConsumedMove = true)
             // 封面铺满整卡，光画在内容之下会被整个盖住，改画在内容之上（同库弹窗按钮的画法）
             .couiSpotlightLight(SpotlightPreset.OpaqueMedium1, interactive = true, aboveContent = true)
@@ -370,6 +390,8 @@ fun CouiWorkRowCard(
     val interaction = remember { MutableInteractionSource() }
     val heroHost = LocalAlbumHeroHost.current
     val cornerDp = LocalSkin.current.shapes.cardCorner.value
+    val isDark = CouiTheme.isDark
+    val border = remember(isDark) { couiCardBorder(isDark) }
     CouiPressHapticEffect(interaction)
     Row(
         modifier = modifier
@@ -381,6 +403,7 @@ fun CouiWorkRowCard(
             .clip(shape)
             // 全宽行也是不透明表面：垫卡片底色后再叠光；封面不透明，光画在内容之上才看得见
             .background(CouiTheme.colorScheme.card)
+            .border(border, shape)
             .couiPressMotion(press = press, cancelOnConsumedMove = true)
             .couiSpotlightLight(SpotlightPreset.OpaqueMedium1, interactive = true, aboveContent = true)
             .clickable(

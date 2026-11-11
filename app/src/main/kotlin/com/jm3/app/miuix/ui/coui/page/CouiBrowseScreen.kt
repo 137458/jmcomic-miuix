@@ -41,6 +41,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Footer
 import com.itos.coui.layout.Group
@@ -63,8 +64,8 @@ import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
-import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
+import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
@@ -509,13 +510,17 @@ internal fun CouiBrowseScreen(
                     }
 
                     else -> {
-                        itemsIndexed(
+                        items(
                             items = tagItems,
-                            key = { index, result -> "coui-tag-row-${result.id}-$index" },
-                        ) { index, result ->
-                            CouiGroupRow(
-                                isFirst = index == 0,
-                                isLast = index == tagItems.lastIndex,
+                            key = { result -> "coui-tag-row-${result.id}" },
+                        ) { result ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        horizontal = CouiPageDefaults.horizontalMargin,
+                                        vertical = CouiWorkCardTokens.RowSpacing / 2,
+                                    ),
                             ) {
                                 CouiBrowseResultRow(
                                     result = result,
@@ -673,9 +678,13 @@ internal fun CouiBrowseScreen(
                                 items = feed.items,
                                 key = { index, result -> "coui-browse-row-${result.id}-$index" },
                             ) { index, result ->
-                                CouiGroupRow(
-                                    isFirst = index == 0,
-                                    isLast = index == feed.items.lastIndex,
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            horizontal = CouiPageDefaults.horizontalMargin,
+                                            vertical = CouiWorkCardTokens.RowSpacing / 2,
+                                        ),
                                 ) {
                                     CouiBrowseResultRow(
                                         result = result,
