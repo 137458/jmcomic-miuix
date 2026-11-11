@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Footer
 import com.itos.coui.layout.Group
@@ -490,6 +491,7 @@ private fun CouiCreatorHeaderCard(
                             .background(scheme.accent.copy(alpha = 0.12f))
                             .couiPressable(
                                 shape = shape,
+                                spotlight = SpotlightPreset.ChipTab,
                                 minTouchTarget = CouiMinTouchTarget,
                                 onClick = { onOpenSponsor(sponsor) },
                             )
@@ -572,6 +574,7 @@ private fun CouiCreatorFilterRow(
                         .couiPressable(
                             shape = shape,
                             minTouchTarget = CouiMinTouchTarget,
+                            spotlight = SpotlightPreset.ChipTab,
                             onClick = { onSelect(option) },
                         )
                         .padding(horizontal = 14.dp, vertical = 8.dp),

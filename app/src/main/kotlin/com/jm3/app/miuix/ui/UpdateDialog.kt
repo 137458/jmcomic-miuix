@@ -38,6 +38,7 @@ import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog as CouiDialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ui.coui.component.couiPressable

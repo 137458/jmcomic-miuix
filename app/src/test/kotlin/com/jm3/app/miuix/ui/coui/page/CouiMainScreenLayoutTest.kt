@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
  * 底栏净空：底栏模式取 token 的净空值，侧栏模式为 0。
  *
  * 净空只允许有一个来源（token）。这里同时验证贴底档的净空随条高走，
- * 避免把悬浮档的 100/108dp 经验值带到通栏底栏上、把提示条顶到屏幕中部。
+ * 避免把悬浮档的 80/108dp 净空值带到通栏底栏上、把提示条顶到屏幕中部。
  */
 class CouiMainScreenLayoutTest {
 
@@ -28,8 +28,8 @@ class CouiMainScreenLayoutTest {
     @Test
     fun `底栏模式普通档悬浮按 token 净空让位`() {
         val tokens = bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.FLOATING)
-        assertEquals(100.dp, tokens.contentPadding)
-        assertEquals(100.dp, couiBottomBarClearance(useRail = false, tokens = tokens))
+        assertEquals(80.dp, tokens.contentPadding)
+        assertEquals(80.dp, couiBottomBarClearance(useRail = false, tokens = tokens))
     }
 
     @Test
@@ -42,7 +42,7 @@ class CouiMainScreenLayoutTest {
     @Test
     fun `底栏模式贴底档的净空等于条高`() {
         val standard = bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.DOCKED)
-        assertEquals(64.dp, standard.height)
+        assertEquals(56.dp, standard.height)
         assertEquals(standard.height, couiBottomBarClearance(useRail = false, tokens = standard))
 
         val generous = bottomBarTokens(BottomBarSize.GENEROUS, BottomBarForm.DOCKED)

@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -39,7 +38,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.motion.couiPressMotion
 import com.itos.coui.motion.rememberCouiPressMotion
 import com.itos.coui.shape.CouiCapsuleShape
@@ -199,7 +197,8 @@ fun CouiWorkRankBadge(rank: Int, modifier: Modifier = Modifier) {
  * 竖版作品卡：封面顶满卡片宽度，下方是标题、次级信息与可选的附加行。
  *
  * 手感按 COUI 三段拼：按压弹簧缩放（[rememberCouiPressMotion]）、按压即触觉（[CouiPressHapticEffect]）、
- * 触点点亮（[SpotlightPreset.OpaqueMedium1]）。点亮画在裁剪过的视觉层里，透明容器上才不会被混合成黑块。
+ * 触点点亮（[SpotlightPreset.OpaqueMedium1]）。点亮与卡片同节点、同尺寸：卡片自身垫不透明底后再裁剪叠光，
+ * 光心才按整卡几何归一化，不会像早先那样被封面高度反算成纵向压缩。
  *
  * @param subtitle 作者等次级信息，与 [category] 同一行展示。
  * @param category 主分类标题，用强调色区分；为空时不占位。
@@ -223,20 +222,23 @@ fun CouiWorkGridCard(
     val shape = couiWorkCardShape()
     val press = rememberCouiPressMotion()
     val interaction = remember { MutableInteractionSource() }
-    val (lightInput, drawLight) = rememberCouiSpotlight(
-        interactive = true,
-        preset = SpotlightPreset.OpaqueMedium1,
-        dark = CouiTheme.isDark,
-        cancelOnConsumedMove = true,
-    )
     val heroHost = LocalAlbumHeroHost.current
     val cornerDp = LocalSkin.current.shapes.cardCorner.value
     CouiPressHapticEffect(interaction)
     Column(
         modifier = modifier
             .width(CouiWorkCardTokens.GridWidth)
+            // 卡片自身是不透明表面：按压缩放、裁剪、垫底色、叠光都落在同一节点上，
+            // 光才按整卡轮廓折射，缩放也不会只带动封面而露出卡片色环。
+            .graphicsLayer {
+                scaleX = press.scale.value
+                scaleY = press.scale.value
+            }
+            .clip(shape)
+            .background(CouiTheme.colorScheme.card)
             .couiPressMotion(press = press, cancelOnConsumedMove = true)
-            .then(lightInput)
+            // 封面铺满整卡，光画在内容之下会被整个盖住，改画在内容之上（同库弹窗按钮的画法）
+            .couiSpotlightLight(SpotlightPreset.OpaqueMedium1, interactive = true, aboveContent = true)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -249,16 +251,8 @@ fun CouiWorkGridCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .graphicsLayer {
-                    scaleX = press.scale.value
-                    scaleY = press.scale.value
-                }
                 .clip(shape)
-                .background(CouiTheme.colorScheme.container)
-                .drawWithContent {
-                    drawContent()
-                    drawLight?.invoke(this)
-                },
+                .background(CouiTheme.colorScheme.container),
         ) {
             CouiWorkCover(
                 url = coverUrl,
@@ -309,12 +303,6 @@ fun CouiWorkRowCard(
     val shape = couiWorkCardShape()
     val press = rememberCouiPressMotion()
     val interaction = remember { MutableInteractionSource() }
-    val (lightInput, drawLight) = rememberCouiSpotlight(
-        interactive = true,
-        preset = SpotlightPreset.OpaqueSmall1,
-        dark = CouiTheme.isDark,
-        cancelOnConsumedMove = true,
-    )
     val heroHost = LocalAlbumHeroHost.current
     val cornerDp = LocalSkin.current.shapes.cardCorner.value
     CouiPressHapticEffect(interaction)
@@ -322,7 +310,6 @@ fun CouiWorkRowCard(
         modifier = modifier
             .fillMaxWidth()
             .couiPressMotion(press = press, cancelOnConsumedMove = true)
-            .then(lightInput)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -336,10 +323,9 @@ fun CouiWorkRowCard(
                 scaleY = press.scale.value
             }
             .clip(shape)
-            .drawWithContent {
-                drawContent()
-                drawLight?.invoke(this)
-            },
+            // 全宽行也是不透明表面：垫卡片底色后再叠光；封面不透明，光画在内容之上才看得见
+            .background(CouiTheme.colorScheme.card)
+            .couiSpotlightLight(SpotlightPreset.OpaqueMedium1, interactive = true, aboveContent = true),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.invoke(this)

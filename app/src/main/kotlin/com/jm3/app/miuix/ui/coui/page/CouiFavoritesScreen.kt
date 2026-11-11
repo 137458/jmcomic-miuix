@@ -44,6 +44,7 @@ import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
@@ -949,7 +950,7 @@ private fun CouiFavoritesAlbumCard(
                     .padding(top = CouiWorkCardTokens.TextGap)
                     .clip(CouiCapsuleShape)
                     .couiPressable(
-                        shape = CouiCapsuleShape,
+                        shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                         minTouchTarget = CouiMinTouchTarget,
                         onClick = onMove,
                     )
@@ -972,7 +973,7 @@ private fun CouiFavoritesChipButton(
             .clip(CouiCapsuleShape)
             .background(scheme.container)
             .couiPressable(
-                shape = CouiCapsuleShape,
+                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -1038,7 +1039,7 @@ private fun CouiFavoritesPickerRow(
             .fillMaxWidth()
             .clip(CouiCapsuleShape)
             .couiPressable(
-                shape = CouiCapsuleShape,
+                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )

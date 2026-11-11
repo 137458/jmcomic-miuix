@@ -73,6 +73,7 @@ import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
@@ -755,7 +756,14 @@ private fun CouiCapsuleAction(
             .heightIn(min = 32.dp)
             .clip(CouiCapsuleShape)
             .background(background)
-            .couiPressable(shape = CouiCapsuleShape, enabled = enabled, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                // 强调色实底按库的主按钮口径取 OpaqueMedium1，浅底胶囊用 ChipTab
+                spotlight = if (accent) SpotlightPreset.OpaqueMedium1 else SpotlightPreset.ChipTab,
+                enabled = enabled,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -850,7 +858,7 @@ private fun CouiAlbumHeroCard(
                         modifier = Modifier
                             .clip(CouiCapsuleShape)
                             .background(scheme.accent.copy(alpha = CouiSelectedContainerAlpha))
-                            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget) {
                                 onOpenSearch(authors.first(), SearchScope.AUTHOR)
                             }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -899,7 +907,7 @@ private fun CouiAlbumHeroCard(
                         modifier = Modifier
                             .clip(CouiCapsuleShape)
                             .background(scheme.onSurface.copy(alpha = 0.06f))
-                            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget) {
                                 onOpenSearch(tag, SearchScope.TAG)
                             }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -1030,7 +1038,7 @@ private fun CouiDescriptionGroup(
                 maxLines = 1,
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
-                    .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onCopy)
+                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onCopy)
                     .padding(horizontal = 8.dp, vertical = 2.dp),
             )
             if (text.length > COUI_DESCRIPTION_COLLAPSE_THRESHOLD) {
@@ -1041,7 +1049,7 @@ private fun CouiDescriptionGroup(
                     maxLines = 1,
                     modifier = Modifier
                         .clip(CouiCapsuleShape)
-                        .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
+                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
                         .padding(start = 4.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
                 )
             }
@@ -1206,7 +1214,10 @@ private fun CouiPreviewGroup(
                         // 缩略图不参与飞行，圆角取皮肤的控制件圆角（ENGINEERING.md:93）
                         .clip(previewShape)
                         .background(scheme.container)
-                        .couiPressable(shape = previewShape) { onOpenPage(page.index + 1) },
+                        // 缩略图铺满这个节点：光画在内容之下会被整张图盖住
+                        .couiPressable(shape = previewShape, spotlightAboveContent = true) {
+                            onOpenPage(page.index + 1)
+                        },
                 )
             }
         }
@@ -1235,7 +1246,10 @@ private fun CouiRelatedGroup(
                     modifier = Modifier
                         .width(104.dp)
                         .clip(itemShape)
-                        .couiPressable(shape = itemShape) { onOpenAlbum(item.id) },
+                        // 卡片上半是封面图：光必须画在内容之上才看得见
+                        .couiPressable(shape = itemShape, spotlightAboveContent = true) {
+                            onOpenAlbum(item.id)
+                        },
                 ) {
                     Box(
                         modifier = Modifier
@@ -1473,7 +1487,7 @@ private fun CouiCommentRow(
                     textAlign = TextAlign.Start,
                     modifier = Modifier
                         .clip(CouiCapsuleShape)
-                        .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) { reply(item) }
+                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget) { reply(item) }
                         .padding(horizontal = 6.dp, vertical = 4.dp),
                 )
             }
@@ -1713,7 +1727,7 @@ private fun CouiRepliesToggle(
             textAlign = TextAlign.Start,
             modifier = Modifier
                 .clip(CouiCapsuleShape)
-                .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
+                .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
         )
     }

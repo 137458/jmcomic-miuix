@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Footer
 import com.itos.coui.layout.Group
@@ -788,7 +789,7 @@ private fun CouiMoreCategoriesGroup(
                         color = CouiTheme.colorScheme.accent,
                         modifier = Modifier
                             .clip(CouiCapsuleShape)
-                            .couiPressable(shape = CouiCapsuleShape, onClick = onToggle)
+                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onToggle)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
@@ -861,7 +862,11 @@ private fun CouiCategoryRail(
                         if (active) colors.accent.copy(alpha = CouiSelectedContainerAlpha)
                         else Color.Transparent,
                     )
-                    .couiPressable(shape = RoundedCornerShape(20.dp), onClick = { onSelect(option) })
+                    .couiPressable(
+                        shape = RoundedCornerShape(20.dp),
+                        spotlight = SpotlightPreset.ChipTab,
+                        onClick = { onSelect(option) },
+                    )
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -890,7 +895,7 @@ private fun CouiTagChip(
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(CouiTheme.colorScheme.container)
-            .couiPressable(shape = CouiCapsuleShape, onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }

@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Footer
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
@@ -380,7 +381,7 @@ private fun WeekPeriodRow(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
                     .background(if (active) scheme.accent.copy(alpha = 0.14f) else scheme.container)
-                    .couiPressable(shape = CouiCapsuleShape, onClick = { onSelect(index) })
+                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = { onSelect(index) })
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text(
@@ -403,7 +404,7 @@ internal fun CouiFeedRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, enabled = !refreshing, onClick = onRefresh)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = !refreshing, onClick = onRefresh)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),

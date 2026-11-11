@@ -39,6 +39,7 @@ import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
 import com.itos.coui.picker.WheelPicker
@@ -327,7 +328,8 @@ fun CouiNovelReaderScreen(
                             kind = CouiTextKind.PreferenceValue,
                             color = scheme.accent,
                             modifier = Modifier
-                                .couiPressable { changeLang(if (lang == "tw") "cn" else "tw") }
+                                // 所在 HUD 面板本身已有凝光，这里不再叠第二层
+                                .couiPressable(spotlight = null) { changeLang(if (lang == "tw") "cn" else "tw") }
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             maxLines = 1,
                         )
@@ -476,9 +478,15 @@ private fun NovelFontStep(
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
-            .couiPressable(enabled = enabled) { onClick() }
             .clip(CouiCapsuleShape)
             .background(scheme.container)
+            // 先铺不透明底再挂可点件：光画在内容之前，排在底色之上才看得见
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                enabled = enabled,
+                spotlight = SpotlightPreset.ChipTab,
+                onClick = onClick,
+            )
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {

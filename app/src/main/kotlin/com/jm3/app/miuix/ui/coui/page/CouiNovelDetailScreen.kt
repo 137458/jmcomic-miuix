@@ -56,6 +56,7 @@ import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
@@ -833,7 +834,7 @@ private fun CouiNovelHeroCard(
                             .clip(CouiCapsuleShape)
                             .background(scheme.accent.copy(alpha = CouiSelectedContainerAlpha))
                             .couiPressable(
-                                shape = CouiCapsuleShape,
+                                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                                 minTouchTarget = CouiMinTouchTarget,
                                 onClick = { onOpenSearch(author, SearchScope.AUTHOR) },
                             )
@@ -971,7 +972,7 @@ private fun CouiNovelDescriptionGroup(text: String, expanded: Boolean, onToggle:
                     modifier = Modifier
                         .clip(CouiCapsuleShape)
                         .couiPressable(
-                            shape = CouiCapsuleShape,
+                            shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                             minTouchTarget = CouiMinTouchTarget,
                             onClick = onToggle,
                         )
@@ -1046,7 +1047,7 @@ private fun CouiNovelSortAction(ascending: Boolean, onToggle: () -> Unit) {
         color = CouiKitTheme.colorScheme.accent,
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
             .padding(horizontal = 8.dp, vertical = 2.dp),
     )
 }
@@ -1183,7 +1184,8 @@ private fun CouiNovelRelatedCard(item: NovelMeta, dateFormat: DateTimeFormatter,
         modifier = Modifier
             .width(NOVEL_RELATED_CARD_WIDTH)
             .clip(shape)
-            .couiPressable(shape = shape, onClick = onClick),
+            // 卡片以封面图为主体：光画在内容之下会被整张封面吃掉
+            .couiPressable(shape = shape, spotlightAboveContent = true, onClick = onClick),
     ) {
         Box(
             modifier = Modifier
@@ -1388,7 +1390,7 @@ private fun CouiNovelCommentItemCard(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
                     .couiPressable(
-                        shape = CouiCapsuleShape,
+                        shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                         minTouchTarget = CouiMinTouchTarget,
                         onClick = { onReply(item) },
                     )
@@ -1513,7 +1515,7 @@ private fun CouiNovelCapsuleButton(
             .clip(CouiCapsuleShape)
             .background(background)
             .couiPressable(
-                shape = CouiCapsuleShape,
+                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                 enabled = enabled,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
@@ -1538,7 +1540,7 @@ private fun CouiNovelTagChip(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(scheme.onSurface.copy(alpha = 0.06f))
-            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 4.dp),
     )
 }

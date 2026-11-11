@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
@@ -72,6 +73,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
@@ -812,6 +814,9 @@ private fun SettingsRowValue(text: String) {
  * 整行开关：库 Switch 传 null 回调后只呈现状态、不再自带 toggleable，
  * 点击、开关角色与开/关播报由这里统一承担；反馈层与 toggleable 共用同一个
  * interactionSource（库的用法约定），按压蒙层与普通设置行一致。
+ *
+ * 凝光补在蒙层之后：[Item] 的行底色由外层 [Group] 铺，行本体不画底色，
+ * 因此这里叠光不会被行底色盖住；关闭的开关不接光（[interactive] 跟随 enabled）。
  */
 @Composable
 private fun Modifier.couiSwitchRow(
@@ -826,6 +831,7 @@ private fun Modifier.couiSwitchRow(
             interactionSource = interactionSource,
             enabled = enabled,
         )
+        .couiSpotlightLight(SpotlightPreset.OpaqueSmall2, interactive = enabled)
         .toggleable(
             value = value,
             interactionSource = interactionSource,

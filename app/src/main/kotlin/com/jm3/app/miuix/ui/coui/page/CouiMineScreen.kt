@@ -50,6 +50,7 @@ import coil3.compose.AsyncImage
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
@@ -506,7 +507,7 @@ private fun MineLoginCapsule(onOpenLogin: () -> Unit) {
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(scheme.accent)
-            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) { onOpenLogin() }
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.OpaqueMedium1, minTouchTarget = CouiMinTouchTarget) { onOpenLogin() }
             .padding(horizontal = 18.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {

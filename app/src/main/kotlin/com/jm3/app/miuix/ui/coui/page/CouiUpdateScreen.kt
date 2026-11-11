@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
@@ -698,7 +699,12 @@ private fun CouiInlineButton(
         modifier = modifier
             .clip(CouiCapsuleShape)
             .background(if (emphasised) scheme.accent else scheme.accent.copy(alpha = 0.14f))
-            .couiPressable(shape = CouiCapsuleShape, onClick = onClick)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                // 强调色实底按库的主按钮口径取 OpaqueMedium1，浅底胶囊用 ChipTab
+                spotlight = if (emphasised) SpotlightPreset.OpaqueMedium1 else SpotlightPreset.ChipTab,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(text = text, kind = CouiTextKind.PreferenceValue, color = color)

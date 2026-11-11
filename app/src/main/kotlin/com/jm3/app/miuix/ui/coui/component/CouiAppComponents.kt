@@ -2,11 +2,11 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
-import android.graphics.BlendMode
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,11 +25,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -35,7 +41,12 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,9 +61,25 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -67,6 +94,7 @@ import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.effect.couiButtonFeedback
+import com.itos.coui.effect.couiNavigationFeedback
 import com.itos.coui.floatingactionbutton.Fab
 import com.itos.coui.input.CouiHapticFeedback
 import com.itos.coui.input.performCouiHapticFeedback
@@ -170,6 +198,10 @@ fun couiDestructiveConfirmAction(
  * @param minTouchTarget 补足触区的最小边长；调用方把本修饰符写在固定尺寸之前，
  * 视觉内容仍按原尺寸居中，只有可点范围变大。
  * @param scaleOnPress 小型控件（标签、图标键、胶囊）打开原厂缩放；整行列表项保持关闭。
+ * @param spotlight 凝光材质预设；传 null 关闭。默认取 [SpotlightPreset.OpaqueSmall2]：
+ * 与库顶栏按钮同档的中性表面，落在不透明底上按 OVERLAY 叠光。
+ * @param spotlightAboveContent 内容是不透明图像（封面、缩略图）时打开：光改画在内容之上，
+ * 否则会被图像整个盖住；文字与图标为主的表面保持关闭，光落在底色与内容之间。
  */
 @Composable
 fun Modifier.couiPressable(
@@ -178,6 +210,8 @@ fun Modifier.couiPressable(
     shape: Shape? = null,
     minTouchTarget: Dp = 0.dp,
     scaleOnPress: Boolean = false,
+    spotlight: SpotlightPreset? = SpotlightPreset.OpaqueSmall2,
+    spotlightAboveContent: Boolean = false,
     onClick: () -> Unit,
 ): Modifier {
     val interactionSource = remember { MutableInteractionSource() }
@@ -214,15 +248,22 @@ fun Modifier.couiPressable(
             list = false,
         )
     }
+    // 凝光必须与可视表面同节点、同尺寸，并落在底色之后、内容之前：
+    // clip → 蒙层 → drawBehind 叠光 → 内容，材质才能按此节点的轮廓折射。
+    val litFeedback = visualFeedback.couiSpotlightLight(
+        preset = spotlight,
+        interactive = enabled,
+        aboveContent = spotlightAboveContent,
+    )
     val scaledFeedback = if (press != null) {
-        visualFeedback
+        litFeedback
             .couiPressMotion(press = press, enabled = enabled, cancelOnConsumedMove = true)
             .graphicsLayer {
                 scaleX = press.scale.value
                 scaleY = press.scale.value
             }
     } else {
-        visualFeedback
+        litFeedback
     }
 
     return this
@@ -235,6 +276,43 @@ fun Modifier.couiPressable(
             role = role,
             onClick = onClick,
         )
+}
+
+/**
+ * 凝光叠层：把库 Spotlight 的输入观察与绘制接到同一个节点上。
+ *
+ * 输入侧只在 Initial 阶段读指针位置、不消费事件；绘制侧默认在内容之前叠光，
+ * 因此本修饰符必须紧跟在「不透明底色 + clip」之后、内容之前，且不可跨节点复用。
+ * [color] 是凝光的取色，库的浮动节点传内容色（NavigationBar.kt:433），不传则用预设自带的白光。
+ * [aboveContent] 把光改画在子内容之上：卡片这类表面由不透明画面（封面图）铺满，
+ * 光画在内容之下会被整个盖住，只剩页边一条可见；库的弹窗按钮同样把光画在内容之上
+ * （CouiDialogButton.kt:82-84 drawWithContent 里先 drawContent 再 drawLight）。
+ * API < 33 时输入与绘制都是空实现（CouiSpotlight.kt:100-115），调用点不必写版本分支。
+ */
+@Composable
+internal fun Modifier.couiSpotlightLight(
+    preset: SpotlightPreset?,
+    interactive: Boolean,
+    color: Color? = null,
+    aboveContent: Boolean = false,
+): Modifier {
+    if (preset == null) return this
+    val (input, draw) = rememberCouiSpotlight(
+        interactive = interactive,
+        preset = preset,
+        dark = CouiTheme.isDark,
+        // 库的浮动节点把内容色一并交给凝光（NavigationBar.kt:433），这里保持同一口径
+        color = color,
+    )
+    val layer = if (aboveContent) {
+        Modifier.drawWithContent {
+            drawContent()
+            draw?.invoke(this)
+        }
+    } else {
+        Modifier.drawBehind { draw?.invoke(this) }
+    }
+    return this.then(input).then(layer)
 }
 
 /**
@@ -426,8 +504,26 @@ fun CouiLoadMoreFooter(
 /** 库浮动材质导航栏需要 API 34：库内 CouiFloatingRenderer 依赖 34 起的模糊与渲染能力。 */
 internal const val CouiLibraryNavBarMinSdk = 34
 
-/** 悬浮档视觉间隙：条身与屏幕底边之间的留白（系统导航栏 inset 另计）。 */
-private val CouiBarVisualGap = 8.dp
+/** 悬浮档顶边留白：给投影与凝光外扩留出空间，与库 NavigationBar 的 16dp 一致。 */
+private val CouiBarTopMargin = 16.dp
+
+/** 悬浮档条身与系统触控区之间的底距，与库 NavigationBar 的 16dp 一致。 */
+private val CouiBarBottomMargin = 16.dp
+
+/** 设备没有手势条/导航栏触控区时，库会再加 8dp 底距；自绘分支跟随同一数值。 */
+private val CouiBarGestureGap = 8.dp
+
+/** 菜单项宽度下限与间隔，用于复算库的 maximumMenuWidth：24 + 70*n + 8*(n-1)。 */
+private val CouiNavItemWidth = 70.dp
+private val CouiNavItemSpacing = 8.dp
+private val CouiNavSideSurfaceWidth = 136.dp
+
+/** 底栏选中/未选中文字色透明度，与库 NavigationBar 的 230/255 与 184/255 一致。 */
+private const val CouiNavSelectedAlpha = 230f / 255f
+private const val CouiNavUnselectedAlpha = 184f / 255f
+
+/** 底栏图标与标签之间的间距，与库 NavigationBar 的 2dp 一致。 */
+private val CouiNavLabelGap = 2.dp
 
 /** 悬浮档投影半径，与液态玻璃底栏同一族。 */
 private val CouiBarShadowRadius = 10.dp
@@ -459,12 +555,48 @@ internal fun couiUsesLibraryNavBar(tokens: GlassBottomBarTokens, sdkInt: Int): B
         tokens.form == BottomBarForm.FLOATING &&
         sdkInt >= CouiLibraryNavBarMinSdk
 
+/** 自绘底栏的宽度上限：复算库的 maximumMenuWidth + 两侧圆键留白，换实现时条宽不跳变。 */
+internal fun couiPlainNavMaxWidth(itemCount: Int): Dp =
+    24.dp + CouiNavItemWidth * itemCount +
+        CouiNavItemSpacing * (itemCount - 1).coerceAtLeast(0) + CouiNavSideSurfaceWidth
+
 /**
- * COUI 底栏：自研无黑块阴影、支持连续曲率胶囊裁剪与原厂弹性缩放反馈的纯净底栏。
+ * Compose 合成的取消手势没有平台事件，只会把上一帧原地转成已消费的抬手；
+ * 与库内部的同名判定保持同一条件，避免把取消当成抬手派发导航。
+ */
+private fun PointerEvent.isCouiTouchCancelled(): Boolean =
+    motionEvent == null && changes.any { it.previousPressed } && changes.all { change ->
+        !change.pressed && (!change.previousPressed ||
+            (change.isConsumed && change.uptimeMillis == change.previousUptimeMillis &&
+                change.position == change.previousPosition))
+    }
+
+/**
+ * 拖动预选的释放判定，语义与库 NavigationBar 的 UP 分发一致：
+ * 释放点既不是按下项也不是预览项时切到释放点；否则预览项与待定项一致即切过去；
+ * 按下即抬起的普通点击再补一次同点判定。被取消的手势不产生切换。
+ */
+internal fun couiPlainNavReleaseTarget(
+    preview: Int,
+    pending: Int?,
+    down: Int?,
+    up: Int?,
+    cancelled: Boolean,
+): Int? {
+    if (!cancelled && up != null && up != down && up != preview) return up
+    if (pending != null && pending == preview) return pending
+    if (!cancelled && up != null && up == down && up != preview) return up
+    return null
+}
+
+/**
+ * COUI 底栏：原厂浮动材质底栏（能走库时）与同一套几何的自绘底栏（其余情况）。
  *
- * 库底栏存在严重渲染缺陷（其私有函数 FloatingNode 硬编码了未裁剪的 Spotlight，在 API 34+
- * 按压时通过 Canvas.drawPaint 必现未受限的直角黑色方块阴影）。统一走此自研底栏，
- * 消除第三方库凝光直角黑块与 Compose 默认未裁剪矩形 Ripple。
+ * 库 NavigationBar 的 FloatingNode 先 `clip(shape)` 再 `drawBehind` 叠凝光，裁剪是对的，
+ * 真正要接的是它一直没被调用的那条分支：库自己算条高 56dp、菜单项 48dp、横向 16dp 边距、
+ * 底距 16dp + 无手势条时 8dp 底距，并给三个浮动节点分别叠凝光。宿主只需把主框架那一个
+ * backdrop 传进去。贴底、偏大档与 API 34 以下没有原厂浮动材质，由 [CouiPlainNavigationBar]
+ * 按 token 自绘，条高/项高/边距/底距与库保持同一套数值，切换实现时底栏不跳变。
  */
 @Composable
 internal fun CouiNavigationBar(
@@ -475,16 +607,27 @@ internal fun CouiNavigationBar(
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
 ) {
-    CouiPlainNavigationBar(
-        items = items,
-        selectedIndex = selectedIndex,
-        onSelect = onSelect,
-        tokens = tokens,
-        modifier = modifier,
-    )
+    // 先判版本再判 token：@RequiresApi 分支的守卫必须是 SDK_INT 比较，否则 Lint 报 CallRequiresApi
+    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk && couiUsesLibraryNavBar(tokens, Build.VERSION.SDK_INT)) {
+        CouiLibraryNavigationBar(
+            items = items,
+            selectedIndex = selectedIndex,
+            onSelect = onSelect,
+            backdrop = backdrop,
+            modifier = modifier,
+        )
+    } else {
+        CouiPlainNavigationBar(
+            items = items,
+            selectedIndex = selectedIndex,
+            onSelect = onSelect,
+            tokens = tokens,
+            modifier = modifier,
+        )
+    }
 }
 
-/** 库浮动材质底栏保留为内部后备。 */
+/** 库浮动材质底栏：三个浮动节点（左右圆键 + 中间胶囊）共用主框架的 backdrop 采样。 */
 @RequiresApi(34)
 @Composable
 private fun CouiLibraryNavigationBar(
@@ -521,23 +664,43 @@ private fun CouiPlainNavigationBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val dark = CouiTheme.isDark
     val shape = bottomBarShape(tokens)
     val tabShape = RoundedCornerShape(tokens.indicatorHeight / 2)
+    // 与库一致：选中只改颜色不改底，深色取白、浅色取黑，两档透明度固定
+    val selectedColor = (if (dark) Color.White else Color.Black).copy(alpha = CouiNavSelectedAlpha)
+    val unselectedColor = (if (dark) Color.White else Color.Black).copy(alpha = CouiNavUnselectedAlpha)
+    // 按住横向滑动时先点亮途经菜单项、抬手再切换：预览值与选中值分开，离开节点回落选中值
+    var previewSelection by remember { mutableIntStateOf(selectedIndex) }
+    val currentSelection by rememberUpdatedState(selectedIndex)
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    LaunchedEffect(selectedIndex) { previewSelection = selectedIndex }
+    var barWidthPx by remember { mutableFloatStateOf(0f) }
+    fun itemAt(x: Float): Int? {
+        if (barWidthPx <= 0f || items.isEmpty()) return null
+        return (x / barWidthPx * items.size).toInt().takeIf { it in items.indices }
+    }
+
+    val density = LocalDensity.current
+    // 与库一致：有可点触控区（三键导航）时底距只留 16dp，手势条时再加 8dp；横向/底部 inset 交给系统
+    val bottomMargin = if (WindowInsets.tappableElement.getBottom(density) > 0) 0.dp else CouiBarGestureGap
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .windowInsetsPadding(
+                WindowInsets.tappableElement.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+            )
             .padding(
                 start = tokens.horizontalMargin,
                 end = tokens.horizontalMargin,
-                top = if (tokens.floating) CouiBarVisualGap else 0.dp,
-                bottom = if (tokens.floating) CouiBarVisualGap else 0.dp,
+                top = if (tokens.floating) CouiBarTopMargin else 0.dp,
+                bottom = if (tokens.floating) CouiBarBottomMargin + bottomMargin else 0.dp,
             ),
         contentAlignment = Alignment.BottomCenter,
     ) {
         Row(
-            modifier = (if (tokens.floating) Modifier.widthIn(max = 540.dp) else Modifier)
+            modifier = (if (tokens.floating) Modifier.widthIn(max = couiPlainNavMaxWidth(items.size)) else Modifier)
                 .fillMaxWidth()
                 .then(
                     if (tokens.floating) {
@@ -556,20 +719,69 @@ private fun CouiPlainNavigationBar(
                 .clip(shape)
                 .background(colors.container)
                 .height(tokens.height)
-                .selectableGroup(),
+                .onSizeChanged { barWidthPx = it.width.toFloat() }
+                .selectableGroup()
+                // 手势由容器统一接管：按住拖动先点亮途经项，抬手按释放点切换，判定与库同一套
+                .pointerInput(items.size) {
+                    var active: PointerId? = null
+                    var pending: Int? = null
+                    var downItem: Int? = null
+                    fun finish(cancelled: Boolean, position: Offset?) {
+                        val target = couiPlainNavReleaseTarget(
+                            preview = previewSelection,
+                            pending = pending,
+                            down = downItem,
+                            up = position?.let { itemAt(it.x) },
+                            cancelled = cancelled,
+                        )
+                        if (target != null) {
+                            previewSelection = target
+                            currentOnSelect(target)
+                        }
+                        active = null
+                        pending = null
+                        downItem = null
+                    }
+                    try {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                // 系统的取消手势没有平台事件、只会变成原地已消费的抬手，
+                                // 认不出来就会被当成抬手派发一次导航
+                                if (event.isCouiTouchCancelled()) {
+                                    finish(cancelled = true, position = null)
+                                    continue
+                                }
+                                val tracked = event.changes.firstOrNull { it.id == active }
+                                val pointer = tracked?.takeIf { it.pressed }
+                                    ?: event.changes.firstOrNull { it.pressed }
+                                    ?: tracked ?: continue
+                                if (active == null) {
+                                    downItem = itemAt(pointer.position.x)
+                                } else if (pointer.pressed && pointer.position != pointer.previousPosition) {
+                                    itemAt(pointer.position.x)?.let { index ->
+                                        if (previewSelection != index) {
+                                            previewSelection = index
+                                            pending = index
+                                        }
+                                    }
+                                }
+                                active = pointer.id
+                                if (!pointer.pressed) finish(cancelled = false, position = pointer.position)
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    } finally {
+                        // 节点移除不代表原厂 ACTION_CANCEL：离开页面只回落预览，不触发导航
+                        previewSelection = currentSelection
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEachIndexed { index, item ->
-                val selected = index == selectedIndex
+                val selected = previewSelection == index
                 val press = rememberCouiPressMotion()
                 val interactionSource = remember { MutableInteractionSource() }
-                val (lightInput, drawLight) = rememberCouiSpotlight(
-                    interactive = true,
-                    preset = SpotlightPreset.ChipTab,
-                    dark = CouiTheme.isDark,
-                    blendMode = if (CouiTheme.isDark) BlendMode.PLUS else BlendMode.SRC_OVER,
-                    cancelOnConsumedMove = true,
-                )
 
                 Box(
                     modifier = Modifier
@@ -581,49 +793,57 @@ private fun CouiPlainNavigationBar(
                             scaleY = press.scale.value
                         }
                         .clip(tabShape)
-                        .background(
-                            if (selected) {
-                                colors.accent.copy(alpha = CouiSelectedContainerAlpha)
-                            } else {
-                                Color.Transparent
-                            },
+                        // 蒙层在下、凝光在上：hover/press 蒙层先叠，凝光再按本项轮廓折射，内容最后画
+                        .couiNavigationFeedback(dark = dark, interactionSource = interactionSource)
+                        // 取色与图标文字同源，和库浮动节点传内容色的口径一致
+                        .couiSpotlightLight(
+                            preset = SpotlightPreset.ChipTab,
+                            interactive = true,
+                            color = if (selected) selectedColor else unselectedColor,
                         )
-                        .then(lightInput)
-                        .drawBehind {
-                            drawLight?.invoke(this)
+                        .couiPressMotion(press = press, cancelOnConsumedMove = false)
+                        .semantics(mergeDescendants = true) {
+                            role = Role.Tab
+                            // 与本地同名 val 区分：这里是 SemanticsPropertyReceiver 的扩展属性
+                            this.selected = selected
+                            onClick {
+                                if (index != currentSelection) currentOnSelect(index)
+                                true
+                            }
                         }
-                        .couiPressMotion(press = press, cancelOnConsumedMove = true)
-                        .selectable(
-                            selected = selected,
-                            interactionSource = interactionSource,
-                            indication = null,
-                            role = Role.Tab,
-                            onClick = { onSelect(index) },
-                        ),
+                        .onKeyEvent {
+                            if (it.type == KeyEventType.KeyUp && (it.key == Key.Enter || it.key == Key.Spacebar)) {
+                                if (index != currentSelection) currentOnSelect(index)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        .focusable(interactionSource = interactionSource),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
+                    // 原厂底栏图标与标签常显：竖排图标 + 10sp 标签，选中只换颜色
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(top = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Top,
                     ) {
                         Icon(
                             imageVector = if (selected) item.selectedIcon else item.icon,
-                            contentDescription = if (selected) null else item.title,
+                            contentDescription = null,
                             modifier = Modifier.size(tokens.iconSize),
-                            tint = if (selected) colors.accent else colors.onSurfaceVariant,
+                            tint = if (selected) selectedColor else unselectedColor,
                         )
-                        if (selected) {
-                            Spacer(Modifier.width(6.dp))
-                            BasicText(
-                                text = item.title,
-                                style = TextStyle(
-                                    fontSize = tokens.labelSize,
-                                    fontWeight = FontWeight.Medium,
-                                ),
-                                color = { colors.accent },
-                                maxLines = 1,
-                            )
-                        }
+                        Spacer(Modifier.height(CouiNavLabelGap))
+                        BasicText(
+                            text = item.title,
+                            style = TextStyle(
+                                fontSize = tokens.labelSize,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            color = { if (selected) selectedColor else unselectedColor },
+                            maxLines = 1,
+                        )
                     }
                 }
             }
@@ -661,13 +881,6 @@ internal fun CouiNavigationRail(
             val selected = index == selectedIndex
             val press = rememberCouiPressMotion()
             val interactionSource = remember { MutableInteractionSource() }
-            val (lightInput, drawLight) = rememberCouiSpotlight(
-                interactive = true,
-                preset = SpotlightPreset.ChipTab,
-                dark = CouiTheme.isDark,
-                blendMode = if (CouiTheme.isDark) BlendMode.PLUS else BlendMode.SRC_OVER,
-                cancelOnConsumedMove = true,
-            )
 
             Column(
                 modifier = Modifier
@@ -678,12 +891,17 @@ internal fun CouiNavigationRail(
                         scaleY = press.scale.value
                     }
                     .clip(CouiCapsuleShape)
-                    .background(if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else Color.Transparent)
-                    .then(lightInput)
-                    .drawBehind {
-                        drawLight?.invoke(this)
-                    }
-                    .couiPressMotion(press = press, cancelOnConsumedMove = true)
+                    // 侧栏项自身没有不透明底：未选中时先垫容器色再叠凝光，避免光和页面底色相乘
+                    .background(
+                        if (selected) colors.accent.copy(alpha = CouiSelectedContainerAlpha) else colors.container,
+                    )
+                    .couiNavigationFeedback(dark = CouiTheme.isDark, interactionSource = interactionSource)
+                    .couiSpotlightLight(
+                        preset = SpotlightPreset.ChipTab,
+                        interactive = true,
+                        color = if (selected) colors.accent else colors.onSurfaceVariant,
+                    )
+                    .couiPressMotion(press = press, cancelOnConsumedMove = false)
                     .selectable(
                         selected = selected,
                         interactionSource = interactionSource,
@@ -744,7 +962,13 @@ fun CouiFab(
                 .shadow(elevation = 8.dp, shape = CircleShape, clip = false)
                 .clip(CircleShape)
                 .background(colors.accent)
-                .clickable(role = Role.Button, onClick = onClick),
+                // 低版本没有原厂浮动材质：同一套按压缩放 + 触觉，凝光用原厂 Fab 的 OpaqueSmall1
+                .couiPressable(
+                    shape = CircleShape,
+                    scaleOnPress = true,
+                    spotlight = SpotlightPreset.OpaqueSmall1,
+                    onClick = onClick,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             CompositionLocalProvider(LocalCouiFallbackContentColor provides colors.onAccent) {
@@ -787,8 +1011,9 @@ val LocalCouiFallbackContentColor = staticCompositionLocalOf<Color> { Color.Unsp
  * 胶囊分段选择：页面内切换用，替代需要独立背景源的 ChipTabRow。
  *
  * 选中态取强调色容器，未选中态取分组容器色，高度与 COUI 行高对齐。
- * 反馈按库的 ChipTab 预设拼：每段一个有界触区 + 原厂按压缩放 + 触点点亮
- * （[SpotlightPreset.ChipTab]），文本走 [CouiTextKind.PreferenceValue] 档，不再写字面量字号。
+ * 反馈按库的 ChipTab 预设拼：外层 48dp 触区只负责命中与选中语义，
+ * 凝光与按压缩放挂在 40dp 可见胶囊上（[SpotlightPreset.ChipTab] + 不透明容器底），
+ * 保证材质按可见轮廓折射而不是按触区尺寸铺开；文本走 [CouiTextKind.PreferenceValue] 档。
  */
 @Composable
 fun CouiSegmentedCapsules(
@@ -811,20 +1036,12 @@ fun CouiSegmentedCapsules(
         items.forEachIndexed { index, label ->
             val selected = index == selectedIndex
             val press = rememberCouiPressMotion()
-            val (lightInput, drawLight) = rememberCouiSpotlight(
-                interactive = true,
-                preset = SpotlightPreset.ChipTab,
-                dark = CouiTheme.isDark,
-                cancelOnConsumedMove = true,
-            )
             val capsuleInteraction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .weight(1f)
                     // 触区按 48dp 起算，胶囊本体 40dp 居中；容器只留横向内衬，段高不再凑数
                     .height(CouiMinTouchTarget)
-                    .couiPressMotion(press = press, cancelOnConsumedMove = true)
-                    .then(lightInput)
                     .selectable(
                         selected = selected,
                         interactionSource = capsuleInteraction,
@@ -843,17 +1060,20 @@ fun CouiSegmentedCapsules(
                             scaleY = press.scale.value
                         }
                         .clip(RoundedCornerShape(20.dp))
+                        // 未选中段也垫容器色：凝光要有不透明底才不会被页面底色吃掉
                         .background(
                             if (selected) {
                                 colors.accent.copy(alpha = CouiSelectedContainerAlpha)
                             } else {
-                                Color.Transparent
+                                colors.container
                             },
                         )
-                        .drawWithContent {
-                            drawContent()
-                            drawLight?.invoke(this)
-                        },
+                        .couiPressMotion(press = press, cancelOnConsumedMove = false)
+                        .couiSpotlightLight(
+                            preset = SpotlightPreset.ChipTab,
+                            interactive = true,
+                            color = if (selected) colors.accent else colors.onSurfaceVariant,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     BasicText(

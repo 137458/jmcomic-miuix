@@ -14,17 +14,19 @@ import kotlin.test.assertTrue
 class BottomBarTokensTest {
 
     @Test
-    fun `普通档映射改前原值`() {
+    fun `普通档对齐原厂浮动底栏几何`() {
+        // 条高 56dp / 菜单项 48dp / 图标 24dp / 标签 10sp / 横向 16dp 边距 / 净空 80dp
+        // 这组数值必须与库 NavigationBar 自算的几何一致，34 上换库实现才不会跳变。
         val tokens = bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.FLOATING)
-        assertEquals(64f, tokens.height.value)
+        assertEquals(56f, tokens.height.value)
         assertEquals(24f, tokens.iconSize.value)
-        assertEquals(11f, tokens.labelSize.value)
-        assertEquals(56f, tokens.indicatorHeight.value)
-        assertEquals(24f, tokens.horizontalMargin.value)
+        assertEquals(10f, tokens.labelSize.value)
+        assertEquals(48f, tokens.indicatorHeight.value)
+        assertEquals(16f, tokens.horizontalMargin.value)
         assertEquals(4f, tokens.innerPadding.value)
         assertEquals(0.1f, tokens.shadowAlphaLight)
         assertEquals(0.2f, tokens.shadowAlphaDark)
-        assertEquals(100f, tokens.contentPadding.value)
+        assertEquals(80f, tokens.contentPadding.value)
         assertTrue(tokens.floating)
         val (topLeft, bottomLeft) = cornerRadii(tokens)
         assertEquals(50f, topLeft)
@@ -122,8 +124,8 @@ class BottomBarTokensTest {
             widthDp = 400,
         )
         assertEquals(BottomBarForm.DOCKED, phoneDocked.form)
-        assertEquals(64f, phoneDocked.height.value)
-        assertEquals(64f, phoneDocked.contentPadding.value)
+        assertEquals(56f, phoneDocked.height.value)
+        assertEquals(56f, phoneDocked.contentPadding.value)
         assertEquals(0f, phoneDocked.horizontalMargin.value)
 
         val phoneFloating = resolveBottomBarTokens(
@@ -132,7 +134,7 @@ class BottomBarTokensTest {
             widthDp = 400,
         )
         assertEquals(BottomBarForm.FLOATING, phoneFloating.form)
-        assertEquals(100f, phoneFloating.contentPadding.value)
+        assertEquals(80f, phoneFloating.contentPadding.value)
     }
 
     @Test

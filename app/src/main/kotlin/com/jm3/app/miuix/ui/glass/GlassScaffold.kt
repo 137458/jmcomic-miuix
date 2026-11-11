@@ -49,9 +49,10 @@ import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 悬浮底栏的内容净空（底栏高度 + 底边距 + 呼吸空间）。主框架展示底栏时提供 100.dp，
- * 无底栏的子页面与宽屏侧栏模式保持默认 0。GlassScaffold 把它叠加进 bottom 内边距，
- * 让列表末项能滚出胶囊上方，同时内容其余部分可穿透底栏滚动、持续被玻璃采样。
+ * 悬浮底栏的内容净空（底栏高度 + 底边距 + 呼吸空间）。主框架展示底栏时提供底栏 token 的净空
+ * （普通档 80.dp、偏大档 108.dp），无底栏的子页面与宽屏侧栏模式保持默认 0。
+ * GlassScaffold 把它叠加进 bottom 内边距，让列表末项能滚出胶囊上方，
+ * 同时内容其余部分可穿透底栏滚动、持续被玻璃采样。
  */
 val LocalFloatingBarContentPadding = compositionLocalOf { 0.dp }
 

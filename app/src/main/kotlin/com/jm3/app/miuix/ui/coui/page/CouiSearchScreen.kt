@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Footer
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
@@ -357,6 +358,7 @@ private fun CouiSearchFilterChip(label: String, selected: Boolean, onClick: () -
             .couiPressable(
                 shape = shape,
                 minTouchTarget = CouiMinTouchTarget,
+                spotlight = SpotlightPreset.ChipTab,
                 onClick = onClick,
             )
             .padding(horizontal = 14.dp, vertical = 8.dp),

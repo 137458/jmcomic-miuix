@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Footer
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
@@ -436,7 +437,7 @@ private fun TaskActionChip(text: String, enabled: Boolean, onClick: () -> Unit) 
             .clip(CouiCapsuleShape)
             .background(scheme.accent.copy(alpha = 0.14f))
             .couiPressable(
-                shape = CouiCapsuleShape,
+                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                 enabled = enabled,
                 onClick = onClick,
             )

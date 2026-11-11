@@ -38,22 +38,26 @@ internal data class GlassBottomBarTokens(
 
 private val DockedTopCorner = 24.dp
 
+// 「普通」档即原厂浮动底栏几何：条高 56dp、菜单项 48dp、图标 24dp、标签 10sp、
+// 横向 16dp 边距、底距 16dp（无系统手势条时再加 8dp）。库 NavigationBar 自算同一套数值，
+// 自绘分支必须与之对齐，否则 34 上换库实现时底栏会突然变高变窄。
+// 净空 80dp = 条高 56 + 底距 16 + 呼吸 8，与库的「屏幕底 → 条顶」距离一致。
 private val StandardFloating = GlassBottomBarTokens(
     size = BottomBarSize.STANDARD,
     form = BottomBarForm.FLOATING,
-    height = 64.dp,
+    height = 56.dp,
     iconSize = 24.dp,
-    labelSize = 11.sp,
-    indicatorHeight = 56.dp,
-    horizontalMargin = 24.dp,
+    labelSize = 10.sp,
+    indicatorHeight = 48.dp,
+    horizontalMargin = 16.dp,
     innerPadding = 4.dp,
     shadowAlphaLight = 0.1f,
     shadowAlphaDark = 0.2f,
-    contentPadding = 100.dp,
+    contentPadding = 80.dp,
 )
 
-// 「偏大」档与「普通」档必须拉开可感知的差距：8dp 条高、4dp 图标、2sp 字号。
-// 「普通」档数值保持不变，避免已验收的默认观感回退。
+// 「偏大」档与「普通」档必须拉开可感知的差距：16dp 条高、4dp 图标、3sp 字号。
+// 「偏大」档保持原样：它是有意放大的可选观感，不受原厂底栏几何约束。
 private val GenerousFloating = GlassBottomBarTokens(
     size = BottomBarSize.GENEROUS,
     form = BottomBarForm.FLOATING,

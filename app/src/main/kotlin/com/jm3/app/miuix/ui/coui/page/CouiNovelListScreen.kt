@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
@@ -420,7 +421,7 @@ private fun ColumnScope.CouiNovelActions(
             textAlign = TextAlign.Start,
             modifier = Modifier
                 .clip(CouiCapsuleShape)
-                .couiPressable(shape = CouiCapsuleShape, enabled = enabled, minTouchTarget = CouiMinTouchTarget, onClick = onLike)
+                .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = enabled, minTouchTarget = CouiMinTouchTarget, onClick = onLike)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         )
         if (!likes.isNullOrBlank()) {
@@ -518,7 +519,7 @@ private fun CouiNovelSearchField(
                 maxLines = 1,
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
-                    .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget, onClick = onSubmit)
+                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onSubmit)
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }

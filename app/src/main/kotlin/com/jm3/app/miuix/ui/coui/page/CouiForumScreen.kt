@@ -50,6 +50,7 @@ import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Footer
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
@@ -700,7 +701,7 @@ private fun CouiForumComment(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
                     .couiPressable(
-                        shape = CouiCapsuleShape,
+                        shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                         minTouchTarget = CouiMinTouchTarget,
                         onClick = { onReply(item) },
                     )
@@ -800,7 +801,7 @@ private fun ForumCapsuleButton(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(scheme.accent)
-            .couiPressable(shape = CouiCapsuleShape, onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.OpaqueMedium1, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {

@@ -40,6 +40,7 @@ import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
@@ -469,7 +470,7 @@ private fun CouiLibraryFilterChip(
             .clip(CouiCapsuleShape)
             .background(scheme.container)
             .couiPressable(
-                shape = CouiCapsuleShape,
+                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -506,7 +507,7 @@ private fun CouiLibraryPickerRow(
             .fillMaxWidth()
             .clip(CouiCapsuleShape)
             .couiPressable(
-                shape = CouiCapsuleShape,
+                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -562,7 +563,7 @@ private fun CouiLibrarySearchField(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
                     .couiPressable(
-                        shape = CouiCapsuleShape,
+                        shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                         minTouchTarget = CouiMinTouchTarget,
                         onClick = onSubmit,
                     )

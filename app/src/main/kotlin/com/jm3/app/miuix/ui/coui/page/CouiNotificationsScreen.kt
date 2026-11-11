@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Footer
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
@@ -444,7 +445,7 @@ private fun NotificationCard(
                                 Box(
                                     modifier = Modifier
                                         .clip(CouiCapsuleShape)
-                                        .couiPressable(shape = CouiCapsuleShape, onClick = { onOpenAlbum(comicId) }),
+                                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = { onOpenAlbum(comicId) }),
                                 ) {
                                     Text(
                                         text = update.comicTitle,
@@ -492,7 +493,7 @@ private fun NotificationCard(
             Box(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
-                    .couiPressable(shape = CouiCapsuleShape, onClick = onToggleRead)
+                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onToggleRead)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Text(

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Item
 import com.itos.coui.shape.CouiCapsuleShape
@@ -171,7 +172,7 @@ internal fun LazyListScope.couiChapterItems(
                         maxLines = 1,
                         modifier = Modifier
                             .clip(CouiCapsuleShape)
-                            .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget) {
                                 couiChapterBatchToggleIds(plan, expandedGroups).forEach { groupId ->
                                     onToggleGroup(groupId)
                                 }

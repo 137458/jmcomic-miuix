@@ -4,6 +4,7 @@ package com.jm3.app.miuix.ui.coui.component
 
 import com.jm3.app.miuix.ui.glass.bottomBarTokens
 import com.jm3.core.settings.BottomBarForm
+import androidx.compose.ui.unit.dp
 import com.jm3.core.settings.BottomBarSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -73,5 +74,30 @@ class CouiNavigationBarBranchTest {
             ),
             libraryRendered,
         )
+    }
+
+    @Test
+    fun `自绘底栏宽度上限复算库的菜单宽加两侧圆键`() {
+        // 24 + 70×n + 8×(n-1) + 136：n=4 时 464dp，和库的 maximumMenuWidth + 136dp 同源
+        assertEquals(464.dp, couiPlainNavMaxWidth(4))
+        assertEquals(230.dp, couiPlainNavMaxWidth(1))
+        assertTrue(couiPlainNavMaxWidth(5) > couiPlainNavMaxWidth(4))
+    }
+
+    @Test
+    fun `拖动预选按库语义决定释放项`() {
+        // 释放点在另一项上：直接切到释放点
+        assertEquals(3, couiPlainNavReleaseTarget(preview = 1, pending = null, down = 1, up = 3, cancelled = false))
+        // 拖回按下项：待定项若已等于预览项，仍按预览项切换
+        assertEquals(2, couiPlainNavReleaseTarget(preview = 2, pending = 2, down = 1, up = 1, cancelled = false))
+        // 按下即抬起：同点点击补一次判定
+        assertEquals(2, couiPlainNavReleaseTarget(preview = 1, pending = null, down = 2, up = 2, cancelled = false))
+    }
+
+    @Test
+    fun `取消的拖动不产生切换`() {
+        assertEquals(null, couiPlainNavReleaseTarget(preview = 1, pending = null, down = 2, up = 2, cancelled = true))
+        assertEquals(null, couiPlainNavReleaseTarget(preview = 1, pending = null, down = 1, up = 1, cancelled = false))
+        assertEquals(null, couiPlainNavReleaseTarget(preview = 1, pending = null, down = null, up = null, cancelled = false))
     }
 }

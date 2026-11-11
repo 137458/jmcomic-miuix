@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -76,6 +77,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -102,7 +104,9 @@ import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.effect.CouiFloatingShadow
 import com.itos.coui.effect.CouiFloatingSurface
 import com.itos.coui.effect.LocalCouiContourGlowEnabled
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.effect.couiFloatingSurface
+import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
@@ -124,6 +128,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -1074,7 +1079,8 @@ private fun ReaderPages(
                         kind = CouiTextKind.PreferenceValue,
                         color = CouiKitTheme.colorScheme.accent,
                         modifier = Modifier
-                            .couiPressable {
+                            // 所在 HUD 面板本身已有凝光，这里不再叠第二层
+                            .couiPressable(spotlight = null) {
                                 pickerValue = pagePlan.currentPage
                                 showPageSheet = true
                             }
@@ -1497,7 +1503,9 @@ internal fun ReaderHudBar(
                     ),
                 )
                 .clip(ReaderHudShape)
-                .background(CouiKitTheme.colorScheme.container.copy(alpha = ReaderHudFallbackAlpha)),
+                .background(CouiKitTheme.colorScheme.container.copy(alpha = ReaderHudFallbackAlpha))
+                // 低版本拿不到库材质，但凝光门槛更低：垫完底色就补光，与 34+ 的观感差距只剩折射
+                .couiSpotlightLight(SpotlightPreset.TranslucentLarge1, interactive = true),
             contentAlignment = Alignment.Center,
         ) {
             content()
@@ -1523,6 +1531,13 @@ private fun ReaderHudFloatingBar(
     val shadow = remember(dark, density) { with(density) { readerHudShadow(dark) } }
     var bounds by remember { mutableStateOf(IntSize.Zero) }
     val cornerRadius = with(density) { ReaderHudShape.radius.toPx() }
+    // 库的浮动材质本身不带凝光：光只能在 beforeContent 里补，那里是「材质之后、内容之前」，
+    // 直接 drawBehind 会被材质 patch 的 Src 混合抹掉
+    val light = rememberCouiSpotlight(
+        interactive = true,
+        preset = SpotlightPreset.TranslucentLarge1,
+        dark = dark,
+    )
 
     Box(
         modifier = modifier
@@ -1537,6 +1552,9 @@ private fun ReaderHudFloatingBar(
                 shape = ReaderHudShape,
                 contentLayer = contentLayer,
                 contourGlowEnabled = LocalCouiContourGlowEnabled.current,
+                beforeContent = { path ->
+                    clipPath(path) { light.second?.invoke(this) }
+                },
                 surface = {
                     CouiFloatingSurface(
                         bounds = Rect(0f, 0f, bounds.width.toFloat(), bounds.height.toFloat()),
@@ -1546,6 +1564,8 @@ private fun ReaderHudFloatingBar(
                     )
                 },
             )
+            // 输入挂在承载材质与内容的同一节点上，采样的坐标才与绘制一致
+            .then(light.first)
             .clip(ReaderHudShape),
         contentAlignment = Alignment.Center,
     ) {
@@ -1610,7 +1630,8 @@ internal fun ReaderHudChapterStep(
         contentDescription = contentDescription,
         modifier = Modifier
             .size(CouiMinTouchTarget)
-            .couiPressable(enabled = enabled) { onClick() }
+            // 所在 HUD 面板本身已有凝光，这里不再叠第二层；只保留按压反馈
+            .couiPressable(shape = CircleShape, enabled = enabled, spotlight = null) { onClick() }
             .padding(12.dp),
         tint = tint,
     )
@@ -1627,7 +1648,8 @@ internal fun ReaderHudAction(
     val tint = if (active) CouiKitTheme.colorScheme.accent else CouiKitTheme.colorScheme.onSurface
     Column(
         modifier = Modifier
-            .couiPressable(shape = CouiCapsuleShape) { onClick() }
+            // 只在 HUD 面板内使用，光由面板统一给，项内不再叠第二层
+            .couiPressable(shape = CouiCapsuleShape, spotlight = null) { onClick() }
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1754,9 +1776,17 @@ internal fun ReaderCommentComposer(
         val enabled = !busy && text.isNotBlank()
         Box(
             modifier = Modifier
-                .couiPressable(enabled = enabled) { onSend() }
                 .clip(CouiCapsuleShape)
                 .background(if (enabled) scheme.accent else scheme.outlineVariant)
+                // 先铺不透明底再挂可点件：光画在内容之前，排在底色之上才看得见
+                .couiPressable(
+                    shape = CouiCapsuleShape,
+                    // 可用态是强调色实底，按库的主按钮口径取 OpaqueMedium1
+                    // 禁用态没有光（interactive = false），不必再挂预设
+                    spotlight = if (enabled) SpotlightPreset.OpaqueMedium1 else null,
+                    enabled = enabled,
+                    onClick = onSend,
+                )
                 .padding(horizontal = 16.dp, vertical = 7.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -1870,10 +1900,32 @@ private fun ReaderSpreadPage(
     } else {
         null
     }
+    // 双页整屏的翻页热区在这一层：两页 ReaderPage 不接 onTap，光必须跟着热区走，
+    // 否则并排两页各自拿不到光，整屏点击也没有任何反馈。
+    val spreadLight = if (onTap != null) {
+        rememberCouiSpotlight(
+            interactive = true,
+            preset = SpotlightPreset.TranslucentLarge1,
+            dark = CouiKitTheme.isDark,
+        )
+    } else {
+        null
+    }
+    fun Modifier.spreadLit(): Modifier = if (spreadLight == null) {
+        this
+    } else {
+        this
+            .then(spreadLight.first)
+            .drawWithContent {
+                drawContent()
+                // 页面图不透明：光只能画在内容之后，画在之前会被整屏盖住
+                spreadLight.second?.invoke(this)
+            }
+    }
     // 与单页缩放路径同一套边界空拖判定；只是内容由整屏两页共同承担
     val edgeDrag = rememberUpdatedState(onHorizontalEdgeDrag)
     Box(
-        modifier = if (onHorizontalEdgeDrag != null) {
+        modifier = (if (onHorizontalEdgeDrag != null) {
             modifier
                 .zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
                 .pointerInput(zoomableState) {
@@ -1884,7 +1936,7 @@ private fun ReaderSpreadPage(
                 }
         } else {
             modifier.zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
-        },
+        }).spreadLit(),
     ) {
         if (images.size >= 2) {
             Row(modifier = Modifier.fillMaxSize()) {
@@ -1953,6 +2005,28 @@ private fun ReaderPage(
             }
             .build()
     }
+    // 翻页热区覆盖每一页：单页缩放、双页、长图缩放浮层都复用本组件，
+    // 光按 TranslucentLarge1 统一挂在这里；画在内容之前会被不透明页面图整个盖住，
+    // 所以必须用 drawWithContent 后置。
+    val pageLight = if (onTap != null || onDoubleTap != null) {
+        rememberCouiSpotlight(
+            interactive = true,
+            preset = SpotlightPreset.TranslucentLarge1,
+            dark = CouiKitTheme.isDark,
+        )
+    } else {
+        null
+    }
+    fun Modifier.pageLit(): Modifier = if (pageLight == null) {
+        this
+    } else {
+        this
+            .then(pageLight.first)
+            .drawWithContent {
+                drawContent()
+                pageLight.second?.invoke(this)
+            }
+    }
     if (zoomEnabled) {
         val zoomableState = rememberZoomableImageState()
         // derivedStateOf 让缩放比例变化只触发读取方重组，不必每帧重算整页
@@ -1974,7 +2048,7 @@ private fun ReaderPage(
         // 偏移判断内容是否还在跟随手势：内容停下后累计的位移才算边界空拖，参与翻页判定。
         val edgeDrag = rememberUpdatedState(onHorizontalEdgeDrag)
         Box(
-            modifier = if (onHorizontalEdgeDrag != null) {
+            modifier = (if (onHorizontalEdgeDrag != null) {
                 modifier.pointerInput(zoomableState) {
                     // 单页的缩放状态套了一层 rememberZoomableImageState，内容偏移在内层
                     collectHorizontalEdgeDrag(
@@ -1984,7 +2058,7 @@ private fun ReaderPage(
                 }
             } else {
                 modifier
-            },
+            }).pageLit(),
         ) {
             if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
             ZoomableAsyncImage(
@@ -2007,7 +2081,12 @@ private fun ReaderPage(
                 onDoubleTap = { onDoubleTap() },
             )
         }
-        onTap != null -> Modifier.clickable(onClick = onTap)
+        onTap != null -> Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            // 整页是阅读面：不要 Ripple 方框，反馈交给下文的凝光
+            indication = null,
+            onClick = onTap,
+        )
         else -> Modifier
     }
     val contentModifier = if (dynamicAspectRatio) {
@@ -2015,7 +2094,7 @@ private fun ReaderPage(
     } else {
         modifier
     }
-    Box(modifier = contentModifier.then(tapModifier)) {
+    Box(modifier = contentModifier.pageLit().then(tapModifier)) {
         if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
         AsyncImage(
             model = request,
