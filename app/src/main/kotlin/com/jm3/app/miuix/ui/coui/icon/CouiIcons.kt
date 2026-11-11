@@ -33,6 +33,10 @@
  *   Info       -> info
  *   LogOut     -> log-out
  *   Lock       -> lock
+ *   Plus       -> plus
+ *   Minus      -> minus
+ *   Sort       -> arrow-up-down
+ *   List       -> list
  *   Bell       -> bell
  *   Copy       -> copy
  *
@@ -606,7 +610,7 @@ object CouiIcons {
         }
     }.build()
 
-    /** Lucide slug: `image`. */
+    /** Lucide slug: `clock`. */
     val Clock: ImageVector = ImageVector.Builder(
         name = "CouiIcons.Clock",
         defaultWidth = 24.dp,
@@ -684,6 +688,102 @@ object CouiIcons {
     }.build()
 
     /** Lucide slug: `plus`. */
+    val Plus: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.Plus",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(5f, 12f)
+            horizontalLineTo(19f)
+            moveTo(12f, 5f)
+            verticalLineTo(19f)
+        }
+    }.build()
+
+    /** Lucide slug: `minus`. */
+    val Minus: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.Minus",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(5f, 12f)
+            horizontalLineTo(19f)
+        }
+    }.build()
+
+    /** Lucide slug: `arrow-up-down`. */
+    val Sort: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.Sort",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(21f, 16f)
+            lineTo(17f, 20f)
+            lineTo(13f, 16f)
+            moveTo(17f, 20f)
+            verticalLineTo(4f)
+            moveTo(3f, 8f)
+            lineTo(7f, 4f)
+            lineTo(11f, 8f)
+            moveTo(7f, 4f)
+            verticalLineTo(20f)
+        }
+    }.build()
+
+    /** Lucide slug: `list`. */
+    val List: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.List",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(3f, 5f)
+            horizontalLineTo(3.01f)
+            moveTo(3f, 12f)
+            horizontalLineTo(3.01f)
+            moveTo(3f, 19f)
+            horizontalLineTo(3.01f)
+            moveTo(8f, 5f)
+            horizontalLineTo(21f)
+            moveTo(8f, 12f)
+            horizontalLineTo(21f)
+            moveTo(8f, 19f)
+            horizontalLineTo(21f)
+        }
+    }.build()
+
+    /** Lucide slug: `lock`. */
     val Lock: ImageVector = ImageVector.Builder(
         name = "CouiIcons.Lock",
         defaultWidth = 24.dp,

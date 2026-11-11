@@ -86,10 +86,12 @@ import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
@@ -118,7 +120,6 @@ import com.itos.coui.shape.CouiShape
 import com.itos.coui.slider.Slider
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
-import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
@@ -213,7 +214,6 @@ import top.yukonga.miuix.kmp.utils.springAnimateToPage
 /** 阅读进度落盘前的静置时长：翻页停下来才写，避免连滚时逐页写设置存储。 */
 private const val PROGRESS_SAVE_DEBOUNCE_MS = 400L
 private const val PageSliderTickMaxPages = 24
-private const val VOLUME_THROTTLE_MS = 150L
 private const val TRACK_MUTE_DAYS_MS = 3L * 24 * 60 * 60 * 1000
 
 /** 从 Compose 的 Context 链上找宿主 Activity，窗口亮度与常亮标记都要打在它上面。 */
@@ -383,7 +383,9 @@ private fun ReaderStateScreen(
 ) {
     CouiTheme {
         CouiAppScaffold(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(CouiKitTheme.colorScheme.background),
             topBar = {
                 LargeTopAppBar(
                     title = { CouiTopBarTitle(text = title, textAlign = TextAlign.Start) },
@@ -424,18 +426,20 @@ private fun ReaderPages(
 ) {
     // 原先由 Scaffold 提供的窗口内边距：HUD 各自避让状态栏/导航栏，列表只让出系统栏高度
     val contentInsets = WindowInsets.systemBars.asPaddingValues()
+    val layoutDirection = LocalLayoutDirection.current
+    val density = LocalDensity.current
     val imageLoader = rememberReaderImageLoader(deps.gateway, deps.downloadFiles, deps.authCall)
     val listState = rememberLazyListState()
     val context = LocalPlatformContext.current
-    // 亮度与常亮直接作用在宿主 Activity 的窗口上
-    val activityContext = LocalContext.current
-    val activity = remember(activityContext) { activityContext.findActivity() }
     val windowSize = LocalWindowInfo.current.containerSize
     val scope = rememberCoroutineScope()
     val user by deps.account.user.collectAsState()
-    // 页宽固定为容器宽；解码尺寸不再写死 3:4，而是按这一页的真实宽高比推算，
-    // 否则 800x20000 的长条图会被解成 58x1440 再拉满整宽，放大十几倍必然发糊。
-    val pageWidthPx = windowSize.width.coerceAtLeast(1)
+    val wideLayout = LocalWideLayout.current
+    val containerWidthPx = windowSize.width.coerceAtLeast(1)
+    val readablePaddingPx = with(density) { wideLayout.readableHorizontalPadding.roundToPx() }
+    // 竖向按扣减宽屏左右可读留白后的实际页宽推算页框与解码尺寸；
+    // 横向 pager 铺满窗口，边界拖动手势仍以窗口全宽 containerWidthPx 判定。
+    val pageWidthPx = couiReaderVerticalPageWidthPx(containerWidthPx, readablePaddingPx)
     // 已解码页的真实宽高比：解码成功即回填，只驱动页框布局
     val pageRatios = remember(photo) { mutableStateMapOf<Int, Float>() }
     // 只驱动请求尺寸的比例：仅当解码结果顶满请求框时才回填，避免一次回填就把内存缓存键换掉
@@ -457,7 +461,6 @@ private fun ReaderPages(
     var horizontal by rememberSaveable { mutableStateOf(false) }
     // 双页阅读只在大屏横屏下叠加在左右阅读上：默认单页，转屏或换设备后自动回落到单页。
     var spreadMode by rememberSaveable { mutableStateOf(ReaderSpreadMode.SINGLE) }
-    val wideLayout = LocalWideLayout.current
     val spreadEligible = ReaderSpreadPolicy.supportsSpread(wideLayout.widthDp, wideLayout.heightDp)
     val spreadActive = spreadEligible && spreadMode == ReaderSpreadMode.DOUBLE && horizontal
     // pager 的页数随单/双页切换：跨页索引只是 pager 下标，持久化仍走单页索引
@@ -491,9 +494,9 @@ private fun ReaderPages(
     var progressRestored by remember(photo.photoId) { mutableStateOf(false) }
     // 离开阅读器时补记当前页：状态对象在离开时仍可读
     val latestPage by rememberUpdatedState(pagePlan.currentPage)
-    var showPageSheet by rememberSaveable { mutableStateOf(false) }
-    var showChapterSheet by rememberSaveable { mutableStateOf(false) }
-    var showCommentSheet by rememberSaveable { mutableStateOf(false) }
+    var modalState by rememberSaveable(photo.photoId, stateSaver = CouiReaderModalStateSaver) {
+        mutableStateOf(CouiReaderModalState())
+    }
     var pickerValue by rememberSaveable { mutableIntStateOf(1) }
     // 原版点击正文切换上下栏显隐
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
@@ -510,25 +513,26 @@ private fun ReaderPages(
     var commentsExpired by remember { mutableStateOf(false) }
     var commentText by rememberSaveable(photo.albumId) { mutableStateOf("") }
     var commentBusy by remember { mutableStateOf(false) }
-    // 评论抽屉内的回复：目标评论与发送态
+    var commentNotice by remember(photo.albumId) { mutableStateOf<String?>(null) }
+    // 评论弹窗内的回复：目标评论与发送态
     var replyTarget by rememberSaveable(photo.albumId, stateSaver = CommentItemNullableSaver) {
         mutableStateOf<CommentItem?>(null)
     }
     var replyBusy by remember { mutableStateOf(false) }
+    var replyNotice by remember(photo.albumId) { mutableStateOf<String?>(null) }
     // 回复框草稿：换目标即清空，免得上一条的残稿被带进新回复；跨旋转保留（发送成功后显式清空）
     var replyText by rememberSavedDialogDraft(
         isOpen = replyTarget != null,
         targetKey = replyTarget?.id,
         resetKey = photo.albumId,
     )
-    var showTrackPrompt by rememberSaveable(photo.photoId) { mutableStateOf(false) }
     var trackPromptShown by rememberSaveable(photo.photoId) { mutableStateOf(false) }
     var trackMuteChecked by remember { mutableStateOf(false) }
     var trackBusy by remember { mutableStateOf(false) }
 
-    // HUD 采样源：正文层录屏作为 backdrop，顶/底栏从它取像素；
-    // 库的约束是每个源只挂到一个内容节点，且采样子树不能包含 HUD 自身
-    val hudBackdrop = rememberCouiBackdrop(diagnosticName = "readerHud")
+    val scheme = CouiKitTheme.colorScheme
+    // HUD 采样源：正文层自带不透明底色并作为 backdrop，避免留白与转场露出透明像素
+    val hudBackdrop = rememberCouiReaderBackdrop(diagnosticName = "readerHud")
 
     val prevChapter = chapters.getOrNull(chapterIndex - 1)?.takeIf { chapterIndex > 0 }
     val nextChapter = chapters.getOrNull(chapterIndex + 1)
@@ -568,41 +572,11 @@ private fun ReaderPages(
         }
     }
 
-    // 阅读亮度作用在 Activity 窗口上：进入页面按设置应用，离开时恢复原值。
-    // 换章时新旧页短暂并存，原亮度只由首个页面记录、最后一个页面恢复，否则旧页销毁会抹掉新页的亮度。
-    val readerWindow = activity?.window
-    DisposableEffect(readerWindow) {
-        ReaderWindowLeases.enterBrightness(readerWindow?.attributes?.screenBrightness)
-        onDispose {
-            val restore = ReaderWindowLeases.originalBrightness
-            if (ReaderWindowLeases.exitBrightness() && readerWindow != null && restore != null) {
-                readerWindow.attributes = readerWindow.attributes.apply {
-                    screenBrightness = restore
-                }
-            }
-        }
-    }
-    LaunchedEffect(readerWindow, readerBrightness) {
-        if (readerWindow == null) return@LaunchedEffect
-        readerWindow.attributes = readerWindow.attributes.apply {
-            screenBrightness = if (readerBrightness == ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) {
-                WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-            } else {
-                readerBrightness / 100f
-            }
-        }
-    }
-    // 阅读时保持亮屏：开关与窗口标记同生命周期；并存的新旧页按引用计数，最后一个离开才清标记
-    DisposableEffect(readerWindow, keepScreenOn) {
-        if (readerWindow == null || !keepScreenOn) return@DisposableEffect onDispose {}
-        ReaderWindowLeases.enterKeepScreenOn()
-        readerWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose {
-            if (ReaderWindowLeases.exitKeepScreenOn()) {
-                readerWindow.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
-        }
-    }
+    // 阅读亮度与常亮均挂在宿主 Activity 窗口上，经由租约协调换章共存期
+    BindCouiReaderWindowEffects(
+        keepScreenOn = keepScreenOn,
+        readerBrightness = readerBrightness,
+    )
 
     /**
      * 边界拖拽翻页的唯一出口：按方向取相邻页，夹进 pager 有效范围后起 Spring 动画。
@@ -637,13 +611,19 @@ private fun ReaderPages(
                 target - 1
             }
             scope.launch {
-                pagerState.springAnimateToPage(clampPagerTarget(pagerTarget, pagerPageCount))
-                pagePlan = settleJump(pagePlan, target)
+                try {
+                    pagerState.springAnimateToPage(clampPagerTarget(pagerTarget, pagerPageCount))
+                } finally {
+                    pagePlan = settleJump(pagePlan, target)
+                }
             }
         } else {
             scope.launch {
-                listState.scrollToItem(target - 1)
-                pagePlan = settleJump(pagePlan, target)
+                try {
+                    listState.scrollToItem(target - 1)
+                } finally {
+                    pagePlan = settleJump(pagePlan, target)
+                }
             }
         }
     }
@@ -736,21 +716,39 @@ private fun ReaderPages(
     }
 
     // 转屏或分屏改变可用宽度时，pager 的页数会切换单/双页语义：
-    // 用当前单页锚点重新定位到对应的跨页，避免把「第 4 页」直接当成第 4 屏而错位。
-    LaunchedEffect(spreadActive, horizontal, pagerPageCount) {
-        if (!horizontal || pagerPageCount <= 0) return@LaunchedEffect
+    // 等模式加载与初始进度恢复都已落地、且无跳页动画在途时，再用当前单页锚点对齐跨页。
+    LaunchedEffect(spreadActive, horizontal, pagerPageCount, horizontalReady, progressRestored) {
+        if (
+            !couiShouldSyncPagerOnModeChange(
+                horizontalReady = horizontalReady,
+                progressRestored = progressRestored,
+                horizontal = horizontal,
+                pagerPageCount = pagerPageCount,
+                pendingJumpTarget = pagePlan.pendingTarget,
+            )
+        ) {
+            return@LaunchedEffect
+        }
         val page = pagePlan.currentPage.coerceIn(1, totalPages)
         val index = if (spreadActive) {
             ReaderSpreadPolicy.spreadIndexForPage(page, photo.images.size)
         } else {
             page - 1
-        }
-        pagerState.scrollToPage(index.coerceIn(0, pagerPageCount - 1))
+        }.coerceIn(0, pagerPageCount - 1)
+        if (pagerState.currentPage != index) pagerState.scrollToPage(index)
+    }
+
+    fun openLoginFromModal() {
+        modalState = modalState.dismissAllForNavigation()
+        replyTarget = null
+        commentNotice = null
+        replyNotice = null
+        onOpenLogin()
     }
 
     fun requireLogin(): Boolean {
         if (user != null) return true
-        onOpenLogin()
+        openLoginFromModal()
         return false
     }
 
@@ -759,7 +757,7 @@ private fun ReaderPages(
         outcome.notifyAction(
             notify = { snackbarHostState.showSnackbar(it) },
             failurePrefix = failurePrefix,
-            onExpired = onOpenLogin,
+            onExpired = ::openLoginFromModal,
         )
     }
 
@@ -804,34 +802,37 @@ private fun ReaderPages(
             commentsLoading = false
             when (outcome) {
                 is SessionOutcome.Ok -> comments = outcome.value
-                // 内联「加载失败 + 重试」对失效是误导：重试必然再吃一次 401
-                SessionOutcome.Expired -> {
-                    commentsExpired = true
-                    reportAction(outcome, "评论加载失败")
-                }
+                // 弹窗内保留「登录已过期，点此登录」入口，点击后再关闭弹窗进登录页，避免在后台压住弹窗
+                SessionOutcome.Expired -> commentsExpired = true
                 is SessionOutcome.Failed -> commentsFailed = true
             }
         }
     }
 
     fun openComments() {
-        showCommentSheet = true
+        commentNotice = null
+        modalState = modalState.open(CouiReaderModal.COMMENTS)
         if (comments == null) loadComments()
     }
 
     fun sendComment() {
         if (!requireLogin() || commentBusy || commentText.isBlank()) return
         commentBusy = true
+        commentNotice = null
         val text = commentText.trim()
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.postComment(photo.albumId, text) }
             commentBusy = false
-            if (outcome is SessionOutcome.Ok) {
-                commentText = ""
-                snackbarHostState.showSnackbar("评论已发表")
-                loadComments()
-            } else {
-                reportAction(outcome, "发表失败")
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    commentText = ""
+                    commentNotice = "评论已发表"
+                    loadComments()
+                }
+                SessionOutcome.Expired -> reportAction(outcome, "发表失败")
+                is SessionOutcome.Failed -> {
+                    commentNotice = "发表失败：" + failureCopy(outcome, "请稍后重试")
+                }
             }
         }
     }
@@ -840,22 +841,29 @@ private fun ReaderPages(
         val target = replyTarget ?: return
         if (text.isBlank() || replyBusy) return
         replyBusy = true
+        replyNotice = null
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.replyComment(photo.albumId, text, target.id) }
             replyBusy = false
-            if (outcome is SessionOutcome.Ok) {
-                replyTarget = null
-                snackbarHostState.showSnackbar("回复已发送")
-                loadComments()
-            } else {
-                reportAction(outcome, "回复失败")
+            when (outcome) {
+                is SessionOutcome.Ok -> {
+                    replyTarget = null
+                    replyNotice = null
+                    modalState = modalState.exitReply()
+                    commentNotice = "回复已发送"
+                    loadComments()
+                }
+                SessionOutcome.Expired -> reportAction(outcome, "回复失败")
+                is SessionOutcome.Failed -> {
+                    replyNotice = "回复失败：" + failureCopy(outcome, "请稍后重试")
+                }
             }
         }
     }
 
     /** 关闭末页追更引导：勾选「3天不要显示」时写入静默截止时间。 */
     fun closeTrackPrompt() {
-        showTrackPrompt = false
+        modalState = modalState.dismiss()
         if (trackMuteChecked) {
             scope.launch {
                 settings.setTrackPromptMuteUntil(System.currentTimeMillis() + TRACK_MUTE_DAYS_MS)
@@ -863,10 +871,18 @@ private fun ReaderPages(
         }
     }
 
-    // 评论抽屉的展开状态跨旋转保留，但评论数据本身不是可保存类型：恢复后若已展开且没有数据，
+    // 评论弹窗的展开状态跨旋转保留，但评论数据本身不是可保存类型：恢复后若已展开且没有数据，
     // 补拉一次，否则用户看到的是「暂无评论」的假空态
-    LaunchedEffect(showCommentSheet, photo.albumId) {
-        if (showCommentSheet && comments == null && !commentsLoading && !commentsFailed && !commentsExpired) loadComments()
+    LaunchedEffect(modalState.activeModal, photo.albumId) {
+        if (
+            modalState.activeModal == CouiReaderModal.COMMENTS &&
+            comments == null &&
+            !commentsLoading &&
+            !commentsFailed &&
+            !commentsExpired
+        ) {
+            loadComments()
+        }
     }
 
     fun followSeries() {
@@ -875,12 +891,12 @@ private fun ReaderPages(
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.setTracking(photo.albumId) }
             trackBusy = false
+            closeTrackPrompt()
             if (outcome is SessionOutcome.Ok) {
                 snackbarHostState.showSnackbar("已追踪连载")
             } else {
                 reportAction(outcome, "追踪失败")
             }
-            closeTrackPrompt()
         }
     }
 
@@ -901,6 +917,7 @@ private fun ReaderPages(
             )
         },
     )
+    val modalOpen by rememberUpdatedState(couiHasOpenReaderModal(modalState, replyTarget != null))
     DisposableEffect(volumeKeyPaging) {
         // 关闭音量键翻页时直接不注册：按键回到系统，恢复音量调节
         if (!volumeKeyPaging) return@DisposableEffect onDispose {}
@@ -910,19 +927,15 @@ private fun ReaderPages(
                 KeyEvent.KEYCODE_VOLUME_DOWN -> 1
                 else -> 0
             }
-            when {
-                delta == 0 -> false
-                // 长图整屏覆盖层打开时按键不属于底层的页：既不翻页也不消费，
-                // 否则关掉覆盖层会发现自己已经被换到别的页了。
-                zoomOverlayIndex != null -> false
-                else -> {
-                    val now = System.currentTimeMillis()
-                    if (now - lastVolumeAt >= VOLUME_THROTTLE_MS) {
-                        lastVolumeAt = now
-                        onVolumeStep(delta)
-                    }
-                    true
+            if (!couiShouldHandleReaderVolumeKey(delta, zoomOverlayIndex != null, modalOpen)) {
+                false
+            } else {
+                val now = System.currentTimeMillis()
+                if (now - lastVolumeAt >= READER_VOLUME_THROTTLE_MS) {
+                    lastVolumeAt = now
+                    onVolumeStep(delta)
                 }
+                true
             }
         }
         ReaderVolumeKeys.handler = mine
@@ -947,11 +960,15 @@ private fun ReaderPages(
         if (!atLastPage) return@LaunchedEffect
         if (System.currentTimeMillis() < settings.trackPromptMuteUntil()) return@LaunchedEffect
         trackPromptShown = true
-        showTrackPrompt = true
+        modalState = modalState.open(CouiReaderModal.TRACK_PROMPT)
     }
 
-    // 全屏 HUD：正文层同时是采样源，顶/底栏浮在它之上但不在它的子树里
-    Box(modifier = Modifier.fillMaxSize()) {
+    // 全屏 HUD：外层铺实色背景 + 正文采样源自带背景色，避免留白与旋转露出透明像素
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(scheme.background),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -995,8 +1012,8 @@ private fun ReaderPages(
                                 { dragX, stillPinned ->
                                     val turn = decideEdgePageTurn(
                                         dragX = dragX,
-                                        // 双页一屏铺满窗口，翻页行程仍按整屏宽度判定
-                                        pageWidth = pageWidthPx.toFloat(),
+                                        // 双页一屏铺满窗口，翻页行程按容器全宽判定
+                                        pageWidth = containerWidthPx.toFloat(),
                                         currentPage = pagerState.currentPage,
                                         pageCount = pagerPageCount,
                                     )
@@ -1024,8 +1041,8 @@ private fun ReaderPages(
                                 { dragX, stillPinned ->
                                     val turn = decideEdgePageTurn(
                                         dragX = dragX,
-                                        // 左右模式整屏一页，页宽就是窗口宽（Size 的 width 是 Dimension，不宜参与算术）
-                                        pageWidth = pageWidthPx.toFloat(),
+                                        // 左右模式整屏一页，页宽就是容器全宽
+                                        pageWidth = containerWidthPx.toFloat(),
                                         currentPage = pagerState.currentPage,
                                         pageCount = photo.images.size,
                                     )
@@ -1039,11 +1056,16 @@ private fun ReaderPages(
                 }
             } else {
                 // 长列表与它的滚动条必须同层：TrackedLazyColumn 内部就是 Box { LazyColumn + ListScrollBar }，
-                // 轨道与列表共用同一份 contentPadding；横向模式用的是 Pager，不经过这里
+                // 顶部让出 HUD 顶栏净空（首屏内容不被顶栏挡住），底部由尾项 Spacer 让出底栏
                 TrackedLazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize().readableWidth(),
-                    contentPadding = contentInsets,
+                    contentPadding = PaddingValues(
+                        start = contentInsets.calculateLeftPadding(layoutDirection),
+                        top = contentInsets.calculateTopPadding() + ReaderHudTopHeight + ReaderHudBarVerticalMargin * 2,
+                        end = contentInsets.calculateRightPadding(layoutDirection),
+                        bottom = contentInsets.calculateBottomPadding(),
+                    ),
                 ) {
                     items(photo.images, key = { it.index }) { image ->
                         // 布局比例优先本页已知比例、其次章节种子；请求尺寸只认解码比例，两者分开演进
@@ -1094,7 +1116,7 @@ private fun ReaderPages(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = ReaderHudBarVerticalMargin)
                     .fillMaxWidth()
                     .readableWidth(),
                 height = ReaderHudTopHeight,
@@ -1104,8 +1126,8 @@ private fun ReaderPages(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // HUD 栏自带浮动材质、不在 COUI 顶栏作用域内，只能用自绘圆键
-                    CouiTopBarPlainBackButton(onClick = onBack)
+                    // HUD 栏自带浮动材质与凝光，返回键不叠第二层凝光
+                    CouiTopBarPlainBackButton(onClick = onBack, spotlight = null)
                     Text(
                         text = photo.title,
                         kind = CouiTextKind.TopBar,
@@ -1116,25 +1138,25 @@ private fun ReaderPages(
                     Text(
                         text = pageLabel,
                         kind = CouiTextKind.ItemValue,
-                        color = CouiKitTheme.colorScheme.accent,
+                        color = scheme.accent,
                         modifier = Modifier
                             // 所在 HUD 面板本身已有凝光，这里不再叠第二层
                             .couiPressable(spotlight = null, minTouchTarget = CouiMinTouchTarget) {
                                 pickerValue = pagePlan.currentPage
-                                showPageSheet = true
+                                modalState = modalState.open(CouiReaderModal.PAGE_JUMP)
                             }
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         maxLines = 1,
                     )
                     ReaderHudChapterStep(
                         icon = CouiIcons.Back,
-                        contentDescription = "上一话",
+                        label = "上话",
                         enabled = prevChapter != null,
                         onClick = { prevChapter?.let { onOpenChapter(it.id) } },
                     )
                     ReaderHudChapterStep(
                         icon = CouiIcons.Forward,
-                        contentDescription = "下一话",
+                        label = "下话",
                         enabled = nextChapter != null,
                         onClick = { nextChapter?.let { onOpenChapter(it.id) } },
                     )
@@ -1149,7 +1171,7 @@ private fun ReaderPages(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = ReaderHudBarVerticalMargin)
                     .fillMaxWidth()
                     .readableWidth(),
                 height = ReaderHudBottomHeight,
@@ -1161,11 +1183,15 @@ private fun ReaderPages(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ReaderHudAction(
-                        icon = CouiIcons.Shuffle,
+                        icon = if (horizontal) CouiIcons.Sort else CouiIcons.Book,
                         label = if (horizontal) "直向" else "左右",
                         onClick = { switchMode(!horizontal) },
                     )
-                    ReaderHudAction(icon = CouiIcons.Book, label = "章节", onClick = { showChapterSheet = true })
+                    ReaderHudAction(
+                        icon = CouiIcons.List,
+                        label = "章节",
+                        onClick = { modalState = modalState.open(CouiReaderModal.CHAPTERS) },
+                    )
                     ReaderHudAction(icon = CouiIcons.Comment, label = "评论", onClick = ::openComments)
                     ReaderHudAction(
                         icon = CouiIcons.Folder,
@@ -1183,14 +1209,19 @@ private fun ReaderPages(
             }
         }
 
-        // 提示条叠在 HUD 之上：它不属于任何一条栏，不能被栏的裁剪带走；
-        // 底部让出底栏高度，否则提示条会被底栏压住
+        // 提示条叠在 HUD 之上：HUD 显示时让出完整底栏与边距，隐藏时贴在系统导航栏上方
+        val snackbarBottomPaddingDp = couiReaderSnackbarBottomPaddingDp(
+            hudVisible = chromeVisible,
+            bottomBarHeightDp = ReaderHudBottomHeightDp,
+            barVerticalMarginDp = ReaderHudBarVerticalMarginDp,
+        )
         GlassSnackbarHost(
             state = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = ReaderHudBottomHeight + 8.dp),
+                .navigationBarsPadding()
+                .padding(bottom = snackbarBottomPaddingDp.dp),
         )
 
         // 长图模式的整屏缩放层：双击页面打开，单击或返回键退出。
@@ -1214,21 +1245,23 @@ private fun ReaderPages(
             BackHandler { zoomOverlayIndex = null }
         }
 
-        // 跳页：滑杆代替数字滚轮，长章节里不必一路滚到目标页；
-        // 页码是连续浮点落位，越界交给 coerceIn 夹紧，避免把非法页码送进 goToPage
+        val visibleModal = couiVisibleReaderModal(modalState, hasReplyTarget = replyTarget != null)
+
+        // 跳页：滑杆搭配加减微调按钮，百页以上长章节也能精准选定目标页；
+        // 页码越界交给 coerceIn / couiStepJumpPage 夹紧，避免把非法页码送进 goToPage
         Dialog(
-            onDismissRequest = { showPageSheet = false },
-            visible = showPageSheet,
+            onDismissRequest = { modalState = modalState.dismiss() },
+            visible = visibleModal == CouiReaderModal.PAGE_JUMP,
             material = couiDialogMaterial(),
             title = "跳页",
             confirmAction = CouiDialogAction(
                 text = "跳转到第 $pickerValue 页",
                 onClick = {
-                    showPageSheet = false
+                    modalState = modalState.dismiss()
                     goToPage(pickerValue)
                 },
             ),
-            dismissAction = CouiDialogAction(text = "取消", onClick = { showPageSheet = false }),
+            dismissAction = CouiDialogAction(text = "取消", onClick = { modalState = modalState.dismiss() }),
         ) {
             Group {
                 Column(
@@ -1236,11 +1269,31 @@ private fun ReaderPages(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 ) {
-                    Text(
-                        text = "第 $pickerValue 页 / 共 $totalPages 页",
-                        kind = CouiTextKind.ItemTitle,
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "第 $pickerValue 页 / 共 $totalPages 页",
+                            kind = CouiTextKind.ItemTitle,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (totalPages > 1) {
+                            ReaderPageJumpStepper(
+                                icon = CouiIcons.Minus,
+                                contentDescription = "上一页",
+                                enabled = pickerValue > 1,
+                                onClick = { pickerValue = couiStepJumpPage(pickerValue, -1, totalPages) },
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            ReaderPageJumpStepper(
+                                icon = CouiIcons.Plus,
+                                contentDescription = "下一页",
+                                enabled = pickerValue < totalPages,
+                                onClick = { pickerValue = couiStepJumpPage(pickerValue, 1, totalPages) },
+                            )
+                        }
+                    }
                     if (totalPages > 1) {
                         Slider(
                             modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
@@ -1259,11 +1312,11 @@ private fun ReaderPages(
 
         // 章节：列表高度封顶后自身滚动，当前话用后缀标注而不是副标题，省一行行高
         Dialog(
-            onDismissRequest = { showChapterSheet = false },
-            visible = showChapterSheet,
+            onDismissRequest = { modalState = modalState.dismiss() },
+            visible = visibleModal == CouiReaderModal.CHAPTERS,
             material = couiDialogMaterial(),
             title = "章节",
-            confirmAction = CouiDialogAction(text = "关闭", onClick = { showChapterSheet = false }),
+            confirmAction = CouiDialogAction(text = "关闭", onClick = { modalState = modalState.dismiss() }),
         ) {
             Group {
                 if (chapters.isEmpty()) {
@@ -1291,7 +1344,7 @@ private fun ReaderPages(
                                     )
                                 },
                                 onClick = {
-                                    showChapterSheet = false
+                                    modalState = modalState.dismiss()
                                     if (chapter.id != photo.photoId) onOpenChapter(chapter.id)
                                 },
                             )
@@ -1304,14 +1357,13 @@ private fun ReaderPages(
             }
         }
 
-        // 评论：加载/失败/空态各占一行提示，列表与输入区同卡片；回复入口把目标带出去，
-        // 由下方独立的回复弹窗承接，避免两个底部抽屉互相叠压
+        // 评论：点回复或去登录时先收敛弹窗层级，反馈信息直接留在弹窗内展示
         Dialog(
-            onDismissRequest = { showCommentSheet = false },
-            visible = showCommentSheet,
+            onDismissRequest = { modalState = modalState.dismiss() },
+            visible = visibleModal == CouiReaderModal.COMMENTS,
             material = couiDialogMaterial(),
             title = "评论",
-            confirmAction = CouiDialogAction(text = "关闭", onClick = { showCommentSheet = false }),
+            confirmAction = CouiDialogAction(text = "关闭", onClick = { modalState = modalState.dismiss() }),
         ) {
             Group {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -1321,10 +1373,7 @@ private fun ReaderPages(
 
                         commentsExpired -> ReaderDialogHint(
                             text = "登录已过期，点此登录",
-                            onClick = {
-                                showCommentSheet = false
-                                onOpenLogin()
-                            },
+                            onClick = ::openLoginFromModal,
                         )
 
                         commentsFailed -> ReaderDialogHint(
@@ -1340,10 +1389,12 @@ private fun ReaderPages(
                                     item = item,
                                     onReply = {
                                         if (user == null) {
-                                            onOpenLogin()
+                                            openLoginFromModal()
                                         } else {
                                             replyTarget = item
                                             replyText = ""
+                                            replyNotice = null
+                                            modalState = modalState.enterReply()
                                         }
                                     },
                                 )
@@ -1361,8 +1412,9 @@ private fun ReaderPages(
                             loggedIn = user != null,
                             text = commentText,
                             busy = commentBusy,
-                            onTextChange = { if (it.length <= COMMENT_REPLY_MAX_LENGTH) commentText = it },
-                            onLogin = onOpenLogin,
+                            notice = commentNotice,
+                            onTextChange = { commentText = couiClampCommentInput(it) },
+                            onLogin = ::openLoginFromModal,
                             onSend = ::sendComment,
                         )
                     }
@@ -1370,10 +1422,16 @@ private fun ReaderPages(
             }
         }
 
-        // 回复：与评论弹窗平级、互不嵌套，发送中禁止关闭，防止请求回来时目标已被清空
+        // 回复：与评论弹窗互斥；关闭时按 reopenCommentsAfterReply 回退评论弹窗
         val retainedReplyTarget = rememberRetainedTarget(replyTarget)
         Dialog(
-            onDismissRequest = { if (!replyBusy) replyTarget = null },
+            onDismissRequest = {
+                if (!replyBusy) {
+                    replyTarget = null
+                    replyNotice = null
+                    modalState = modalState.exitReply()
+                }
+            },
             visible = replyTarget != null,
             material = couiDialogMaterial(),
             title = "回复 " + retainedReplyTarget?.author.orEmpty(),
@@ -1384,7 +1442,13 @@ private fun ReaderPages(
             ),
             dismissAction = CouiDialogAction(
                 text = "取消",
-                onClick = { if (!replyBusy) replyTarget = null },
+                onClick = {
+                    if (!replyBusy) {
+                        replyTarget = null
+                        replyNotice = null
+                        modalState = modalState.exitReply()
+                    }
+                },
             ),
         ) {
             Group {
@@ -1397,7 +1461,8 @@ private fun ReaderPages(
                         loggedIn = true,
                         text = replyText,
                         busy = replyBusy,
-                        onTextChange = { if (it.length <= COMMENT_REPLY_MAX_LENGTH) replyText = it },
+                        notice = replyNotice,
+                        onTextChange = { replyText = couiClampCommentInput(it) },
                         onLogin = {},
                         onSend = { sendReply(replyText) },
                     )
@@ -1408,7 +1473,7 @@ private fun ReaderPages(
         // 追更引导：说明与静默勾选在卡片内，动作按钮交给弹窗自身槽位（竖向堆叠由库负责）
         Dialog(
             onDismissRequest = { closeTrackPrompt() },
-            visible = showTrackPrompt,
+            visible = visibleModal == CouiReaderModal.TRACK_PROMPT,
             material = couiDialogMaterial(),
             title = "已经最后一话了！",
             confirmAction = CouiDialogAction(
@@ -1506,11 +1571,16 @@ private fun ReaderPages(
     }
 }
 
-/** 顶栏高度：只放返回、标题、页码与上下话。 */
+/** HUD 外间距常量：底栏、顶栏与 Snackbar 避让共用同一组数值。 */
+internal const val ReaderHudBarVerticalMarginDp = 8
+internal val ReaderHudBarVerticalMargin = ReaderHudBarVerticalMarginDp.dp
+
+/** 顶栏最小高度：只放返回、标题、页码与上下话，字号放大时可随内容撑开。 */
 internal val ReaderHudTopHeight = 56.dp
 
-/** 底栏高度：图标 22dp 加一行说明文字，比顶栏更松。 */
-internal val ReaderHudBottomHeight = 64.dp
+/** 底栏最小高度：图标 22dp 加一行说明文字。 */
+internal const val ReaderHudBottomHeightDp = 64
+internal val ReaderHudBottomHeight = ReaderHudBottomHeightDp.dp
 
 /** HUD 形状：大圆角卡片，观感贴近库底栏，又不必依赖透镜的胶囊限定。 */
 internal val ReaderHudShape = CouiShape(radius = 28.dp, cornerWeight = 2f)
@@ -1521,10 +1591,65 @@ private const val ReaderHudFallbackAlpha = 0.92f
 /** 评论输入框形状：比卡片更方，输入区不宜用大圆角。 */
 internal val ReaderCommentFieldShape = CouiShape(radius = 16.dp, cornerWeight = 3f)
 
+/** 创建带实色背景的 HUD 采样源：防止页边缘留白或加载态露出透明像素。 */
+@Composable
+internal fun rememberCouiReaderBackdrop(diagnosticName: String): CouiBackdrop {
+    val pageBackground = CouiKitTheme.colorScheme.background
+    return rememberCouiBackdrop(
+        diagnosticName = diagnosticName,
+        drawSource = {
+            drawRect(pageBackground)
+            drawContent()
+        },
+    )
+}
+
+/** 绑定阅读器窗口级亮度与常亮租约：由宿主窗口消费，按引用计数安全释放。 */
+@Composable
+internal fun BindCouiReaderWindowEffects(
+    keepScreenOn: Boolean,
+    readerBrightness: Int,
+) {
+    val activityContext = LocalContext.current
+    val activity = remember(activityContext) { activityContext.findActivity() }
+    val readerWindow = activity?.window
+    DisposableEffect(readerWindow) {
+        ReaderWindowLeases.enterBrightness(readerWindow?.attributes?.screenBrightness)
+        onDispose {
+            val restore = ReaderWindowLeases.originalBrightness
+            if (ReaderWindowLeases.exitBrightness() && readerWindow != null && restore != null) {
+                readerWindow.attributes = readerWindow.attributes.apply {
+                    screenBrightness = restore
+                }
+            }
+        }
+    }
+    LaunchedEffect(readerWindow, readerBrightness) {
+        if (readerWindow == null) return@LaunchedEffect
+        readerWindow.attributes = readerWindow.attributes.apply {
+            screenBrightness = if (readerBrightness == ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) {
+                WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            } else {
+                readerBrightness / 100f
+            }
+        }
+    }
+    DisposableEffect(readerWindow, keepScreenOn) {
+        if (readerWindow == null || !keepScreenOn) return@DisposableEffect onDispose {}
+        ReaderWindowLeases.enterKeepScreenOn()
+        readerWindow.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            if (ReaderWindowLeases.exitKeepScreenOn()) {
+                readerWindow.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
+}
+
 /**
  * HUD 顶/底栏的统一外壳：API 34 起走库的浮动表面（透镜折射、投影与描边一次给全），
  * 更低版本拿不到那套材质，退化成投影加半透明卡片：容器色叠 0.92 不透明度，背后正文仍能透出来。
- * 两条路径的高度与内容排布一致，上层只管给内容，不需要知道自己落在哪一档。
+ * 两条路径以 [height] 作为最小高度，字体放大或标题两行时可自然撑开而不裁剪。
  */
 @Composable
 internal fun ReaderHudBar(
@@ -1545,7 +1670,7 @@ internal fun ReaderHudBar(
     } else {
         Box(
             modifier = modifier
-                .height(height)
+                .heightIn(min = height)
                 // 探针只在 CouiRenderDiagnostics 开启时生效，生产环境是空操作
                 .renderDiagnosticProbe(diagnosticName)
                 .dropShadow(
@@ -1595,7 +1720,7 @@ private fun ReaderHudFloatingBar(
 
     Box(
         modifier = modifier
-            .height(height)
+            .heightIn(min = height)
             .renderDiagnosticProbe(diagnosticName)
             .onSizeChanged { bounds = it }
             .couiFloatingSurface(
@@ -1626,7 +1751,8 @@ private fun ReaderHudFloatingBar(
         // 内层负责把内容录进图层，浮动表面才有东西可以折射
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .heightIn(min = height)
                 .drawWithContent { contentLayer.record { this@drawWithContent.drawContent() } },
             contentAlignment = Alignment.Center,
         ) {
@@ -1666,11 +1792,11 @@ private fun Density.readerHudShadow(dark: Boolean): CouiFloatingShadow = CouiFlo
     sdf = (20f * density).toInt().toFloat(),
 )
 
-/** 顶栏的上一话/下一话：没有相邻章节时置灰，热区仍按 48dp 给足。 */
+/** 顶栏的上一话/下一话：图标带极简文本标签以区分左侧返回键，无相邻章时置灰并保持 48dp 触区。 */
 @Composable
 internal fun ReaderHudChapterStep(
     icon: ImageVector,
-    contentDescription: String,
+    label: String,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -1679,31 +1805,85 @@ internal fun ReaderHudChapterStep(
     } else {
         CouiKitTheme.colorScheme.onSurface.copy(alpha = 0.3f)
     }
-    Icon(
-        imageVector = icon,
-        contentDescription = contentDescription,
+    Column(
         modifier = Modifier
-            .size(CouiMinTouchTarget)
             // 所在 HUD 面板本身已有凝光，这里不再叠第二层；只保留按压反馈
-            .couiPressable(shape = CircleShape, enabled = enabled, spotlight = null) { onClick() }
-            .padding(12.dp),
-        tint = tint,
-    )
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                enabled = enabled,
+                spotlight = null,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(18.dp), tint = tint)
+        Text(
+            text = label,
+            kind = CouiTextKind.GroupFooter,
+            color = tint,
+            maxLines = 1,
+        )
+    }
 }
 
-/** 底栏动作：图标 + 一行说明，选中/开启状态用强调色区分。 */
+/** 跳页弹窗加减微调按钮：视觉保持 32dp 圆形胶囊，外侧补足 48dp 触区。 */
+@Composable
+private fun ReaderPageJumpStepper(
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val scheme = CouiKitTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .couiPressable(
+                shape = CircleShape,
+                backgroundColor = scheme.container,
+                enabled = enabled,
+                spotlight = if (enabled) SpotlightPreset.OpaqueSmall2 else null,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
+            .size(32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(16.dp),
+            tint = if (enabled) scheme.onSurface else scheme.onSurface.copy(alpha = 0.3f),
+        )
+    }
+}
+
+/** 底栏动作：图标 + 一行说明，支持禁用态与强调色选中态。 */
 @Composable
 internal fun ReaderHudAction(
     icon: ImageVector,
     label: String,
     active: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val tint = if (active) CouiKitTheme.colorScheme.accent else CouiKitTheme.colorScheme.onSurface
+    val scheme = CouiKitTheme.colorScheme
+    val tint = when {
+        !enabled -> scheme.onSurface.copy(alpha = 0.3f)
+        active -> scheme.accent
+        else -> scheme.onSurface
+    }
     Column(
         modifier = Modifier
             // 只在 HUD 面板内使用，光由面板统一给，项内不再叠第二层
-            .couiPressable(shape = CouiCapsuleShape, spotlight = null, minTouchTarget = CouiMinTouchTarget) { onClick() }
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                enabled = enabled,
+                spotlight = null,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1718,6 +1898,20 @@ internal fun ReaderHudAction(
     }
 }
 
+/** 弹窗内部提示条：避免在打开 CouiDialogWindow 时提示被主窗口下方的 Snackbar 挡住。 */
+@Composable
+internal fun ReaderDialogNotice(message: String?) {
+    if (message.isNullOrBlank()) return
+    Text(
+        text = message,
+        kind = CouiTextKind.GroupFooter,
+        color = CouiKitTheme.colorScheme.accentOnSurface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+    )
+}
+
 /** 评论行：头像 + 作者 + 时间 + 正文 + 回复入口，回复入口只在正文下方占一行。 */
 @Composable
 internal fun ReaderCommentRow(item: CommentItem, onReply: () -> Unit) {
@@ -1729,22 +1923,24 @@ internal fun ReaderCommentRow(item: CommentItem, onReply: () -> Unit) {
     )
 }
 
-/** 评论输入区：未登录只给登录入口，登录后是输入框加字数与发表。 */
+/** 评论输入区：未登录只给登录入口，登录后展示内联提示、输入框加字数与发表。 */
 @Composable
 internal fun ReaderCommentComposer(
     loggedIn: Boolean,
     text: String,
     busy: Boolean,
+    notice: String? = null,
     onTextChange: (String) -> Unit,
     onLogin: () -> Unit,
     onSend: () -> Unit,
 ) {
     val scheme = CouiKitTheme.colorScheme
+    ReaderDialogNotice(notice)
     if (!loggedIn) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .couiPressable { onLogin() }
+                .couiPressable(spotlight = null, minTouchTarget = CouiMinTouchTarget) { onLogin() }
                 .padding(vertical = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -1782,15 +1978,12 @@ internal fun ReaderCommentComposer(
             modifier = Modifier.weight(1f),
         )
         val enabled = !busy && text.isNotBlank()
+        // 底色经 backgroundColor 交给 couiPressable，确保 48dp 触区不把可见胶囊撑大
         Box(
             modifier = Modifier
-                .clip(CouiCapsuleShape)
-                .background(if (enabled) scheme.accent else scheme.outlineVariant)
-                // 先铺不透明底再挂可点件：光画在内容之前，排在底色之上才看得见
                 .couiPressable(
                     shape = CouiCapsuleShape,
-                    // 可用态是强调色实底，按库的主按钮口径取 OpaqueMedium1
-                    // 禁用态没有光（interactive = false），不必再挂预设
+                    backgroundColor = if (enabled) scheme.accent else scheme.outlineVariant,
                     spotlight = if (enabled) SpotlightPreset.OpaqueMedium1 else null,
                     enabled = enabled,
                     minTouchTarget = CouiMinTouchTarget,
@@ -1908,32 +2101,10 @@ private fun ReaderSpreadPage(
     } else {
         null
     }
-    // 双页整屏的翻页热区在这一层：两页 ReaderPage 不接 onTap，光必须跟着热区走，
-    // 否则并排两页各自拿不到光，整屏点击也没有任何反馈。
-    val spreadLight = if (onTap != null) {
-        rememberCouiSpotlight(
-            interactive = true,
-            preset = SpotlightPreset.TranslucentLarge1,
-            dark = CouiKitTheme.isDark,
-        )
-    } else {
-        null
-    }
-    fun Modifier.spreadLit(): Modifier = if (spreadLight == null) {
-        this
-    } else {
-        this
-            .then(spreadLight.first)
-            .drawWithContent {
-                drawContent()
-                // 页面图不透明：光只能画在内容之后，画在之前会被整屏盖住
-                spreadLight.second?.invoke(this)
-            }
-    }
     // 与单页缩放路径同一套边界空拖判定；只是内容由整屏两页共同承担
     val edgeDrag = rememberUpdatedState(onHorizontalEdgeDrag)
     Box(
-        modifier = (if (onHorizontalEdgeDrag != null) {
+        modifier = if (onHorizontalEdgeDrag != null) {
             modifier
                 .zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
                 .pointerInput(zoomableState) {
@@ -1944,7 +2115,7 @@ private fun ReaderSpreadPage(
                 }
         } else {
             modifier.zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
-        }).spreadLit(),
+        },
     ) {
         if (images.size >= 2) {
             Row(modifier = Modifier.fillMaxSize()) {
@@ -2013,28 +2184,6 @@ private fun ReaderPage(
             }
             .build()
     }
-    // 翻页热区覆盖每一页：单页缩放、双页、长图缩放浮层都复用本组件，
-    // 光按 TranslucentLarge1 统一挂在这里；画在内容之前会被不透明页面图整个盖住，
-    // 所以必须用 drawWithContent 后置。
-    val pageLight = if (onTap != null || onDoubleTap != null) {
-        rememberCouiSpotlight(
-            interactive = true,
-            preset = SpotlightPreset.TranslucentLarge1,
-            dark = CouiKitTheme.isDark,
-        )
-    } else {
-        null
-    }
-    fun Modifier.pageLit(): Modifier = if (pageLight == null) {
-        this
-    } else {
-        this
-            .then(pageLight.first)
-            .drawWithContent {
-                drawContent()
-                pageLight.second?.invoke(this)
-            }
-    }
     if (zoomEnabled) {
         val zoomableState = rememberZoomableImageState()
         // derivedStateOf 让缩放比例变化只触发读取方重组，不必每帧重算整页
@@ -2056,7 +2205,7 @@ private fun ReaderPage(
         // 偏移判断内容是否还在跟随手势：内容停下后累计的位移才算边界空拖，参与翻页判定。
         val edgeDrag = rememberUpdatedState(onHorizontalEdgeDrag)
         Box(
-            modifier = (if (onHorizontalEdgeDrag != null) {
+            modifier = if (onHorizontalEdgeDrag != null) {
                 modifier.pointerInput(zoomableState) {
                     // 单页的缩放状态套了一层 rememberZoomableImageState，内容偏移在内层
                     collectHorizontalEdgeDrag(
@@ -2066,9 +2215,8 @@ private fun ReaderPage(
                 }
             } else {
                 modifier
-            }).pageLit(),
+            },
         ) {
-            if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
             ZoomableAsyncImage(
                 model = request,
                 contentDescription = null,
@@ -2078,6 +2226,8 @@ private fun ReaderPage(
                 onClick = tapHandler,
                 modifier = Modifier.fillMaxSize(),
             )
+            // 失败重试卡片叠在图像组件之上，否则全屏 ZoomableAsyncImage 会吞掉点击手势
+            if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
         }
         return
     }
@@ -2091,7 +2241,6 @@ private fun ReaderPage(
         }
         onTap != null -> Modifier.clickable(
             interactionSource = remember { MutableInteractionSource() },
-            // 整页是阅读面：不要 Ripple 方框，反馈交给下文的凝光
             indication = null,
             onClick = onTap,
         )
@@ -2102,8 +2251,7 @@ private fun ReaderPage(
     } else {
         modifier
     }
-    Box(modifier = contentModifier.pageLit().then(tapModifier)) {
-        if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
+    Box(modifier = contentModifier.then(tapModifier)) {
         AsyncImage(
             model = request,
             contentDescription = null,
@@ -2124,6 +2272,7 @@ private fun ReaderPage(
             onError = { failed = true },
             modifier = Modifier.fillMaxSize(),
         )
+        if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
     }
 }
 

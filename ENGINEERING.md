@@ -106,7 +106,7 @@
    - 先确认红灯：写完测试先跑一次，必须看到业务断言失败（例如 `15 tests completed, 1 failed`），再用最小实现转绿。编译错误、导入错误、类型错误不算红灯，不许拿它们冒充。绿灯后禁止改弱期望值来迁就实现。
    - 纯 UI 样式改动可只保证编译，但涉及状态与数据的部分仍要有测试。
    - 如果因为并发构建无法验证，必须在汇报里明说“未验证”和原因，不许假装通过。
-4. 测试放哪：`:core` 逻辑写 `core/src/test/kotlin/com/jm3/core/<包名>/<被测类>Test.kt`，`:app` 纯逻辑写 `app/src/test/kotlin/com/jm3/app/miuix/.../<被测类>Test.kt`，命名 `XxxTest`。现状（2026-11-10 实跑 `:core:test` 与 `:app:testDebugUnitTest`，以 `build/test-results/**/TEST-*.xml` 为准，`@Test` 注解计数与报告一致）：`:core` 72 个测试类 / 636 用例，`:app` 62 个测试类 / 445 用例，合计 134 个测试类 / 1081 用例。用例数靠前的类：`AccountManagerTest` 31、`MappersTest` 28、`ReaderPageLogicTest` 31、`ReaderProgressCodecTest` 27、`AlbumHeroLogicTest` 24、`AlbumHeroHostTest` 23、`ReaderZoomLogicTest` 22、`DownloadQueueTest` 20、`UpdateDialogPlanTest` 19、`PagedFeedTest` 17。逐类明细不再抄进文档（每次改动都会失准）：改完测试先跑一次，再把上面这三个总数回填。
+4. 测试放哪：`:core` 逻辑写 `core/src/test/kotlin/com/jm3/core/<包名>/<被测类>Test.kt`，`:app` 纯逻辑写 `app/src/test/kotlin/com/jm3/app/miuix/.../<被测类>Test.kt`，命名 `XxxTest`。现状（2026-11-11 实跑 `:core:test` 与 `:app:testDebugUnitTest`，以 `build/test-results/**/TEST-*.xml` 为准，`@Test` 注解计数与报告一致）：`:core` 72 个测试类 / 637 用例，`:app` 73 个测试类 / 550 用例，合计 145 个测试类 / 1187 用例。用例数靠前的类：`AccountManagerTest` 31、`MappersTest` 28、`ReaderPageLogicTest` 31、`ReaderProgressCodecTest` 27、`AlbumHeroLogicTest` 24、`AlbumHeroHostTest` 23、`ReaderZoomLogicTest` 22、`DownloadQueueTest` 20、`UpdateDialogPlanTest` 19、`PagedFeedTest` 17。逐类明细不再抄进文档（每次改动都会失准）：改完测试先跑一次，再把上面这三个总数回填。
 5. `:app` 已有测试源集：`testImplementation(kotlin("test"))`（app/build.gradle.kts:112）与 `tasks.withType<Test>().configureEach { useJUnitPlatform() }`（app/build.gradle.kts:76-78），现有 `app/src/test/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogicTest.kt` 共 22 个用例，覆盖 `isPageZoomed` 的 null / 0f / 阈值边界，以及 `decideEdgePageTurn` 的页宽非法、页数非法、位移与速度都不达标、位移达标、仅甩动达标、距离达标时忽略反向甩动、首页无上一页、末页无下一页、阈值随页宽缩放。
    心智模型：Composable 只做编排，判定逻辑提成 `*Logic.kt` 纯函数（范例 app/src/main/kotlin/com/jm3/app/miuix/ui/ReaderZoomLogic.kt），测试打在纯函数上。不要为了“能测”去写假 Composable 测试，也不要把判定塞回 Composable 再喊测不了。
 6. 边界清单（新增或改动这些逻辑时，测试必须覆盖；每条都已存在对应断言或测试类）：
@@ -148,6 +148,7 @@
     - 未读角标：core/src/main/kotlin/com/jm3/core/session/UnreadBadge.kt:13 → UnreadBadgeTest（未登录时不发请求且不清零、失败保留上一次结果、显式 `sync` 覆盖计数）。
     - 列表结局到列表态的翻译：app/src/main/kotlin/com/jm3/app/miuix/ui/ListOutcome.kt:16、:28 → ListOutcomeTest（失效→Expired 态、失败→Failed 且带消息、成功→Loaded；`orDegrade` 只在失败时回落）。
     - 小说动作结局的唯一翻译点：app/src/main/kotlin/com/jm3/app/miuix/ui/NovelScreens.kt:99 `novelActionNotice` → NovelActionNoticeTest（失效→唯一失效文案且 `openLogin=true`；普通失败沿用各动作前缀；成功不给提示）。
+   - ColorOS 阅读器弹窗互斥、页宽与 HUD/音量键边界：app/src/main/kotlin/com/jm3/app/miuix/ui/coui/page/CouiReaderLogic.kt → CouiReaderLogicTest（12 用例；改弹窗互斥、回复接续恢复、评论 300 字截断、提示条底距、步进跳页或音量键/切章边界必须同步改这里）。
 7. 断言纪律：只测公共入口；不打桩自身控制的协作者；不用 `Thread.sleep` 等时序；一个用例只表达一个业务规则；计算与规则逻辑至少用两组差异数据（常规 + 边界）验证。
 8. 提交与 CHANGELOG：提交信息用 Conventional Commits（如 `feat(reader): 支持放大后边缘拖拽翻页`），主题行一律中文（正文可酌情补理由），一个逻辑变更一次提交，不混入生成物与过程物。历史里 `5b30084` 那条英文主题行不再出现，也不改写已推送的历史：Cherry-pick 与 `git log --grep` 都靠这段文本定位，为一行语言风格去动已推送提交的代价远大于收益。CHANGELOG 只写进“未发布”段并按 新增/修复/优化 分类（CHANGELOG.md:3、:5），不改历史版本区块。
 

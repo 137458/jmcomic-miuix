@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.itos.coui.backdrop.rememberCouiBackdrop
+import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
@@ -234,12 +235,14 @@ private fun CouiTopBarBackButton34(
 internal fun CouiTopBarPlainBackButton(
     onClick: () -> Unit,
     contentDescription: String = "返回",
+    spotlight: SpotlightPreset? = SpotlightPreset.OpaqueSmall2,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
+                spotlight = spotlight,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
