@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
@@ -878,7 +879,7 @@ private fun CouiSearchHeader(
     )
 }
 
-/** 热词胶囊行：COUI 没有 chip 组件，这里只借用原厂胶囊形状与容器色，不做卡片化。 */
+/** 热门搜索推荐词卡片：标题栏右侧放置独立展开/收起入口，热词胶囊统一收入 Group 卡片。 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CouiTagRow(
@@ -888,37 +889,64 @@ private fun CouiTagRow(
     onPick: (String) -> Unit,
 ) {
     if (tags.isEmpty()) return
+    val colors = CouiTheme.colorScheme
     val shown = if (expanded) tags else tags.take(HOT_TAG_COLLAPSED)
-    FlowRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = CouiPageDefaults.horizontalMargin,
-                vertical = CouiPageDefaults.categoryTopSpacing,
-            ),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Group(
+        title = "热门搜索",
+        headerActions = {
+            if (tags.size > HOT_TAG_COLLAPSED) {
+                Row(
+                    modifier = Modifier
+                        .couiPressable(
+                            shape = CouiCapsuleShape,
+                            backgroundColor = colors.container,
+                            spotlight = SpotlightPreset.ChipTab,
+                            minTouchTarget = CouiMinTouchTarget,
+                            onClick = onToggleExpanded,
+                        )
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = if (expanded) "收起" else "展开",
+                        kind = CouiTextKind.GroupFooter,
+                        color = colors.accent,
+                    )
+                    Icon(
+                        imageVector = if (expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                        contentDescription = if (expanded) "收起热门搜索" else "展开热门搜索",
+                        modifier = Modifier.size(14.dp),
+                        tint = colors.accent,
+                    )
+                }
+            }
+        },
     ) {
-        shown.forEach { tag ->
-            CouiTagCapsule(text = tag, onClick = { onPick(tag) })
-        }
-        if (tags.size > HOT_TAG_COLLAPSED) {
-            CouiTagCapsule(
-                text = if (expanded) "收起" else "更多",
-                onClick = onToggleExpanded,
-            )
+        FlowRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiPageDefaults.rowPadding, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            shown.forEach { tag ->
+                CouiTagCapsule(text = tag, onClick = { onPick(tag) })
+            }
         }
     }
 }
 
 @Composable
 private fun CouiTagCapsule(text: String, onClick: () -> Unit) {
+    val dark = CouiTheme.isDark
     val colors = CouiTheme.colorScheme
+    val backgroundColor = if (dark) lerp(colors.container, Color.White, 0.06f) else colors.background
     Box(
         modifier = Modifier
             .couiPressable(
                 shape = CouiCapsuleShape,
-                backgroundColor = colors.container,
+                backgroundColor = backgroundColor,
                 spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,

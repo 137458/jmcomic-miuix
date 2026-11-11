@@ -76,6 +76,8 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
+import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
@@ -270,8 +272,9 @@ internal fun CouiMineScreen(
         },
     ) { innerPadding ->
         val density = LocalDensity.current
-        val contentPadding = remember(header, innerPadding, density) {
-            header.contentPadding(innerPadding, density)
+        val extraBottom = couiPageExtraBottomDp(hasFab = false).dp
+        val contentPadding = remember(header, innerPadding, density, extraBottom) {
+            header.contentPadding(innerPadding, density).couiWithBottomPadding(extraBottom)
         }
         Column(
             modifier = Modifier
@@ -627,7 +630,7 @@ private fun MineCheckInGroup(
             val checkInAction: () -> Unit = { onCheckIn(status) }
             val rowClick: (() -> Unit)? = if (busy || signedToday) null else checkInAction
             Item(
-                icon = { MineGroupIcon(CouiIcons.Check) },
+                icon = { MineGroupIcon(if (signedToday) CouiIcons.CalendarCheck else CouiIcons.Calendar) },
                 title = {
                     Text(
                         text = when {

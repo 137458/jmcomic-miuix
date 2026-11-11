@@ -61,6 +61,8 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -223,7 +225,10 @@ internal fun CouiUpdateScreen(
                         .readableWidth()
                         .nestedScroll(scrollBehavior.nestedScrollConnection)
                         .couiVerticalScroll(scrollState)
-                        .padding(scrollBehavior.state.contentPadding(innerPadding, LocalDensity.current))
+                        .padding(
+                            scrollBehavior.state.contentPadding(innerPadding, LocalDensity.current)
+                                .couiWithBottomPadding(couiPageExtraBottomDp(hasFab = false).dp),
+                        )
                         .consumeWindowInsets(innerPadding),
                 ) {
                     UpdateVersionGroup(
@@ -258,7 +263,6 @@ internal fun CouiUpdateScreen(
                         onRecheck = { attempt++ },
                         onOpenRelease = { openRelease(UpdateChecker.RELEASES_PAGE_URL) },
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
 

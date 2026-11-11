@@ -502,9 +502,6 @@ internal fun CouiForumScreen(
                                         )
                                     }
                                 }
-                                item(key = "forum-tail") {
-                                    Spacer(modifier = Modifier.height(CouiPageDefaults.groupSpacing))
-                                }
                             }
                         }
                     }

@@ -5,14 +5,21 @@ package com.jm3.app.miuix.ui.coui.page
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
@@ -64,6 +71,7 @@ import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ReaderSettingsState
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
@@ -73,7 +81,9 @@ import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
+import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import top.yukonga.miuix.kmp.basic.Icon
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.prefetchPagesLabel
 import com.jm3.app.miuix.ui.readableWidth
@@ -619,6 +629,11 @@ fun CouiSettingsScreen(
                             onClick = { showDisclaimer = true },
                         )
                     }
+                    Spacer(
+                        modifier = Modifier.height(
+                            couiPageExtraBottomDp(hasFab = false, isImeVisible = WindowInsets.isImeVisible).dp,
+                        ),
+                    )
                 }
             }
 
@@ -640,40 +655,38 @@ fun CouiSettingsScreen(
             title = "诊断信息",
             confirmAction = CouiDialogAction(text = "知道了", onClick = { diagnostics = false }),
         ) {
-            Group {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                ) {
-                    SettingsDiagnosticLine(label = "包名", value = context.packageName)
-                    SettingsDiagnosticLine(label = "版本", value = versionName + " (" + versionCode + ")")
-                    SettingsDiagnosticLine(
-                        label = "设备",
-                        value = Build.MANUFACTURER + " " + Build.MODEL,
-                    )
-                    SettingsDiagnosticLine(
-                        label = "系统",
-                        value = "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")",
-                    )
-                    SettingsDiagnosticLine(label = "当前线路", value = usedDomain ?: "未解析")
-                    SettingsDiagnosticLine(
-                        label = "自定义线路",
-                        value = activeDomains.value.ifBlank { "默认（自动解析）" },
-                    )
-                    SettingsDiagnosticLine(
-                        label = "线路延迟",
-                        value = domainLatency.joinToString("\n") { (domain, ms) -> domain + " · " + ms + "ms" }
-                            .ifBlank { "尚未完成线路探活" },
-                    )
-                    SettingsDiagnosticLine(label = "分页模式", value = paginationMode.displayName)
-                    SettingsDiagnosticLine(
-                        label = "主题",
-                        // 诊断只报真正生效的项：ColorOS 下这个开关即便存着 true 也不影响取色
-                        value = themeMode.displayName +
-                            if (dynamicColor && dynamicColorSupported) " · 动态取色" else "",
-                    )
-                }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                SettingsDiagnosticLine(label = "包名", value = context.packageName)
+                SettingsDiagnosticLine(label = "版本", value = versionName + " (" + versionCode + ")")
+                SettingsDiagnosticLine(
+                    label = "设备",
+                    value = Build.MANUFACTURER + " " + Build.MODEL,
+                )
+                SettingsDiagnosticLine(
+                    label = "系统",
+                    value = "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")",
+                )
+                SettingsDiagnosticLine(label = "当前线路", value = usedDomain ?: "未解析")
+                SettingsDiagnosticLine(
+                    label = "自定义线路",
+                    value = activeDomains.value.ifBlank { "默认（自动解析）" },
+                )
+                SettingsDiagnosticLine(
+                    label = "线路延迟",
+                    value = domainLatency.joinToString("\n") { (domain, ms) -> domain + " · " + ms + "ms" }
+                        .ifBlank { "尚未完成线路探活" },
+                )
+                SettingsDiagnosticLine(label = "分页模式", value = paginationMode.displayName)
+                SettingsDiagnosticLine(
+                    label = "主题",
+                    // 诊断只报真正生效的项：ColorOS 下这个开关即便存着 true 也不影响取色
+                    value = themeMode.displayName +
+                        if (dynamicColor && dynamicColorSupported) " · 动态取色" else "",
+                )
             }
         }
 
@@ -939,7 +952,20 @@ private fun <T> CouiChoiceItem(
         Item(
             title = { SettingsRowTitle(title) },
             summary = { SettingsRowSummary(summary) },
-            trailing = { SettingsRowValue(value) },
+            trailing = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    SettingsRowValue(value)
+                    Icon(
+                        imageVector = CouiIcons.ChevronsUpDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = CouiKitTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
             onClick = { anchor.open { expanded = true } },
         )
         Menu(

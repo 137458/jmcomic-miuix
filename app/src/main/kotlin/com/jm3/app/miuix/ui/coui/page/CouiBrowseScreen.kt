@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
@@ -73,8 +78,10 @@ import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.asListState
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
@@ -96,6 +103,7 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.orDegrade
@@ -507,7 +515,7 @@ internal fun CouiBrowseScreen(
             scrollBehavior = scrollBehavior,
             innerPadding = innerPadding,
             horizontalPadding = null,
-            extraBottom = 72.dp,
+            extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
         )
         LazyColumn(
             state = lazyState,
@@ -942,7 +950,16 @@ private fun CouiMoreCategoriesDialog(
     onDismiss: () -> Unit,
     onTagClick: (String) -> Unit,
 ) {
+    val dark = CouiTheme.isDark
     val colors = CouiTheme.colorScheme
+    var filterQuery by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(visible) {
+        if (visible) filterQuery = ""
+    }
+    val filteredBlocks = remember(blocks, filterQuery) {
+        couiFilterCategoryBlocks(blocks, filterQuery)
+    }
+    val chipBackground = if (dark) lerp(colors.container, Color.White, 0.06f) else colors.background
     Dialog(
         onDismissRequest = onDismiss,
         visible = visible,
@@ -955,22 +972,98 @@ private fun CouiMoreCategoriesDialog(
             style = CouiDialogActionStyle.Secondary,
         ),
     ) {
-        blocks.forEachIndexed { index, block ->
-            if (index > 0) Spacer(modifier = Modifier.height(14.dp))
-            Text(
-                text = block.title,
-                kind = CouiTextKind.GroupTitle,
-                color = colors.onSurfaceVariant,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                    .heightIn(min = 42.dp)
+                    .clip(CouiCommentFieldShape)
+                    .background(colors.container)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                block.tags.forEach { tag ->
-                    CouiTagChip(text = tag, onClick = { onTagClick(tag) })
+                Icon(
+                    imageVector = CouiIcons.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = colors.onSurfaceVariant,
+                )
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (filterQuery.isEmpty()) {
+                        CouiBodyText(
+                            text = "筛选分类或标签",
+                            color = colors.onSurfaceVariant,
+                            textAlign = TextAlign.Start,
+                        )
+                    }
+                    BasicTextField(
+                        value = filterQuery,
+                        onValueChange = { filterQuery = it },
+                        singleLine = true,
+                        textStyle = rememberCouiBodyTextStyle().copy(color = colors.onSurface),
+                        cursorBrush = SolidColor(colors.accent),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (filterQuery.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .couiPressable(
+                                shape = CouiCapsuleShape,
+                                backgroundColor = colors.background,
+                                spotlight = SpotlightPreset.ChipTab,
+                                minTouchTarget = CouiMinTouchTarget,
+                                onClick = { filterQuery = "" },
+                            )
+                            .padding(4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = CouiIcons.Close,
+                            contentDescription = "清除筛选",
+                            modifier = Modifier.size(14.dp),
+                            tint = colors.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            if (filteredBlocks.isEmpty()) {
+                CouiEmptyGroup(text = "没有匹配的分类或标签")
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp),
+                ) {
+                    items(filteredBlocks, key = { it.title }) { block ->
+                        Group(title = block.title) {
+                            FlowRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        horizontal = CouiPageDefaults.rowPadding,
+                                        vertical = 12.dp,
+                                    ),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                block.tags.forEach { tag ->
+                                    CouiTagChip(
+                                        text = tag,
+                                        backgroundColor = chipBackground,
+                                        onClick = { onTagClick(tag) },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1210,6 +1303,7 @@ private fun CouiCollapsibleTagNavGroup(
 @Composable
 private fun CouiTagChip(
     text: String,
+    backgroundColor: Color = CouiTheme.colorScheme.container,
     onClick: () -> Unit,
 ) {
     CouiBodyText(
@@ -1219,7 +1313,7 @@ private fun CouiTagChip(
         modifier = Modifier
             .couiPressable(
                 shape = CouiCapsuleShape,
-                backgroundColor = CouiTheme.colorScheme.container,
+                backgroundColor = backgroundColor,
                 spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
@@ -1263,4 +1357,22 @@ private fun CouiBrowseResultRow(
         category = result.category,
         leading = rankSlot,
     )
+}
+
+/** 按关键词过滤更多分类分区；空查询保留全部非空分区，仅命中分区标题时保留该分块全部标签。 */
+internal fun couiFilterCategoryBlocks(
+    blocks: List<CategoryBlock>,
+    query: String,
+): List<CategoryBlock> {
+    val keyword = query.trim()
+    if (keyword.isEmpty()) return blocks.filter { it.tags.isNotEmpty() }
+    return blocks.mapNotNull { block ->
+        if (block.tags.isEmpty()) return@mapNotNull null
+        if (block.title.contains(keyword, ignoreCase = true)) {
+            block
+        } else {
+            val matched = block.tags.filter { it.contains(keyword, ignoreCase = true) }
+            if (matched.isEmpty()) null else block.copy(tags = matched)
+        }
+    }
 }

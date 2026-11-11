@@ -112,13 +112,16 @@ import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.COUI_COMMENT_MAX_INDENT_DEPTH
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
+import com.jm3.app.miuix.ui.coui.component.CouiDetailActionTile
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiPrimaryActionButton
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
@@ -127,7 +130,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -422,7 +427,9 @@ private fun CouiAlbumDetailScreenBody(
                 // 键盘弹出时底部呼吸位让位：ime 内边距已由 CouiAppScaffold 统一补，这里再留 24dp 会顶起一截空白
                 val contentPadding = appBarBehavior.state
                     .contentPadding(innerPadding, density)
-                    .couiWithBottomPadding(if (WindowInsets.isImeVisible) 0.dp else 24.dp)
+                    .couiWithBottomPadding(
+                        couiPageExtraBottomDp(hasFab = false, isImeVisible = WindowInsets.isImeVisible).dp,
+                    )
                 // 章节树摊平成惰性项：每个组头、每一话各自成项，几百话也只组合可见的十几行
                 val chaptersPlan = remember(
                     loadedDetail?.chapters,
@@ -925,8 +932,7 @@ private fun CouiAlbumHeroCard(
     }
 }
 
-/** 阅读操作：主操作行（继续阅读/开始阅读） + 一行胶囊动作。 */
-@OptIn(ExperimentalLayoutApi::class)
+/** 阅读操作：独立主题高亮主阅读大按钮 + 下方等宽图标功能栏，彻底区分于标签胶囊。 */
 @Composable
 private fun CouiReadActionsGroup(
     detail: AlbumDetail,
@@ -942,76 +948,67 @@ private fun CouiReadActionsGroup(
     onTrack: () -> Unit,
     onDownloadAll: (() -> Unit)?,
 ) {
-    val scheme = CouiKitTheme.colorScheme
     val startPhotoId = resumeId ?: detail.chapters.firstOrNull()?.id
-    Group {
-        Item(
-            title = {
-                Text(
-                    text = if (resumeId != null) "继续阅读" else "开始阅读",
-                    kind = CouiTextKind.ItemTitle,
-                    color = if (startPhotoId != null) scheme.accent else scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    textAlign = TextAlign.Start,
-                )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CouiPrimaryActionButton(
+            title = if (resumeId != null) "继续阅读" else "开始阅读",
+            subtitle = when {
+                startPhotoId == null -> CouiStrings.EmptyChapters
+                resumeId != null -> "接着上次读到的一话"
+                else -> "从第 1 话开始"
             },
-            summary = {
-                Text(
-                    text = when {
-                        startPhotoId == null -> CouiStrings.EmptyChapters
-                        resumeId != null -> "接着上次读到的一话"
-                        else -> "从第 1 话开始"
-                    },
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    textAlign = TextAlign.Start,
-                )
-            },
-            trailing = {
-                Icon(
-                    imageVector = CouiIcons.Forward,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = scheme.onSurfaceVariant,
-                )
-            },
+            leadingIcon = CouiIcons.Book,
+            trailingIcon = CouiIcons.Forward,
             enabled = startPhotoId != null,
-            onClick = if (startPhotoId != null) fun() { onRead(startPhotoId, null) } else null,
-        )
-        Divider()
-        FlowRow(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            CouiCapsuleAction(
-                text = if (favorited) "已收藏" else "收藏",
-                accent = favorited,
-                onClick = onFavorite,
-            )
-            CouiCapsuleAction(
-                text = if (liked) "已喜欢" else "喜欢",
-                accent = liked,
-                onClick = onLike,
-            )
-            // 追踪态是单独请求，失败过就一直是 null；入口不能跟着消失，否则用户得重进页面才能追更
-            if (loggedIn) {
-                CouiCapsuleAction(
-                    text = when {
-                        trackingBusy -> "处理中…"
-                        tracking == true -> "追更中"
-                        else -> "追更"
-                    },
-                    accent = tracking == true,
-                    enabled = !trackingBusy,
-                    onClick = onTrack,
+                .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                .padding(top = CouiPageDefaults.groupSpacing),
+            onClick = { startPhotoId?.let { onRead(it, null) } },
+        )
+        Group {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CouiDetailActionTile(
+                    icon = CouiIcons.Star,
+                    label = if (favorited) "已收藏" else "收藏",
+                    modifier = Modifier.weight(1f),
+                    active = favorited,
+                    onClick = onFavorite,
                 )
-            }
-            onDownloadAll?.let { download ->
-                CouiCapsuleAction(text = "下载", onClick = download)
+                CouiDetailActionTile(
+                    icon = CouiIcons.Heart,
+                    label = if (liked) "已喜欢" else "喜欢",
+                    modifier = Modifier.weight(1f),
+                    active = liked,
+                    onClick = onLike,
+                )
+                // 追踪态是单独请求，失败过就一直是 null；入口不能跟着消失，否则用户得重进页面才能追更
+                if (loggedIn) {
+                    CouiDetailActionTile(
+                        icon = CouiIcons.Refresh,
+                        label = when {
+                            trackingBusy -> "处理中…"
+                            tracking == true -> "追更中"
+                            else -> "追更"
+                        },
+                        modifier = Modifier.weight(1f),
+                        active = tracking == true,
+                        enabled = !trackingBusy,
+                        onClick = onTrack,
+                    )
+                }
+                onDownloadAll?.let { download ->
+                    CouiDetailActionTile(
+                        icon = CouiIcons.Download,
+                        label = "下载",
+                        modifier = Modifier.weight(1f),
+                        onClick = download,
+                    )
+                }
             }
         }
     }
@@ -1334,7 +1331,7 @@ private fun CouiCommentComposer(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 84.dp)
-                .clip(CouiShape(radius = 16.dp, cornerWeight = 3f))
+                .clip(CouiCommentFieldShape)
                 .background(scheme.container)
                 .padding(12.dp),
             decorationBox = { innerTextField ->
@@ -1498,7 +1495,7 @@ private fun CouiReplyDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 96.dp)
-                .clip(CouiShape(radius = 16.dp, cornerWeight = 3f))
+                .clip(CouiCommentFieldShape)
                 .background(scheme.container)
                 .padding(12.dp),
             decorationBox = { innerTextField ->
@@ -1617,19 +1614,6 @@ internal fun flattenComments(
     }
     append(roots, 0)
     return rows
-}
-
-/** 在已有内容留白上再补一段底部留白：PaddingValues 没有加法，四向委托后只加 bottom。 */
-private fun PaddingValues.couiWithBottomPadding(extra: Dp): PaddingValues = object : PaddingValues {
-    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
-        this@couiWithBottomPadding.calculateLeftPadding(layoutDirection)
-
-    override fun calculateTopPadding(): Dp = this@couiWithBottomPadding.calculateTopPadding()
-
-    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
-        this@couiWithBottomPadding.calculateRightPadding(layoutDirection)
-
-    override fun calculateBottomPadding(): Dp = this@couiWithBottomPadding.calculateBottomPadding() + extra
 }
 
 /** 把预先拼好的懒列表内容装进当前列表作用域：窄屏单栏与宽屏两栏共用同一份构建器。 */

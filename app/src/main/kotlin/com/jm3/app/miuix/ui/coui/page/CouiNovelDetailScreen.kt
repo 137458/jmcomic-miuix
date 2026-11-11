@@ -77,6 +77,9 @@ import com.jm3.app.miuix.ui.StringSetSaver
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
+import com.jm3.app.miuix.ui.coui.component.CouiDetailActionTile
+import com.jm3.app.miuix.ui.coui.component.CouiPrimaryActionButton
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
@@ -99,6 +102,7 @@ import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.formatEpochSeconds
 import com.jm3.app.miuix.ui.novelActionNotice
 import com.jm3.app.miuix.ui.novelGroupTitle
@@ -662,7 +666,10 @@ private fun CouiNovelDetailBody(
                 scrollBehavior = scrollBehavior,
                 innerPadding = innerPadding,
                 horizontalPadding = null,
-                extraBottom = if (WindowInsets.isImeVisible) 0.dp else 24.dp,
+                extraBottom = couiPageExtraBottomDp(
+                    hasFab = false,
+                    isImeVisible = WindowInsets.isImeVisible,
+                ).dp,
             )
             if (wideLayout.twoPaneDetail) {
                 Row(modifier = Modifier.fillMaxSize().readableWidth().consumeWindowInsets(innerPadding)) {
@@ -866,8 +873,7 @@ private fun CouiNovelHeroCard(
     }
 }
 
-/** 阅读动作组：继续阅读一行 + 收藏/喜欢/热度三颗胶囊。 */
-@OptIn(ExperimentalLayoutApi::class)
+/** 阅读动作组：独立主题高亮主阅读大按钮 + 下方等宽图标功能栏，区隔于尾部标签胶囊。 */
 @Composable
 private fun CouiNovelActionsGroup(
     detail: NovelDetail,
@@ -877,62 +883,51 @@ private fun CouiNovelActionsGroup(
     onToggleLike: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
     val resumeTitle = detail.chapters.firstOrNull { it.ncid == savedChapter }?.title
         ?: detail.chapters.firstOrNull()?.title
-    Group {
-        Item(
-            title = {
-                Text(
-                    text = if (savedChapter == null) "开始阅读" else "继续阅读",
-                    kind = CouiTextKind.ItemTitle,
-                    color = if (detail.chapters.isEmpty()) scheme.onSurfaceVariant else scheme.accent,
-                )
-            },
-            summary = resumeTitle?.let { title ->
-                {
-                    Text(
-                        text = title,
-                        kind = CouiTextKind.GroupFooter,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
-                    )
-                }
-            },
-            trailing = {
-                Icon(
-                    imageVector = CouiIcons.Forward,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = scheme.onSurfaceVariant,
-                )
-            },
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CouiPrimaryActionButton(
+            title = if (savedChapter == null) "开始阅读" else "继续阅读",
+            subtitle = resumeTitle,
+            leadingIcon = CouiIcons.Book,
+            trailingIcon = CouiIcons.Forward,
             enabled = detail.chapters.isNotEmpty(),
+            modifier = Modifier
+                .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                .padding(top = CouiPageDefaults.groupSpacing),
             onClick = onStartReading,
         )
-        Divider()
-        FlowRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            CouiNovelCapsuleButton(
-                text = if (detail.favorite) "已收藏" else "收藏",
-                accent = detail.favorite,
-                enabled = !busy,
-                onClick = onToggleFavorite,
-            )
-            CouiNovelCapsuleButton(
-                text = if (detail.liked) "已喜欢" else "喜欢",
-                accent = detail.liked,
-                enabled = !busy && !detail.liked,
-                onClick = onToggleLike,
-            )
-            val likes = detail.likes?.takeIf { it.isNotBlank() }
-            if (likes != null) {
-                CouiNovelCapsuleButton(text = "♥ $likes", enabled = false, onClick = {})
+        Group {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CouiDetailActionTile(
+                    icon = CouiIcons.Star,
+                    label = if (detail.favorite) "已收藏" else "收藏",
+                    modifier = Modifier.weight(1f),
+                    active = detail.favorite,
+                    enabled = !busy,
+                    onClick = onToggleFavorite,
+                )
+                CouiDetailActionTile(
+                    icon = CouiIcons.Heart,
+                    label = if (detail.liked) "已喜欢" else "喜欢",
+                    modifier = Modifier.weight(1f),
+                    active = detail.liked,
+                    enabled = !busy && !detail.liked,
+                    onClick = onToggleLike,
+                )
+                val likes = detail.likes?.takeIf { it.isNotBlank() }
+                if (likes != null) {
+                    CouiDetailActionTile(
+                        icon = CouiIcons.Rank,
+                        label = "热度 $likes",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
@@ -1242,7 +1237,7 @@ private fun CouiNovelCommentComposer(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 84.dp)
-                        .clip(RoundedCornerShape(LocalSkin.current.shapes.controlCorner))
+                        .clip(CouiCommentFieldShape)
                         .background(scheme.container)
                         .padding(12.dp),
                     decorationBox = { innerTextField ->
@@ -1345,7 +1340,7 @@ private fun CouiNovelReplyDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 96.dp)
-                .clip(RoundedCornerShape(LocalSkin.current.shapes.controlCorner))
+                .clip(CouiCommentFieldShape)
                 .background(scheme.container)
                 .padding(12.dp),
             decorationBox = { innerTextField ->

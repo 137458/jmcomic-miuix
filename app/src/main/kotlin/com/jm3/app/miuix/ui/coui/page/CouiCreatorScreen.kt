@@ -63,6 +63,7 @@ import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
@@ -284,7 +285,7 @@ private fun CouiCreatorBody(
                 scrollBehavior = scrollBehavior,
                 innerPadding = innerPadding,
                 horizontalPadding = null,
-                extraBottom = 72.dp,
+                extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
             )
             LazyColumn(
                 state = lazyState,

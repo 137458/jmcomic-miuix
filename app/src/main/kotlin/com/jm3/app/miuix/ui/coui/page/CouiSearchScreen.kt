@@ -49,6 +49,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.asListState
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -226,7 +227,7 @@ private fun CouiSearchBody(
                 scrollBehavior = scrollBehavior,
                 innerPadding = innerPadding,
                 horizontalPadding = null,
-                extraBottom = 72.dp,
+                extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
             )
             LazyColumn(
                 state = lazyState,

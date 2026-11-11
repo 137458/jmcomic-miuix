@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -69,6 +71,7 @@ import com.jm3.app.miuix.ui.ProfileDraftPolicy
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.StringMapSaver
 import com.jm3.app.miuix.ui.StringSetSaver
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.trackedProfileFieldMap
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
@@ -399,6 +402,11 @@ private fun ProfileLoadedContent(
             onClick = onSave,
         )
     }
+    Spacer(
+        modifier = Modifier.height(
+            couiPageExtraBottomDp(hasFab = false, isImeVisible = WindowInsets.isImeVisible).dp,
+        ),
+    )
 }
 
 /** 头图：有头像就铺满，没有就用主题色渐变兜底；底部压一层暗色渐变保证文字可读。 */
@@ -543,7 +551,20 @@ private fun ProfileChoiceRow(fields: MutableMap<String, String>, selector: Profi
         Item(
             title = { ProfileRowTitle(selector.title) },
             summary = { ProfileRowSummary("点选后随资料一起保存") },
-            trailing = { ProfileRowValue(label) },
+            trailing = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    ProfileRowValue(label)
+                    Icon(
+                        imageVector = CouiIcons.ChevronsUpDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = CouiKitTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
             onClick = { anchor.open { expanded = true } },
         )
         Menu(
