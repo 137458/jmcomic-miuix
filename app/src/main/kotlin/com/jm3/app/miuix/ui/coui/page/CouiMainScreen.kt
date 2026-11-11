@@ -138,7 +138,13 @@ fun CouiMainScreen(
             }
         }
         // 底栏只画一份：转场期不再随两个页面各组合一次，浮动材质由这一份 backdrop 采样正文
-        val backdrop = rememberCouiBackdrop()
+        // 采样层必须自带不透明底色：转场期两个页签同时淡出，只录正文会让材质回填的矩形区域露出
+        // 透明像素，底栏四周会闪出一圈灰黑色方框
+        val pageBackground = CouiKitTheme.colorScheme.background
+        val backdrop = rememberCouiBackdrop(drawSource = {
+            drawRect(pageBackground)
+            drawContent()
+        })
         val pageState = rememberSaveableStateHolder()
 
         CompositionLocalProvider(
