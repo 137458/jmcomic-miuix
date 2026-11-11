@@ -4,7 +4,9 @@ package com.jm3.app.miuix.ui.coui.component
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.InteractionSource
@@ -542,8 +544,13 @@ fun CouiDetailActionTile(
         enabled || onClick == null -> colors.onSurface
         else -> colors.onSurfaceVariant
     }
+    val borderColor = when {
+        active -> colors.accent.copy(alpha = if (dark) 0.34f else 0.22f)
+        dark -> colors.onSurface.copy(alpha = 0.12f)
+        else -> colors.onSurface.copy(alpha = 0.06f)
+    }
     val baseModifier = modifier
-        .heightIn(min = 58.dp)
+        .heightIn(min = 56.dp)
         .let { m ->
             if (onClick != null) {
                 m.couiPressable(
@@ -560,7 +567,8 @@ fun CouiDetailActionTile(
                     .background(bgColor)
             }
         }
-        .padding(horizontal = 6.dp, vertical = 10.dp)
+        .border(0.5.dp, borderColor, CouiCommentFieldShape)
+        .padding(horizontal = 6.dp, vertical = 9.dp)
     Column(
         modifier = baseModifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -576,6 +584,115 @@ fun CouiDetailActionTile(
             text = label,
             kind = CouiTextKind.ItemSummary,
             color = fgColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/**
+ * 分组标题栏右侧统一胶囊动作：用于「展开」「查看全部」「清除」「复制」「全部展开」。
+ *
+ * 保持紧致高度而不把 48dp minTouchTarget 撑进标题行内，全站所有分区标题角标风格一致。
+ */
+@Composable
+fun CouiHeaderCapsuleAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    trailingIcon: ImageVector? = null,
+    tinted: Boolean = true,
+) {
+    val dark = CouiTheme.isDark
+    val colors = CouiTheme.colorSchemeFor(dark)
+    val bgColor = when {
+        tinted -> colors.accent.copy(alpha = if (dark) 0.18f else 0.12f)
+        dark -> colors.onSurface.copy(alpha = 0.09f)
+        else -> colors.onSurface.copy(alpha = 0.06f)
+    }
+    val fgColor = if (tinted) colors.accent else colors.onSurfaceVariant
+    Row(
+        modifier = modifier
+            .heightIn(min = 28.dp)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = bgColor,
+                spotlight = SpotlightPreset.ChipTab,
+                scaleOnPress = true,
+                onClick = onClick,
+            )
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            text = text,
+            kind = CouiTextKind.GroupFooter,
+            color = fgColor,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+        )
+        if (trailingIcon != null) {
+            Icon(
+                imageVector = trailingIcon,
+                contentDescription = null,
+                modifier = Modifier.size(13.dp),
+                tint = fgColor,
+            )
+        }
+    }
+}
+
+/**
+ * 统一标签/热词胶囊：自适应底色 + 0.5dp 凝光细边，深浅模式均能与卡片及玻璃弹窗拉开层次。
+ *
+ * 不叠加 48dp 外扩布局占位，保证 FlowRow 多行排布时视觉行距真实落在 Arrangement 设定值上。
+ */
+@Composable
+fun CouiTagCapsulePill(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    highlighted: Boolean = false,
+    glassSurface: Boolean = false,
+) {
+    val dark = CouiTheme.isDark
+    val colors = CouiTheme.colorSchemeFor(dark)
+    val bgColor = when {
+        highlighted -> colors.accent.copy(alpha = if (dark) 0.18f else 0.11f)
+        glassSurface -> colors.onSurface.copy(alpha = if (dark) 0.10f else 0.06f)
+        dark -> colors.onSurface.copy(alpha = 0.09f)
+        else -> lerp(colors.background, colors.card, 0.28f)
+    }
+    val borderColor = when {
+        highlighted -> colors.accent.copy(alpha = if (dark) 0.34f else 0.22f)
+        dark -> colors.onSurface.copy(alpha = 0.14f)
+        else -> colors.onSurface.copy(alpha = 0.08f)
+    }
+    val textColor = if (highlighted) colors.accent else colors.onSurface
+    Box(
+        modifier = modifier
+            .heightIn(min = if (compact) 30.dp else 34.dp)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = bgColor,
+                spotlight = SpotlightPreset.ChipTab,
+                scaleOnPress = true,
+                onClick = onClick,
+            )
+            .border(0.5.dp, borderColor, CouiCapsuleShape)
+            .padding(
+                horizontal = if (compact) 11.dp else 14.dp,
+                vertical = if (compact) 5.dp else 7.dp,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            kind = if (compact) CouiTextKind.GroupFooter else CouiTextKind.ItemSummary,
+            color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,

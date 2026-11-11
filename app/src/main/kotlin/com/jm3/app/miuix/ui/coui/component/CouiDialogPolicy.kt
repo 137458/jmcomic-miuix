@@ -3,12 +3,15 @@
 package com.jm3.app.miuix.ui.coui.component
 
 import android.os.Build
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogMaterial
 import com.itos.coui.menu.rememberCouiWindowBackdrop
@@ -33,6 +36,31 @@ internal fun couiDialogMaterial(): CouiDialogMaterial? =
     } else {
         null
     }
+
+/** 玻璃弹窗内输入区/列表行使用的半透明表面底色，直接承接弹窗玻璃而不叠不透明卡片。 */
+@Composable
+internal fun couiDialogSurfaceColor(elevated: Boolean = false): Color {
+    val dark = CouiKitTheme.isDark
+    val scheme = CouiKitTheme.colorScheme
+    val alpha = when {
+        elevated && dark -> 0.13f
+        elevated -> 0.08f
+        dark -> 0.09f
+        else -> 0.055f
+    }
+    return scheme.onSurface.copy(alpha = alpha)
+}
+
+/** 玻璃弹窗内部控件的细腻轮廓边线，保证浅/深色下输入区与标签边界清晰。 */
+@Composable
+internal fun couiDialogSurfaceBorder(): BorderStroke {
+    val dark = CouiKitTheme.isDark
+    val scheme = CouiKitTheme.colorScheme
+    return BorderStroke(
+        width = 0.5.dp,
+        color = scheme.onSurface.copy(alpha = if (dark) 0.14f else 0.08f),
+    )
+}
 
 /**
  * 保留弹窗最近一次非空目标：目标置空后，让弹窗在 visible = false 退场期间继续拿到渲染数据，

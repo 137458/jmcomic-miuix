@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,7 +45,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
@@ -92,6 +92,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
+import com.jm3.app.miuix.ui.coui.component.CouiTagCapsulePill
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
@@ -100,6 +101,8 @@ import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
 import com.jm3.app.miuix.ui.coui.component.LocalCouiAppBackdrop
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
@@ -950,7 +953,6 @@ private fun CouiMoreCategoriesDialog(
     onDismiss: () -> Unit,
     onTagClick: (String) -> Unit,
 ) {
-    val dark = CouiTheme.isDark
     val colors = CouiTheme.colorScheme
     var filterQuery by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(visible) {
@@ -959,7 +961,9 @@ private fun CouiMoreCategoriesDialog(
     val filteredBlocks = remember(blocks, filterQuery) {
         couiFilterCategoryBlocks(blocks, filterQuery)
     }
-    val chipBackground = if (dark) lerp(colors.container, Color.White, 0.06f) else colors.background
+    val surfaceColor = couiDialogSurfaceColor()
+    val elevatedSurfaceColor = couiDialogSurfaceColor(elevated = true)
+    val surfaceBorder = couiDialogSurfaceBorder()
     Dialog(
         onDismissRequest = onDismiss,
         visible = visible,
@@ -972,6 +976,7 @@ private fun CouiMoreCategoriesDialog(
             style = CouiDialogActionStyle.Secondary,
         ),
     ) {
+        // 直接承接 Dialog 玻璃材质，不再嵌套实底 Group 与实底输入栏割裂质感
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
@@ -979,7 +984,8 @@ private fun CouiMoreCategoriesDialog(
                     .padding(horizontal = CouiPageDefaults.horizontalMargin)
                     .heightIn(min = 42.dp)
                     .clip(CouiCommentFieldShape)
-                    .background(colors.container)
+                    .background(surfaceColor)
+                    .border(surfaceBorder, CouiCommentFieldShape)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1015,7 +1021,7 @@ private fun CouiMoreCategoriesDialog(
                         modifier = Modifier
                             .couiPressable(
                                 shape = CouiCapsuleShape,
-                                backgroundColor = colors.background,
+                                backgroundColor = elevatedSurfaceColor,
                                 spotlight = SpotlightPreset.ChipTab,
                                 minTouchTarget = CouiMinTouchTarget,
                                 onClick = { filterQuery = "" },
@@ -1032,9 +1038,16 @@ private fun CouiMoreCategoriesDialog(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             if (filteredBlocks.isEmpty()) {
-                CouiEmptyGroup(text = "没有匹配的分类或标签")
+                CouiBodyText(
+                    text = "没有匹配的分类或标签",
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 20.dp),
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier
@@ -1042,25 +1055,38 @@ private fun CouiMoreCategoriesDialog(
                         .heightIn(max = 420.dp),
                     contentPadding = PaddingValues(bottom = 8.dp),
                 ) {
-                    items(filteredBlocks, key = { it.title }) { block ->
-                        Group(title = block.title) {
-                            FlowRow(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        horizontal = CouiPageDefaults.rowPadding,
-                                        vertical = 12.dp,
-                                    ),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                block.tags.forEach { tag ->
-                                    CouiTagChip(
-                                        text = tag,
-                                        backgroundColor = chipBackground,
-                                        onClick = { onTagClick(tag) },
-                                    )
-                                }
+                    itemsIndexed(filteredBlocks, key = { _, block -> block.title }) { index, block ->
+                        if (index > 0) {
+                            Divider(startIndent = 16.dp, endIndent = 16.dp)
+                        }
+                        Text(
+                            text = block.title,
+                            kind = CouiTextKind.GroupTitle,
+                            color = colors.onSurfaceVariant,
+                            textAlign = TextAlign.Start,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    start = 20.dp,
+                                    end = 20.dp,
+                                    top = if (index == 0) 6.dp else 12.dp,
+                                    bottom = 8.dp,
+                                ),
+                        )
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                .padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            block.tags.forEach { tag ->
+                                CouiTagCapsulePill(
+                                    text = tag,
+                                    glassSurface = true,
+                                    onClick = { onTagClick(tag) },
+                                )
                             }
                         }
                     }
@@ -1303,22 +1329,12 @@ private fun CouiCollapsibleTagNavGroup(
 @Composable
 private fun CouiTagChip(
     text: String,
-    backgroundColor: Color = CouiTheme.colorScheme.container,
     onClick: () -> Unit,
 ) {
-    CouiBodyText(
+    CouiTagCapsulePill(
         text = text,
-        color = CouiTheme.colorScheme.onSurface,
-        textAlign = TextAlign.Start,
-        modifier = Modifier
-            .couiPressable(
-                shape = CouiCapsuleShape,
-                backgroundColor = backgroundColor,
-                spotlight = SpotlightPreset.ChipTab,
-                minTouchTarget = CouiMinTouchTarget,
-                onClick = onClick,
-            )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+        glassSurface = true,
+        onClick = onClick,
     )
 }
 

@@ -37,19 +37,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
-import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Footer
@@ -58,7 +57,6 @@ import com.itos.coui.layout.Item
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.search.SearchBar
 import com.itos.coui.search.rememberCouiSearchBarState
-import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme
@@ -74,16 +72,16 @@ import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.couiHomeExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
+import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
+import com.jm3.app.miuix.ui.coui.component.CouiHeaderCapsuleAction
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
-import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
-import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.CouiTagCapsulePill
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
@@ -579,7 +577,6 @@ fun CouiHomeScreen(
                 }
             }
             item(key = "coui-home-title") {
-                val homeColors = CouiTheme.colorScheme
                 CouiGroupTitle(
                     title = if (searching) "搜索结果" else "最近更新",
                     actions = {
@@ -588,29 +585,12 @@ fun CouiHomeScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             if (!searching) {
-                                Text(
-                                    text = "每周必看",
-                                    kind = CouiTextKind.GroupFooter,
-                                    color = homeColors.accent,
-                                    modifier = Modifier
-                                        .couiPressable(
-                                            shape = CouiCapsuleShape,
-                                            backgroundColor = homeColors.accent.copy(alpha = 0.12f),
-                                            spotlight = SpotlightPreset.ChipTab,
-                                            minTouchTarget = CouiMinTouchTarget,
-                                            onClick = onOpenWeek,
-                                        )
-                                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                                )
+                                CouiHeaderCapsuleAction(text = "每周必看", onClick = onOpenWeek)
                             }
-                            Text(
+                            CouiHeaderCapsuleAction(
                                 text = "帮助",
-                                kind = CouiTextKind.GroupFooter,
-                                color = homeColors.onSurfaceVariant,
-                                modifier = Modifier
-                                    .clip(CouiCapsuleShape)
-                                    .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) { showSearchHelp = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                tinted = false,
+                                onClick = { showSearchHelp = true },
                             )
                             CouiFeedRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
                         }
@@ -619,22 +599,58 @@ fun CouiHomeScreen(
             }
             when (val current = feedState) {
                 null, is ListState.Loading -> item(key = "coui-home-loading") {
-                    CouiLoadingGroup(text = if (searching) "正在搜索…" else "正在加载最新上架…")
+                    CouiGroupRow(isFirst = true, isLast = true) {
+                        Item(
+                            title = {
+                                CouiBodyText(
+                                    text = if (searching) "正在搜索…" else "正在加载最新上架…",
+                                    color = CouiTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Start,
+                                )
+                            },
+                        )
+                    }
                 }
 
                 is ListState.Failed -> item(key = "coui-home-error") {
-                    CouiScreenFailureGroup(
-                        message = current.message.ifBlank { if (searching) "搜索失败" else CouiStrings.LoadFailed },
-                        expired = current.sessionExpired,
-                        onRetry = {
-                            if (searching) {
-                                runSearch(activeQuery, searchByTag, order)
-                            } else {
-                                refresh()
-                            }
-                        },
-                        onOpenLogin = onOpenLogin,
-                    )
+                    val failureMessage = current.message.ifBlank { if (searching) "搜索失败" else CouiStrings.LoadFailed }
+                    CouiGroupRow(isFirst = true, isLast = true) {
+                        Item(
+                            title = {
+                                CouiBodyText(
+                                    text = if (current.sessionExpired) "登录状态已失效" else CouiStrings.LoadFailed,
+                                    textAlign = TextAlign.Start,
+                                )
+                            },
+                            summary = {
+                                Text(
+                                    text = failureMessage,
+                                    kind = CouiTextKind.ItemSummary,
+                                    color = CouiTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Start,
+                                )
+                            },
+                            trailing = {
+                                CouiHeaderCapsuleAction(
+                                    text = if (current.sessionExpired) "去登录" else CouiStrings.Retry,
+                                    onClick = {
+                                        when {
+                                            current.sessionExpired -> onOpenLogin()
+                                            searching -> runSearch(activeQuery, searchByTag, order)
+                                            else -> refresh()
+                                        }
+                                    },
+                                )
+                            },
+                            onClick = {
+                                when {
+                                    current.sessionExpired -> onOpenLogin()
+                                    searching -> runSearch(activeQuery, searchByTag, order)
+                                    else -> refresh()
+                                }
+                            },
+                        )
+                    }
                 }
 
                 is ListState.Loaded -> {
@@ -642,7 +658,17 @@ fun CouiHomeScreen(
                     val items = loadedFeed.items
                     if (items.isEmpty()) {
                         item(key = "coui-home-empty") {
-                            CouiEmptyGroup(text = if (searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent)
+                            CouiGroupRow(isFirst = true, isLast = true) {
+                                Item(
+                                    title = {
+                                        CouiBodyText(
+                                            text = if (searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent,
+                                            color = CouiTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = TextAlign.Start,
+                                        )
+                                    },
+                                )
+                            }
                         }
                         item(key = "coui-home-empty-hint") {
                             Footer(
@@ -654,17 +680,18 @@ fun CouiHomeScreen(
                             )
                         }
                     } else {
-                        // key 用作品 id：刷新后行身份不变，滚动位置才能跟着内容走
-                        items(
+                        // key 用作品 id：首行贴齐标题下沿（top=0）与其它分段保持 8dp 标题间距，末行归零由下个分段自己留白
+                        itemsIndexed(
                             items = items,
-                            key = { album -> "coui-home-row-${album.id}" },
-                        ) { album ->
+                            key = { _, album -> "coui-home-row-${album.id}" },
+                        ) { index, album ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(
-                                        horizontal = CouiPageDefaults.horizontalMargin,
-                                        vertical = CouiWorkCardTokens.RowSpacing / 2,
+                                        start = CouiPageDefaults.horizontalMargin,
+                                        end = CouiPageDefaults.horizontalMargin,
+                                        top = if (index == 0) 0.dp else CouiWorkCardTokens.RowSpacing,
                                     ),
                             ) {
                                 CouiWorkFeedRow(album = album, onClick = { openAlbum(album.id) })
@@ -801,21 +828,7 @@ private fun CouiHomeTrackSection(
     Column(modifier = Modifier.fillMaxWidth()) {
         CouiGroupTitle(title = track.title) {
             if (onOpenRanking != null) {
-                val accent = CouiTheme.colorScheme.accent
-                Text(
-                    text = "查看全部",
-                    kind = CouiTextKind.GroupFooter,
-                    color = accent,
-                    modifier = Modifier
-                        .couiPressable(
-                            shape = CouiCapsuleShape,
-                            backgroundColor = accent.copy(alpha = 0.12f),
-                            spotlight = SpotlightPreset.ChipTab,
-                            minTouchTarget = CouiMinTouchTarget,
-                            onClick = onOpenRanking,
-                        )
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                )
+                CouiHeaderCapsuleAction(text = "查看全部", onClick = onOpenRanking)
             }
         }
         LazyRow(
@@ -866,20 +879,22 @@ private fun CouiSearchHeader(
         items = sortLabels,
         selectedIndex = selectedSort,
         onSelect = onSelectSort,
-        modifier = Modifier.padding(
-            horizontal = CouiPageDefaults.horizontalMargin,
-            vertical = CouiPageDefaults.categoryTopSpacing,
-        ),
+        modifier = Modifier
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
+            .padding(top = CouiPageDefaults.categoryTopSpacing),
     )
     Text(
         text = summary,
         kind = CouiTextKind.GroupFooter,
         color = CouiTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp)
+            .padding(top = 8.dp),
     )
 }
 
-/** 热门搜索推荐词卡片：标题栏右侧放置独立展开/收起入口，热词胶囊统一收入 Group 卡片。 */
+/** 热门搜索推荐词卡片：标题栏右侧放置统一胶囊操作，热词胶囊带细微轮廓与深浅色对比层。 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CouiTagRow(
@@ -889,72 +904,30 @@ private fun CouiTagRow(
     onPick: (String) -> Unit,
 ) {
     if (tags.isEmpty()) return
-    val colors = CouiTheme.colorScheme
     val shown = if (expanded) tags else tags.take(HOT_TAG_COLLAPSED)
     Group(
         title = "热门搜索",
         headerActions = {
             if (tags.size > HOT_TAG_COLLAPSED) {
-                Row(
-                    modifier = Modifier
-                        .couiPressable(
-                            shape = CouiCapsuleShape,
-                            backgroundColor = colors.container,
-                            spotlight = SpotlightPreset.ChipTab,
-                            minTouchTarget = CouiMinTouchTarget,
-                            onClick = onToggleExpanded,
-                        )
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = if (expanded) "收起" else "展开",
-                        kind = CouiTextKind.GroupFooter,
-                        color = colors.accent,
-                    )
-                    Icon(
-                        imageVector = if (expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
-                        contentDescription = if (expanded) "收起热门搜索" else "展开热门搜索",
-                        modifier = Modifier.size(14.dp),
-                        tint = colors.accent,
-                    )
-                }
+                CouiHeaderCapsuleAction(
+                    text = if (expanded) "收起" else "展开",
+                    trailingIcon = if (expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                    onClick = onToggleExpanded,
+                )
             }
         },
     ) {
         FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = CouiPageDefaults.rowPadding, vertical = 14.dp),
+                .padding(horizontal = CouiPageDefaults.rowPadding, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             shown.forEach { tag ->
-                CouiTagCapsule(text = tag, onClick = { onPick(tag) })
+                CouiTagCapsulePill(text = tag, onClick = { onPick(tag) })
             }
         }
-    }
-}
-
-@Composable
-private fun CouiTagCapsule(text: String, onClick: () -> Unit) {
-    val dark = CouiTheme.isDark
-    val colors = CouiTheme.colorScheme
-    val backgroundColor = if (dark) lerp(colors.container, Color.White, 0.06f) else colors.background
-    Box(
-        modifier = Modifier
-            .couiPressable(
-                shape = CouiCapsuleShape,
-                backgroundColor = backgroundColor,
-                spotlight = SpotlightPreset.ChipTab,
-                minTouchTarget = CouiMinTouchTarget,
-                onClick = onClick,
-            )
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        CouiBodyText(text = text, color = colors.onSurface)
     }
 }
 
@@ -990,15 +963,7 @@ private fun CouiWorkFeedRow(album: SearchResult, onClick: () -> Unit) {
 
 @Composable
 private fun CouiHeaderTextAction(text: String, onClick: () -> Unit) {
-    Text(
-        text = text,
-        kind = CouiTextKind.GroupFooter,
-        color = CouiTheme.colorScheme.accent,
-        modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-    )
+    CouiHeaderCapsuleAction(text = text, onClick = onClick)
 }
 
 /** 行尾的图标动作：32dp 视觉里放 16dp 图标，触区由 couiPressable 补到 48dp，避免误触整行。 */
