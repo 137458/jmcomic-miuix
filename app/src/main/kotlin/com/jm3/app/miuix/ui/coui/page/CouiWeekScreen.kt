@@ -54,6 +54,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
@@ -375,7 +376,7 @@ private fun WeekPeriodRow(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
                     .background(if (active) scheme.accent.copy(alpha = 0.14f) else scheme.container)
-                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = { onSelect(index) })
+                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = { onSelect(index) })
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text(
@@ -398,7 +399,7 @@ internal fun CouiFeedRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = !refreshing, onClick = onRefresh)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = !refreshing, minTouchTarget = CouiMinTouchTarget, onClick = onRefresh)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),

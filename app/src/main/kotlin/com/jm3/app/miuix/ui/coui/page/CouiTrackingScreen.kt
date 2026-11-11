@@ -46,7 +46,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import top.yukonga.miuix.kmp.basic.SnackbarResult
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
@@ -216,7 +218,19 @@ internal fun CouiTrackingScreen(
                         items = remaining,
                         total = feed.total?.minus(1)?.coerceAtLeast(remaining.size),
                     )
-                    snackbarHostState.showSnackbar("已取消追踪")
+                    val result = snackbarHostState.showSnackbar(
+                        message = "已取消追踪",
+                        actionLabel = "撤销",
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        val undoOutcome = deps.authCall.call { deps.gateway.setTracking(item.id) }
+                        if (undoOutcome is SessionOutcome.Ok) {
+                            feed = feed.copy(
+                                items = listOf(item) + feed.items.filterNot { it.id == item.id },
+                                total = feed.total?.plus(1),
+                            )
+                        }
+                    }
                 }
                 is SessionOutcome.Expired -> snackbarHostState.showSnackbar(
                     planLoad(outcome, hasContent = false, failureMessage = "操作失败").message.orEmpty(),
@@ -382,7 +396,7 @@ private fun TrackingCancelAction(busy: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .size(40.dp)
             .clip(CircleShape)
-            .couiPressable(shape = CircleShape, enabled = !busy, onClick = onClick),
+            .couiPressable(shape = CircleShape, enabled = !busy, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

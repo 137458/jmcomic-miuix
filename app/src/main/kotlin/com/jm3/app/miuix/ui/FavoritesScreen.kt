@@ -88,10 +88,10 @@ fun FavoritesScreen(
     // 收藏夹筛选：0 = 全部；切换后重新拉第一页。
     var folderId by rememberSaveable { mutableIntStateOf(0) }
     var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var showCreate by remember { mutableStateOf(false) }
+    var showCreate by rememberSaveable { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }
     var deleteTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }
-    var folderNameInput by remember { mutableStateOf("") }
+    var folderNameInput by rememberSaveable { mutableStateOf("") }
     var folderBusy by remember { mutableStateOf(false) }
     var folderError by remember { mutableStateOf<String?>(null) }
 
@@ -105,8 +105,8 @@ fun FavoritesScreen(
     var tagsError by remember { mutableStateOf<String?>(null) }
     var tagBusy by remember { mutableStateOf(false) }
     var tagError by remember { mutableStateOf<String?>(null) }
-    var showAddTag by remember { mutableStateOf(false) }
-    var tagInput by remember { mutableStateOf("") }
+    var showAddTag by rememberSaveable { mutableStateOf(false) }
+    var tagInput by rememberSaveable { mutableStateOf("") }
     var tagDeleteTarget by remember { mutableStateOf<String?>(null) }
 
     val mode = deps.preferences.paginationMode

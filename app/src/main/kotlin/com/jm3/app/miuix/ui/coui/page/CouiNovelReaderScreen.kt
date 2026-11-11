@@ -61,6 +61,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -330,7 +331,7 @@ fun CouiNovelReaderScreen(
                             color = scheme.accent,
                             modifier = Modifier
                                 // 所在 HUD 面板本身已有凝光，这里不再叠第二层
-                                .couiPressable(spotlight = null) { changeLang(if (lang == "tw") "cn" else "tw") }
+                                .couiPressable(spotlight = null, minTouchTarget = CouiMinTouchTarget) { changeLang(if (lang == "tw") "cn" else "tw") }
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             maxLines = 1,
                         )
@@ -486,6 +487,7 @@ private fun NovelFontStep(
                 shape = CouiCapsuleShape,
                 enabled = enabled,
                 spotlight = SpotlightPreset.ChipTab,
+                minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
             .padding(vertical = 10.dp),

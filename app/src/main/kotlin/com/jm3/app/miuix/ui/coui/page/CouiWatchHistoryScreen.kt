@@ -27,6 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogPlacement
+import com.itos.coui.dialog.Dialog
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
@@ -44,6 +47,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
+import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -98,6 +102,7 @@ fun CouiWatchHistoryScreen(
         var feed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
         var uiState by remember { mutableStateOf<CouiWatchUiState>(CouiWatchUiState.Loading) }
         var deletingId by remember { mutableStateOf<String?>(null) }
+        var pendingDeleteItem by remember { mutableStateOf<SearchResult?>(null) }
 
         fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<SearchResult>, replace: Boolean) {
             val plan = planLoad(
@@ -250,7 +255,7 @@ fun CouiWatchHistoryScreen(
                                             badge = {
                                                 CouiGridDeleteBadge(
                                                     contentDescription = "删除该观看记录",
-                                                    onClick = { delete(item) },
+                                                    onClick = { pendingDeleteItem = item },
                                                     modifier = Modifier
                                                         .align(Alignment.TopEnd)
                                                         .padding(CouiWorkCardTokens.BadgeInset),
@@ -293,6 +298,28 @@ fun CouiWatchHistoryScreen(
                 state = snackbarHostState,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
+
+            val toDelete = pendingDeleteItem
+            if (toDelete != null) {
+                Dialog(
+                    onDismissRequest = { pendingDeleteItem = null },
+                    visible = true,
+                    title = "删除观看记录",
+                    message = "确定要删除《" + toDelete.title + "》的观看记录吗？",
+                    placement = CouiDialogPlacement.Center,
+                    confirmAction = couiDestructiveConfirmAction(
+                        text = "删除",
+                        onClick = {
+                            delete(toDelete)
+                            pendingDeleteItem = null
+                        },
+                    ),
+                    dismissAction = CouiDialogAction(
+                        text = "取消",
+                        onClick = { pendingDeleteItem = null },
+                    ),
+                )
+            }
         }
     }
 }

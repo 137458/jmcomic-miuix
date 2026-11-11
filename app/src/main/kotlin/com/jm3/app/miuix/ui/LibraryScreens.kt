@@ -118,7 +118,7 @@ fun LibraryScreen(
     // 两个 Tab 各有一份分页状态：作者列表与作品列表的条目类型不同，不能共用一份 feed
     var creatorFeed by remember { mutableStateOf(PagedFeed<CreatorMeta>()) }
     var workFeed by remember { mutableStateOf(PagedFeed<CreatorWorkMeta>()) }
-    var filters by remember { mutableStateOf(CreatorFilters()) }
+    var filters by rememberSaveable { mutableStateOf(CreatorFilters()) }
     var loading by remember { mutableStateOf(true) }
     var refreshing by remember { mutableStateOf(false) }
     // 失效与失败共用一个落点：计划自己决定「整屏去登录」还是「给重试按钮」

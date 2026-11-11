@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -443,9 +444,9 @@ private fun ReaderPages(
         Size(fit.width, fit.height)
     }
     // 横向翻页整屏、纵向按容器宽，两套排布的解码尺寸不同
-    var horizontal by remember { mutableStateOf(false) }
+    var horizontal by rememberSaveable { mutableStateOf(false) }
     // 双页阅读只在大屏横屏下叠加在左右阅读上：默认单页，转屏或换设备后自动回落到单页。
-    var spreadMode by remember { mutableStateOf(ReaderSpreadMode.SINGLE) }
+    var spreadMode by rememberSaveable { mutableStateOf(ReaderSpreadMode.SINGLE) }
     val wideLayout = LocalWideLayout.current
     val spreadEligible = ReaderSpreadPolicy.supportsSpread(wideLayout.widthDp, wideLayout.heightDp)
     val spreadActive = spreadEligible && spreadMode == ReaderSpreadMode.DOUBLE && horizontal
@@ -480,12 +481,12 @@ private fun ReaderPages(
     var progressRestored by remember(photo.photoId) { mutableStateOf(false) }
     // 离开阅读器时补记当前页：状态对象在离开时仍可读
     val latestPage by rememberUpdatedState(pagePlan.currentPage)
-    var showPageSheet by remember { mutableStateOf(false) }
-    var showChapterSheet by remember { mutableStateOf(false) }
-    var showCommentSheet by remember { mutableStateOf(false) }
-    var pickerValue by remember { mutableIntStateOf(1) }
+    var showPageSheet by rememberSaveable { mutableStateOf(false) }
+    var showChapterSheet by rememberSaveable { mutableStateOf(false) }
+    var showCommentSheet by rememberSaveable { mutableStateOf(false) }
+    var pickerValue by rememberSaveable { mutableIntStateOf(1) }
     // 原版点击正文切换上下栏显隐
-    var chromeVisible by remember { mutableStateOf(true) }
+    var chromeVisible by rememberSaveable { mutableStateOf(true) }
     var lastVolumeAt by remember { mutableLongStateOf(0L) }
     var favorited by remember(photo.albumId) { mutableStateOf(favoritedInit) }
     // 详情页改过喜欢状态时以共享表为准，避免回来读到的还是首载快照
@@ -496,7 +497,7 @@ private fun ReaderPages(
     var comments by remember(photo.albumId) { mutableStateOf<CommentPage?>(null) }
     var commentsLoading by remember { mutableStateOf(false) }
     var commentsFailed by remember { mutableStateOf(false) }
-    var commentText by remember(photo.albumId) { mutableStateOf("") }
+    var commentText by rememberSaveable(photo.albumId) { mutableStateOf("") }
     var commentBusy by remember { mutableStateOf(false) }
     // 评论抽屉内的回复：目标评论与发送态
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
@@ -1082,7 +1083,7 @@ private fun ReaderPages(
                         color = CouiKitTheme.colorScheme.accent,
                         modifier = Modifier
                             // 所在 HUD 面板本身已有凝光，这里不再叠第二层
-                            .couiPressable(spotlight = null) {
+                            .couiPressable(spotlight = null, minTouchTarget = CouiMinTouchTarget) {
                                 pickerValue = pagePlan.currentPage
                                 showPageSheet = true
                             }
@@ -1651,7 +1652,7 @@ internal fun ReaderHudAction(
     Column(
         modifier = Modifier
             // 只在 HUD 面板内使用，光由面板统一给，项内不再叠第二层
-            .couiPressable(shape = CouiCapsuleShape, spotlight = null) { onClick() }
+            .couiPressable(shape = CouiCapsuleShape, spotlight = null, minTouchTarget = CouiMinTouchTarget) { onClick() }
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1716,7 +1717,7 @@ internal fun ReaderCommentRow(item: CommentItem, onReply: () -> Unit) {
                 color = scheme.accentOnSurface,
                 modifier = Modifier
                     .padding(top = 6.dp)
-                    .couiPressable { onReply() }
+                    .couiPressable(minTouchTarget = CouiMinTouchTarget) { onReply() }
                     .padding(vertical = 2.dp),
             )
         }
@@ -1787,6 +1788,7 @@ internal fun ReaderCommentComposer(
                     // 禁用态没有光（interactive = false），不必再挂预设
                     spotlight = if (enabled) SpotlightPreset.OpaqueMedium1 else null,
                     enabled = enabled,
+                    minTouchTarget = CouiMinTouchTarget,
                     onClick = onSend,
                 )
                 .padding(horizontal = 16.dp, vertical = 7.dp),
@@ -1813,7 +1815,7 @@ internal fun ReaderDialogHint(text: String, onClick: (() -> Unit)? = null) {
             kind = CouiTextKind.Body,
             color = CouiKitTheme.colorScheme.onSurfaceVariant,
             modifier = if (onClick != null) {
-                Modifier.couiPressable { onClick() }.padding(vertical = 8.dp)
+                Modifier.couiPressable(minTouchTarget = CouiMinTouchTarget) { onClick() }.padding(vertical = 8.dp)
             } else {
                 Modifier
             },
@@ -2140,7 +2142,7 @@ private fun BoxScope.ReaderLoadFailedHint(onRetry: () -> Unit) {
             color = CouiKitTheme.colorScheme.accent,
             modifier = Modifier
                 .padding(top = 8.dp)
-                .couiPressable { onRetry() }
+                .couiPressable(minTouchTarget = CouiMinTouchTarget) { onRetry() }
                 .padding(vertical = 4.dp),
         )
     }

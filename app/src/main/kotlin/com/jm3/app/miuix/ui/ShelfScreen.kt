@@ -1,8 +1,11 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +25,7 @@ import com.jm3.app.miuix.data.download.contentDescriptionRes
 import com.jm3.app.miuix.data.download.textRes
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.CoverLocator
 import com.jm3.core.download.DownloadAction
 import com.jm3.core.download.DownloadRecord
@@ -29,14 +33,18 @@ import com.jm3.core.download.DownloadRow
 import com.jm3.core.download.presentRow
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Pause
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 本地书架：下载进度、暂停/继续/重试、删除与离线阅读入口。 */
@@ -46,7 +54,9 @@ fun ShelfScreen(
     onBack: () -> Unit,
     onOpenReader: (String) -> Unit,
 ) {
+    val skin = LocalSkin.current
     var records by remember { mutableStateOf<List<DownloadRecord>>(emptyList()) }
+    var pendingDeleteRecord by remember { mutableStateOf<DownloadRecord?>(null) }
     var imageHost by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
@@ -143,12 +153,7 @@ fun ShelfScreen(
                                 }
                             }
                             IconButton(
-                                onClick = {
-                                    scope.launch {
-                                        deps.downloadManager.remove(record.photoId)
-                                        records = records.filterNot { it.photoId == record.photoId }
-                                    }
-                                },
+                                onClick = { pendingDeleteRecord = record },
                             ) {
                                 Icon(
                                     MiuixIcons.Delete,
@@ -157,6 +162,41 @@ fun ShelfScreen(
                                 )
                             }
                         },
+                    )
+                }
+            }
+        }
+
+        val toDelete = pendingDeleteRecord
+        if (toDelete != null) {
+            OverlayDialog(
+                show = true,
+                title = "删除下载",
+                cornerRadius = skin.shapes.dialogCorner,
+                onDismissRequest = { pendingDeleteRecord = null },
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Text(
+                        text = "确定要删除《" + toDelete.title.ifBlank { toDelete.photoId } + "》及已下载的本地文件吗？",
+                        style = MiuixTheme.textStyles.body2,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        text = "取消",
+                        onClick = { pendingDeleteRecord = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    TextButton(
+                        text = "删除",
+                        colors = ButtonDefaults.textButtonColors(textColor = MiuixTheme.colorScheme.error),
+                        onClick = {
+                            scope.launch {
+                                deps.downloadManager.remove(toDelete.photoId)
+                                records = records.filterNot { it.photoId == toDelete.photoId }
+                            }
+                            pendingDeleteRecord = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

@@ -120,7 +120,7 @@ fun CouiLibraryScreen(
         // 两个 Tab 各一份分页状态：作者与作品的条目类型不同，不能共用一份 feed
         var creatorFeed by remember { mutableStateOf(PagedFeed<CreatorMeta>()) }
         var workFeed by remember { mutableStateOf(PagedFeed<CreatorWorkMeta>()) }
-        var filters by remember { mutableStateOf(CreatorFilters()) }
+        var filters by rememberSaveable { mutableStateOf(CreatorFilters()) }
         var loading by remember { mutableStateOf(true) }
         var refreshing by remember { mutableStateOf(false) }
         var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }

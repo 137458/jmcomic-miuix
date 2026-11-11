@@ -572,7 +572,7 @@ fun CouiHomeScreen(
                                     modifier = Modifier
                                         .clip(CouiCapsuleShape)
                                         .background(homeColors.accent.copy(alpha = 0.12f))
-                                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onOpenWeek)
+                                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onOpenWeek)
                                         .padding(horizontal = 10.dp, vertical = 4.dp),
                                 )
                             }
@@ -582,7 +582,7 @@ fun CouiHomeScreen(
                                 color = homeColors.onSurfaceVariant,
                                 modifier = Modifier
                                     .clip(CouiCapsuleShape)
-                                    .couiPressable(shape = CouiCapsuleShape) { showSearchHelp = true }
+                                    .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) { showSearchHelp = true }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                             )
                             CouiRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
@@ -779,7 +779,7 @@ private fun CouiHomeTrackSection(
                     modifier = Modifier
                         .clip(CouiCapsuleShape)
                         .background(accent.copy(alpha = 0.12f))
-                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onOpenRanking)
+                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onOpenRanking)
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
@@ -931,7 +931,7 @@ private fun CouiRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = !refreshing, onClick = onRefresh)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = !refreshing, minTouchTarget = CouiMinTouchTarget, onClick = onRefresh)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -954,7 +954,7 @@ private fun CouiHeaderTextAction(text: String, onClick: () -> Unit) {
         color = CouiTheme.colorScheme.accent,
         modifier = Modifier
             .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
     )
 }

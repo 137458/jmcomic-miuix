@@ -64,6 +64,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
@@ -445,7 +446,7 @@ private fun NotificationCard(
                                 Box(
                                     modifier = Modifier
                                         .clip(CouiCapsuleShape)
-                                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = { onOpenAlbum(comicId) }),
+                                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = { onOpenAlbum(comicId) }),
                                 ) {
                                     Text(
                                         text = update.comicTitle,
@@ -493,7 +494,7 @@ private fun NotificationCard(
             Box(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
-                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onToggleRead)
+                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggleRead)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Text(

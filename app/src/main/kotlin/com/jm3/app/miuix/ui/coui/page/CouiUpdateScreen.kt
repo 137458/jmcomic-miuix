@@ -52,6 +52,7 @@ import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
@@ -703,6 +704,7 @@ private fun CouiInlineButton(
                 shape = CouiCapsuleShape,
                 // 强调色实底按库的主按钮口径取 OpaqueMedium1，浅底胶囊用 ChipTab
                 spotlight = if (emphasised) SpotlightPreset.OpaqueMedium1 else SpotlightPreset.ChipTab,
+                minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
             .padding(horizontal = 16.dp, vertical = 10.dp),

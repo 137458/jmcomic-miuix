@@ -68,6 +68,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
@@ -789,7 +790,7 @@ private fun CouiMoreCategoriesGroup(
                         color = CouiTheme.colorScheme.accent,
                         modifier = Modifier
                             .clip(CouiCapsuleShape)
-                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onToggle)
+                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
@@ -865,6 +866,7 @@ private fun CouiCategoryRail(
                     .couiPressable(
                         shape = RoundedCornerShape(20.dp),
                         spotlight = SpotlightPreset.ChipTab,
+                        minTouchTarget = CouiMinTouchTarget,
                         onClick = { onSelect(option) },
                     )
                     .padding(horizontal = 16.dp),
@@ -895,7 +897,7 @@ private fun CouiTagChip(
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(CouiTheme.colorScheme.container)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }

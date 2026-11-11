@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -371,9 +372,9 @@ private fun ReaderPages(
         Size(fit.width, fit.height)
     }
     // 横向翻页整屏、纵向按容器宽，两套排布的解码尺寸不同
-    var horizontal by remember { mutableStateOf(false) }
+    var horizontal by rememberSaveable { mutableStateOf(false) }
     // 双页阅读只在大屏横屏下叠加在左右阅读上：默认单页，转屏或换设备后自动回落到单页。
-    var spreadMode by remember { mutableStateOf(ReaderSpreadMode.SINGLE) }
+    var spreadMode by rememberSaveable { mutableStateOf(ReaderSpreadMode.SINGLE) }
     val wideLayout = LocalWideLayout.current
     val spreadEligible = ReaderSpreadPolicy.supportsSpread(wideLayout.widthDp, wideLayout.heightDp)
     val spreadActive = spreadEligible && spreadMode == ReaderSpreadMode.DOUBLE && horizontal
@@ -408,12 +409,12 @@ private fun ReaderPages(
     var progressRestored by remember(photo.photoId) { mutableStateOf(false) }
     // 离开阅读器时补记当前页：状态对象在离开时仍可读
     val latestPage by rememberUpdatedState(pagePlan.currentPage)
-    var showPageSheet by remember { mutableStateOf(false) }
-    var showChapterSheet by remember { mutableStateOf(false) }
-    var showCommentSheet by remember { mutableStateOf(false) }
-    var pickerValue by remember { mutableIntStateOf(1) }
+    var showPageSheet by rememberSaveable { mutableStateOf(false) }
+    var showChapterSheet by rememberSaveable { mutableStateOf(false) }
+    var showCommentSheet by rememberSaveable { mutableStateOf(false) }
+    var pickerValue by rememberSaveable { mutableIntStateOf(1) }
     // 原版点击正文切换上下栏显隐
-    var chromeVisible by remember { mutableStateOf(true) }
+    var chromeVisible by rememberSaveable { mutableStateOf(true) }
     var lastVolumeAt by remember { mutableLongStateOf(0L) }
     var favorited by remember(photo.albumId) { mutableStateOf(favoritedInit) }
     // 详情页改过喜欢状态时以共享表为准，避免回来读到的还是首载快照
@@ -424,7 +425,7 @@ private fun ReaderPages(
     var comments by remember(photo.albumId) { mutableStateOf<CommentPage?>(null) }
     var commentsLoading by remember { mutableStateOf(false) }
     var commentsFailed by remember { mutableStateOf(false) }
-    var commentText by remember(photo.albumId) { mutableStateOf("") }
+    var commentText by rememberSaveable(photo.albumId) { mutableStateOf("") }
     var commentBusy by remember { mutableStateOf(false) }
     // 评论抽屉内的回复：目标评论与发送态
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }

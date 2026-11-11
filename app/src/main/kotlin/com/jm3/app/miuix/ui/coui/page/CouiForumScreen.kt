@@ -499,7 +499,7 @@ private fun CouiForumRulesRow(expanded: Boolean, onToggle: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .couiPressable(shape = shape, onClick = onToggle)
+                .couiPressable(shape = shape, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -801,7 +801,7 @@ private fun ForumCapsuleButton(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .clip(CouiCapsuleShape)
             .background(scheme.accent)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.OpaqueMedium1, onClick = onClick)
+            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.OpaqueMedium1, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -830,7 +830,7 @@ private fun CouiForumInputDialog(
     onSend: (String) -> Unit,
 ) {
     val scheme = CouiKitTheme.colorScheme
-    var draft by remember(visible) { mutableStateOf("") }
+    var draft by rememberSaveable(visible) { mutableStateOf("") }
     Dialog(
         onDismissRequest = onDismiss,
         visible = visible,

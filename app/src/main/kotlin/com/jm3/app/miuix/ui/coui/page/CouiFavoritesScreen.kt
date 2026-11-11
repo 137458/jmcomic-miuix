@@ -125,11 +125,11 @@ fun CouiFavoritesScreen(
         var refreshing by remember { mutableStateOf(false) }
         var folderId by rememberSaveable { mutableIntStateOf(0) }
         var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-        var folderPickerOpen by remember { mutableStateOf(false) }
-        var showCreate by remember { mutableStateOf(false) }
+        var folderPickerOpen by rememberSaveable { mutableStateOf(false) }
+        var showCreate by rememberSaveable { mutableStateOf(false) }
         var editTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }
         var deleteTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }
-        var folderNameInput by remember { mutableStateOf("") }
+        var folderNameInput by rememberSaveable { mutableStateOf("") }
         var folderBusy by remember { mutableStateOf(false) }
         var folderError by remember { mutableStateOf<String?>(null) }
 
@@ -143,8 +143,8 @@ fun CouiFavoritesScreen(
         var tagsError by remember { mutableStateOf<String?>(null) }
         var tagBusy by remember { mutableStateOf(false) }
         var tagError by remember { mutableStateOf<String?>(null) }
-        var showAddTag by remember { mutableStateOf(false) }
-        var tagInput by remember { mutableStateOf("") }
+        var showAddTag by rememberSaveable { mutableStateOf(false) }
+        var tagInput by rememberSaveable { mutableStateOf("") }
         var tagDeleteTarget by remember { mutableStateOf<String?>(null) }
         // 翻页在途守卫：请求期间列表仍可读，但翻页条要禁用，避免连点重复请求
         var pageBusy by remember { mutableStateOf(false) }

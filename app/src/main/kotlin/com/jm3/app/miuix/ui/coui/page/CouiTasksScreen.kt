@@ -57,6 +57,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
@@ -439,6 +440,7 @@ private fun TaskActionChip(text: String, enabled: Boolean, onClick: () -> Unit) 
             .couiPressable(
                 shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
                 enabled = enabled,
+                minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
             .padding(horizontal = 12.dp, vertical = 6.dp),

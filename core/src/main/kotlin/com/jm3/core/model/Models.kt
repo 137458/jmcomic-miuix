@@ -498,7 +498,7 @@ data class NovelChapter(
 data class CreatorFilters(
     val languages: List<String> = emptyList(),
     val sources: List<String> = emptyList(),
-) {
+) : java.io.Serializable {
     val isEmpty: Boolean get() = languages.isEmpty() && sources.isEmpty()
 }
 

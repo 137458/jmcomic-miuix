@@ -31,6 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogPlacement
+import com.itos.coui.dialog.Dialog
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
@@ -44,6 +47,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
+import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -76,6 +80,7 @@ fun CouiShelfScreen(
         val columns = LocalWideLayout.current.gridColumns
 
         var records by remember { mutableStateOf<List<DownloadRecord>>(emptyList()) }
+        var pendingDeleteRecord by remember { mutableStateOf<DownloadRecord?>(null) }
         var imageHost by remember { mutableStateOf("") }
         // 首帧还没拿到下载快照：先给加载态，避免空列表一闪
         var loaded by remember { mutableStateOf(false) }
@@ -159,7 +164,7 @@ fun CouiShelfScreen(
                                     row = row,
                                     subtitle = couiShelfSummary(record, row, label),
                                     onClick = { performPrimaryAction(record, row) },
-                                    onDelete = { removeRecord(record) },
+                                    onDelete = { pendingDeleteRecord = record },
                                     actionLabel = stringResource(row.action.contentDescriptionRes()),
                                 )
                             }
@@ -176,6 +181,28 @@ fun CouiShelfScreen(
                     }
                 }
             }
+        }
+
+        val toDelete = pendingDeleteRecord
+        if (toDelete != null) {
+            Dialog(
+                onDismissRequest = { pendingDeleteRecord = null },
+                visible = true,
+                title = "删除下载",
+                message = "确定要删除《" + toDelete.title.ifBlank { toDelete.photoId } + "》及已下载的本地文件吗？",
+                placement = CouiDialogPlacement.Center,
+                confirmAction = couiDestructiveConfirmAction(
+                    text = "删除",
+                    onClick = {
+                        removeRecord(toDelete)
+                        pendingDeleteRecord = null
+                    },
+                ),
+                dismissAction = CouiDialogAction(
+                    text = "取消",
+                    onClick = { pendingDeleteRecord = null },
+                ),
+            )
         }
     }
 }

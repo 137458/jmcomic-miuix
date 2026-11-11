@@ -1,7 +1,10 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +22,7 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
@@ -27,12 +31,17 @@ import com.jm3.core.paging.pagerNextPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 服务端观看记录单页条数；接口不返回总数，用返回条数推断是否还有下一页。 */
 private const val WATCH_PAGE_SIZE = 20
@@ -54,6 +63,7 @@ fun WatchHistoryScreen(
     onOpenLogin: () -> Unit = {},
 ) {
     val mode = deps.preferences.paginationMode
+    val skin = LocalSkin.current
     // 当前页码、是否还有下一页、追加在途与追加失败都由 PagedFeed 记；
     // 追加失败时 hasMore 保持原值，所以页脚一定留着重试入口，不会被误画成「已经到底」
     var feed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
@@ -61,6 +71,7 @@ fun WatchHistoryScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var deletingId by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteItem by remember { mutableStateOf<SearchResult?>(null) }
     val scope = rememberCoroutineScope()
 
     /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成去登录）。 */
@@ -205,7 +216,7 @@ fun WatchHistoryScreen(
                                 textEndPadding = 4.dp,
                                 trailing = {
                                     IconButton(
-                                        onClick = { delete(item) },
+                                        onClick = { pendingDeleteItem = item },
                                         enabled = deletingId != item.id,
                                     ) {
                                         Icon(MiuixIcons.Delete, contentDescription = "删除记录")
@@ -238,6 +249,38 @@ fun WatchHistoryScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        val toDelete = pendingDeleteItem
+        if (toDelete != null) {
+            OverlayDialog(
+                show = true,
+                title = "删除观看记录",
+                cornerRadius = skin.shapes.dialogCorner,
+                onDismissRequest = { pendingDeleteItem = null },
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Text(
+                        text = "确定要删除《" + toDelete.title + "》的观看记录吗？",
+                        style = MiuixTheme.textStyles.body2,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        text = "取消",
+                        onClick = { pendingDeleteItem = null },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    TextButton(
+                        text = "删除",
+                        colors = ButtonDefaults.textButtonColors(textColor = MiuixTheme.colorScheme.error),
+                        onClick = {
+                            delete(toDelete)
+                            pendingDeleteItem = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
         }

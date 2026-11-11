@@ -39,6 +39,7 @@ import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
+import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -66,6 +67,8 @@ import com.jm3.core.runCatchingSuspending
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.SnackbarResult
 
 /** 阅读历史每页条数：与旧页保持一致，满页即代表还有下一页。 */
 private const val HISTORY_PAGE_SIZE = 20
@@ -120,6 +123,7 @@ fun CouiHistoryScreen(
         val gridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
         val scope = rememberCoroutineScope()
+        val snackbarHostState = remember { SnackbarHostState() }
 
         var feed by remember { mutableStateOf(PagedFeed<HistoryEntry>()) }
         var state by remember { mutableStateOf<CouiHistoryListState>(CouiHistoryListState.Loading) }
@@ -193,11 +197,20 @@ fun CouiHistoryScreen(
             }
         }
 
-        /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从当前列表移除。 */
+        /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从当前列表移除，并提供撤销入口。 */
         fun removeAlbum(albumId: String) {
+            val removedEntries = feed.items.filter { it.albumId == albumId }
             scope.launch {
                 runCatchingSuspending { repository.deleteAlbum(albumId) }
                 feed = feed.copy(items = feed.items.filterNot { it.albumId == albumId })
+                val result = snackbarHostState.showSnackbar(
+                    message = "已删除阅读记录",
+                    actionLabel = "撤销",
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    removedEntries.forEach { repository.upsert(it) }
+                    feed = feed.copy(items = (removedEntries + feed.items).distinctBy { it.photoId })
+                }
             }
         }
 
@@ -328,6 +341,11 @@ fun CouiHistoryScreen(
                     ),
                 )
             }
+
+            GlassSnackbarHost(
+                state = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }
@@ -382,7 +400,7 @@ private fun ColumnScope.CouiHistoryDetailLink(
         modifier = Modifier
             .padding(top = 2.dp)
             .clip(linkShape)
-            .couiPressable(shape = linkShape, onClick = onClick)
+            .couiPressable(shape = linkShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 2.dp),
     )
 }
