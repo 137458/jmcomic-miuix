@@ -779,7 +779,8 @@ private fun CouiHomeTrackSection(
         }
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = CouiPageDefaults.horizontalMargin),
+            // 首尾留白取「分组标题左缘 - 卡内内衬」：卡片左缘落在页面边距上，卡内文字与 32dp 的标题同一条竖线
+            contentPadding = PaddingValues(horizontal = CouiWorkCardTokens.TrackContentPadding),
             horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
         ) {
             itemsIndexed(
