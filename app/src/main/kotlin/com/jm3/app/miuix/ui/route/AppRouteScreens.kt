@@ -2,9 +2,9 @@
 
 package com.jm3.app.miuix.ui.route
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.Modifier
 import com.itos.coui.menu.ProvideCouiMenuBackdrop
 import com.jm3.core.settings.UiSkin
 
@@ -26,14 +26,25 @@ fun SkinRoute(
 ) {
     val stateHolder = rememberSaveableStateHolder()
     stateHolder.SaveableStateProvider(uiSkin.name) {
-        if (uiSkin == UiSkin.COLOROS) {
-            ProvideCouiMenuBackdrop { backdropModifier ->
-                Box(modifier = backdropModifier) {
-                    colorOs()
-                }
-            }
-        } else {
-            hyperOs()
-        }
+        if (uiSkin == UiSkin.COLOROS) colorOs() else hyperOs()
+    }
+}
+
+/**
+ * 窗口级弹窗背景源：把库的「菜单/材质弹窗采样源」挂到窗口内容根节点。
+ *
+ * 库对材质弹窗有两项硬前提——系统 Android 13 及以上、宿主已提供不含弹窗自身的背景源，
+ * 缺任一项都在组合期抛异常。源必须挂在窗口根而不是单条路由：启动更新提示等弹窗在路由之外，
+ * 挂在路由内它们拿不到源。HyperOS 皮肤不使用库弹窗，这里直接透传，不做额外离屏录制。
+ */
+@Composable
+fun SkinWindowBackdrop(
+    uiSkin: UiSkin,
+    content: @Composable (Modifier) -> Unit,
+) {
+    if (uiSkin == UiSkin.COLOROS) {
+        ProvideCouiMenuBackdrop(content = content)
+    } else {
+        content(Modifier)
     }
 }

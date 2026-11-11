@@ -86,6 +86,7 @@ import com.jm3.app.miuix.ui.coui.page.CouiWatchHistoryScreen
 import com.jm3.app.miuix.ui.coui.page.CouiWeekScreen
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
 import com.jm3.app.miuix.ui.route.SkinRoute
+import com.jm3.app.miuix.ui.route.SkinWindowBackdrop
 import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.ui.skin.SkinMotion
@@ -577,688 +578,692 @@ fun Jm3App() {
             LocalAlbumHeroHost provides heroHost,
             LocalWideLayout provides wideLayout,
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                NavDisplay(
-                    backStack = backStack,
-                    onBack = popBack,
-                    effects = NavDisplayEffects(
-                        cornerClipRadius = screenCornerRadius,
-                        backdropColor = MiuixTheme.colorScheme.surface,
-                    ),
-                ) {
-                    entry<Route.Main> {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                MainScreen(
-                                    deps = deps,
-                                    unreadBadge = Jm3Graph.session.unread,
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    onOpenFavorites = { backStack.add(Route.Favorites) },
-                                    onOpenHistory = { backStack.add(Route.History) },
-                                    onOpenShelf = { backStack.add(Route.Shelf) },
-                                    onOpenSettings = { backStack.add(Route.Settings) },
-                                    onOpenWeek = { backStack.add(Route.Week) },
-                                    onOpenNotifications = { backStack.add(Route.Notifications) },
-                                    onOpenTracking = { backStack.add(Route.Tracking) },
-                                    onOpenProfile = { backStack.add(Route.Profile) },
-                                    onOpenTasks = { backStack.add(Route.Tasks) },
-                                    onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
-                                    onOpenForum = { backStack.add(Route.Forum) },
-                                    onOpenNovel = { backStack.add(Route.Novel) },
-                                    onOpenLibrary = { backStack.add(Route.Library) },
-                                )
-                            },
-                            colorOs = {
-                                CouiMainScreen(
-                                    deps = deps,
-                                    unreadBadge = Jm3Graph.session.unread,
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    onOpenFavorites = { backStack.add(Route.Favorites) },
-                                    onOpenHistory = { backStack.add(Route.History) },
-                                    onOpenShelf = { backStack.add(Route.Shelf) },
-                                    onOpenSettings = { backStack.add(Route.Settings) },
-                                    onOpenWeek = { backStack.add(Route.Week) },
-                                    onOpenNotifications = { backStack.add(Route.Notifications) },
-                                    onOpenTracking = { backStack.add(Route.Tracking) },
-                                    onOpenProfile = { backStack.add(Route.Profile) },
-                                    onOpenTasks = { backStack.add(Route.Tasks) },
-                                    onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
-                                    onOpenForum = { backStack.add(Route.Forum) },
-                                    onOpenNovel = { backStack.add(Route.Novel) },
-                                    onOpenLibrary = { backStack.add(Route.Library) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Login>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
+            // ColorOS 的菜单/弹窗材质需要窗口级背景源，且必须挂在窗口内容根节点：
+            // 挂在路由里的话，路由之外的弹窗（启动更新提示）拿不到源，库会直接抛异常。
+            SkinWindowBackdrop(uiSkin = uiSkin) { windowModifier ->
+                Box(modifier = Modifier.fillMaxSize().then(windowModifier)) {
+                    NavDisplay(
+                        backStack = backStack,
+                        onBack = popBack,
+                        effects = NavDisplayEffects(
+                            cornerClipRadius = screenCornerRadius,
+                            backdropColor = MiuixTheme.colorScheme.surface,
+                        ),
                     ) {
-                        LoginScreen(account = Jm3Graph.account, onBack = { backStack.removeLastOrNull() })
-                    }
-                    entry<Route.Favorites>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                FavoritesScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiFavoritesScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.History>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                HistoryScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                                )
-                            },
-                            colorOs = {
-                                CouiHistoryScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Shelf>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                ShelfScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                                )
-                            },
-                            colorOs = {
-                                CouiShelfScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Settings>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        val openUpdate: () -> Unit = { backStack.add(Route.Update) }
-                        val changeThemeMode: (ThemeMode) -> Unit = { mode ->
-                            themeModeName = mode.name
-                            scope.launch { Jm3Graph.settings.setThemeMode(mode) }
+                        entry<Route.Main> {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    MainScreen(
+                                        deps = deps,
+                                        unreadBadge = Jm3Graph.session.unread,
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenFavorites = { backStack.add(Route.Favorites) },
+                                        onOpenHistory = { backStack.add(Route.History) },
+                                        onOpenShelf = { backStack.add(Route.Shelf) },
+                                        onOpenSettings = { backStack.add(Route.Settings) },
+                                        onOpenWeek = { backStack.add(Route.Week) },
+                                        onOpenNotifications = { backStack.add(Route.Notifications) },
+                                        onOpenTracking = { backStack.add(Route.Tracking) },
+                                        onOpenProfile = { backStack.add(Route.Profile) },
+                                        onOpenTasks = { backStack.add(Route.Tasks) },
+                                        onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
+                                        onOpenForum = { backStack.add(Route.Forum) },
+                                        onOpenNovel = { backStack.add(Route.Novel) },
+                                        onOpenLibrary = { backStack.add(Route.Library) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiMainScreen(
+                                        deps = deps,
+                                        unreadBadge = Jm3Graph.session.unread,
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenFavorites = { backStack.add(Route.Favorites) },
+                                        onOpenHistory = { backStack.add(Route.History) },
+                                        onOpenShelf = { backStack.add(Route.Shelf) },
+                                        onOpenSettings = { backStack.add(Route.Settings) },
+                                        onOpenWeek = { backStack.add(Route.Week) },
+                                        onOpenNotifications = { backStack.add(Route.Notifications) },
+                                        onOpenTracking = { backStack.add(Route.Tracking) },
+                                        onOpenProfile = { backStack.add(Route.Profile) },
+                                        onOpenTasks = { backStack.add(Route.Tasks) },
+                                        onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
+                                        onOpenForum = { backStack.add(Route.Forum) },
+                                        onOpenNovel = { backStack.add(Route.Novel) },
+                                        onOpenLibrary = { backStack.add(Route.Library) },
+                                    )
+                                },
+                            )
                         }
-                        val changeDynamicColor: (Boolean) -> Unit = { enabled ->
-                            dynamicColor = enabled
-                            scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
+                        entry<Route.Login>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            LoginScreen(account = Jm3Graph.account, onBack = { backStack.removeLastOrNull() })
                         }
-                        val changeSkin: (UiSkin) -> Unit = { nextSkin ->
-                            uiSkinName = nextSkin.name
-                            scope.launch { Jm3Graph.preferences.repository.setUiSkin(nextSkin) }
+                        entry<Route.Favorites>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    FavoritesScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiFavoritesScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
                         }
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                SettingsScreen(
-                                    deps = deps,
-                                    themeMode = themeMode,
-                                    onThemeModeChange = changeThemeMode,
-                                    dynamicColor = effectiveDynamicColor,
-                                    onDynamicColorChange = changeDynamicColor,
-                                    dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
-                                    uiSkin = uiSkin,
-                                    onUiSkinChange = changeSkin,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenUpdate = openUpdate,
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                            colorOs = {
-                                CouiSettingsScreen(
-                                    deps = deps,
-                                    themeMode = themeMode,
-                                    onThemeModeChange = changeThemeMode,
-                                    dynamicColor = effectiveDynamicColor,
-                                    onDynamicColorChange = changeDynamicColor,
-                                    dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
-                                    uiSkin = uiSkin,
-                                    onUiSkinChange = changeSkin,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenUpdate = openUpdate,
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
+                        entry<Route.History>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    HistoryScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiHistoryScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Shelf>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    ShelfScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiShelfScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Settings>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            val openUpdate: () -> Unit = { backStack.add(Route.Update) }
+                            val changeThemeMode: (ThemeMode) -> Unit = { mode ->
+                                themeModeName = mode.name
+                                scope.launch { Jm3Graph.settings.setThemeMode(mode) }
+                            }
+                            val changeDynamicColor: (Boolean) -> Unit = { enabled ->
+                                dynamicColor = enabled
+                                scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
+                            }
+                            val changeSkin: (UiSkin) -> Unit = { nextSkin ->
+                                uiSkinName = nextSkin.name
+                                scope.launch { Jm3Graph.preferences.repository.setUiSkin(nextSkin) }
+                            }
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    SettingsScreen(
+                                        deps = deps,
+                                        themeMode = themeMode,
+                                        onThemeModeChange = changeThemeMode,
+                                        dynamicColor = effectiveDynamicColor,
+                                        onDynamicColorChange = changeDynamicColor,
+                                        dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
+                                        uiSkin = uiSkin,
+                                        onUiSkinChange = changeSkin,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenUpdate = openUpdate,
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                                colorOs = {
+                                    CouiSettingsScreen(
+                                        deps = deps,
+                                        themeMode = themeMode,
+                                        onThemeModeChange = changeThemeMode,
+                                        dynamicColor = effectiveDynamicColor,
+                                        onDynamicColorChange = changeDynamicColor,
+                                        dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
+                                        uiSkin = uiSkin,
+                                        onUiSkinChange = changeSkin,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenUpdate = openUpdate,
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Update>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    UpdateScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiUpdateScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Week>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    WeekScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiWeekScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Notifications>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    NotificationsScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        unreadBadge = Jm3Graph.session.unread,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiNotificationsScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        snackbarHostState = snackbarHostState,
+                                        unreadBadge = Jm3Graph.session.unread,
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Tracking>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    TrackingScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiTrackingScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Tasks>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    TasksScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiTasksScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Profile>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    ProfileScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiProfileScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.WatchHistory>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    WatchHistoryScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiWatchHistoryScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Forum>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    ForumScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiForumScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.AlbumDetail>(
+                            transition = albumDetailTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) { route ->
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    AlbumDetailScreen(
+                                        albumId = route.albumId,
+                                        initialTitle = route.initialTitle,
+                                        initialCoverUrl = route.initialCoverUrl,
+                                        onBack = popBack,
+                                        onOpenReader = { photoId, startPage ->
+                                            backStack.add(Route.Reader(photoId, startPage))
+                                        },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                        gateway = Jm3Graph.api.gateway,
+                                        authCall = Jm3Graph.session.authCall,
+                                        history = Jm3Graph.library.history,
+                                        downloadManager = Jm3Graph.downloads.manager,
+                                        downloadFiles = Jm3Graph.downloads.files,
+                                        account = Jm3Graph.session.account,
+                                        sessionCache = Jm3Graph.sessionCache,
+                                    )
+                                },
+                                colorOs = {
+                                    CouiAlbumDetailScreen(
+                                        albumId = route.albumId,
+                                        initialTitle = route.initialTitle,
+                                        initialCoverUrl = route.initialCoverUrl,
+                                        onBack = popBack,
+                                        onOpenReader = { photoId, startPage ->
+                                            backStack.add(Route.Reader(photoId, startPage))
+                                        },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                        gateway = Jm3Graph.api.gateway,
+                                        authCall = Jm3Graph.session.authCall,
+                                        history = Jm3Graph.library.history,
+                                        downloadManager = Jm3Graph.downloads.manager,
+                                        downloadFiles = Jm3Graph.downloads.files,
+                                        account = Jm3Graph.session.account,
+                                        sessionCache = Jm3Graph.sessionCache,
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Reader>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) { route ->
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    ReaderScreen(
+                                        deps = deps,
+                                        photoId = route.photoId,
+                                        startPage = route.startPage,
+                                        settings = Jm3Graph.preferences.repository,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenChapter = { nextPageId ->
+                                            // 同层替换：返回键回到详情页，而不是逐章回退
+                                            if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(nextPageId)
+                                        },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                                colorOs = {
+                                    CouiReaderScreen(
+                                        deps = deps,
+                                        photoId = route.photoId,
+                                        startPage = route.startPage,
+                                        settings = Jm3Graph.preferences.repository,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenChapter = { nextPageId ->
+                                            // 同层替换：返回键回到详情页，而不是逐章回退
+                                            if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(nextPageId)
+                                        },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Novel>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    NovelListScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                                colorOs = {
+                                    CouiNovelListScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.NovelDetail>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) { route ->
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    NovelDetailScreen(
+                                        deps = deps,
+                                        novelId = route.novelId,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
+                                        onOpenReader = { novelId, chapterId ->
+                                            backStack.add(Route.NovelReader(novelId, chapterId))
+                                        },
+                                        onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                                colorOs = {
+                                    CouiNovelDetailScreen(
+                                        deps = deps,
+                                        novelId = route.novelId,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
+                                        onOpenReader = { novelId, chapterId ->
+                                            backStack.add(Route.NovelReader(novelId, chapterId))
+                                        },
+                                        onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.NovelReader>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) { route ->
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    NovelReaderScreen(
+                                        deps = deps,
+                                        novelId = route.novelId,
+                                        initialChapterId = route.chapterId,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                                colorOs = {
+                                    CouiNovelReaderScreen(
+                                        deps = deps,
+                                        novelId = route.novelId,
+                                        initialChapterId = route.chapterId,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        snackbarHostState = snackbarHostState,
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Library>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) {
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    LibraryScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
+                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiLibraryScreen(
+                                        deps = deps,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
+                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Creator>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) { route ->
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    CreatorWorksScreen(
+                                        deps = deps,
+                                        creatorId = route.creatorId,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
+                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiCreatorScreen(
+                                        deps = deps,
+                                        creatorId = route.creatorId,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.CreatorWork>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) { route ->
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    CreatorWorkDetailScreen(
+                                        deps = deps,
+                                        workId = route.workId,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        snackbarHostState = snackbarHostState,
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiCreatorWorkScreen(
+                                        deps = deps,
+                                        workId = route.workId,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
+                                    )
+                                },
+                            )
+                        }
+                        entry<Route.Search>(
+                            transition = subPageTransition,
+                            swipeDismiss = NavSwipeDirection.LeftToRight,
+                        ) { route ->
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = {
+                                    SearchScreen(
+                                        deps = deps,
+                                        query = route.query,
+                                        scope = route.scope,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                    )
+                                },
+                                colorOs = {
+                                    CouiSearchScreen(
+                                        deps = deps,
+                                        query = route.query,
+                                        scope = route.scope,
+                                        onBack = { backStack.removeLastOrNull() },
+                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    AlbumHeroOverlay(host = heroHost, modifier = Modifier.fillMaxSize())
+                    // 更新页自身也会检查并弹窗，停留在更新页时不再叠加启动期提示
+                    if (backStack.lastOrNull() != Route.Update) {
+                        UpdateStartupPrompt(
+                            deps = deps,
+                            onOpenUpdatePage = { backStack.add(Route.Update) },
                         )
                     }
-                    entry<Route.Update>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                UpdateScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                )
-                            },
-                            colorOs = {
-                                CouiUpdateScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Week>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                WeekScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiWeekScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Notifications>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                NotificationsScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    unreadBadge = Jm3Graph.session.unread,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiNotificationsScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    snackbarHostState = snackbarHostState,
-                                    unreadBadge = Jm3Graph.session.unread,
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Tracking>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                TrackingScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiTrackingScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Tasks>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                TasksScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiTasksScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Profile>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                ProfileScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiProfileScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.WatchHistory>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                WatchHistoryScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiWatchHistoryScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Forum>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                ForumScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                )
-                            },
-                            colorOs = {
-                                CouiForumScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.AlbumDetail>(
-                        transition = albumDetailTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) { route ->
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                AlbumDetailScreen(
-                                    albumId = route.albumId,
-                                    initialTitle = route.initialTitle,
-                                    initialCoverUrl = route.initialCoverUrl,
-                                    onBack = popBack,
-                                    onOpenReader = { photoId, startPage ->
-                                        backStack.add(Route.Reader(photoId, startPage))
-                                    },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                    gateway = Jm3Graph.api.gateway,
-                                    authCall = Jm3Graph.session.authCall,
-                                    history = Jm3Graph.library.history,
-                                    downloadManager = Jm3Graph.downloads.manager,
-                                    downloadFiles = Jm3Graph.downloads.files,
-                                    account = Jm3Graph.session.account,
-                                    sessionCache = Jm3Graph.sessionCache,
-                                )
-                            },
-                            colorOs = {
-                                CouiAlbumDetailScreen(
-                                    albumId = route.albumId,
-                                    initialTitle = route.initialTitle,
-                                    initialCoverUrl = route.initialCoverUrl,
-                                    onBack = popBack,
-                                    onOpenReader = { photoId, startPage ->
-                                        backStack.add(Route.Reader(photoId, startPage))
-                                    },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                    gateway = Jm3Graph.api.gateway,
-                                    authCall = Jm3Graph.session.authCall,
-                                    history = Jm3Graph.library.history,
-                                    downloadManager = Jm3Graph.downloads.manager,
-                                    downloadFiles = Jm3Graph.downloads.files,
-                                    account = Jm3Graph.session.account,
-                                    sessionCache = Jm3Graph.sessionCache,
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Reader>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) { route ->
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                ReaderScreen(
-                                    deps = deps,
-                                    photoId = route.photoId,
-                                    startPage = route.startPage,
-                                    settings = Jm3Graph.preferences.repository,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenChapter = { nextPageId ->
-                                        // 同层替换：返回键回到详情页，而不是逐章回退
-                                        if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(nextPageId)
-                                    },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                            colorOs = {
-                                CouiReaderScreen(
-                                    deps = deps,
-                                    photoId = route.photoId,
-                                    startPage = route.startPage,
-                                    settings = Jm3Graph.preferences.repository,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenChapter = { nextPageId ->
-                                        // 同层替换：返回键回到详情页，而不是逐章回退
-                                        if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(nextPageId)
-                                    },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Novel>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                NovelListScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                            colorOs = {
-                                CouiNovelListScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.NovelDetail>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) { route ->
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                NovelDetailScreen(
-                                    deps = deps,
-                                    novelId = route.novelId,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                                    onOpenReader = { novelId, chapterId ->
-                                        backStack.add(Route.NovelReader(novelId, chapterId))
-                                    },
-                                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                            colorOs = {
-                                CouiNovelDetailScreen(
-                                    deps = deps,
-                                    novelId = route.novelId,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                                    onOpenReader = { novelId, chapterId ->
-                                        backStack.add(Route.NovelReader(novelId, chapterId))
-                                    },
-                                    onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.NovelReader>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) { route ->
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                NovelReaderScreen(
-                                    deps = deps,
-                                    novelId = route.novelId,
-                                    initialChapterId = route.chapterId,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                            colorOs = {
-                                CouiNovelReaderScreen(
-                                    deps = deps,
-                                    novelId = route.novelId,
-                                    initialChapterId = route.chapterId,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Library>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) {
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                LibraryScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
-                                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiLibraryScreen(
-                                    deps = deps,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
-                                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Creator>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) { route ->
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                CreatorWorksScreen(
-                                    deps = deps,
-                                    creatorId = route.creatorId,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
-                                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiCreatorScreen(
-                                    deps = deps,
-                                    creatorId = route.creatorId,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.CreatorWork>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) { route ->
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                CreatorWorkDetailScreen(
-                                    deps = deps,
-                                    workId = route.workId,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                                    snackbarHostState = snackbarHostState,
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                            colorOs = {
-                                CouiCreatorWorkScreen(
-                                    deps = deps,
-                                    workId = route.workId,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                                    onOpenLogin = { backStack.add(Route.Login) },
-                                )
-                            },
-                        )
-                    }
-                    entry<Route.Search>(
-                        transition = subPageTransition,
-                        swipeDismiss = NavSwipeDirection.LeftToRight,
-                    ) { route ->
-                        SkinRoute(
-                            uiSkin = uiSkin,
-                            hyperOs = {
-                                SearchScreen(
-                                    deps = deps,
-                                    query = route.query,
-                                    scope = route.scope,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                )
-                            },
-                            colorOs = {
-                                CouiSearchScreen(
-                                    deps = deps,
-                                    query = route.query,
-                                    scope = route.scope,
-                                    onBack = { backStack.removeLastOrNull() },
-                                    onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                )
-                            },
-                        )
-                    }
-                }
-                AlbumHeroOverlay(host = heroHost, modifier = Modifier.fillMaxSize())
-                // 更新页自身也会检查并弹窗，停留在更新页时不再叠加启动期提示
-                if (backStack.lastOrNull() != Route.Update) {
-                    UpdateStartupPrompt(
-                        deps = deps,
-                        onOpenUpdatePage = { backStack.add(Route.Update) },
-                    )
                 }
             }
         }

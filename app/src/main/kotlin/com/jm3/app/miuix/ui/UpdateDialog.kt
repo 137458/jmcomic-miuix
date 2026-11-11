@@ -41,6 +41,7 @@ import com.itos.coui.dialog.Dialog as CouiDialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.update.UpdateDownloadState
@@ -372,7 +373,7 @@ private fun CouiUpdateAvailableDialog(
         visible = show,
         title = "发现新版本",
         dark = CouiKitTheme.isDark,
-        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
+        material = couiDialogMaterial(),
         onDismissRequest = onDismiss,
         confirmAction = CouiDialogAction(
             text = plan.primaryText,

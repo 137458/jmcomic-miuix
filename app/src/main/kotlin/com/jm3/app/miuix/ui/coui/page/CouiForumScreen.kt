@@ -84,6 +84,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
@@ -675,7 +676,7 @@ private fun CouiForumInputDialog(
         ),
         dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
         dark = CouiKitTheme.isDark,
-        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
+        material = couiDialogMaterial(),
         title = title,
         // 回复框是多行输入，贴底弹出更符合"从下往上写"的直觉；显式声明以免依赖库默认值
         placement = CouiDialogPlacement.Bottom,

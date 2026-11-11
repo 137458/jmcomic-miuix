@@ -34,7 +34,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
-import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
@@ -57,6 +56,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -615,7 +615,7 @@ private fun UpdateAvailableDialog(
         onDismissRequest = onDismiss,
         visible = show,
         dark = CouiKitTheme.isDark,
-        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
+        material = couiDialogMaterial(),
         placement = CouiDialogPlacement.Center,
         title = "发现新版本 " + release.version,
         message = "当前版本 " + currentVersion,

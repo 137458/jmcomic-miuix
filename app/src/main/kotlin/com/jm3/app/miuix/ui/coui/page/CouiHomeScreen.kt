@@ -47,7 +47,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
-import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
@@ -87,6 +86,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
 import com.jm3.app.miuix.ui.coui.component.LocalCouiFallbackContentColor
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.isShowingSearchResults
@@ -756,7 +756,7 @@ fun CouiHomeScreen(
 
     Dialog(
         onDismissRequest = { showSearchHelp = false },
-        material = CouiDialogDefaults.material(CouiTheme.isDark),
+        material = couiDialogMaterial(),
         // visible 非空时退场窗口由库持有；外层 if 会在关闭瞬间把弹窗抽走，动画来不及播
         visible = showSearchHelp,
         confirmAction = CouiDialogAction(text = "知道了", onClick = { showSearchHelp = false }),

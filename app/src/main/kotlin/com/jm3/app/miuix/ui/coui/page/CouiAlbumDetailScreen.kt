@@ -117,6 +117,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -1359,7 +1360,7 @@ private fun CouiFolderDialog(
             colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
         ),
         dark = CouiKitTheme.isDark,
-        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
+        material = couiDialogMaterial(),
         title = if (favorited) "移动收藏夹" else "选择收藏夹",
     ) {
         val allLabel = folders["0"] ?: "全部收藏"
@@ -1451,7 +1452,7 @@ private fun CouiReplyDialog(
         ),
         dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
         dark = CouiKitTheme.isDark,
-        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
+        material = couiDialogMaterial(),
         title = "回复 ${targetAuthor.orEmpty()}",
     ) {
         BasicTextField(
