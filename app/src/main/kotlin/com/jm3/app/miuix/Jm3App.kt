@@ -590,11 +590,10 @@ fun Jm3App() {
                         LoginScreen(account = Jm3Graph.account, onBack = { backStack.removeLastOrNull() })
                     }
                     entry<Route.Favorites>(swipeDismiss = NavSwipeDirection.LeftToRight) {
-                    entry<Route.Favorites>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
-                        FavoritesScreen(
+                                FavoritesScreen(
                                     deps = deps,
                                     onBack = { backStack.removeLastOrNull() },
                                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
@@ -602,7 +601,7 @@ fun Jm3App() {
                                 )
                             },
                             colorOs = {
-                        CouiFavoritesScreen(
+                                CouiFavoritesScreen(
                                     deps = deps,
                                     onBack = { backStack.removeLastOrNull() },
                                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
@@ -611,13 +610,11 @@ fun Jm3App() {
                             },
                         )
                     }
-                    }
-                    entry<Route.History>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                     entry<Route.History>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
-                        HistoryScreen(
+                                HistoryScreen(
                                     deps = deps,
                                     onBack = { backStack.removeLastOrNull() },
                                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
@@ -625,7 +622,7 @@ fun Jm3App() {
                                 )
                             },
                             colorOs = {
-                        CouiHistoryScreen(
+                                CouiHistoryScreen(
                                     deps = deps,
                                     onBack = { backStack.removeLastOrNull() },
                                     onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
@@ -634,27 +631,24 @@ fun Jm3App() {
                             },
                         )
                     }
-                    }
-                    entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                     entry<Route.Shelf>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         SkinRoute(
                             uiSkin = uiSkin,
                             hyperOs = {
-                        ShelfScreen(
+                                ShelfScreen(
                                     deps = deps,
                                     onBack = { backStack.removeLastOrNull() },
                                     onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
                                 )
                             },
                             colorOs = {
-                        CouiShelfScreen(
+                                CouiShelfScreen(
                                     deps = deps,
                                     onBack = { backStack.removeLastOrNull() },
                                     onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
                                 )
                             },
                         )
-                    }
                     }
                     entry<Route.Settings>(swipeDismiss = NavSwipeDirection.LeftToRight) {
                         val openUpdate: () -> Unit = { backStack.add(Route.Update) }
