@@ -50,6 +50,7 @@ import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
+import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
@@ -96,6 +97,7 @@ fun HomeScreen(
     deps: ScreenDeps,
     onOpenAlbum: (String) -> Unit,
     onOpenWeek: () -> Unit,
+    onOpenLogin: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -112,8 +114,8 @@ fun HomeScreen(
     var serialUpdates by remember { mutableStateOf(sessionCache.homeSide.serialUpdates) }
     var randomPicks by remember { mutableStateOf(sessionCache.homeSide.randomPicks) }
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
-    var showAllTags by remember { mutableStateOf(false) }
-    var showSearchHelp by remember { mutableStateOf(false) }
+    var showAllTags by rememberSaveable { mutableStateOf(false) }
+    var showSearchHelp by rememberSaveable { mutableStateOf(false) }
     // 仅下拉手势触发的刷新使用顶部指示器；普通加载由列表内进度条表达。
     var refreshing by remember { mutableStateOf(false) }
     // 列表代次：切换搜索/刷新时递增，旧请求的响应只在代次未变时落地。
@@ -369,7 +371,8 @@ fun HomeScreen(
     // 已被主框架消费为 0，算式无法直接换算；按手势导航真机实测标定：底栏高度 + 21dp
     // 即得 16dp 视觉间距。底栏档位切换后高度变化会自动跟随。
     val bottomBarTokens = LocalGlassBottomBarTokens.current
-    val floatingActionsBottom = if (LocalFloatingBarContentPadding.current == 0.dp) {
+    val floatingBarContentPadding = LocalFloatingBarContentPadding.current
+    val floatingActionsBottom = if (floatingBarContentPadding == 0.dp) {
         // 宽屏改用侧栏、没有悬浮底栏，直接贴右下角
         16.dp
     } else {
@@ -428,8 +431,8 @@ fun HomeScreen(
                                                     query = ""
                                                     if (searching) clearSearch()
                                                 },
-                                                minWidth = 32.dp,
-                                                minHeight = 32.dp,
+                                                minWidth = 44.dp,
+                                                minHeight = 44.dp,
                                             ) {
                                                 Icon(
                                                     imageVector = MiuixIcons.Basic.Close,
@@ -441,8 +444,8 @@ fun HomeScreen(
                                         }
                                         IconButton(
                                             onClick = { showSearchHelp = true },
-                                            minWidth = 32.dp,
-                                            minHeight = 32.dp,
+                                            minWidth = 44.dp,
+                                            minHeight = 44.dp,
                                         ) {
                                             Icon(
                                                 imageVector = MiuixIcons.Help,
@@ -507,6 +510,14 @@ fun HomeScreen(
         },
         collapsibleSearch = searchCollapse,
     ) { innerPadding ->
+        val listContentPadding = remember(innerPadding, floatingBarContentPadding, floatingActionsBottom) {
+            val extraBottom = glassHomeExtraBottomDp(
+                hasActions = true,
+                floatingBarContentPaddingDp = floatingBarContentPadding.value,
+                floatingActionsBottomDp = floatingActionsBottom.value,
+            ).dp
+            innerPadding.withSpacing(extraBottom = extraBottom)
+        }
         // 列表内容滚到玻璃顶栏（顶栏 + 搜索栏）下方，顶栏才能采样到真实背景
         GlassPullToRefresh(
             isRefreshing = refreshing,
@@ -519,8 +530,8 @@ fun HomeScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
-                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                contentPadding = innerPadding,
+                // 首项下移让出顶栏高度，底部额外让出悬浮操作胶囊高度
+                contentPadding = listContentPadding,
             ) {
                 if (searching) {
                     item(key = "search-header") {
@@ -535,9 +546,11 @@ fun HomeScreen(
                             item(key = "search-loading") { InlineLoading() }
                         }
                         is ListState.Failed -> item(key = "search-error") {
-                            ErrorScreen(
+                            ScreenFailureOrLogin(
                                 message = s.message,
+                                expired = s.sessionExpired,
                                 onRetry = { runSearch(activeQuery, searchByTag, order) },
+                                onOpenLogin = onOpenLogin,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
@@ -589,14 +602,18 @@ fun HomeScreen(
                                 ) {
                                     SmallTitle(text = "热门标签", modifier = Modifier.weight(1f))
                                     if (hotTags.size > HOT_TAG_COLLAPSED) {
-                                        TextButton(
-                                            text = if (showAllTags) "收起" else "更多",
+                                        MinTouchTarget(
                                             onClick = { showAllTags = !showAllTags },
-                                            minWidth = 0.dp,
-                                            minHeight = 36.dp,
-                                            insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                             modifier = Modifier.padding(end = 16.dp),
-                                        )
+                                        ) {
+                                            TextButton(
+                                                text = if (showAllTags) "收起" else "更多",
+                                                onClick = { showAllTags = !showAllTags },
+                                                minWidth = 0.dp,
+                                                minHeight = 36.dp,
+                                                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                            )
+                                        }
                                     }
                                 }
                                 // 卡内 FlowRow 自带 12dp：外缘保持 16dp，标签胶囊与标题同在 28dp
@@ -630,9 +647,11 @@ fun HomeScreen(
                             item(key = "feed-loading") { InlineLoading() }
                         }
                         is ListState.Failed -> item(key = "feed-error") {
-                            ErrorScreen(
+                            ScreenFailureOrLogin(
                                 message = s.message,
+                                expired = s.sessionExpired,
                                 onRetry = { refresh() },
+                                onOpenLogin = onOpenLogin,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
@@ -693,13 +712,15 @@ private fun SearchHistoryCard(
                 color = MiuixTheme.colorScheme.onBackgroundVariant,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
-                text = "清除",
-                onClick = onClear,
-                minWidth = 0.dp,
-                minHeight = 36.dp,
-                insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-            )
+            MinTouchTarget(onClick = onClear) {
+                TextButton(
+                    text = "清除",
+                    onClick = onClear,
+                    minWidth = 0.dp,
+                    minHeight = 36.dp,
+                    insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                )
+            }
         }
         history.forEach { word ->
             BasicComponent(
@@ -708,8 +729,8 @@ private fun SearchHistoryCard(
                 endActions = {
                     IconButton(
                         onClick = { onRemove(word) },
-                        minWidth = 36.dp,
-                        minHeight = 36.dp,
+                        minWidth = 48.dp,
+                        minHeight = 48.dp,
                     ) {
                         Icon(
                             imageVector = MiuixIcons.Basic.Close,
@@ -742,13 +763,15 @@ private fun HotTagFlow(tags: List<String>, expanded: Boolean, onClick: (String) 
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         visible.forEach { tag ->
-            TextButton(
-                text = tag,
-                onClick = { onClick(tag) },
-                minWidth = 0.dp,
-                minHeight = 32.dp,
-                insideMargin = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            )
+            MinTouchTarget(onClick = { onClick(tag) }) {
+                TextButton(
+                    text = tag,
+                    onClick = { onClick(tag) },
+                    minWidth = 0.dp,
+                    minHeight = 32.dp,
+                    insideMargin = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
         }
     }
 }

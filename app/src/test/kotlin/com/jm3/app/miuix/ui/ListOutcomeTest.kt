@@ -30,21 +30,21 @@ class ListOutcomeTest {
     fun 失败结局落列表错误态并归类成可读文案() {
         val state = SessionOutcome.Failed("网络错误").asListState("加载失败")
 
-        assertEquals(ListState.Failed("加载失败"), state)
+        assertEquals(ListState.Failed("加载失败", sessionExpired = false), state)
     }
 
     @Test
     fun 失败消息为空时回落到该屏默认文案() {
         val state = SessionOutcome.Failed(null).asListState("加载失败")
 
-        assertEquals(ListState.Failed("加载失败"), state)
+        assertEquals(ListState.Failed("加载失败", sessionExpired = false), state)
     }
 
     @Test
     fun 会话失效落错误态且文案是登录提示() {
         val state = SessionOutcome.Expired.asListState("加载失败")
 
-        assertEquals(ListState.Failed(LOGIN_EXPIRED_MESSAGE), state)
+        assertEquals(ListState.Failed(LOGIN_EXPIRED_MESSAGE, sessionExpired = true), state)
     }
 
     @Test

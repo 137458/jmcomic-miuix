@@ -70,9 +70,9 @@ import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.asListState
+import com.jm3.app.miuix.ui.couiHomeExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
@@ -80,6 +80,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
@@ -157,6 +158,7 @@ fun CouiHomeScreen(
     onOpenAlbum: (String) -> Unit,
     onOpenWeek: () -> Unit,
     onOpenRanking: () -> Unit,
+    onOpenLogin: () -> Unit = {},
 ) {
     // 网关与鉴权统一从 ScreenDeps 取，不额外收同源参数
     val gateway = deps.gateway
@@ -180,8 +182,8 @@ fun CouiHomeScreen(
     var randomPicks by remember { mutableStateOf(sessionCache.homeSide.randomPicks) }
     var rankPicks by remember { mutableStateOf(sessionCache.homeSide.rankPicks) }
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
-    var showAllTags by remember { mutableStateOf(false) }
-    var showSearchHelp by remember { mutableStateOf(false) }
+    var showAllTags by rememberSaveable { mutableStateOf(false) }
+    var showSearchHelp by rememberSaveable { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     var listToken by remember { mutableIntStateOf(0) }
 
@@ -522,10 +524,10 @@ fun CouiHomeScreen(
                 override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
                     base.calculateRightPadding(layoutDirection)
 
-                // 竖排两枚 FAB 固定占位（上下外边距各 16 + 56 + 12 + 56），末项必须滚到它们上方；
+                // 竖排两枚 FAB 固定占位（16 + 56 + 12 + 56 + 16 呼吸净空），末项必须滚到它们上方；
                 // 不按 showBackToTop 拆分：回到顶部按钮显隐会让 contentPadding 在滚动中跳动
                 override fun calculateBottomPadding(): Dp =
-                    base.calculateBottomPadding() + 140.dp
+                    base.calculateBottomPadding() + couiHomeExtraBottomDp().dp
             }
         }
         val feedState = if (searching) results else feed
@@ -589,9 +591,13 @@ fun CouiHomeScreen(
                                     kind = CouiTextKind.Description,
                                     color = homeColors.accent,
                                     modifier = Modifier
-                                        .clip(CouiCapsuleShape)
-                                        .background(homeColors.accent.copy(alpha = 0.12f))
-                                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onOpenWeek)
+                                        .couiPressable(
+                                            shape = CouiCapsuleShape,
+                                            backgroundColor = homeColors.accent.copy(alpha = 0.12f),
+                                            spotlight = SpotlightPreset.ChipTab,
+                                            minTouchTarget = CouiMinTouchTarget,
+                                            onClick = onOpenWeek,
+                                        )
                                         .padding(horizontal = 10.dp, vertical = 4.dp),
                                 )
                             }
@@ -615,8 +621,9 @@ fun CouiHomeScreen(
                 }
 
                 is ListState.Failed -> item(key = "coui-home-error") {
-                    CouiErrorGroup(
+                    CouiScreenFailureGroup(
                         message = current.message.ifBlank { if (searching) "搜索失败" else CouiStrings.LoadFailed },
+                        expired = current.sessionExpired,
                         onRetry = {
                             if (searching) {
                                 runSearch(activeQuery, searchByTag, order)
@@ -624,6 +631,7 @@ fun CouiHomeScreen(
                                 refresh()
                             }
                         },
+                        onOpenLogin = onOpenLogin,
                     )
                 }
 
@@ -797,9 +805,13 @@ private fun CouiHomeTrackSection(
                     kind = CouiTextKind.Description,
                     color = accent,
                     modifier = Modifier
-                        .clip(CouiCapsuleShape)
-                        .background(accent.copy(alpha = 0.12f))
-                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onOpenRanking)
+                        .couiPressable(
+                            shape = CouiCapsuleShape,
+                            backgroundColor = accent.copy(alpha = 0.12f),
+                            spotlight = SpotlightPreset.ChipTab,
+                            minTouchTarget = CouiMinTouchTarget,
+                            onClick = onOpenRanking,
+                        )
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
@@ -905,12 +917,11 @@ private fun CouiTagCapsule(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .couiPressable(
                 shape = CouiCapsuleShape,
+                backgroundColor = colors.container,
                 spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
-            .clip(CouiCapsuleShape)
-            .background(colors.container)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {

@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -114,7 +115,7 @@ internal fun CouiUpdateScreen(
     var attempt by remember { mutableIntStateOf(0) }
     // null 表示正在检查：与 UpdateOutcome.Failed 区分开，否则首次进入会闪一帧「失败」
     var state by remember { mutableStateOf<UpdateOutcome?>(null) }
-    var showDialog by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
     var autoCheckUpdate by remember { mutableStateOf(false) }
     var ignoredVersion by remember { mutableStateOf<String?>(null) }
     val downloadState by deps.updateDownloader.state.collectAsState()
@@ -702,10 +703,9 @@ private fun CouiInlineButton(
     val color = if (emphasised) scheme.onAccent else scheme.accent
     Box(
         modifier = modifier
-            .clip(CouiCapsuleShape)
-            .background(if (emphasised) scheme.accent else scheme.accent.copy(alpha = 0.14f))
             .couiPressable(
                 shape = CouiCapsuleShape,
+                backgroundColor = if (emphasised) scheme.accent else scheme.accent.copy(alpha = 0.14f),
                 // 强调色实底按库的主按钮口径取 OpaqueMedium1，浅底胶囊用 ChipTab
                 spotlight = if (emphasised) SpotlightPreset.OpaqueMedium1 else SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,

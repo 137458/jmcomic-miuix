@@ -48,7 +48,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.orDegrade
@@ -183,11 +185,12 @@ fun CouiShelfScreen(
             }
         }
 
-        val toDelete = pendingDeleteRecord
+        val toDelete = rememberRetainedTarget(pendingDeleteRecord)
         if (toDelete != null) {
             Dialog(
                 onDismissRequest = { pendingDeleteRecord = null },
-                visible = true,
+                visible = pendingDeleteRecord != null,
+                material = couiDialogMaterial(),
                 title = "删除下载",
                 message = "确定要删除《" + toDelete.title.ifBlank { toDelete.photoId } + "》及已下载的本地文件吗？",
                 placement = CouiDialogPlacement.Center,
@@ -287,12 +290,11 @@ private fun CouiShelfDeleteBadge(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
+                backgroundColor = scheme.container,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(scheme.container),
+            .size(28.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

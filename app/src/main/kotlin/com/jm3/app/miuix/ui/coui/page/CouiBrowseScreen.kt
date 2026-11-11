@@ -58,11 +58,12 @@ import com.jm3.app.miuix.ui.BrowseMode
 import com.jm3.app.miuix.ui.BrowsePageKey
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
+import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
@@ -70,6 +71,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
@@ -136,6 +138,7 @@ internal fun CouiBrowseScreen(
     deps: ScreenDeps,
     mode: BrowseMode,
     onOpenAlbum: (String) -> Unit,
+    onOpenLogin: () -> Unit = {},
 ) {
     val sessionCache = deps.sessionCache
     val gateway = deps.gateway
@@ -169,7 +172,7 @@ internal fun CouiBrowseScreen(
     // 每周连载更新：首页一页 + 用户点「加载更多」追加；失败只影响这一块，不动主列表
     var weeklyFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
     var weeklyLoading by remember { mutableStateOf(true) }
-    var weeklyFailure by remember { mutableStateOf<String?>(null) }
+    var weeklyFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var weeklyToken by remember { mutableIntStateOf(0) }
     // 分类树只用来渲染标签区块；拿不到就整块降级成一行提示
     var categoryTree by remember { mutableStateOf<CategoryTree?>(null) }
@@ -181,7 +184,7 @@ internal fun CouiBrowseScreen(
     var tagKeyword by remember { mutableStateOf<String?>(null) }
     var tagFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
     var tagLoading by remember { mutableStateOf(false) }
-    var tagFailure by remember { mutableStateOf<String?>(null) }
+    var tagFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var tagToken by remember { mutableIntStateOf(0) }
 
     // 分类只认分类 + 排序，榜单只认时间 + 排序：两套口径与旧页一致
@@ -261,7 +264,7 @@ internal fun CouiBrowseScreen(
             when (outcome) {
                 is SessionOutcome.Ok -> weeklyFeed = outcome.value.toFeed()
                 else -> weeklyFailure =
-                    planLoad(outcome, hasContent = false, failureMessage = "每周更新加载失败").message
+                    planLoad(outcome, hasContent = false, failureMessage = "每周更新加载失败")
             }
         }
     }
@@ -297,7 +300,7 @@ internal fun CouiBrowseScreen(
             when (outcome) {
                 is SessionOutcome.Ok -> tagFeed = outcome.value.toFeed()
                 else -> tagFailure =
-                    planLoad(outcome, hasContent = false, failureMessage = "标签加载失败").message
+                    planLoad(outcome, hasContent = false, failureMessage = "标签加载失败")
             }
         }
     }
@@ -348,7 +351,7 @@ internal fun CouiBrowseScreen(
                 }
 
                 else -> tagFailure =
-                    planLoad(outcome, hasContent = false, failureMessage = "标签加载失败").message
+                    planLoad(outcome, hasContent = false, failureMessage = "标签加载失败")
             }
         }
     }
@@ -496,9 +499,11 @@ internal fun CouiBrowseScreen(
                     }
 
                     tagFailureMessage != null && tagItems.isEmpty() -> item(key = "coui-tag-error") {
-                        CouiErrorGroup(
-                            message = tagFailureMessage,
+                        CouiScreenFailureGroup(
+                            message = tagFailureMessage.message,
+                            expired = tagFailureMessage.phase == ScreenLoadPhase.Expired,
                             onRetry = { loadTag(keyword) },
+                            onOpenLogin = onOpenLogin,
                         )
                     }
 
@@ -614,6 +619,7 @@ internal fun CouiBrowseScreen(
                         loading = weeklyIsLoading,
                         failure = weeklyFail,
                         onRetry = { loadWeekly() },
+                        onOpenLogin = onOpenLogin,
                         onOpenAlbum = onOpenAlbum,
                     )
                 }
@@ -633,9 +639,11 @@ internal fun CouiBrowseScreen(
                     }
 
                     is ListState.Failed -> item(key = "coui-browse-error") {
-                        CouiErrorGroup(
+                        CouiScreenFailureGroup(
                             message = feedState.message,
+                            expired = feedState.sessionExpired,
                             onRetry = { refresh() },
+                            onOpenLogin = onOpenLogin,
                         )
                     }
 
@@ -730,15 +738,16 @@ internal fun CouiBrowseScreen(
  * 每周连载更新：与首页同一个接口（serialization），一页一页追加。
  *
  * 标题与卡片拆开，空态/失败态直接用公共三态件，不再各写一套「标题 + 单行 Item」；
- * 失败时卡片下方仍给原因、卡内给可点的重试行（由 [CouiErrorGroup] 提供）。
+ * 失败时卡片下方仍给原因、卡内给可点的重试/去登录行（由 [CouiScreenFailureGroup] 提供）。
  * 续页脚在卡外单独成项：[CouiLoadMoreFooter] 自带卡片，套进本 Group 会变成卡中卡。
  */
 @Composable
 private fun CouiWeeklyGroup(
     feed: PagedFeed<SearchResult>,
     loading: Boolean,
-    failure: String?,
+    failure: ScreenLoadPlan?,
     onRetry: () -> Unit,
+    onOpenLogin: () -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -746,14 +755,16 @@ private fun CouiWeeklyGroup(
         when {
             loading && feed.items.isEmpty() -> CouiLoadingGroup(text = "正在加载每周更新…")
 
-            failure != null && feed.items.isEmpty() -> CouiErrorGroup(
-                message = failure,
+            failure != null && feed.items.isEmpty() -> CouiScreenFailureGroup(
+                message = failure.message,
+                expired = failure.phase == ScreenLoadPhase.Expired,
                 onRetry = onRetry,
+                onOpenLogin = onOpenLogin,
             )
 
             feed.items.isEmpty() -> CouiEmptyGroup(text = "暂无每周更新")
 
-            else -> Group(footer = failure) {
+            else -> Group(footer = failure?.message) {
                 feed.items.forEachIndexed { index, result ->
                     if (index > 0) Divider()
                     CouiBrowseResultRow(
@@ -897,9 +908,13 @@ private fun CouiTagChip(
         color = CouiTheme.colorScheme.onSurface,
         textAlign = TextAlign.Start,
         modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .background(CouiTheme.colorScheme.container)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = CouiTheme.colorScheme.container,
+                spotlight = SpotlightPreset.ChipTab,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }

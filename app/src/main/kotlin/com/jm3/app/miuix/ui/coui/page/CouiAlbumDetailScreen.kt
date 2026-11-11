@@ -46,6 +46,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,11 +88,12 @@ import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
-import com.itos.coui.topappbar.TopAppBarButton
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.AlbumDetailHeroFlightEffect
 import com.jm3.app.miuix.ui.AlbumDetailStateHolder
+import com.jm3.app.miuix.ui.AlbumDetailUiSnapshot
+import com.jm3.app.miuix.ui.AlbumDetailUiSnapshotSaver
 import com.jm3.app.miuix.ui.AlbumUiState
 import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.CommentsUiState
@@ -102,7 +104,10 @@ import com.jm3.app.miuix.ui.LocalAlbumDetailRootCoordinates
 import com.jm3.app.miuix.ui.LocalAlbumHeroHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.SessionCache
+import com.jm3.app.miuix.ui.StringSetSaver
 import com.jm3.app.miuix.ui.albumHeroHeader
+import com.jm3.app.miuix.ui.rememberSavedDialogDraft
+import com.jm3.app.miuix.ui.coui.component.COUI_COMMENT_MAX_INDENT_DEPTH
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -119,6 +124,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -151,8 +157,7 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 private const val COUI_DESCRIPTION_COLLAPSE_THRESHOLD = 80
 /** 折叠态默认展示的回复条数；超出部分由「展开 N 条回复」控制。 */
 private const val COUI_COMMENT_VISIBLE_REPLIES = 2
-/** 回复缩进的最大层级：更深的回复不再追加缩进，否则正文宽度会被挤没。 */
-private const val COUI_COMMENT_MAX_INDENT_DEPTH = 4
+/** 回复缩进的最大层级统一由 CouiAppComponents.COUI_COMMENT_MAX_INDENT_DEPTH 提供。 */
 /** 评论正文限行：详情页信息密度低于论坛，保留 12 行以容纳长评。 */
 private const val COUI_COMMENT_BODY_MAX_LINES = 12
 
@@ -235,6 +240,9 @@ private fun CouiAlbumDetailScreenBody(
     // 预览图与阅读页共用同一套图片加载器（含同一份缓存），避免再建第二个 loader
     val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles)
 
+    var uiSnapshot by rememberSaveable(albumId, stateSaver = AlbumDetailUiSnapshotSaver) {
+        mutableStateOf(AlbumDetailUiSnapshot())
+    }
     val stateHolder = remember(albumId) {
         AlbumDetailStateHolder(
             albumId = albumId,
@@ -245,9 +253,23 @@ private fun CouiAlbumDetailScreenBody(
             showMessage = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
             onOpenLogin = onOpenLogin,
             engagement = sessionCache.engagement,
-        )
+        ).apply { restoreUiSnapshot(uiSnapshot) }
     }
     val uiState by stateHolder.uiState.collectAsState()
+    val commentDraftSnapshot by stateHolder.commentDraft.collectAsState()
+    LaunchedEffect(
+        albumId,
+        commentDraftSnapshot,
+        uiState.replyTarget,
+        uiState.descriptionExpanded,
+        uiState.expandedGroups,
+        uiState.showFolderSheet,
+    ) {
+        uiSnapshot = stateHolder.saveUiSnapshot()
+    }
+    LaunchedEffect(albumId) {
+        if (uiSnapshot.showFolderSheet && uiState.folders.isEmpty()) stateHolder.openFolderSheet()
+    }
 
     /** 批量下载：只有全部章节都已在队列/已下载时才提示「无新增」，否则报告本次实际入队数量。 */
     fun downloadAll(targetAlbumId: String, chapters: List<Chapter>) {
@@ -323,7 +345,9 @@ private fun CouiAlbumDetailScreenBody(
         ?: "详情"
     val resumeId = uiState.latestPhotoId?.takeIf { id -> loadedDetail?.chapters?.any { it.id == id } == true }
     // 评论折叠态由页面持有：摊平只认集合里的 id，展开/收起只重算行表
-    var expandedReplyIds by remember(albumId) { mutableStateOf(emptySet<String>()) }
+    var expandedReplyIds by rememberSaveable(albumId, stateSaver = StringSetSaver) {
+        mutableStateOf(emptySet<String>())
+    }
     val commentFeed = (uiState.commentsState as? CommentsUiState.Loaded)?.feed
     val commentRows = remember(commentFeed?.items, expandedReplyIds) {
         flattenComments(commentFeed?.items.orEmpty(), expandedReplyIds)
@@ -688,6 +712,7 @@ private fun CouiAlbumDetailScreenBody(
             CouiReplyDialog(
                 visible = uiState.replyTarget != null,
                 targetAuthor = uiState.replyTarget?.author,
+                targetKey = uiState.replyTarget?.id,
                 busy = uiState.replyBusy,
                 onDismiss = { stateHolder.setReplyTarget(null) },
                 onSend = stateHolder::sendReply,
@@ -821,9 +846,12 @@ private fun CouiAlbumHeroCard(
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier
-                            .clip(CouiCapsuleShape)
-                            .background(scheme.accent.copy(alpha = CouiSelectedContainerAlpha))
-                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget) {
+                            .couiPressable(
+                                shape = CouiCapsuleShape,
+                                backgroundColor = scheme.accent.copy(alpha = CouiSelectedContainerAlpha),
+                                spotlight = SpotlightPreset.ChipTab,
+                                minTouchTarget = CouiMinTouchTarget,
+                            ) {
                                 onOpenSearch(authors.first(), SearchScope.AUTHOR)
                             }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -870,9 +898,12 @@ private fun CouiAlbumHeroCard(
                 tags.forEach { tag ->
                     Box(
                         modifier = Modifier
-                            .clip(CouiCapsuleShape)
-                            .background(scheme.onSurface.copy(alpha = 0.06f))
-                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget) {
+                            .couiPressable(
+                                shape = CouiCapsuleShape,
+                                backgroundColor = scheme.onSurface.copy(alpha = 0.06f),
+                                spotlight = SpotlightPreset.ChipTab,
+                                minTouchTarget = CouiMinTouchTarget,
+                            ) {
                                 onOpenSearch(tag, SearchScope.TAG)
                             }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -1439,10 +1470,11 @@ private fun CouiReplyDialog(
     busy: Boolean,
     onDismiss: () -> Unit,
     onSend: (String) -> Unit,
+    targetKey: String? = null,
 ) {
     val scheme = CouiKitTheme.colorScheme
-    // 输入草稿按开关次数重置：visible 非空后组合不会再被卸载，remember 需跟着 visible 换代
-    var replyText by remember(visible) { mutableStateOf("") }
+    val retainedAuthor = rememberRetainedTarget(targetAuthor?.takeIf { it.isNotBlank() })
+    var replyText by rememberSavedDialogDraft(isOpen = visible, targetKey = targetKey ?: retainedAuthor)
     Dialog(
         onDismissRequest = onDismiss,
         visible = visible,
@@ -1456,7 +1488,7 @@ private fun CouiReplyDialog(
         dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
         dark = CouiKitTheme.isDark,
         material = couiDialogMaterial(),
-        title = "回复 ${targetAuthor.orEmpty()}",
+        title = if (retainedAuthor != null) "回复 $retainedAuthor" else "回复",
     ) {
         BasicTextField(
             value = replyText,

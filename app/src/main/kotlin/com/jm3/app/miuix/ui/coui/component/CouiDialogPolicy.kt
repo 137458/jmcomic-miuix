@@ -4,6 +4,11 @@ package com.jm3.app.miuix.ui.coui.component
 
 import android.os.Build
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogMaterial
 import com.itos.coui.menu.rememberCouiWindowBackdrop
@@ -28,3 +33,14 @@ internal fun couiDialogMaterial(): CouiDialogMaterial? =
     } else {
         null
     }
+
+/**
+ * 保留弹窗最近一次非空目标：目标置空后，让弹窗在 visible = false 退场期间继续拿到渲染数据，
+ * 避免退场动画被提前 return 抽走或标题突然退化成空白。
+ */
+@Composable
+internal fun <T : Any> rememberRetainedTarget(target: T?): T? {
+    var retained by remember { mutableStateOf<T?>(null) }
+    SideEffect { if (target != null) retained = target }
+    return target ?: retained
+}

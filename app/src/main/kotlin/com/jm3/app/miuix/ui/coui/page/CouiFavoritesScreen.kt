@@ -45,6 +45,7 @@ import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
@@ -53,6 +54,7 @@ import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.IntStringPairNullableSaver
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
@@ -73,7 +75,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
@@ -130,8 +134,12 @@ fun CouiFavoritesScreen(
         var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
         var folderPickerOpen by rememberSaveable { mutableStateOf(false) }
         var showCreate by rememberSaveable { mutableStateOf(false) }
-        var editTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }
-        var deleteTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }
+        var editTarget by rememberSaveable(stateSaver = IntStringPairNullableSaver) {
+            mutableStateOf<Pair<Int, String>?>(null)
+        }
+        var deleteTarget by rememberSaveable(stateSaver = IntStringPairNullableSaver) {
+            mutableStateOf<Pair<Int, String>?>(null)
+        }
         var folderNameInput by rememberSaveable { mutableStateOf("") }
         var folderBusy by remember { mutableStateOf(false) }
         var folderError by remember { mutableStateOf<String?>(null) }
@@ -148,7 +156,7 @@ fun CouiFavoritesScreen(
         var tagError by remember { mutableStateOf<String?>(null) }
         var showAddTag by rememberSaveable { mutableStateOf(false) }
         var tagInput by rememberSaveable { mutableStateOf("") }
-        var tagDeleteTarget by remember { mutableStateOf<String?>(null) }
+        var tagDeleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
         // 翻页在途守卫：请求期间列表仍可读，但翻页条要禁用，避免连点重复请求
         var pageBusy by remember { mutableStateOf(false) }
 
@@ -504,7 +512,9 @@ fun CouiFavoritesScreen(
                             items = COUI_FAVORITE_TABS,
                             selectedIndex = tabIndex,
                             onSelect = { index -> if (index != tabIndex) tabIndex = index },
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier
+                                .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                .padding(top = 8.dp),
                         )
                     }
                     if (tabIndex == 0) {
@@ -534,7 +544,9 @@ fun CouiFavoritesScreen(
                             else -> {
                                 item(key = "coui-favorites-folders", span = { GridItemSpan(maxLineSpan) }) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 4.dp),
                                         horizontalArrangement = Arrangement.spacedBy(
                                             CouiWorkCardTokens.GridSpacing,
                                         ),
@@ -652,7 +664,9 @@ fun CouiFavoritesScreen(
                                             tagError = null
                                             showAddTag = true
                                         },
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 4.dp),
                                     )
                                 }
                                 items(items = tagList, key = { "coui-tag-" + it.tag }) { item ->
@@ -698,54 +712,63 @@ fun CouiFavoritesScreen(
                 }
             }
 
-            if (folderPickerOpen) {
-                Dialog(
-                    onDismissRequest = { folderPickerOpen = false },
-                    confirmAction = CouiDialogAction(
-                        text = "关闭",
-                        onClick = { folderPickerOpen = false },
-                        style = CouiDialogActionStyle.Secondary,
-                    ),
-                    title = "收藏夹",
-                    placement = CouiDialogPlacement.Bottom,
-                ) {
-                    folderOptions.forEach { option ->
-                        CouiFavoritesPickerRow(
-                            label = option.second,
-                            selected = option.first == folderId,
-                            onClick = {
-                                folderPickerOpen = false
-                                switchFolder(option.first)
-                            },
-                        )
-                    }
+            Dialog(
+                onDismissRequest = { folderPickerOpen = false },
+                visible = folderPickerOpen,
+                material = couiDialogMaterial(),
+                confirmAction = CouiDialogAction(
+                    text = "关闭",
+                    onClick = { folderPickerOpen = false },
+                    style = CouiDialogActionStyle.Secondary,
+                ),
+                title = "收藏夹",
+                placement = CouiDialogPlacement.Bottom,
+            ) {
+                folderOptions.forEach { option ->
+                    CouiFavoritesPickerRow(
+                        label = option.second,
+                        selected = option.first == folderId,
+                        onClick = {
+                            folderPickerOpen = false
+                            switchFolder(option.first)
+                        },
+                    )
                 }
             }
 
-            if (showCreate || editTarget != null) {
+            val folderDialogMode = when {
+                showCreate -> true to 0
+                editTarget != null -> false to editTarget!!.first
+                else -> null
+            }
+            val retainedFolderMode = rememberRetainedTarget(folderDialogMode)
+            if (retainedFolderMode != null) {
+                val creating = retainedFolderMode.first
                 Dialog(
                     onDismissRequest = {
                         showCreate = false
                         editTarget = null
                         folderError = null
                     },
+                    visible = folderDialogMode != null,
+                    material = couiDialogMaterial(),
                     confirmAction = CouiDialogAction(
-                        text = if (showCreate) "新建" else "保存",
+                        text = if (creating) "新建" else "保存",
                         onClick = {
                             val name = folderNameInput.trim()
                             if (name.isEmpty()) {
                                 folderError = "名称不能为空"
-                            } else if (showCreate) {
+                            } else if (creating) {
                                 manageFolder(FavoriteFolderAction.ADD, targetId = "", name = name)
                             } else {
-                                editTarget?.let { manageFolder(FavoriteFolderAction.EDIT, it.first.toString(), name) }
+                                manageFolder(FavoriteFolderAction.EDIT, retainedFolderMode.second.toString(), name)
                             }
                         },
                         enabled = !folderBusy,
                         style = CouiDialogActionStyle.Primary,
                         colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
                     ),
-                    title = if (showCreate) "新建收藏夹" else "重命名收藏夹",
+                    title = if (creating) "新建收藏夹" else "重命名收藏夹",
                     dismissAction = CouiDialogAction(
                         text = "取消",
                         onClick = {
@@ -766,13 +789,15 @@ fun CouiFavoritesScreen(
                 }
             }
 
-            val deleting = deleteTarget
+            val deleting = rememberRetainedTarget(deleteTarget)
             if (deleting != null) {
                 Dialog(
                     onDismissRequest = {
                         deleteTarget = null
                         folderError = null
                     },
+                    visible = deleteTarget != null,
+                    material = couiDialogMaterial(),
                     confirmAction = couiDestructiveConfirmAction(
                         text = "确认删除",
                         enabled = !folderBusy,
@@ -796,7 +821,7 @@ fun CouiFavoritesScreen(
                 }
             }
 
-            val moving = moveTarget
+            val moving = rememberRetainedTarget(moveTarget)
             if (moving != null) {
                 val movableFolders = folderOptions.filter { it.first != 0 }
                 Dialog(
@@ -806,6 +831,8 @@ fun CouiFavoritesScreen(
                             moveError = null
                         }
                     },
+                    visible = moveTarget != null,
+                    material = couiDialogMaterial(),
                     confirmAction = CouiDialogAction(
                         text = "关闭",
                         onClick = {
@@ -844,43 +871,43 @@ fun CouiFavoritesScreen(
                 }
             }
 
-            if (showAddTag) {
-                Dialog(
-                    onDismissRequest = {
-                        if (!tagBusy) {
-                            showAddTag = false
-                            tagError = null
-                        }
+            Dialog(
+                onDismissRequest = {
+                    if (!tagBusy) {
+                        showAddTag = false
+                        tagError = null
+                    }
+                },
+                visible = showAddTag,
+                material = couiDialogMaterial(),
+                confirmAction = CouiDialogAction(
+                    text = "添加",
+                    onClick = { addTag() },
+                    enabled = !tagBusy,
+                    style = CouiDialogActionStyle.Primary,
+                    colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
+                ),
+                title = "添加标签",
+                dismissAction = CouiDialogAction(
+                    text = "取消",
+                    onClick = {
+                        showAddTag = false
+                        tagError = null
                     },
-                    confirmAction = CouiDialogAction(
-                        text = "添加",
-                        onClick = { addTag() },
-                        enabled = !tagBusy,
-                        style = CouiDialogActionStyle.Primary,
-                        colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
-                    ),
-                    title = "添加标签",
-                    dismissAction = CouiDialogAction(
-                        text = "取消",
-                        onClick = {
-                            showAddTag = false
-                            tagError = null
-                        },
-                        enabled = !tagBusy,
-                        style = CouiDialogActionStyle.Secondary,
-                    ),
-                    placement = CouiDialogPlacement.Bottom,
-                ) {
-                    CouiFavoritesTextField(
-                        value = tagInput,
-                        onValueChange = { tagInput = it.take(20) },
-                        placeholder = "标签名称（最多 20 字）",
-                    )
-                    CouiFavoritesInlineError(message = tagError, color = destructive)
-                }
+                    enabled = !tagBusy,
+                    style = CouiDialogActionStyle.Secondary,
+                ),
+                placement = CouiDialogPlacement.Bottom,
+            ) {
+                CouiFavoritesTextField(
+                    value = tagInput,
+                    onValueChange = { tagInput = it.take(20) },
+                    placeholder = "标签名称（最多 20 字）",
+                )
+                CouiFavoritesInlineError(message = tagError, color = destructive)
             }
 
-            val deletingTag = tagDeleteTarget
+            val deletingTag = rememberRetainedTarget(tagDeleteTarget)
             if (deletingTag != null) {
                 Dialog(
                     onDismissRequest = {
@@ -889,6 +916,8 @@ fun CouiFavoritesScreen(
                             tagError = null
                         }
                     },
+                    visible = tagDeleteTarget != null,
+                    material = couiDialogMaterial(),
                     confirmAction = couiDestructiveConfirmAction(
                         text = "确认删除",
                         enabled = !tagBusy,
@@ -965,10 +994,10 @@ private fun CouiFavoritesChipButton(
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
-            .clip(CouiCapsuleShape)
-            .background(scheme.container)
             .couiPressable(
-                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
+                shape = CouiCapsuleShape,
+                backgroundColor = scheme.container,
+                spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -998,12 +1027,11 @@ private fun CouiFavoritesDeleteBadge(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
+                backgroundColor = scheme.container,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(scheme.container),
+            .size(28.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

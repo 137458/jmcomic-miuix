@@ -321,6 +321,7 @@ private fun WeekTimelineRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
             .padding(bottom = 8.dp)
             .drawBehind {
                 val centerX = WeekRailWidth.toPx() / 2f
@@ -371,15 +372,19 @@ private fun WeekPeriodRow(
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = CouiPageDefaults.horizontalMargin, vertical = 4.dp),
     ) {
         itemsIndexed(periods, key = { _, period -> "period-" + period.id }) { index, period ->
             val active = index == selected
             Box(
                 modifier = Modifier
-                    .clip(CouiCapsuleShape)
-                    .background(if (active) scheme.accent.copy(alpha = 0.14f) else scheme.container)
-                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = { onSelect(index) })
+                    .couiPressable(
+                        shape = CouiCapsuleShape,
+                        backgroundColor = if (active) scheme.accent.copy(alpha = 0.14f) else scheme.container,
+                        spotlight = SpotlightPreset.ChipTab,
+                        minTouchTarget = CouiMinTouchTarget,
+                        onClick = { onSelect(index) },
+                    )
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Text(

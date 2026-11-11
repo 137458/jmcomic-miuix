@@ -62,4 +62,20 @@ object ReaderSpreadPolicy {
         val target = (index + delta).coerceIn(0, spreadCount(pageCount) - 1)
         return anchorPageForSpread(target, pageCount)
     }
+
+    /** HorizontalPager 页键：区分章节、单/双页模式与具体页（或跨页）索引，避免复用错位。 */
+    fun pagerKey(
+        photoId: String,
+        spreadActive: Boolean,
+        pageCount: Int,
+        index: Int,
+        singlePageIndex: Int? = null,
+    ): String {
+        if (!spreadActive) {
+            return "$photoId:single:${singlePageIndex ?: (index + 1)}"
+        }
+        val spreadPages = pagesInSpread(index, pageCount)
+        val suffix = if (spreadPages.isEmpty()) "out-$index" else spreadPages.joinToString("-")
+        return "$photoId:spread:$suffix"
+    }
 }

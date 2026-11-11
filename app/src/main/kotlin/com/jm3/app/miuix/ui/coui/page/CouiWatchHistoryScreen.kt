@@ -49,7 +49,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -296,11 +298,12 @@ fun CouiWatchHistoryScreen(
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
-            val toDelete = pendingDeleteItem
+            val toDelete = rememberRetainedTarget(pendingDeleteItem)
             if (toDelete != null) {
                 Dialog(
                     onDismissRequest = { pendingDeleteItem = null },
-                    visible = true,
+                    visible = pendingDeleteItem != null,
+                    material = couiDialogMaterial(),
                     title = "删除观看记录",
                     message = "确定要删除《" + toDelete.title + "》的观看记录吗？",
                     placement = CouiDialogPlacement.Center,
@@ -335,12 +338,11 @@ private fun CouiGridDeleteBadge(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
+                backgroundColor = scheme.container,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(scheme.container),
+            .size(28.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

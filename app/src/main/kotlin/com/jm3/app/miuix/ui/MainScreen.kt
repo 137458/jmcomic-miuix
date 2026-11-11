@@ -239,16 +239,19 @@ fun MainScreen(
                                                 deps = deps,
                                                 onOpenAlbum = onOpenAlbum,
                                                 onOpenWeek = onOpenWeek,
+                                                onOpenLogin = onOpenLogin,
                                             )
                                             1 -> BrowseScreen(
                                                 deps = deps,
                                                 mode = BrowseMode.CATEGORY,
                                                 onOpenAlbum = onOpenAlbum,
+                                                onOpenLogin = onOpenLogin,
                                             )
                                             2 -> BrowseScreen(
                                                 deps = deps,
                                                 mode = BrowseMode.RANK,
                                                 onOpenAlbum = onOpenAlbum,
+                                                onOpenLogin = onOpenLogin,
                                             )
                                             else -> MineScreen(
                                                 deps = deps,

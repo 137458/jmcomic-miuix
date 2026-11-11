@@ -66,6 +66,8 @@ import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
+import com.jm3.app.miuix.ui.removeMatching
+import com.jm3.app.miuix.ui.restoreAt
 import com.jm3.core.model.TrackingItem
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
@@ -216,21 +218,28 @@ internal fun CouiTrackingScreen(
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     haptic()
-                    val remaining = feed.items.filterNot { it.id == item.id }
+                    val slice = feed.items.removeMatching { it.id == item.id }
                     feed = feed.copy(
-                        items = remaining,
-                        total = feed.total?.minus(1)?.coerceAtLeast(remaining.size),
+                        items = slice.remaining,
+                        total = feed.total?.minus(slice.removed.size)?.coerceAtLeast(slice.remaining.size),
                     )
                     val result = snackbarHostState.showSnackbar(
                         message = "已取消追踪",
                         actionLabel = "撤销",
                     )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        val undoOutcome = deps.authCall.call { deps.gateway.setTracking(item.id) }
-                        if (undoOutcome is SessionOutcome.Ok) {
-                            feed = feed.copy(
-                                items = listOf(item) + feed.items.filterNot { it.id == item.id },
-                                total = feed.total?.plus(1),
+                    if (result == SnackbarResult.ActionPerformed && slice.removed.isNotEmpty()) {
+                        when (val undoOutcome = deps.authCall.call { deps.gateway.setTracking(item.id) }) {
+                            is SessionOutcome.Ok -> {
+                                feed = feed.copy(
+                                    items = feed.items.restoreAt(slice.removed, slice.insertIndex) { it.id },
+                                    total = feed.total?.plus(slice.removed.size),
+                                )
+                            }
+                            is SessionOutcome.Expired -> snackbarHostState.showSnackbar(
+                                planLoad(undoOutcome, hasContent = false, failureMessage = "撤销失败").message.orEmpty(),
+                            )
+                            is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
+                                "撤销失败：" + failureCopy(undoOutcome.cause, CouiStrings.RetryLater),
                             )
                         }
                     }

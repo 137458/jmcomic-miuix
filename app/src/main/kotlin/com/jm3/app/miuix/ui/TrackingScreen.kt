@@ -38,6 +38,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.SnackbarResult
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -201,12 +202,29 @@ fun TrackingScreen(
             removingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    val remaining = feed.items.filterNot { it.id == item.id }
+                    val slice = feed.items.removeMatching { it.id == item.id }
                     feed = feed.copy(
-                        items = remaining,
-                        total = feed.total?.minus(1)?.coerceAtLeast(remaining.size),
+                        items = slice.remaining,
+                        total = feed.total?.minus(slice.removed.size)?.coerceAtLeast(slice.remaining.size),
                     )
-                    snackbarHostState.showSnackbar("已取消追踪")
+                    val result = snackbarHostState.showSnackbar(
+                        message = "已取消追踪",
+                        actionLabel = "撤销",
+                    )
+                    if (result == SnackbarResult.ActionPerformed && slice.removed.isNotEmpty()) {
+                        when (val undoOutcome = deps.authCall.call { deps.gateway.setTracking(item.id) }) {
+                            is SessionOutcome.Ok -> {
+                                feed = feed.copy(
+                                    items = feed.items.restoreAt(slice.removed, slice.insertIndex) { it.id },
+                                    total = feed.total?.plus(slice.removed.size),
+                                )
+                            }
+                            SessionOutcome.Expired -> applyFailure(undoOutcome)
+                            is SessionOutcome.Failed -> {
+                                snackbarHostState.showSnackbar("撤销失败：" + undoOutcome.messageOr("请稍后重试"))
+                            }
+                        }
+                    }
                 }
 
                 SessionOutcome.Expired -> applyFailure(outcome)

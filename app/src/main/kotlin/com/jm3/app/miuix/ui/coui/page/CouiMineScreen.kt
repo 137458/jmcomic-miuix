@@ -70,9 +70,11 @@ import com.jm3.app.miuix.ui.checkInDisplay
 import com.jm3.app.miuix.ui.checkInFailureCopy
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
@@ -402,6 +404,7 @@ internal fun CouiMineScreen(
         onDismissRequest = { confirmLogout = false },
         // 退场动画由库按 visible 驱动，外层 if 会让弹窗在关闭瞬间直接消失
         visible = confirmLogout,
+        material = couiDialogMaterial(),
         title = "退出登录",
         message = "确定要登出账号吗？",
         // 会话级强确认走居中弹窗，与「选择/输入」类底部弹窗区分开
@@ -482,9 +485,12 @@ private fun MineLoginCapsule(onOpenLogin: () -> Unit) {
     val scheme = CouiTheme.colorScheme
     Box(
         modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .background(scheme.accent)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.OpaqueMedium1, minTouchTarget = CouiMinTouchTarget) { onOpenLogin() }
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = scheme.accent,
+                spotlight = SpotlightPreset.OpaqueMedium1,
+                minTouchTarget = CouiMinTouchTarget,
+            ) { onOpenLogin() }
             .padding(horizontal = 18.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -608,19 +614,11 @@ private fun MineCheckInGroup(
     val today = LocalDate.now()
     when {
         // 会话失效时重试必然再吃一次 401，唯一动作只能是去登录
-        expiredMessage != null -> Group(title = "每日签到") {
-            Item(
-                icon = { MineGroupIcon(CouiIcons.Lock) },
-                title = { Text(text = "需要重新登录", kind = CouiTextKind.PreferenceTitle) },
-                summary = {
-                    Text(text = expiredMessage, kind = CouiTextKind.PreferenceSummary, color = errorColor)
-                },
-                trailing = {
-                    Text(text = CouiStrings.OpenLogin, kind = CouiTextKind.PreferenceValue, color = scheme.accent)
-                },
-                onClick = onOpenLogin,
-            )
-        }
+        expiredMessage != null -> CouiFeedLoginGroup(
+            title = "每日签到",
+            message = expiredMessage,
+            onOpenLogin = onOpenLogin,
+        )
 
         status != null -> Group(title = "每日签到") {
             // 今日已签、漏签天数与进度统一交给纯函数推导，与 Miuix 我的页共用同一口径

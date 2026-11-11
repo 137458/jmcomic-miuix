@@ -386,11 +386,12 @@ private class CollapsingContentPadding(
 fun PaddingValues.withSpacing(
     horizontal: Dp = 0.dp,
     extraTop: Dp = 0.dp,
+    extraBottom: Dp = 0.dp,
     bottom: Dp? = null,
 ): PaddingValues = object : PaddingValues {
     override fun calculateTopPadding(): Dp = this@withSpacing.calculateTopPadding() + extraTop
 
-    override fun calculateBottomPadding(): Dp = bottom ?: this@withSpacing.calculateBottomPadding()
+    override fun calculateBottomPadding(): Dp = bottom ?: (this@withSpacing.calculateBottomPadding() + extraBottom)
 
     override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
         this@withSpacing.calculateLeftPadding(layoutDirection) + horizontal

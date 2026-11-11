@@ -84,6 +84,7 @@ import com.jm3.app.miuix.ui.coui.page.CouiTrackingScreen
 import com.jm3.app.miuix.ui.coui.page.CouiUpdateScreen
 import com.jm3.app.miuix.ui.coui.page.CouiWatchHistoryScreen
 import com.jm3.app.miuix.ui.coui.page.CouiWeekScreen
+import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
 import com.jm3.app.miuix.ui.route.SkinRoute
 import com.jm3.app.miuix.ui.route.SkinWindowBackdrop
@@ -1242,6 +1243,7 @@ fun Jm3App() {
                                         scope = route.scope,
                                         onBack = { backStack.removeLastOrNull() },
                                         onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
                                     )
                                 },
                                 colorOs = {
@@ -1251,18 +1253,29 @@ fun Jm3App() {
                                         scope = route.scope,
                                         onBack = { backStack.removeLastOrNull() },
                                         onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenLogin = { backStack.add(Route.Login) },
                                     )
                                 },
                             )
                         }
                     }
                     AlbumHeroOverlay(host = heroHost, modifier = Modifier.fillMaxSize())
-                    // 更新页自身也会检查并弹窗，停留在更新页时不再叠加启动期提示
+                    // 更新页自身也会检查并弹窗，停留在更新页时不再叠加启动期提示；
+                    // 弹窗在路由外组合，ColorOS 下须先包进 CouiTheme，颜色与深浅标记才和当前皮肤同步。
                     if (backStack.lastOrNull() != Route.Update) {
-                        UpdateStartupPrompt(
-                            deps = deps,
-                            onOpenUpdatePage = { backStack.add(Route.Update) },
-                        )
+                        if (uiSkin == UiSkin.COLOROS) {
+                            CouiTheme {
+                                UpdateStartupPrompt(
+                                    deps = deps,
+                                    onOpenUpdatePage = { backStack.add(Route.Update) },
+                                )
+                            }
+                        } else {
+                            UpdateStartupPrompt(
+                                deps = deps,
+                                onOpenUpdatePage = { backStack.add(Route.Update) },
+                            )
+                        }
                     }
                 }
             }

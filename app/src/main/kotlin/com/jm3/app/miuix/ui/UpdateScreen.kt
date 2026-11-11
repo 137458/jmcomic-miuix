@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,7 +99,7 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
     var attempt by remember { mutableIntStateOf(0) }
     // null 表示正在检查：检查结论由 core 的 [UpdateOutcome] 承载，页面不再另立一套状态机
     var state by remember { mutableStateOf<UpdateOutcome?>(null) }
-    var showDialog by remember { mutableStateOf(false) }
+    var showDialog by rememberSaveable { mutableStateOf(false) }
     var autoCheckUpdate by remember { mutableStateOf(true) }
     var ignoredVersion by remember { mutableStateOf<String?>(null) }
     val downloadState by deps.updateDownloader.state.collectAsState()

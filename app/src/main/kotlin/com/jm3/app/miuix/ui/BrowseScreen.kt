@@ -83,6 +83,7 @@ fun BrowseScreen(
     deps: ScreenDeps,
     mode: BrowseMode,
     onOpenAlbum: (String) -> Unit,
+    onOpenLogin: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
     var categoryValue by rememberSaveable { mutableStateOf(BrowseCategory.ALL.apiValue) }
@@ -112,11 +113,11 @@ fun BrowseScreen(
     var weeklyFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
     // 周更区块的三态：空列表既可能是「还没回来」也可能是「回来 0 条」，必须分开
     var weeklyLoading by remember { mutableStateOf(true) }
-    var weeklyFailure by remember { mutableStateOf<String?>(null) }
+    var weeklyFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     // 子分类/标签点击后的检索词；非空时页面切换为标签结果，返回即恢复分类浏览。
     var tagKeyword by remember { mutableStateOf<String?>(null) }
-    var showMoreSheet by remember { mutableStateOf(false) }
-    var showWeeklySheet by remember { mutableStateOf(false) }
+    var showMoreSheet by rememberSaveable { mutableStateOf(false) }
+    var showWeeklySheet by rememberSaveable { mutableStateOf(false) }
 
     val category = BrowseCategory.entries.firstOrNull { it.apiValue == categoryValue } ?: BrowseCategory.ALL
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
@@ -217,7 +218,7 @@ fun BrowseScreen(
                 outcome = outcome,
                 hasContent = false,
                 failureMessage = "每周更新加载失败",
-            ).message
+            )
             weeklyFeed = (outcome as? SessionOutcome.Ok)?.value?.toFeed() ?: weeklyFeed
         }
     }
@@ -350,6 +351,7 @@ fun BrowseScreen(
                 keyword = activeTag,
                 order = order,
                 onOpenAlbum = onOpenAlbum,
+                onOpenLogin = onOpenLogin,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = innerPadding,
             )
@@ -368,6 +370,7 @@ fun BrowseScreen(
                     contentPadding = innerPadding,
                     refreshing = refreshing,
                     onRetry = ::refresh,
+                    onOpenLogin = onOpenLogin,
                     onLoadMore = ::loadMore,
                     onOpenAlbum = onOpenAlbum,
                     clickPaging = clickPaging,
@@ -407,12 +410,14 @@ fun BrowseScreen(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         items(subCategories, key = { it.name }) { sub ->
-                                            TextButton(
-                                                text = sub.name,
-                                                onClick = { openTag(sub.name) },
-                                                minWidth = 0.dp,
-                                                minHeight = 32.dp,
-                                            )
+                                            MinTouchTarget(onClick = { openTag(sub.name) }) {
+                                                TextButton(
+                                                    text = sub.name,
+                                                    onClick = { openTag(sub.name) },
+                                                    minWidth = 0.dp,
+                                                    minHeight = 32.dp,
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -425,12 +430,14 @@ fun BrowseScreen(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         items(hotTags.take(12), key = { it }) { tag ->
-                                            TextButton(
-                                                text = tag,
-                                                onClick = { openTag(tag) },
-                                                minWidth = 0.dp,
-                                                minHeight = 32.dp,
-                                            )
+                                            MinTouchTarget(onClick = { openTag(tag) }) {
+                                                TextButton(
+                                                    text = tag,
+                                                    onClick = { openTag(tag) },
+                                                    minWidth = 0.dp,
+                                                    minHeight = 32.dp,
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -450,9 +457,11 @@ fun BrowseScreen(
                             }
                         }
                         is ListState.Failed -> item(key = "error") {
-                            ErrorScreen(
+                            ScreenFailureOrLogin(
                                 message = s.message,
+                                expired = s.sessionExpired,
                                 onRetry = ::refresh,
+                                onOpenLogin = onOpenLogin,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
@@ -530,8 +539,20 @@ fun BrowseScreen(
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(text = failure)
-                    TextButton(text = "重试", onClick = ::loadWeekly)
+                    val isExpired = failure.phase == ScreenLoadPhase.Expired
+                    val actionText = if (isExpired) "去登录" else "重试"
+                    val onAction: () -> Unit = if (isExpired) {
+                        {
+                            showWeeklySheet = false
+                            onOpenLogin()
+                        }
+                    } else {
+                        ::loadWeekly
+                    }
+                    Text(text = failure.message.orEmpty())
+                    MinTouchTarget(onClick = onAction) {
+                        TextButton(text = actionText, onClick = onAction, minWidth = 0.dp)
+                    }
                 }
 
                 else -> Box(
@@ -565,12 +586,14 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         block.tags.forEach { tag ->
-                            TextButton(
-                                text = tag,
-                                onClick = { onTagClick(tag) },
-                                minWidth = 0.dp,
-                                minHeight = 32.dp,
-                            )
+                            MinTouchTarget(onClick = { onTagClick(tag) }) {
+                                TextButton(
+                                    text = tag,
+                                    onClick = { onTagClick(tag) },
+                                    minWidth = 0.dp,
+                                    minHeight = 32.dp,
+                                )
+                            }
                         }
                     }
                 }
@@ -587,6 +610,7 @@ private fun TagResultSection(
     keyword: String,
     order: BrowseOrder,
     onOpenAlbum: (String) -> Unit,
+    onOpenLogin: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
@@ -655,7 +679,7 @@ private fun TagResultSection(
     Column(modifier = modifier) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().readableWidth(),
             contentPadding = contentPadding,
         ) {
             when (val s = state) {
@@ -668,9 +692,11 @@ private fun TagResultSection(
                     }
                 }
                 is ListState.Failed -> item(key = "tag-error") {
-                    ErrorScreen(
+                    ScreenFailureOrLogin(
                         message = s.message,
+                        expired = s.sessionExpired,
                         onRetry = ::load,
+                        onOpenLogin = onOpenLogin,
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                     )
                 }
@@ -720,6 +746,7 @@ private fun RankResultGrid(
     contentPadding: PaddingValues,
     refreshing: Boolean,
     onRetry: () -> Unit,
+    onOpenLogin: () -> Unit,
     onLoadMore: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     clickPaging: Boolean = false,
@@ -728,7 +755,7 @@ private fun RankResultGrid(
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(RANK_GRID_MIN_CARD_WIDTH),
         state = gridState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().readableWidth(),
         // 顶部让出玻璃顶栏高度（随折叠实时收缩），再加 8dp 与筛选条脱开
         contentPadding = contentPadding.withSpacing(
             horizontal = RANK_GRID_HORIZONTAL_PADDING,
@@ -749,9 +776,11 @@ private fun RankResultGrid(
                 }
             }
             is ListState.Failed -> item(key = "rank-error", span = StaggeredGridItemSpan.FullLine) {
-                ErrorScreen(
+                ScreenFailureOrLogin(
                     message = state.message,
+                    expired = state.sessionExpired,
                     onRetry = onRetry,
+                    onOpenLogin = onOpenLogin,
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                 )
             }

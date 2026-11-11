@@ -438,10 +438,10 @@ private fun TaskActionChip(text: String, enabled: Boolean, onClick: () -> Unit) 
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .background(scheme.accent.copy(alpha = 0.14f))
             .couiPressable(
-                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
+                shape = CouiCapsuleShape,
+                backgroundColor = scheme.accent.copy(alpha = 0.14f),
+                spotlight = SpotlightPreset.ChipTab,
                 enabled = enabled,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,

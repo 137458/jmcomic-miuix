@@ -261,6 +261,7 @@ internal fun CouiNotificationsScreen(
                             items = tabLabels,
                             selectedIndex = tabIndex,
                             onSelect = { tabIndex = it },
+                            modifier = Modifier.padding(horizontal = CouiPageDefaults.horizontalMargin),
                         )
                     }
                     if (subtitle.isNotBlank()) {
@@ -318,7 +319,9 @@ internal fun CouiNotificationsScreen(
                                             expandedIds + item.id
                                         }
                                     },
-                                    modifier = Modifier.padding(bottom = 8.dp),
+                                    modifier = Modifier
+                                        .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                        .padding(bottom = 8.dp),
                                 ) {
                                     NotificationCard(
                                         item = item,

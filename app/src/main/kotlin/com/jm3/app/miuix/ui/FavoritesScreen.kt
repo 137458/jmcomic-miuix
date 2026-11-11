@@ -89,8 +89,12 @@ fun FavoritesScreen(
     var folderId by rememberSaveable { mutableIntStateOf(0) }
     var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var showCreate by rememberSaveable { mutableStateOf(false) }
-    var editTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }
-    var deleteTarget by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    var editTarget by rememberSaveable(stateSaver = IntStringPairNullableSaver) {
+        mutableStateOf<Pair<Int, String>?>(null)
+    }
+    var deleteTarget by rememberSaveable(stateSaver = IntStringPairNullableSaver) {
+        mutableStateOf<Pair<Int, String>?>(null)
+    }
     var folderNameInput by rememberSaveable { mutableStateOf("") }
     var folderBusy by remember { mutableStateOf(false) }
     var folderError by remember { mutableStateOf<String?>(null) }
@@ -107,7 +111,7 @@ fun FavoritesScreen(
     var tagError by remember { mutableStateOf<String?>(null) }
     var showAddTag by rememberSaveable { mutableStateOf(false) }
     var tagInput by rememberSaveable { mutableStateOf("") }
-    var tagDeleteTarget by remember { mutableStateOf<String?>(null) }
+    var tagDeleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
 
     val mode = deps.preferences.paginationMode
     val clickPaging = mode == PaginationMode.CLICK

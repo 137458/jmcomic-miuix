@@ -51,12 +51,12 @@ import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
@@ -95,6 +95,7 @@ internal fun CouiSearchScreen(
     scope: SearchScope,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
+    onOpenLogin: () -> Unit = {},
 ) {
     CouiTheme {
         CouiSearchBody(
@@ -103,6 +104,7 @@ internal fun CouiSearchScreen(
             scope = scope,
             onBack = onBack,
             onOpenAlbum = onOpenAlbum,
+            onOpenLogin = onOpenLogin,
         )
     }
 }
@@ -114,6 +116,7 @@ private fun CouiSearchBody(
     scope: SearchScope,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
+    onOpenLogin: () -> Unit,
 ) {
     val gateway = deps.gateway
     val authCall = deps.authCall
@@ -247,9 +250,11 @@ private fun CouiSearchBody(
                     }
 
                     is ListState.Failed -> item(key = "coui-search-error") {
-                        CouiErrorGroup(
+                        CouiScreenFailureGroup(
                             message = current.message,
+                            expired = current.sessionExpired,
                             onRetry = { loadFirstPage() },
+                            onOpenLogin = onOpenLogin,
                         )
                     }
 
@@ -348,10 +353,9 @@ private fun CouiSearchFilterChip(label: String, selected: Boolean, onClick: () -
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
-            .clip(shape)
-            .background(if (selected) scheme.accent.copy(alpha = 0.15f) else scheme.card)
             .couiPressable(
                 shape = shape,
+                backgroundColor = if (selected) scheme.accent.copy(alpha = 0.15f) else scheme.card,
                 minTouchTarget = CouiMinTouchTarget,
                 spotlight = SpotlightPreset.ChipTab,
                 onClick = onClick,

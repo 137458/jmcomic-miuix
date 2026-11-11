@@ -65,11 +65,17 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.ProfileDraftPolicy
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.StringMapSaver
+import com.jm3.app.miuix.ui.StringSetSaver
+import com.jm3.app.miuix.ui.trackedProfileFieldMap
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiPressable
@@ -137,13 +143,35 @@ fun CouiProfileScreen(
     var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
     var profile by remember { mutableStateOf<UserProfile?>(null) }
     var saving by remember { mutableStateOf(false) }
-    val fields = remember { mutableStateMapOf<String, String>() }
+    var savedUidToken by rememberSaveable { mutableStateOf(ProfileDraftPolicy.UID_UNSET) }
+    var savedDrafts by rememberSaveable(stateSaver = StringMapSaver) {
+        mutableStateOf<Map<String, String>>(emptyMap())
+    }
+    var dirtyKeys by rememberSaveable(stateSaver = StringSetSaver) {
+        mutableStateOf<Set<String>>(emptySet())
+    }
+    val backingFields = remember { mutableStateMapOf<String, String>() }
+    val fields = remember {
+        trackedProfileFieldMap(backingFields) { key, value ->
+            dirtyKeys = dirtyKeys + key
+            savedDrafts = savedDrafts + (key to value)
+        }
+    }
     val scope = rememberCoroutineScope()
 
-    fun applyProfile(next: UserProfile) {
+    fun applyProfile(next: UserProfile, resetDrafts: Boolean = false) {
         profile = next
-        fields.clear()
-        fields.putAll(next.editableFields())
+        if (resetDrafts) {
+            dirtyKeys = emptySet()
+            savedDrafts = emptyMap()
+        }
+        val merged = ProfileDraftPolicy.mergeProfileFields(
+            serverFields = next.editableFields(),
+            savedDrafts = savedDrafts,
+            dirtyKeys = dirtyKeys,
+        )
+        backingFields.clear()
+        backingFields.putAll(merged)
     }
 
     fun applyFailure(outcome: SessionOutcome<*>) {
@@ -161,7 +189,7 @@ fun CouiProfileScreen(
     fun load(showLoading: Boolean = true) {
         val uid = user?.uid
         if (uid == null) {
-            state = ProfileUiState.Failed("请先登录后查看个人资料")
+            state = ProfileUiState.Failed("请先登录后查看个人资料", sessionExpired = true)
             return
         }
         if (showLoading) state = ProfileUiState.Loading
@@ -185,7 +213,7 @@ fun CouiProfileScreen(
             saving = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    applyProfile(outcome.value)
+                    applyProfile(outcome.value, resetDrafts = true)
                     snackbarHostState.showSnackbar("资料已保存")
                 }
                 is SessionOutcome.Expired -> snackbarHostState.showSnackbar(
@@ -199,8 +227,13 @@ fun CouiProfileScreen(
     }
 
     LaunchedEffect(user?.uid) {
-        fields.clear()
-        profile = null
+        if (ProfileDraftPolicy.shouldResetOnUidEffect(savedUidToken, user?.uid)) {
+            savedUidToken = ProfileDraftPolicy.uidToken(user?.uid)
+            backingFields.clear()
+            savedDrafts = emptyMap()
+            dirtyKeys = emptySet()
+            profile = null
+        }
         load()
     }
 
@@ -237,7 +270,12 @@ fun CouiProfileScreen(
                             text = "正在加载个人资料…",
                         )
                         is ProfileUiState.Failed -> if (current.sessionExpired) {
-                            ProfileReloginGroup(message = current.message, onOpenLogin = onOpenLogin)
+                            CouiFeedLoginGroup(
+                                title = "登录已过期",
+                                message = current.message,
+                                onOpenLogin = onOpenLogin,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
                         } else {
                             CouiErrorGroup(
                                 message = current.message,
@@ -268,28 +306,6 @@ fun CouiProfileScreen(
     }
 }
 
-/** 登录过期时给一条能走出去的入口，比只报错更有用。 */
-@Composable
-private fun ProfileReloginGroup(message: String, onOpenLogin: () -> Unit) {
-    Group(
-        modifier = Modifier.padding(top = 8.dp),
-        title = "登录已过期",
-        footer = message,
-    ) {
-        Item(
-            title = { ProfileRowTitle("重新登录") },
-            trailing = {
-                Text(
-                    text = CouiStrings.OpenLogin,
-                    kind = CouiTextKind.PreferenceValue,
-                    color = CouiKitTheme.colorScheme.accent,
-                    textAlign = TextAlign.End,
-                )
-            },
-            onClick = onOpenLogin,
-        )
-    }
-}
 
 /** 资料正文：头图卡 + 四组字段 + 保存行。 */
 @Composable

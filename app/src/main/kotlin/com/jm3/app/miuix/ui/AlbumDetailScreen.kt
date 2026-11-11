@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -150,6 +151,9 @@ internal fun AlbumDetailScreen(
     // 预览图与阅读页共用同一套图片加载器（含同一份缓存），避免再建第二个 loader
     val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles)
 
+    var uiSnapshot by rememberSaveable(albumId, stateSaver = AlbumDetailUiSnapshotSaver) {
+        mutableStateOf(AlbumDetailUiSnapshot())
+    }
     val stateHolder = remember(albumId) {
         AlbumDetailStateHolder(
             albumId = albumId,
@@ -160,9 +164,23 @@ internal fun AlbumDetailScreen(
             showMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
             onOpenLogin = onOpenLogin,
             engagement = sessionCache.engagement,
-        )
+        ).apply { restoreUiSnapshot(uiSnapshot) }
     }
     val uiState by stateHolder.uiState.collectAsState()
+    val commentDraftSnapshot by stateHolder.commentDraft.collectAsState()
+    LaunchedEffect(
+        albumId,
+        commentDraftSnapshot,
+        uiState.replyTarget,
+        uiState.descriptionExpanded,
+        uiState.expandedGroups,
+        uiState.showFolderSheet,
+    ) {
+        uiSnapshot = stateHolder.saveUiSnapshot()
+    }
+    LaunchedEffect(albumId) {
+        if (uiSnapshot.showFolderSheet && uiState.folders.isEmpty()) stateHolder.openFolderSheet()
+    }
 
     val listState = rememberLazyListState()
     // 大屏分栏时右栏独立滚动，不跟随左栏的封面与信息
@@ -344,12 +362,14 @@ internal fun AlbumDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(validTags, key = { it }) { tag ->
-                        TextButton(
-                            text = tag,
-                            onClick = { onOpenSearch(tag, SearchScope.TAG) },
-                            minWidth = 0.dp,
-                            minHeight = 32.dp,
-                        )
+                        MinTouchTarget(onClick = { onOpenSearch(tag, SearchScope.TAG) }) {
+                            TextButton(
+                                text = tag,
+                                onClick = { onOpenSearch(tag, SearchScope.TAG) },
+                                minWidth = 0.dp,
+                                minHeight = 32.dp,
+                            )
+                        }
                     }
                 }
             }
@@ -815,8 +835,8 @@ private fun DescriptionSection(
             SmallTitle(text = "简介", modifier = Modifier.weight(1f))
             IconButton(
                 onClick = onCopy,
-                minWidth = 32.dp,
-                minHeight = 32.dp,
+                minWidth = 48.dp,
+                minHeight = 48.dp,
                 modifier = Modifier.padding(end = SectionHorizontalPadding),
             ) {
                 Icon(
@@ -836,12 +856,14 @@ private fun DescriptionSection(
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (text.length > 80) {
-                    TextButton(
-                        text = if (expanded) "收起" else "显示全部",
-                        onClick = onToggle,
-                        minWidth = 0.dp,
-                        minHeight = 32.dp,
-                    )
+                    MinTouchTarget(onClick = onToggle) {
+                        TextButton(
+                            text = if (expanded) "收起" else "显示全部",
+                            onClick = onToggle,
+                            minWidth = 0.dp,
+                            minHeight = 32.dp,
+                        )
+                    }
                 }
             }
         }
@@ -881,8 +903,8 @@ private fun AlbumInfoCard(
             endActions = {
                 IconButton(
                     onClick = { onCopy("禁漫车号", displayId) },
-                    minWidth = 36.dp,
-                    minHeight = 36.dp,
+                    minWidth = 48.dp,
+                    minHeight = 48.dp,
                 ) {
                     Icon(
                         imageVector = MiuixIcons.Copy,
@@ -1028,7 +1050,7 @@ internal fun CommentRow(
     val muted = MiuixTheme.colorScheme.onSurfaceVariantSummary
     // 缩进只按层级累加到上限：层级仍然逐层传下去（回复线照画），但不再继续吃掉正文宽度
     val indentDepth = depth.coerceAtMost(COMMENT_MAX_INDENT_DEPTH)
-    var repliesExpanded by remember(item.id) { mutableStateOf(item.replies.size <= COMMENT_VISIBLE_REPLIES) }
+    var repliesExpanded by rememberSaveable(item.id) { mutableStateOf(item.replies.size <= COMMENT_VISIBLE_REPLIES) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1102,17 +1124,19 @@ internal fun CommentRow(
             Spacer(modifier = Modifier.height(4.dp))
             CommentBody(item = item, onOpenAlbum = onOpenAlbum)
             if (onReply != null) {
-                TextButton(
-                    text = "回复",
-                    onClick = { onReply(item) },
-                    minWidth = 0.dp,
-                    // 默认 TextButton 是灰底灰字，混在正文里像禁用态；行内动作用透明底 + 主色字
-                    colors = ButtonDefaults.textButtonColors(
-                        color = Color.Transparent,
-                        textColor = MiuixTheme.colorScheme.primary,
-                    ),
-                    minHeight = 36.dp,
-                )
+                MinTouchTarget(onClick = { onReply(item) }) {
+                    TextButton(
+                        text = "回复",
+                        onClick = { onReply(item) },
+                        minWidth = 0.dp,
+                        // 默认 TextButton 是灰底灰字，混在正文里像禁用态；行内动作用透明底 + 主色字
+                        colors = ButtonDefaults.textButtonColors(
+                            color = Color.Transparent,
+                            textColor = MiuixTheme.colorScheme.primary,
+                        ),
+                        minHeight = 36.dp,
+                    )
+                }
             }
             if (item.replies.isNotEmpty()) {
                 val shown = if (repliesExpanded) item.replies else item.replies.take(COMMENT_VISIBLE_REPLIES)
@@ -1125,16 +1149,18 @@ internal fun CommentRow(
                     )
                 }
                 if (item.replies.size > COMMENT_VISIBLE_REPLIES) {
-                    TextButton(
-                        text = if (repliesExpanded) "收起回复" else "展开 ${item.replies.size} 条回复",
-                        colors = ButtonDefaults.textButtonColors(
-                            color = Color.Transparent,
-                            textColor = MiuixTheme.colorScheme.primary,
-                        ),
-                        onClick = { repliesExpanded = !repliesExpanded },
-                        minWidth = 0.dp,
-                        minHeight = 36.dp,
-                    )
+                    MinTouchTarget(onClick = { repliesExpanded = !repliesExpanded }) {
+                        TextButton(
+                            text = if (repliesExpanded) "收起回复" else "展开 ${item.replies.size} 条回复",
+                            colors = ButtonDefaults.textButtonColors(
+                                color = Color.Transparent,
+                                textColor = MiuixTheme.colorScheme.primary,
+                            ),
+                            onClick = { repliesExpanded = !repliesExpanded },
+                            minWidth = 0.dp,
+                            minHeight = 36.dp,
+                        )
+                    }
                 }
             }
         }

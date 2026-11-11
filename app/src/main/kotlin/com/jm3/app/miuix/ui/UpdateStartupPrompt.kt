@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.core.update.ReleaseInfo
 import com.jm3.core.update.UpdateCenter
 import com.jm3.core.update.UpdatePromptState
@@ -46,9 +47,9 @@ internal fun UpdateStartupPrompt(deps: ScreenDeps, onOpenUpdatePage: () -> Unit)
         release = pending
     }
 
-    val pending = release ?: return
+    val pending = rememberRetainedTarget(release) ?: return
     UpdateAvailableDialog(
-        show = true,
+        show = release != null,
         currentVersion = currentVersion,
         release = pending,
         onDismiss = { release = null },

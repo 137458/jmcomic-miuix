@@ -142,17 +142,22 @@ private fun GlassSnackbar(
             val actionLabel = visuals.actionLabel
             if (!actionLabel.isNullOrEmpty()) {
                 val onAction by rememberUpdatedState(data::performAction)
-                TextButton(
-                    text = actionLabel,
-                    onClick = { scope.launch { onAction() } },
+                val triggerAction = { scope.launch { onAction() }; Unit }
+                MinTouchTarget(
+                    onClick = triggerAction,
                     modifier = Modifier.padding(start = 12.dp),
-                    cornerRadius = 50.dp,
-                    minWidth = 26.dp,
-                    minHeight = 26.dp,
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    insideMargin = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                    textStyle = TextStyle(fontSize = 15.sp),
-                )
+                ) {
+                    TextButton(
+                        text = actionLabel,
+                        onClick = triggerAction,
+                        cornerRadius = 50.dp,
+                        minWidth = 26.dp,
+                        minHeight = 26.dp,
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        textStyle = TextStyle(fontSize = 15.sp),
+                    )
+                }
             }
         }
     }

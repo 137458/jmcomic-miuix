@@ -443,4 +443,33 @@ internal class AlbumDetailStateHolder(
             current.copy(expandedGroups = next)
         }
     }
+
+    /** 提取需要跨旋转保留的页面轻交互状态。 */
+    internal fun saveUiSnapshot(): AlbumDetailUiSnapshot {
+        val state = _uiState.value
+        return AlbumDetailUiSnapshot(
+            commentDraft = _commentDraft.value,
+            replyTarget = state.replyTarget,
+            descriptionExpanded = state.descriptionExpanded,
+            expandedGroups = state.expandedGroups,
+            showFolderSheet = state.showFolderSheet,
+        )
+    }
+
+    /** 在新创建的 StateHolder 发起请求前先恢复用户上次展开与输入状态。 */
+    internal fun restoreUiSnapshot(snapshot: AlbumDetailUiSnapshot) {
+        _commentDraft.value = snapshot.commentDraft
+        _uiState.update { current ->
+            current.copy(
+                replyTarget = snapshot.replyTarget,
+                descriptionExpanded = snapshot.descriptionExpanded,
+                expandedGroups = if (snapshot.expandedGroups.isNotEmpty()) {
+                    snapshot.expandedGroups
+                } else {
+                    current.expandedGroups
+                },
+                showFolderSheet = snapshot.showFolderSheet,
+            )
+        }
+    }
 }

@@ -153,4 +153,18 @@ class ReaderSpreadPolicyTest {
         assertEquals(6, ReaderSpreadPolicy.stepAnchor(5, 1, 7))
         assertEquals(1, ReaderSpreadPolicy.stepAnchor(3, -1, 7))
     }
+
+    @Test
+    fun `HorizontalPager 页键隔离章节、单双页模式与具体页位置`() {
+        val k1Single = ReaderSpreadPolicy.pagerKey("ch-1", spreadActive = false, pageCount = 5, index = 0, singlePageIndex = 1)
+        val k1Spread = ReaderSpreadPolicy.pagerKey("ch-1", spreadActive = true, pageCount = 5, index = 0)
+        val k2Single = ReaderSpreadPolicy.pagerKey("ch-2", spreadActive = false, pageCount = 5, index = 0, singlePageIndex = 1)
+        val spreadPair = ReaderSpreadPolicy.pagerKey("ch-1", spreadActive = true, pageCount = 5, index = 1)
+        val outA = ReaderSpreadPolicy.pagerKey("ch-1", spreadActive = true, pageCount = 5, index = 9)
+        val outB = ReaderSpreadPolicy.pagerKey("ch-1", spreadActive = true, pageCount = 5, index = 10)
+
+        assertEquals(6, setOf(k1Single, k1Spread, k2Single, spreadPair, outA, outB).size)
+        assertTrue(spreadPair.contains("2-3"))
+        assertTrue(k1Single.contains("1"))
+    }
 }

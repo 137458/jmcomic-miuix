@@ -51,12 +51,14 @@ import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
+import com.jm3.app.miuix.ui.CommentItemNullableSaver
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.novelActionNotice
 import com.jm3.app.miuix.ui.planLoad
+import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
@@ -64,7 +66,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -106,7 +110,7 @@ fun CouiNovelReaderScreen(
     var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var favorited by remember { mutableStateOf(false) }
     var commentsOpen by remember { mutableStateOf(false) }
-    var fontSheetOpen by remember { mutableStateOf(false) }
+    var fontSheetOpen by rememberSaveable { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     // 正文先挂进 backdrop，HUD 的两条栏再采样它画透镜；栏是正文的兄弟节点，不能塞进正文子树
@@ -224,7 +228,7 @@ fun CouiNovelReaderScreen(
                         modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CouiLoadingGroup(text = "正在加载章节…", modifier = Modifier.fillMaxWidth())
+                        CouiLoadingGroup(text = "正在加载章节…", modifier = Modifier.fillMaxWidth().readableWidth())
                     }
 
                     failure?.phase == ScreenLoadPhase.Expired -> Box(
@@ -233,6 +237,7 @@ fun CouiNovelReaderScreen(
                     ) {
                         CouiFeedLoginGroup(
                             message = failure?.message.orEmpty(),
+                            modifier = Modifier.fillMaxWidth().readableWidth(),
                             onOpenLogin = onOpenLogin,
                         )
                     }
@@ -244,7 +249,7 @@ fun CouiNovelReaderScreen(
                         CouiErrorGroup(
                             message = failure?.message.orEmpty(),
                             onRetry = { loadChapter(currentId, lang, showLoading = true) },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().readableWidth(),
                         )
                     }
 
@@ -254,7 +259,7 @@ fun CouiNovelReaderScreen(
                     ) {
                         CouiEmptyGroup(
                             text = "章节不存在，可能已下架",
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().readableWidth(),
                         )
                     }
 
@@ -399,6 +404,7 @@ fun CouiNovelReaderScreen(
         Dialog(
             onDismissRequest = { fontSheetOpen = false },
             visible = fontSheetOpen,
+            material = couiDialogMaterial(),
             title = "字号",
             confirmAction = CouiDialogAction(text = "完成", onClick = { fontSheetOpen = false }),
         ) {
@@ -448,6 +454,7 @@ fun CouiNovelReaderScreen(
         Dialog(
             onDismissRequest = { commentsOpen = false },
             visible = commentsOpen,
+            material = couiDialogMaterial(),
             title = "评论",
             confirmAction = CouiDialogAction(text = "关闭", onClick = { commentsOpen = false }),
         ) {
@@ -524,8 +531,14 @@ private fun NovelCommentsPanel(
     var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var draft by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
-    var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
-    var replyDraft by rememberSaveable { mutableStateOf("") }
+    var replyTarget by rememberSaveable(novelId, stateSaver = CommentItemNullableSaver) {
+        mutableStateOf<CommentItem?>(null)
+    }
+    var replyDraft by rememberSavedDialogDraft(
+        isOpen = replyTarget != null,
+        targetKey = replyTarget?.id,
+        resetKey = novelId,
+    )
     var replyBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -696,10 +709,12 @@ private fun NovelCommentsPanel(
         }
     }
 
+    val retainedReplyTarget = rememberRetainedTarget(replyTarget)
     Dialog(
         onDismissRequest = { if (!replyBusy) replyTarget = null },
         visible = replyTarget != null,
-        title = "回复 " + replyTarget?.author.orEmpty(),
+        material = couiDialogMaterial(),
+        title = "回复 " + retainedReplyTarget?.author.orEmpty(),
         confirmAction = CouiDialogAction(
             text = if (replyBusy) "发送中…" else "发送",
             enabled = !replyBusy,

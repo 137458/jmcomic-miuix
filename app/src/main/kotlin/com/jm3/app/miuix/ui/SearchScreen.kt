@@ -40,21 +40,25 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 
-private sealed interface SearchUiState {
+internal sealed interface SearchUiState {
     data object Loading : SearchUiState
     data class Loaded(val feed: PagedFeed<SearchResult>) : SearchUiState
-    data class Failed(val message: String) : SearchUiState
+    data class Failed(
+        val message: String,
+        val sessionExpired: Boolean = false,
+    ) : SearchUiState
 }
 
 /** 空列表起手：第一页由 [replacedBy] 落进来。 */
 private fun emptyFeed() = PagedFeed<SearchResult>()
 
 /** 结局 → 页面状态：成功整页替换，失败与会话失效都落错误文案（文案统一由 [planLoad] 给出）。 */
-private fun searchStateOf(outcome: SessionOutcome<SearchPage>, failureMessage: String): SearchUiState =
+internal fun searchStateOf(outcome: SessionOutcome<SearchPage>, failureMessage: String): SearchUiState =
     when (outcome) {
         is SessionOutcome.Ok -> SearchUiState.Loaded(emptyFeed().replacedBy(outcome.value))
         else -> SearchUiState.Failed(
-            planLoad(outcome, hasContent = false, failureMessage = failureMessage).message.orEmpty(),
+            message = planLoad(outcome, hasContent = false, failureMessage = failureMessage).message.orEmpty(),
+            sessionExpired = outcome is SessionOutcome.Expired,
         )
     }
 
@@ -66,6 +70,7 @@ fun SearchScreen(
     scope: SearchScope,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
+    onOpenLogin: () -> Unit = {},
 ) {
     var state by remember(query, scope) { mutableStateOf<SearchUiState>(SearchUiState.Loading) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
@@ -209,9 +214,11 @@ fun SearchScreen(
                         }
                     }
                     is SearchUiState.Failed -> item(key = "error") {
-                        ErrorScreen(
+                        ScreenFailureOrLogin(
                             message = "搜索失败：${s.message}",
+                            expired = s.sessionExpired,
                             onRetry = { loadFirstPage() },
+                            onOpenLogin = onOpenLogin,
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                         )
                     }

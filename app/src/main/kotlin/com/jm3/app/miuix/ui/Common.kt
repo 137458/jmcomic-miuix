@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -98,6 +100,33 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 internal val SectionHorizontalPadding: Dp = 12.dp
 
 /**
+ * 无外观膨胀的最小触区包装：内层紧凑按钮保持原尺寸，外层至少撑到 [minSize]×[minSize]，
+ * 仅在子控件未消费的边缘留白补接点击（启用状态为真时触发），避免灰底胶囊膨胀或重复朗读。
+ */
+@Composable
+internal fun MinTouchTarget(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    minSize: Dp = 48.dp,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val latestOnClick by rememberUpdatedState(onClick)
+    val latestEnabled by rememberUpdatedState(enabled)
+    Box(
+        modifier = modifier
+            .defaultMinSize(minWidth = minSize, minHeight = minSize)
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    if (latestEnabled) latestOnClick()
+                }
+            },
+        contentAlignment = Alignment.Center,
+        content = content,
+    )
+}
+
+/**
  * 纯文字分区头的水平起点：与 [SmallTitle] 内建的 28dp 文字基线对齐。
  *
  * 卡片正文的起点是 [SectionHorizontalPadding] 12dp + 卡片内建 16dp = 28dp；
@@ -115,11 +144,7 @@ fun CommentReplySheet(
     onSend: (String) -> Unit,
 ) {
     val skin = LocalSkin.current
-    var text by rememberSaveable { mutableStateOf("") }
-    // 每次重新展开时清掉上一次草稿，避免把回复 A 的内容发到 B
-    LaunchedEffect(show, targetAuthor) {
-        if (show) text = ""
-    }
+    var text by rememberSavedDialogDraft(isOpen = show, targetKey = targetAuthor)
     OverlayBottomSheet(
         show = show,
         title = targetAuthor?.let { "回复 $it" } ?: "回复",
@@ -357,7 +382,9 @@ fun LoadMoreFooter(
     Box(modifier = modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
         when {
             feed.loadingMore -> InfiniteProgressIndicator(modifier = Modifier.size(20.dp))
-            feed.loadMoreFailed -> TextButton(text = "加载失败，点击重试", onClick = onLoadMore, minWidth = 0.dp)
+            feed.loadMoreFailed -> MinTouchTarget(onClick = onLoadMore) {
+                TextButton(text = "加载失败，点击重试", onClick = onLoadMore, minWidth = 0.dp)
+            }
             !feed.hasMore -> Text(
                 text = "没有更多了",
                 style = MiuixTheme.textStyles.footnote1,
@@ -556,30 +583,57 @@ fun PagerBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextButton(
-                text = "上一页",
+            val prevEnabled = enabled && current > 1
+            val nextEnabled = enabled && (total?.let { current < it } ?: hasMore)
+            MinTouchTarget(
                 onClick = { onPageChange(current - 1) },
-                enabled = enabled && current > 1,
-                minWidth = 0.dp,
-                minHeight = 36.dp,
-            )
+                enabled = prevEnabled,
+            ) {
+                TextButton(
+                    text = "上一页",
+                    onClick = { onPageChange(current - 1) },
+                    enabled = prevEnabled,
+                    minWidth = 0.dp,
+                    minHeight = 36.dp,
+                )
+            }
             Text(
                 text = total?.let { "$current / $it" } ?: "第 $current 页",
                 style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-            TextButton(
-                text = "下一页",
+            MinTouchTarget(
                 onClick = { onPageChange(current + 1) },
-                enabled = enabled && (total?.let { current < it } ?: hasMore),
-                minWidth = 0.dp,
-                minHeight = 36.dp,
-            )
+                enabled = nextEnabled,
+            ) {
+                TextButton(
+                    text = "下一页",
+                    onClick = { onPageChange(current + 1) },
+                    enabled = nextEnabled,
+                    minWidth = 0.dp,
+                    minHeight = 36.dp,
+                )
+            }
         }
     }
 }
 
-/** 点击分页结果列表：单页整页展示，底部附翻页条；与无限滚动共用同一行样式。 */
+/** 点击分页结果列表：单页整页展示，底部附翻页条；与无限滚动共用同一行样式。 *//** 屏级/列表区失败块：会话失效切换为去登录，普通失败给重试。 */
+@Composable
+internal fun ScreenFailureOrLogin(
+    message: String,
+    expired: Boolean,
+    onRetry: () -> Unit,
+    onOpenLogin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (expired) {
+        LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = modifier)
+    } else {
+        ErrorScreen(message = message, onRetry = onRetry, modifier = modifier)
+    }
+}
+
 fun LazyListScope.pagedSearchResultItems(
     feed: PagedFeed<SearchResult>,
     onPageChange: (Int) -> Unit,

@@ -16,7 +16,10 @@ import com.jm3.core.toFeed
 internal fun SessionOutcome<SearchPage>.asListState(failureMessage: String): ListState =
     when (this) {
         is SessionOutcome.Ok -> ListState.Loaded(value.toFeed())
-        else -> ListState.Failed(planLoad(this, hasContent = false, failureMessage = failureMessage).message.orEmpty())
+        else -> ListState.Failed(
+            message = planLoad(this, hasContent = false, failureMessage = failureMessage).message.orEmpty(),
+            sessionExpired = this is SessionOutcome.Expired,
+        )
     }
 
 /**

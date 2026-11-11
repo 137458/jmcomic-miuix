@@ -98,7 +98,7 @@ fun SettingsScreen(
 
     // 破坏性操作二次确认：3 秒未确认自动复位。
     var confirmClear by remember { mutableStateOf<String?>(null) }
-    var showDisclaimer by remember { mutableStateOf(false) }
+    var showDisclaimer by rememberSaveable { mutableStateOf(false) }
 
     // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
     val paginationMode = deps.preferences.paginationMode

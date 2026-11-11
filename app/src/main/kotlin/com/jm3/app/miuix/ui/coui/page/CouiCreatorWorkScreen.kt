@@ -56,11 +56,11 @@ import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
@@ -167,7 +167,12 @@ private fun CouiCreatorWorkBody(
             CouiCreatorWorkState.Loading -> item(key = "coui-work-loading") { CouiLoadingGroup() }
 
             is CouiCreatorWorkState.Failed -> item(key = "coui-work-error") {
-                CouiCreatorWorkScreenFailure(plan = current.plan, onRetry = { load() }, onOpenLogin = onOpenLogin)
+                CouiScreenFailureGroup(
+                    message = current.plan.message,
+                    expired = current.plan.phase == ScreenLoadPhase.Expired,
+                    onRetry = { load() },
+                    onOpenLogin = onOpenLogin,
+                )
             }
 
             is CouiCreatorWorkState.Loaded -> {
@@ -217,7 +222,12 @@ private fun CouiCreatorWorkBody(
             CouiCreatorWorkState.Loading -> item(key = "coui-work-images-loading") { CouiLoadingGroup() }
 
             is CouiCreatorWorkState.Failed -> item(key = "coui-work-images-error") {
-                CouiErrorGroup(message = current.plan.message.orEmpty(), onRetry = { load() })
+                CouiScreenFailureGroup(
+                    message = current.plan.message,
+                    expired = current.plan.phase == ScreenLoadPhase.Expired,
+                    onRetry = { load() },
+                    onOpenLogin = onOpenLogin,
+                )
             }
 
             is CouiCreatorWorkState.Loaded -> {
@@ -313,29 +323,6 @@ private fun CouiCreatorWorkBody(
     }
 }
 
-/** 屏级失败块：会话失效给登录入口，其余给重试。 */
-@Composable
-private fun CouiCreatorWorkScreenFailure(plan: ScreenLoadPlan, onRetry: () -> Unit, onOpenLogin: () -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
-    if (plan.phase == ScreenLoadPhase.Expired) {
-        Group(title = "需要登录", footer = plan.message.orEmpty()) {
-            Item(
-                title = { Text(text = "请先登录后再查看，点此去登录", kind = CouiTextKind.Body) },
-                onClick = onOpenLogin,
-                trailing = {
-                    Icon(
-                        imageVector = CouiIcons.Lock,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = scheme.onSurfaceVariant,
-                    )
-                },
-            )
-        }
-    } else {
-        CouiErrorGroup(message = plan.message.orEmpty(), onRetry = onRetry)
-    }
-}
 
 /** 标题卡：作品名 + 作者 + 创作时间，信息量小所以只留一张卡。 */
 @Composable

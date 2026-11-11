@@ -68,26 +68,31 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.AlbumCoverImage
+import com.jm3.app.miuix.ui.CommentItemNullableSaver
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.StringSetSaver
+import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -244,10 +249,14 @@ private fun CouiNovelDetailBody(
     var commentFailure by remember(novelId) { mutableStateOf<ScreenLoadPlan?>(null) }
     var commentDraft by rememberSaveable(novelId) { mutableStateOf("") }
     var commentSending by remember(novelId) { mutableStateOf(false) }
-    var expandedReplies by remember(novelId) { mutableStateOf<Set<String>>(emptySet()) }
+    var expandedReplies by rememberSaveable(novelId, stateSaver = StringSetSaver) {
+        mutableStateOf<Set<String>>(emptySet())
+    }
     var commentToken by remember(novelId) { mutableIntStateOf(0) }
     // 回复目标存整条评论：弹窗标题要作者名，提交要拿 id 当父评论，少一次回查列表
-    var replyTarget by remember(novelId) { mutableStateOf<CommentItem?>(null) }
+    var replyTarget by rememberSaveable(novelId, stateSaver = CommentItemNullableSaver) {
+        mutableStateOf<CommentItem?>(null)
+    }
     var replyBusy by remember(novelId) { mutableStateOf(false) }
 
     val singleListState = rememberLazyListState()
@@ -465,8 +474,9 @@ private fun CouiNovelDetailBody(
         when (val current = state) {
             CouiNovelDetailState.Loading -> item(key = "novel-loading") { CouiLoadingGroup() }
             is CouiNovelDetailState.Failed -> item(key = "novel-failed") {
-                CouiNovelDetailFailure(
-                    plan = current.plan,
+                CouiScreenFailureGroup(
+                    message = current.plan.message,
+                    expired = current.plan.phase == ScreenLoadPhase.Expired,
                     onRetry = { load() },
                     onOpenLogin = onOpenLogin,
                 )
@@ -557,8 +567,9 @@ private fun CouiNovelDetailBody(
                     CouiLoadingGroup(text = "正在加载评论…")
                 }
                 commentFailure != null -> item(key = "novel-comments-failed") {
-                    CouiNovelDetailFailure(
-                        plan = commentFailure!!,
+                    CouiScreenFailureGroup(
+                        message = commentFailure!!.message,
+                        expired = commentFailure!!.phase == ScreenLoadPhase.Expired,
                         onRetry = { loadComments(targetPage = 1, replace = true, showLoading = true) },
                         onOpenLogin = onOpenLogin,
                     )
@@ -686,6 +697,7 @@ private fun CouiNovelDetailBody(
         CouiNovelReplyDialog(
             visible = replyTarget != null,
             targetAuthor = replyTarget?.author,
+            targetKey = replyTarget?.id,
             busy = replyBusy,
             onDismiss = { replyTarget = null },
             onSend = { sendReply(it) },
@@ -744,32 +756,6 @@ private fun novelChapterMarker(chapter: NovelChapterMeta, savedChapterId: String
     else -> null
 }
 
-/** 屏级失败块：会话失效换成「去登录」，普通失败给重试，不把 401 变成可重试的失败。 */
-@Composable
-private fun CouiNovelDetailFailure(plan: ScreenLoadPlan, onRetry: () -> Unit, onOpenLogin: () -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
-    if (plan.phase == ScreenLoadPhase.Expired) {
-        Group(
-            title = "需要登录",
-            footer = plan.message.orEmpty(),
-        ) {
-            Item(
-                title = { Text(text = CouiStrings.OpenLogin, kind = CouiTextKind.Body, color = scheme.accent) },
-                trailing = {
-                    Icon(
-                        imageVector = CouiIcons.Forward,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = scheme.onSurfaceVariant,
-                    )
-                },
-                onClick = onOpenLogin,
-            )
-        }
-    } else {
-        CouiErrorGroup(message = plan.message.orEmpty(), onRetry = onRetry)
-    }
-}
 
 /** 详情头图：封面 + 书名 + 作者胶囊 + 连载信息 + 标签，标签点击进标签检索。 */
 @OptIn(ExperimentalLayoutApi::class)
@@ -824,10 +810,10 @@ private fun CouiNovelHeroCard(
                     )
                     Box(
                         modifier = Modifier
-                            .clip(CouiCapsuleShape)
-                            .background(scheme.accent.copy(alpha = CouiSelectedContainerAlpha))
                             .couiPressable(
-                                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
+                                shape = CouiCapsuleShape,
+                                backgroundColor = scheme.accent.copy(alpha = CouiSelectedContainerAlpha),
+                                spotlight = SpotlightPreset.ChipTab,
                                 minTouchTarget = CouiMinTouchTarget,
                                 onClick = { onOpenSearch(author, SearchScope.AUTHOR) },
                             )
@@ -1330,13 +1316,15 @@ private fun CouiNovelReplyDialog(
     busy: Boolean,
     onDismiss: () -> Unit,
     onSend: (String) -> Unit,
+    targetKey: String? = null,
 ) {
     val scheme = CouiKitTheme.colorScheme
-    var replyText by remember(visible) { mutableStateOf("") }
-    val author = targetAuthor?.takeIf { it.isNotBlank() }
+    val author = rememberRetainedTarget(targetAuthor)?.takeIf { it.isNotBlank() }
+    var replyText by rememberSavedDialogDraft(isOpen = visible, targetKey = targetKey ?: author)
     Dialog(
         onDismissRequest = onDismiss,
         visible = visible,
+        material = couiDialogMaterial(),
         confirmAction = CouiDialogAction(
             text = if (busy) "发送中…" else "发送",
             onClick = { onSend(replyText) },
@@ -1427,15 +1415,15 @@ private fun CouiNovelCapsuleButton(
     }
     Box(
         modifier = modifier
-            .heightIn(min = 32.dp)
-            .clip(CouiCapsuleShape)
-            .background(background)
             .couiPressable(
-                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
+                shape = CouiCapsuleShape,
+                backgroundColor = background,
+                spotlight = SpotlightPreset.ChipTab,
                 enabled = enabled,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
+            .heightIn(min = 32.dp)
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -1454,9 +1442,13 @@ private fun CouiNovelTagChip(text: String, onClick: () -> Unit) {
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.Start,
         modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .background(scheme.onSurface.copy(alpha = 0.06f))
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = scheme.onSurface.copy(alpha = 0.06f),
+                spotlight = SpotlightPreset.ChipTab,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
             .padding(horizontal = 10.dp, vertical = 4.dp),
     )
 }

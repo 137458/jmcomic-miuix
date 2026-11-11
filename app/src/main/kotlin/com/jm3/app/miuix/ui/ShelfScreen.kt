@@ -89,7 +89,7 @@ fun ShelfScreen(
             CenteredEmptyState(
                 title = "暂无下载",
                 hint = "在详情页点下载按钮，章节会出现在这里",
-                modifier = Modifier.padding(innerPadding),
+                modifier = Modifier.padding(innerPadding).readableWidth(),
             )
         } else {
             LazyColumn(

@@ -63,6 +63,8 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
+import com.jm3.app.miuix.ui.CommentItemNullableSaver
+import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
@@ -86,6 +88,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiWorkCardShape
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -151,7 +154,9 @@ internal fun CouiForumScreen(
     var refreshing by remember { mutableStateOf(false) }
     // 失败页码：重试要回到失败的那一页，而不是一律回第一页
     var failedPage by remember { mutableIntStateOf(1) }
-    var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
+    var replyTarget by rememberSaveable(stateSaver = CommentItemNullableSaver) {
+        mutableStateOf<CommentItem?>(null)
+    }
     var replyBusy by remember { mutableStateOf(false) }
     var composing by rememberSaveable { mutableStateOf(false) }
     var composeBusy by remember { mutableStateOf(false) }
@@ -475,9 +480,11 @@ internal fun CouiForumScreen(
             onDismiss = { composing = false },
             onSend = { postTopic(it) },
         )
+        val retainedReplyAuthor = rememberRetainedTarget(replyTarget?.author?.takeIf { it.isNotBlank() })
         CouiForumInputDialog(
             visible = replyTarget != null,
-            title = "回复 " + replyTarget?.author.orEmpty(),
+            title = if (retainedReplyAuthor != null) "回复 $retainedReplyAuthor" else "回复",
+            targetKey = replyTarget?.id,
             busy = replyBusy,
             confirmText = "发送",
             busyConfirmText = "发送中…",
@@ -630,9 +637,13 @@ private fun ForumCapsuleButton(text: String, onClick: () -> Unit) {
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .background(scheme.accent)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.OpaqueMedium1, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = scheme.accent,
+                spotlight = SpotlightPreset.OpaqueMedium1,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
             .padding(horizontal = 20.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -659,9 +670,10 @@ private fun CouiForumInputDialog(
     placeholder: String,
     onDismiss: () -> Unit,
     onSend: (String) -> Unit,
+    targetKey: String? = null,
 ) {
     val scheme = CouiKitTheme.colorScheme
-    var draft by rememberSaveable(visible) { mutableStateOf("") }
+    var draft by rememberSavedDialogDraft(isOpen = visible, targetKey = targetKey)
     Dialog(
         onDismissRequest = onDismiss,
         visible = visible,

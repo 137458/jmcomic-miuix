@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
@@ -264,7 +265,7 @@ fun CouiNovelListScreen(
                                         val next = NovelOrder.entries.getOrNull(index) ?: return@CouiSegmentedCapsules
                                         if (next != order) orderName = next.name
                                     },
-                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 8.dp),
                                 )
                             }
                             item(key = "coui-novel-search", span = { GridItemSpan(maxLineSpan) }) {
@@ -309,7 +310,10 @@ fun CouiNovelListScreen(
                                             color = scheme.onSurfaceVariant,
                                             maxLines = 1,
                                             textAlign = TextAlign.Start,
-                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                                .padding(top = 8.dp),
                                         )
                                     }
                                 }
@@ -447,13 +451,12 @@ private fun CouiNovelFavoriteBadge(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
+                backgroundColor = background,
                 enabled = enabled,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(background),
+            .size(28.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -477,6 +480,7 @@ private fun CouiNovelSearchField(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
             .clip(CouiCapsuleShape)
             .background(scheme.container)
             .padding(horizontal = 14.dp, vertical = 8.dp),

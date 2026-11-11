@@ -13,7 +13,10 @@ import com.jm3.core.paging.PagedFeed
 internal sealed interface ListState {
     data object Loading : ListState
     data class Loaded(val feed: PagedFeed<SearchResult>) : ListState
-    data class Failed(val message: String) : ListState
+    data class Failed(
+        val message: String,
+        val sessionExpired: Boolean = false,
+    ) : ListState
 }
 
 /**

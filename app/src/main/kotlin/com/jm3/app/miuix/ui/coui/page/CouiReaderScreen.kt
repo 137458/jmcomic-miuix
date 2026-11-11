@@ -48,6 +48,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.jm3.app.miuix.ui.CommentItemNullableSaver
+import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -135,6 +137,7 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -390,6 +393,7 @@ private fun ReaderStateScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .readableWidth()
                     .padding(innerPadding)
                     .consumeWindowInsets(innerPadding),
             ) {
@@ -501,15 +505,22 @@ private fun ReaderPages(
     var comments by remember(photo.albumId) { mutableStateOf<CommentPage?>(null) }
     var commentsLoading by remember { mutableStateOf(false) }
     var commentsFailed by remember { mutableStateOf(false) }
+    var commentsExpired by remember { mutableStateOf(false) }
     var commentText by rememberSaveable(photo.albumId) { mutableStateOf("") }
     var commentBusy by remember { mutableStateOf(false) }
     // 评论抽屉内的回复：目标评论与发送态
-    var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
+    var replyTarget by rememberSaveable(photo.albumId, stateSaver = CommentItemNullableSaver) {
+        mutableStateOf<CommentItem?>(null)
+    }
     var replyBusy by remember { mutableStateOf(false) }
     // 回复框草稿：换目标即清空，免得上一条的残稿被带进新回复；跨旋转保留（发送成功后显式清空）
-    var replyText by rememberSaveable(photo.albumId) { mutableStateOf("") }
-    var showTrackPrompt by remember { mutableStateOf(false) }
-    var trackPromptShown by remember { mutableStateOf(false) }
+    var replyText by rememberSavedDialogDraft(
+        isOpen = replyTarget != null,
+        targetKey = replyTarget?.id,
+        resetKey = photo.albumId,
+    )
+    var showTrackPrompt by rememberSaveable(photo.photoId) { mutableStateOf(false) }
+    var trackPromptShown by rememberSaveable(photo.photoId) { mutableStateOf(false) }
     var trackMuteChecked by remember { mutableStateOf(false) }
     var trackBusy by remember { mutableStateOf(false) }
 
@@ -785,13 +796,17 @@ private fun ReaderPages(
     fun loadComments() {
         commentsLoading = true
         commentsFailed = false
+        commentsExpired = false
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.comments(photo.albumId) }
             commentsLoading = false
             when (outcome) {
                 is SessionOutcome.Ok -> comments = outcome.value
                 // 内联「加载失败 + 重试」对失效是误导：重试必然再吃一次 401
-                SessionOutcome.Expired -> reportAction(outcome, "评论加载失败")
+                SessionOutcome.Expired -> {
+                    commentsExpired = true
+                    reportAction(outcome, "评论加载失败")
+                }
                 is SessionOutcome.Failed -> commentsFailed = true
             }
         }
@@ -849,7 +864,7 @@ private fun ReaderPages(
     // 评论抽屉的展开状态跨旋转保留，但评论数据本身不是可保存类型：恢复后若已展开且没有数据，
     // 补拉一次，否则用户看到的是「暂无评论」的假空态
     LaunchedEffect(showCommentSheet, photo.albumId) {
-        if (showCommentSheet && comments == null && !commentsLoading && !commentsFailed) loadComments()
+        if (showCommentSheet && comments == null && !commentsLoading && !commentsFailed && !commentsExpired) loadComments()
     }
 
     fun followSeries() {
@@ -950,6 +965,15 @@ private fun ReaderPages(
                     // 手势由 pagerGestureOverride 驱动，避免与原生拖拽竞争
                     userScrollEnabled = false,
                     pageNestedScrollConnection = PagerGestureNestedScrollConnection,
+                    key = { index ->
+                        ReaderSpreadPolicy.pagerKey(
+                            photoId = photo.photoId,
+                            spreadActive = spreadActive,
+                            pageCount = photo.images.size,
+                            index = index,
+                            singlePageIndex = photo.images.getOrNull(index)?.index,
+                        )
+                    },
                 ) { index ->
                     if (spreadActive) {
                         val spreadImages = ReaderSpreadPolicy.pagesInSpread(index, photo.images.size)
@@ -1016,7 +1040,7 @@ private fun ReaderPages(
                 // 轨道与列表共用同一份 contentPadding；横向模式用的是 Pager，不经过这里
                 TrackedLazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = contentInsets,
                 ) {
                     items(photo.images, key = { it.index }) { image ->
@@ -1293,6 +1317,14 @@ private fun ReaderPages(
                     when {
                         commentsLoading -> ReaderDialogHint(text = "正在加载评论…")
 
+                        commentsExpired -> ReaderDialogHint(
+                            text = "登录已过期，点此登录",
+                            onClick = {
+                                showCommentSheet = false
+                                onOpenLogin()
+                            },
+                        )
+
                         commentsFailed -> ReaderDialogHint(
                             text = "评论加载失败，点此重试",
                             onClick = ::loadComments,
@@ -1337,11 +1369,12 @@ private fun ReaderPages(
         }
 
         // 回复：与评论弹窗平级、互不嵌套，发送中禁止关闭，防止请求回来时目标已被清空
+        val retainedReplyTarget = rememberRetainedTarget(replyTarget)
         Dialog(
             onDismissRequest = { if (!replyBusy) replyTarget = null },
             visible = replyTarget != null,
             material = couiDialogMaterial(),
-            title = "回复 " + replyTarget?.author.orEmpty(),
+            title = "回复 " + retainedReplyTarget?.author.orEmpty(),
             confirmAction = CouiDialogAction(
                 text = if (replyBusy) "发送中…" else "发送",
                 enabled = !replyBusy,
@@ -1398,7 +1431,9 @@ private fun ReaderPages(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 6.dp)
-                            .couiPressable { trackMuteChecked = !trackMuteChecked }
+                            .couiPressable(minTouchTarget = CouiMinTouchTarget) {
+                                trackMuteChecked = !trackMuteChecked
+                            }
                             .padding(vertical = 8.dp),
                     ) {
                         // 库复选框只画框，点击语义与热区由这一行自己提供

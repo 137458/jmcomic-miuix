@@ -102,9 +102,9 @@ fun ForumScreen(
     // 档位切换与翻页都会整块换掉列表内容，滚动位置必须一起回到顶部：
     // 否则新内容会沿用上一档/上一页的偏移，进来先看到列表中段
     val listState = rememberLazyListState()
-    var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
+    var replyTarget by rememberSaveable(stateSaver = CommentItemNullableSaver) { mutableStateOf<CommentItem?>(null) }
     var replyBusy by remember { mutableStateOf(false) }
-    var composing by remember { mutableStateOf(false) }
+    var composing by rememberSaveable { mutableStateOf(false) }
     var composeBusy by remember { mutableStateOf(false) }
     var rulesExpanded by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -537,10 +537,7 @@ private fun ForumComposeSheet(
     onSend: (String) -> Unit,
 ) {
     val skin = LocalSkin.current
-    var text by rememberSaveable { mutableStateOf("") }
-    LaunchedEffect(show) {
-        if (show) text = ""
-    }
+    var text by rememberSavedDialogDraft(isOpen = show, targetKey = null)
     OverlayBottomSheet(
         show = show,
         title = "发布新帖",

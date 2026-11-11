@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -87,14 +88,36 @@ fun ProfileScreen(
     var profile by remember { mutableStateOf<UserProfile?>(null) }
     var saving by remember { mutableStateOf(false) }
     var selector by remember { mutableStateOf<ProfileSelector?>(null) }
-    // 编辑缓冲：键与 editableFields() 一致，提交时整体回传
-    val fields = remember { mutableStateMapOf<String, String>() }
+    var savedUidToken by rememberSaveable { mutableStateOf(ProfileDraftPolicy.UID_UNSET) }
+    var savedDrafts by rememberSaveable(stateSaver = StringMapSaver) {
+        mutableStateOf<Map<String, String>>(emptyMap())
+    }
+    var dirtyKeys by rememberSaveable(stateSaver = StringSetSaver) {
+        mutableStateOf<Set<String>>(emptySet())
+    }
+    // 编辑缓冲：键与 editableFields() 一致，提交时整体回传；未保存的修改跨旋转保留
+    val backingFields = remember { mutableStateMapOf<String, String>() }
+    val fields = remember {
+        trackedProfileFieldMap(backingFields) { key, value ->
+            dirtyKeys = dirtyKeys + key
+            savedDrafts = savedDrafts + (key to value)
+        }
+    }
     val scope = rememberCoroutineScope()
 
-    fun applyProfile(next: UserProfile) {
+    fun applyProfile(next: UserProfile, resetDrafts: Boolean = false) {
         profile = next
-        fields.clear()
-        fields.putAll(next.editableFields())
+        if (resetDrafts) {
+            dirtyKeys = emptySet()
+            savedDrafts = emptyMap()
+        }
+        val merged = ProfileDraftPolicy.mergeProfileFields(
+            serverFields = next.editableFields(),
+            savedDrafts = savedDrafts,
+            dirtyKeys = dirtyKeys,
+        )
+        backingFields.clear()
+        backingFields.putAll(merged)
     }
 
     /** 失效与失败共用一个落点：已读到资料就保留表单，只弹提示；否则整屏化，失效换成「去登录」。 */
@@ -117,7 +140,7 @@ fun ProfileScreen(
     fun load(showLoading: Boolean = true) {
         val uid = user?.uid
         if (uid == null) {
-            state = ProfileUiState.Failed("请先登录后查看个人资料")
+            state = ProfileUiState.Failed("请先登录后查看个人资料", sessionExpired = true)
             return
         }
         if (showLoading) state = ProfileUiState.Loading
@@ -145,7 +168,7 @@ fun ProfileScreen(
             saving = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    applyProfile(outcome.value)
+                    applyProfile(outcome.value, resetDrafts = true)
                     snackbarHostState.showSnackbar("资料已保存")
                 }
 
@@ -159,8 +182,13 @@ fun ProfileScreen(
     }
 
     LaunchedEffect(user?.uid) {
-        fields.clear()
-        profile = null
+        if (ProfileDraftPolicy.shouldResetOnUidEffect(savedUidToken, user?.uid)) {
+            savedUidToken = ProfileDraftPolicy.uidToken(user?.uid)
+            backingFields.clear()
+            savedDrafts = emptyMap()
+            dirtyKeys = emptySet()
+            profile = null
+        }
         load()
     }
 

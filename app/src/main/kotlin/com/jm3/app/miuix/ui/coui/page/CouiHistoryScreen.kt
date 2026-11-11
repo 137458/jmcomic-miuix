@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,8 @@ import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
+import com.jm3.app.miuix.ui.removeMatching
+import com.jm3.app.miuix.ui.restoreAt
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -54,6 +57,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -128,7 +132,7 @@ fun CouiHistoryScreen(
 
         var feed by remember { mutableStateOf(PagedFeed<HistoryEntry>()) }
         var state by remember { mutableStateOf<CouiHistoryListState>(CouiHistoryListState.Loading) }
-        var showClearConfirm by remember { mutableStateOf(false) }
+        var showClearConfirm by rememberSaveable { mutableStateOf(false) }
         var clearing by remember { mutableStateOf(false) }
         // 翻页在途守卫：仓库读取期间忽略重复翻页，避免连点重发请求
         var pageBusy by remember { mutableStateOf(false) }
@@ -200,17 +204,30 @@ fun CouiHistoryScreen(
 
         /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从当前列表移除，并提供撤销入口。 */
         fun removeAlbum(albumId: String) {
-            val removedEntries = feed.items.filter { it.albumId == albumId }
+            val slice = feed.items.removeMatching { it.albumId == albumId }
+            if (slice.removed.isEmpty()) return
             scope.launch {
-                runCatchingSuspending { repository.deleteAlbum(albumId) }
-                feed = feed.copy(items = feed.items.filterNot { it.albumId == albumId })
+                val deleteOutcome = runCatchingSuspending { repository.deleteAlbum(albumId) }
+                if (deleteOutcome.isFailure) {
+                    snackbarHostState.showSnackbar("删除失败")
+                    return@launch
+                }
+                feed = feed.copy(items = slice.remaining)
                 val result = snackbarHostState.showSnackbar(
                     message = "已删除阅读记录",
                     actionLabel = "撤销",
                 )
                 if (result == SnackbarResult.ActionPerformed) {
-                    removedEntries.forEach { repository.upsert(it) }
-                    feed = feed.copy(items = (removedEntries + feed.items).distinctBy { it.photoId })
+                    val restoreOutcome = runCatchingSuspending {
+                        slice.removed.forEach { repository.upsert(it) }
+                    }
+                    if (restoreOutcome.isSuccess) {
+                        feed = feed.copy(
+                            items = feed.items.restoreAt(slice.removed, slice.insertIndex) { it.photoId },
+                        )
+                    } else {
+                        snackbarHostState.showSnackbar("撤销失败")
+                    }
                 }
             }
         }
@@ -323,24 +340,24 @@ fun CouiHistoryScreen(
                 }
             }
 
-            if (showClearConfirm) {
-                Dialog(
-                    onDismissRequest = { if (!clearing) showClearConfirm = false },
-                    title = "清空阅读历史",
-                    message = "将删除本机全部阅读记录，已下载的章节不受影响。",
-                    placement = CouiDialogPlacement.Center,
-                    confirmAction = couiDestructiveConfirmAction(
-                        text = if (clearing) "清空中…" else "清空",
-                        enabled = !clearing,
-                        onClick = { clearAll() },
-                    ),
-                    dismissAction = CouiDialogAction(
-                        text = "取消",
-                        style = CouiDialogActionStyle.Secondary,
-                        onClick = { if (!clearing) showClearConfirm = false },
-                    ),
-                )
-            }
+            Dialog(
+                onDismissRequest = { if (!clearing) showClearConfirm = false },
+                visible = showClearConfirm,
+                material = couiDialogMaterial(),
+                title = "清空阅读历史",
+                message = "将删除本机全部阅读记录，已下载的章节不受影响。",
+                placement = CouiDialogPlacement.Center,
+                confirmAction = couiDestructiveConfirmAction(
+                    text = if (clearing) "清空中…" else "清空",
+                    enabled = !clearing,
+                    onClick = { clearAll() },
+                ),
+                dismissAction = CouiDialogAction(
+                    text = "取消",
+                    style = CouiDialogActionStyle.Secondary,
+                    onClick = { if (!clearing) showClearConfirm = false },
+                ),
+            )
 
             GlassSnackbarHost(
                 state = snackbarHostState,
@@ -417,12 +434,11 @@ private fun CouiHistoryDeleteBadge(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
+                backgroundColor = scheme.container,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(scheme.container),
+            .size(28.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

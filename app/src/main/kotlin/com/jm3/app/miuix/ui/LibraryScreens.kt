@@ -55,6 +55,7 @@ import com.jm3.app.miuix.ui.glass.GlassSearchInputField
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
+import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
@@ -677,10 +678,14 @@ fun CreatorWorkDetailScreen(
             )
             else -> {
                 val body = work!!
-                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                val listContentPadding = remember(innerPadding, related.isNotEmpty()) {
+                    val extraBottom = creatorWorkExtraBottomDp(hasRelated = related.isNotEmpty()).dp
+                    innerPadding.withSpacing(extraBottom = extraBottom)
+                }
+                // 首项下移让出顶栏高度，底部按是否存在相关作品悬浮栏预留净空
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().readableWidth(),
-                    contentPadding = innerPadding,
+                    contentPadding = listContentPadding,
                 ) {
                     if (body.contentText.isNotBlank()) {
                         item(key = "content") {
@@ -721,12 +726,14 @@ fun CreatorWorkDetailScreen(
                 contentAlignment = Alignment.BottomCenter,
             ) {
                 FloatingToolbar {
-                    TextButton(
-                        text = "相关作品 ${related.size}",
-                        onClick = { relatedOpen = true },
-                        minWidth = 0.dp,
-                        minHeight = 44.dp,
-                    )
+                    MinTouchTarget(onClick = { relatedOpen = true }) {
+                        TextButton(
+                            text = "相关作品 ${related.size}",
+                            onClick = { relatedOpen = true },
+                            minWidth = 0.dp,
+                            minHeight = 44.dp,
+                        )
+                    }
                 }
             }
         }

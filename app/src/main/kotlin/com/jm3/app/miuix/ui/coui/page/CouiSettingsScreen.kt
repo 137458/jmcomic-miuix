@@ -70,6 +70,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
@@ -184,7 +185,7 @@ fun CouiSettingsScreen(
         // 阅读设置七项的状态与写盘交给共享 holder，本页只负责用库控件渲染
         val readerState = rememberReaderSettingsState(repository)
         // 版本号连点进入隐藏诊断
-        var diagnostics by remember { mutableStateOf(false) }
+        var diagnostics by rememberSaveable { mutableStateOf(false) }
         var versionTapCount by remember { mutableIntStateOf(0) }
         // 诊断读取的代号：进页、探活、应用线路都会触发，只让最后一次写的旧结果落不到界面
         var diagnosticsRequest by remember { mutableIntStateOf(0) }
@@ -665,6 +666,7 @@ fun CouiSettingsScreen(
         Dialog(
             onDismissRequest = { diagnostics = false },
             visible = diagnostics,
+            material = couiDialogMaterial(),
             title = "诊断信息",
             confirmAction = CouiDialogAction(text = "知道了", onClick = { diagnostics = false }),
         ) {
@@ -713,6 +715,7 @@ fun CouiSettingsScreen(
             Dialog(
                 onDismissRequest = { if (!clearing) clearTarget = null },
                 visible = clearTarget != null,
+                material = couiDialogMaterial(),
                 title = pendingClear.title,
                 message = pendingClear.description,
                 placement = CouiDialogPlacement.Center,
@@ -751,6 +754,7 @@ fun CouiSettingsScreen(
         Dialog(
             onDismissRequest = { showDisclaimer = false },
             visible = showDisclaimer,
+            material = couiDialogMaterial(),
             title = "免责声明",
             message = "本应用为第三方客户端，与禁漫官方无关，仅供学习交流；" +
                 "全部内容来自第三方站点，本应用不存储任何内容。包含成人内容，" +

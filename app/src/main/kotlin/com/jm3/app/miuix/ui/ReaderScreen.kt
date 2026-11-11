@@ -426,13 +426,14 @@ private fun ReaderPages(
     var comments by remember(photo.albumId) { mutableStateOf<CommentPage?>(null) }
     var commentsLoading by remember { mutableStateOf(false) }
     var commentsFailed by remember { mutableStateOf(false) }
+    var commentsExpired by remember { mutableStateOf(false) }
     var commentText by rememberSaveable(photo.albumId) { mutableStateOf("") }
     var commentBusy by remember { mutableStateOf(false) }
     // 评论抽屉内的回复：目标评论与发送态
-    var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
+    var replyTarget by rememberSaveable(photo.albumId, stateSaver = CommentItemNullableSaver) { mutableStateOf<CommentItem?>(null) }
     var replyBusy by remember { mutableStateOf(false) }
-    var showTrackPrompt by remember { mutableStateOf(false) }
-    var trackPromptShown by remember { mutableStateOf(false) }
+    var showTrackPrompt by rememberSaveable(photo.photoId) { mutableStateOf(false) }
+    var trackPromptShown by rememberSaveable(photo.photoId) { mutableStateOf(false) }
     var trackMuteChecked by remember { mutableStateOf(false) }
     var trackBusy by remember { mutableStateOf(false) }
 
@@ -708,13 +709,17 @@ private fun ReaderPages(
     fun loadComments() {
         commentsLoading = true
         commentsFailed = false
+        commentsExpired = false
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.comments(photo.albumId) }
             commentsLoading = false
             when (outcome) {
                 is SessionOutcome.Ok -> comments = outcome.value
                 // 内联「加载失败 + 重试」对失效是误导：重试必然再吃一次 401
-                SessionOutcome.Expired -> reportAction(outcome, "评论加载失败")
+                SessionOutcome.Expired -> {
+                    commentsExpired = true
+                    reportAction(outcome, "评论加载失败")
+                }
                 is SessionOutcome.Failed -> commentsFailed = true
             }
         }
@@ -723,6 +728,11 @@ private fun ReaderPages(
     fun openComments() {
         showCommentSheet = true
         if (comments == null) loadComments()
+    }
+
+    // 评论抽屉展开态跨旋转保留，但评论列表本身不可序列化：旋转恢复后若已展开且数据为空则补拉一次
+    LaunchedEffect(showCommentSheet, photo.albumId) {
+        if (showCommentSheet && comments == null && !commentsLoading && !commentsFailed && !commentsExpired) loadComments()
     }
 
     fun sendComment() {
@@ -863,15 +873,22 @@ private fun ReaderPages(
                         IconButton(onClick = { prevChapter?.let { onOpenChapter(it.id) } }, enabled = prevChapter != null) {
                             Icon(imageVector = MiuixIcons.ChevronBackward, contentDescription = "上一话")
                         }
-                        TextButton(
-                            text = pageLabel,
+                        MinTouchTarget(
                             onClick = {
                                 pickerValue = pagePlan.currentPage
                                 showPageSheet = true
                             },
-                            minWidth = 0.dp,
-                            minHeight = 36.dp,
-                        )
+                        ) {
+                            TextButton(
+                                text = pageLabel,
+                                onClick = {
+                                    pickerValue = pagePlan.currentPage
+                                    showPageSheet = true
+                                },
+                                minWidth = 0.dp,
+                                minHeight = 36.dp,
+                            )
+                        }
                         IconButton(onClick = { nextChapter?.let { onOpenChapter(it.id) } }, enabled = nextChapter != null) {
                             Icon(imageVector = MiuixIcons.ChevronForward, contentDescription = "下一话")
                         }
@@ -901,6 +918,15 @@ private fun ReaderPages(
                     // 手势由 pagerGestureOverride 驱动，避免与原生拖拽竞争
                     userScrollEnabled = false,
                     pageNestedScrollConnection = PagerGestureNestedScrollConnection,
+                    key = { index ->
+                        ReaderSpreadPolicy.pagerKey(
+                            photoId = photo.photoId,
+                            spreadActive = spreadActive,
+                            pageCount = photo.images.size,
+                            index = index,
+                            singlePageIndex = photo.images.getOrNull(index)?.index,
+                        )
+                    },
                 ) { index ->
                     if (spreadActive) {
                         val spreadImages = ReaderSpreadPolicy.pagesInSpread(index, photo.images.size)
@@ -1125,11 +1151,26 @@ private fun ReaderPages(
                         contentAlignment = Alignment.Center,
                     ) { InfiniteProgressIndicator() }
 
+                    commentsExpired -> Box(
+                        modifier = Modifier.fillMaxWidth().height(120.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val openLogin = {
+                            showCommentSheet = false
+                            onOpenLogin()
+                        }
+                        MinTouchTarget(onClick = openLogin) {
+                            TextButton(text = "登录已过期，点击去登录", onClick = openLogin, minWidth = 0.dp)
+                        }
+                    }
+
                     commentsFailed -> Box(
                         modifier = Modifier.fillMaxWidth().height(120.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        TextButton(text = "加载失败，点击重试", onClick = ::loadComments, minWidth = 0.dp)
+                        MinTouchTarget(onClick = ::loadComments) {
+                            TextButton(text = "加载失败，点击重试", onClick = ::loadComments, minWidth = 0.dp)
+                        }
                     }
 
                     page == null || page.items.isEmpty() -> Text(
@@ -1599,11 +1640,13 @@ private fun BoxScope.ReaderLoadFailedHint(onRetry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(text = "图片加载失败")
-        TextButton(
-            text = "重试",
-            onClick = onRetry,
-            minWidth = 0.dp,
-            minHeight = 32.dp,
-        )
+        MinTouchTarget(onClick = onRetry) {
+            TextButton(
+                text = "重试",
+                onClick = onRetry,
+                minWidth = 0.dp,
+                minHeight = 32.dp,
+            )
+        }
     }
 }

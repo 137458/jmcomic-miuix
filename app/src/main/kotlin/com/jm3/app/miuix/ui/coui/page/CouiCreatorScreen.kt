@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,13 +64,14 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
@@ -297,7 +297,12 @@ private fun CouiCreatorBody(
                     CouiCreatorState.Loading -> item(key = "coui-creator-loading") { CouiLoadingGroup() }
 
                     is CouiCreatorState.Failed -> item(key = "coui-creator-error") {
-                        CouiCreatorFailure(plan = current.plan, onRetry = { load() }, onOpenLogin = onOpenLogin)
+                        CouiScreenFailureGroup(
+                            message = current.plan.message,
+                            expired = current.plan.phase == ScreenLoadPhase.Expired,
+                            onRetry = { load() },
+                            onOpenLogin = onOpenLogin,
+                        )
                     }
 
                     is CouiCreatorState.Loaded -> {
@@ -378,29 +383,6 @@ private fun CouiCreatorBody(
     }
 }
 
-/** 屏级失败块：会话失效换成登录提示，其余给重试。 */
-@Composable
-private fun CouiCreatorFailure(plan: ScreenLoadPlan, onRetry: () -> Unit, onOpenLogin: () -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
-    if (plan.phase == ScreenLoadPhase.Expired) {
-        Group(title = "需要登录", footer = plan.message.orEmpty()) {
-            Item(
-                title = { Text(text = "登录后可查看创作者主页，点此去登录", kind = CouiTextKind.Body) },
-                onClick = onOpenLogin,
-                trailing = {
-                    Icon(
-                        imageVector = CouiIcons.Lock,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = scheme.onSurfaceVariant,
-                    )
-                },
-            )
-        }
-    } else {
-        CouiErrorGroup(message = plan.message.orEmpty(), onRetry = onRetry)
-    }
-}
 
 /** 头部卡片：头图 + 圆形头像 + 名字作品数 + 赞助平台胶囊。 */
 @OptIn(ExperimentalLayoutApi::class)
@@ -439,21 +421,12 @@ private fun CouiCreatorHeaderCard(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(CircleShape)
-                    .background(scheme.container),
-            ) {
-                if (header.avatarUrl != null) {
-                    AsyncImage(
-                        model = header.avatarUrl,
-                        contentDescription = header.authorName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
+            CouiAvatar(
+                url = header.avatarUrl,
+                size = 64.dp,
+                name = header.authorName,
+                contentDescription = header.authorName,
+            )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -483,13 +456,12 @@ private fun CouiCreatorHeaderCard(
                         modifier = Modifier
                             .couiPressable(
                                 shape = shape,
+                                backgroundColor = scheme.accent.copy(alpha = 0.12f),
                                 spotlight = SpotlightPreset.ChipTab,
                                 minTouchTarget = CouiMinTouchTarget,
                                 onClick = { onOpenSponsor(sponsor) },
                             )
                             .height(28.dp)
-                            .clip(shape)
-                            .background(scheme.accent.copy(alpha = 0.12f))
                             .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -564,10 +536,9 @@ private fun CouiCreatorFilterRow(
                 val shape = RoundedCornerShape(16.dp)
                 Box(
                     modifier = Modifier
-                        .clip(shape)
-                        .background(if (option == selected) scheme.accent.copy(alpha = 0.15f) else scheme.card)
                         .couiPressable(
                             shape = shape,
+                            backgroundColor = if (option == selected) scheme.accent.copy(alpha = 0.15f) else scheme.card,
                             minTouchTarget = CouiMinTouchTarget,
                             spotlight = SpotlightPreset.ChipTab,
                             onClick = { onSelect(option) },

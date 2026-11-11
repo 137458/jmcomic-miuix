@@ -616,12 +616,14 @@ fun NovelDetailScreen(
                                             style = MiuixTheme.textStyles.footnote1,
                                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                         )
-                                        TextButton(
-                                            text = if (ascending) "正序" else "倒序",
-                                            onClick = { ascending = !ascending },
-                                            minWidth = 0.dp,
-                                            minHeight = 32.dp,
-                                        )
+                                        MinTouchTarget(onClick = { ascending = !ascending }) {
+                                            TextButton(
+                                                text = if (ascending) "正序" else "倒序",
+                                                onClick = { ascending = !ascending },
+                                                minWidth = 0.dp,
+                                                minHeight = 32.dp,
+                                            )
+                                        }
                                     }
                                 }
                                 val groups = ChapterGroups.of(
@@ -746,12 +748,14 @@ private fun NovelDetailHeader(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 detail.tags.forEach { tag ->
-                    TextButton(
-                        text = tag,
-                        onClick = { onTagClick(tag) },
-                        minWidth = 0.dp,
-                        minHeight = 30.dp,
-                    )
+                    MinTouchTarget(onClick = { onTagClick(tag) }) {
+                        TextButton(
+                            text = tag,
+                            onClick = { onTagClick(tag) },
+                            minWidth = 0.dp,
+                            minHeight = 30.dp,
+                        )
+                    }
                 }
             }
         }
@@ -871,7 +875,7 @@ fun NovelReaderScreen(
     var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var favorited by remember { mutableStateOf(false) }
     var commentsOpen by remember { mutableStateOf(false) }
-    var fontSheetOpen by remember { mutableStateOf(false) }
+    var fontSheetOpen by rememberSaveable { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
@@ -981,12 +985,14 @@ fun NovelReaderScreen(
                 subtitle = detail?.name.orEmpty(),
                 navigationIcon = { BackButton(onBack = onBack) },
                 actions = {
-                    TextButton(
-                        text = if (lang == "tw") "繁" else "简",
-                        onClick = { changeLang(if (lang == "tw") "cn" else "tw") },
-                        minWidth = 0.dp,
-                        minHeight = 36.dp,
-                    )
+                    MinTouchTarget(onClick = { changeLang(if (lang == "tw") "cn" else "tw") }) {
+                        TextButton(
+                            text = if (lang == "tw") "繁" else "简",
+                            onClick = { changeLang(if (lang == "tw") "cn" else "tw") },
+                            minWidth = 0.dp,
+                            minHeight = 36.dp,
+                        )
+                    }
                 },
             )
         },
@@ -1178,7 +1184,9 @@ private fun NovelCommentsPanel(
     var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var draft by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
-    var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
+    var replyTarget by rememberSaveable(novelId, stateSaver = CommentItemNullableSaver) {
+        mutableStateOf<CommentItem?>(null)
+    }
     var replyBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 

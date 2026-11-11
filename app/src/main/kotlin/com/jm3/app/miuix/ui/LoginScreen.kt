@@ -52,6 +52,7 @@ fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .readableWidth()
                 .padding(innerPadding)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),

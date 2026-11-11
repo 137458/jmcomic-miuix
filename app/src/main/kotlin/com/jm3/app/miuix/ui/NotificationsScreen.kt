@@ -344,11 +344,11 @@ private fun NotificationCard(
             }
             Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // 点按区包一层 40dp 的盒子：原来只有文字本身约 20dp 高，够不到触控下限
+                // 点按区至少撑到 48dp 触区：视觉只有文字本身，不改变外观的同时保证可点范围
                 Box(
                     modifier = Modifier
                         .pressScale()
-                        .sizeIn(minWidth = 40.dp, minHeight = 40.dp)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .clickable(enabled = !marking, onClick = onToggleRead),
                     contentAlignment = Alignment.Center,
                 ) {

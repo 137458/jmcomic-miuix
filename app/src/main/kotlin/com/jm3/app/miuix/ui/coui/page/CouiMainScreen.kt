@@ -181,16 +181,19 @@ fun CouiMainScreen(
                                     onOpenAlbum = onOpenAlbum,
                                     onOpenWeek = onOpenWeek,
                                     onOpenRanking = { tab = CouiMainTab.RANK.ordinal },
+                                    onOpenLogin = onOpenLogin,
                                 )
                                 1 -> CouiBrowseScreen(
                                     deps = deps,
                                     mode = BrowseMode.CATEGORY,
                                     onOpenAlbum = onOpenAlbum,
+                                    onOpenLogin = onOpenLogin,
                                 )
                                 2 -> CouiBrowseScreen(
                                     deps = deps,
                                     mode = BrowseMode.RANK,
                                     onOpenAlbum = onOpenAlbum,
+                                    onOpenLogin = onOpenLogin,
                                 )
                                 else -> CouiMineScreen(
                                     deps = deps,

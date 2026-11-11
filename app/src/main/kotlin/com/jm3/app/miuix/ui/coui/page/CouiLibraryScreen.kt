@@ -41,6 +41,7 @@ import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
@@ -66,7 +67,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -273,7 +276,9 @@ fun CouiLibraryScreen(
                                     items = COUI_LIBRARY_TABS,
                                     selectedIndex = tab,
                                     onSelect = { index -> if (index != tab) tab = index },
-                                    modifier = Modifier.padding(top = 8.dp),
+                                    modifier = Modifier
+                                        .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                        .padding(top = 8.dp),
                                 )
                             }
                             item(key = "coui-library-search", span = { GridItemSpan(maxLineSpan) }) {
@@ -287,7 +292,9 @@ fun CouiLibraryScreen(
                             if (tab == 1 && !filters.isEmpty) {
                                 item(key = "coui-library-filters", span = { GridItemSpan(maxLineSpan) }) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 2.dp),
                                         horizontalArrangement = Arrangement.spacedBy(
                                             CouiWorkCardTokens.GridSpacing,
                                         ),
@@ -329,7 +336,10 @@ fun CouiLibraryScreen(
                                             color = scheme.onSurfaceVariant,
                                             maxLines = 1,
                                             textAlign = TextAlign.Start,
-                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                                .padding(top = 4.dp),
                                         )
                                     }
                                 }
@@ -395,7 +405,7 @@ fun CouiLibraryScreen(
                 }
             }
 
-            val openPicker = picker
+            val openPicker = rememberRetainedTarget(picker)
             if (openPicker != null) {
                 val options = if (openPicker == CouiLibraryPicker.Languages) {
                     filters.languages
@@ -406,6 +416,8 @@ fun CouiLibraryScreen(
                 val all = listOf("全部") + options.distinct()
                 Dialog(
                     onDismissRequest = { picker = null },
+                    visible = picker != null,
+                    material = couiDialogMaterial(),
                     confirmAction = CouiDialogAction(
                         text = "关闭",
                         onClick = { picker = null },
@@ -460,10 +472,10 @@ private fun CouiLibraryFilterChip(
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
-            .clip(CouiCapsuleShape)
-            .background(scheme.container)
             .couiPressable(
-                shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
+                shape = CouiCapsuleShape,
+                backgroundColor = scheme.container,
+                spotlight = SpotlightPreset.ChipTab,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -520,6 +532,7 @@ private fun CouiLibrarySearchField(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
             .clip(CouiCapsuleShape)
             .background(scheme.container)
             .padding(horizontal = 14.dp, vertical = 8.dp),

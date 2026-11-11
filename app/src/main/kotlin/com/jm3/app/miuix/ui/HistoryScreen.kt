@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,8 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.SnackbarResult
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -90,8 +93,9 @@ fun HistoryScreen(
     // 在途、失败、是否还有下一页都由 PagedFeed 记；仓库按 pageSize 分页，满页即代表还有下一页
     var feed by remember { mutableStateOf(PagedFeed<HistoryEntry>()) }
     var state by remember { mutableStateOf<HistoryListState>(HistoryListState.Loading) }
-    var showClearConfirm by remember { mutableStateOf(false) }
+    var showClearConfirm by rememberSaveable { mutableStateOf(false) }
     var clearing by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     fun loadFirstPage() {
@@ -153,11 +157,33 @@ fun HistoryScreen(
         }
     }
 
-    /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从当前列表移除。 */
+    /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从当前列表移除，并提供撤销入口。 */
     fun removeAlbum(albumId: String) {
+        val slice = feed.items.removeMatching { it.albumId == albumId }
+        if (slice.removed.isEmpty()) return
         scope.launch {
-            runCatchingSuspending { repository.deleteAlbum(albumId) }
-            feed = feed.copy(items = feed.items.filterNot { it.albumId == albumId })
+            val deleteOutcome = runCatchingSuspending { repository.deleteAlbum(albumId) }
+            if (deleteOutcome.isFailure) {
+                snackbarHostState.showSnackbar("删除失败")
+                return@launch
+            }
+            feed = feed.copy(items = slice.remaining)
+            val result = snackbarHostState.showSnackbar(
+                message = "已删除阅读记录",
+                actionLabel = "撤销",
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                val restoreOutcome = runCatchingSuspending {
+                    slice.removed.forEach { repository.upsert(it) }
+                }
+                if (restoreOutcome.isSuccess) {
+                    feed = feed.copy(
+                        items = feed.items.restoreAt(slice.removed, slice.insertIndex) { it.photoId },
+                    )
+                } else {
+                    snackbarHostState.showSnackbar("撤销失败")
+                }
+            }
         }
     }
 
@@ -189,16 +215,19 @@ fun HistoryScreen(
                 navigationIcon = { BackButton(onBack = onBack) },
                 actions = {
                     if (albums.isNotEmpty()) {
-                        TextButton(
-                            text = "清空",
-                            onClick = { showClearConfirm = true },
-                            minWidth = 0.dp,
-                            minHeight = 36.dp,
-                        )
+                        MinTouchTarget(onClick = { showClearConfirm = true }) {
+                            TextButton(
+                                text = "清空",
+                                onClick = { showClearConfirm = true },
+                                minWidth = 0.dp,
+                                minHeight = 36.dp,
+                            )
+                        }
                     }
                 },
             )
         },
+        snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when (val s = state) {
             HistoryListState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -307,21 +336,30 @@ private fun AlbumHistoryCard(
         },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(
-                text = "继续阅读",
-                onClick = onResume,
-                minWidth = 0.dp,
-                minHeight = 32.dp,
-            )
-            TextButton(
-                text = "详情",
+            MinTouchTarget(onClick = onResume) {
+                TextButton(
+                    text = "继续阅读",
+                    onClick = onResume,
+                    minWidth = 0.dp,
+                    minHeight = 32.dp,
+                )
+            }
+            MinTouchTarget(
                 onClick = {
                     heroHost?.startForward(album.albumId, album.latest.coverUrl, cardCorner.value)
                     onOpenDetail()
                 },
-                minWidth = 0.dp,
-                minHeight = 32.dp,
-            )
+            ) {
+                TextButton(
+                    text = "详情",
+                    onClick = {
+                        heroHost?.startForward(album.albumId, album.latest.coverUrl, cardCorner.value)
+                        onOpenDetail()
+                    },
+                    minWidth = 0.dp,
+                    minHeight = 32.dp,
+                )
+            }
         }
     }
 }

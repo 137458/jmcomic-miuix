@@ -203,6 +203,8 @@ fun couiDestructiveConfirmAction(
  * @param minTouchTarget 补足触区的最小边长；视觉内容仍按原尺寸居中，只有可点范围变大。
  * 本修饰符必须写在固定尺寸之前（`Modifier.couiPressable(...).size(40.dp)`）：写在 `.size()` 之后时，
  * 外层固定尺寸把子约束钉死，扩边会被 coerceAtMost 钳回原尺寸，触区等于视觉尺寸。
+ * 胶囊或圆标的底色须通过 [backgroundColor] 传入（不可在调用点外侧先 `.clip().background()`），
+ * 底色、裁剪、按压蒙层与凝光才会一起留在视觉尺寸内，同时点击命中仍覆盖完整 [minTouchTarget] 区域。
  * @param scaleOnPress 小型控件（标签、图标键、胶囊）打开原厂缩放；整行列表项保持关闭。
  * @param spotlight 凝光材质预设；传 null 关闭。默认取 [SpotlightPreset.OpaqueSmall2]：
  * 与库顶栏按钮同档的中性表面，落在不透明底上按 OVERLAY 叠光。
@@ -214,6 +216,7 @@ fun Modifier.couiPressable(
     enabled: Boolean = true,
     role: Role = Role.Button,
     shape: Shape? = null,
+    backgroundColor: Color = Color.Unspecified,
     minTouchTarget: Dp = 0.dp,
     scaleOnPress: Boolean = false,
     spotlight: SpotlightPreset? = SpotlightPreset.OpaqueSmall2,
@@ -237,44 +240,39 @@ fun Modifier.couiPressable(
         }
     }
     val press = if (scaleOnPress) rememberCouiPressMotion() else null
-    val visualFeedback = if (shape != null) {
-        Modifier
-            .clip(shape)
-            .couiButtonFeedback(
-                dark = CouiTheme.isDark,
-                interactionSource = interactionSource,
-                enabled = enabled,
-                list = false,
-            )
-    } else {
-        Modifier.couiButtonFeedback(
+    // 视觉表面全部留在 couiMinimumTouchTarget 内侧（后置）：底色只铺在视觉胶囊/圆标内，
+    // 凝光落在底色之后、内容之前；放大比例只在视觉层施加，手势与点击检测放在触区外侧。
+    val visualSurface = Modifier
+        .then(
+            if (press != null) {
+                Modifier.graphicsLayer {
+                    scaleX = press.scale.value
+                    scaleY = press.scale.value
+                }
+            } else {
+                Modifier
+            },
+        )
+        .then(if (shape != null) Modifier.clip(shape) else Modifier)
+        .then(if (backgroundColor != Color.Unspecified) Modifier.background(backgroundColor) else Modifier)
+        .couiButtonFeedback(
             dark = CouiTheme.isDark,
             interactionSource = interactionSource,
             enabled = enabled,
             list = false,
         )
-    }
-    // 凝光必须与可视表面同节点、同尺寸，并落在底色之后、内容之前：
-    // clip → 蒙层 → drawBehind 叠光 → 内容，材质才能按此节点的轮廓折射。
-    val litFeedback = visualFeedback.couiSpotlightLight(
-        preset = spotlight,
-        interactive = enabled,
-        aboveContent = spotlightAboveContent,
-    )
-    val scaledFeedback = if (press != null) {
-        litFeedback
-            .couiPressMotion(press = press, enabled = enabled, cancelOnConsumedMove = true)
-            .graphicsLayer {
-                scaleX = press.scale.value
-                scaleY = press.scale.value
-            }
+        .couiSpotlightLight(
+            preset = spotlight,
+            interactive = enabled,
+            aboveContent = spotlightAboveContent,
+        )
+    val pressDetector = if (press != null) {
+        Modifier.couiPressMotion(press = press, enabled = enabled, cancelOnConsumedMove = true)
     } else {
-        litFeedback
+        Modifier
     }
 
     return this
-        .then(scaledFeedback)
-        .couiMinimumTouchTarget(minTouchTarget)
         .clickable(
             interactionSource = interactionSource,
             indication = null,
@@ -282,6 +280,9 @@ fun Modifier.couiPressable(
             role = role,
             onClick = onClick,
         )
+        .then(pressDetector)
+        .couiMinimumTouchTarget(minTouchTarget)
+        .then(visualSurface)
 }
 
 /**
@@ -966,11 +967,10 @@ fun CouiFab(
             modifier = modifier
                 .size(56.dp)
                 .shadow(elevation = 8.dp, shape = CircleShape, clip = false)
-                .clip(CircleShape)
-                .background(colors.accent)
                 // 低版本没有原厂浮动材质：同一套按压缩放 + 触觉，凝光用原厂 Fab 的 OpaqueSmall1
                 .couiPressable(
                     shape = CircleShape,
+                    backgroundColor = colors.accent,
                     scaleOnPress = true,
                     spotlight = SpotlightPreset.OpaqueSmall1,
                     onClick = onClick,
@@ -1148,13 +1148,14 @@ fun CouiFeedRefreshAction(
 fun CouiFeedLoginGroup(
     message: String = CouiStrings.LoginExpired,
     modifier: Modifier = Modifier,
+    title: String = CouiStrings.NeedLogin,
     onOpenLogin: () -> Unit,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
     val displayText = message.ifBlank { CouiStrings.LoginExpired }
     Group(
         modifier = modifier.padding(top = 8.dp),
-        title = CouiStrings.NeedLogin,
+        title = title,
         footer = displayText,
     ) {
         Item(
