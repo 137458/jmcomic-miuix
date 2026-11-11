@@ -2,8 +2,11 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
@@ -15,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Item
 import com.itos.coui.shape.CouiCapsuleShape
@@ -25,6 +27,7 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
+import com.jm3.app.miuix.ui.coui.component.CouiHeaderCapsuleAction
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -166,20 +169,14 @@ internal fun LazyListScope.couiChapterItems(
             title = if (plan.totalChapters > 0) "章节（${plan.totalChapters}）" else "章节",
             actions = {
                 if (plan.showBatchAction) {
-                    val scheme = CouiKitTheme.colorScheme
-                    Text(
+                    CouiHeaderCapsuleAction(
                         text = if (plan.allExpanded) "全部收起" else "全部展开",
-                        kind = CouiTextKind.GroupFooter,
-                        color = scheme.accent,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .clip(CouiCapsuleShape)
-                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget) {
-                                couiChapterBatchToggleIds(plan, expandedGroups).forEach { groupId ->
-                                    onToggleGroup(groupId)
-                                }
+                        trailingIcon = if (plan.allExpanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                        onClick = {
+                            couiChapterBatchToggleIds(plan, expandedGroups).forEach { groupId ->
+                                onToggleGroup(groupId)
                             }
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        },
                     )
                 }
             },
@@ -236,11 +233,22 @@ private fun CouiChapterRowCard(
                 },
                 trailing = if (row.showToggle) {
                     {
-                        Text(
-                            text = if (row.expanded) "收起" else "展开",
-                            kind = CouiTextKind.ItemValue,
-                            color = scheme.accent,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                text = if (row.expanded) "收起" else "展开",
+                                kind = CouiTextKind.ItemValue,
+                                color = scheme.accent,
+                            )
+                            Icon(
+                                imageVector = if (row.expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = scheme.accent,
+                            )
+                        }
                     }
                 } else {
                     {}
@@ -255,23 +263,39 @@ private fun CouiChapterRowCard(
 
         is CouiChapterRow.ChapterLine -> CouiGroupRow(isFirst = isFirst, isLast = isLast, showDivider = false) {
             Divider(startIndent = 32.dp, endIndent = 16.dp)
+            val rowTint = if (row.highlighted) scheme.accent.copy(alpha = 0.06f) else scheme.card
             Item(
+                modifier = if (row.highlighted) Modifier.background(rowTint) else Modifier,
                 contentPadding = PaddingValues(start = 32.dp, top = 10.dp, end = 16.dp, bottom = 10.dp),
                 title = {
                     CouiBodyText(
                         text = row.title,
-                        color = scheme.onSurface,
+                        color = if (row.highlighted) scheme.accent else scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
                 summary = row.marker?.let { marker ->
                     {
-                        Text(
-                            text = marker,
-                            kind = CouiTextKind.GroupFooter,
-                            color = if (row.highlighted) scheme.accent else scheme.onSurfaceVariant,
-                        )
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 3.dp)
+                                .clip(CouiCapsuleShape)
+                                .background(
+                                    if (row.highlighted) {
+                                        scheme.accent.copy(alpha = 0.14f)
+                                    } else {
+                                        scheme.onSurface.copy(alpha = 0.06f)
+                                    },
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = marker,
+                                kind = CouiTextKind.GroupFooter,
+                                color = if (row.highlighted) scheme.accent else scheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 },
                 trailing = {

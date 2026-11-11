@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -118,16 +119,20 @@ import com.jm3.app.miuix.ui.coui.component.CouiDetailActionTile
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
+import com.jm3.app.miuix.ui.coui.component.CouiHeaderCapsuleAction
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPrimaryActionButton
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
+import com.jm3.app.miuix.ui.coui.component.CouiTagCapsulePill
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
@@ -450,6 +455,7 @@ private fun CouiAlbumDetailScreenBody(
                             fallbackTitle = effectiveTitle,
                             fallbackCoverUrl = effectiveCoverUrl,
                             onOpenSearch = onOpenSearch,
+                            onCopyId = { copiedId -> copyText("禁漫车号", copiedId) },
                         )
                     }
                     when (val albumState = uiState.albumState) {
@@ -753,18 +759,17 @@ private fun CouiCapsuleAction(
     }
     Box(
         modifier = modifier
-            .heightIn(min = 32.dp)
-            .clip(CouiCapsuleShape)
-            .background(background)
+            .heightIn(min = 34.dp)
             .couiPressable(
                 shape = CouiCapsuleShape,
+                backgroundColor = background,
                 // 强调色实底按库的主按钮口径取 OpaqueMedium1，浅底胶囊用 ChipTab
                 spotlight = if (accent) SpotlightPreset.OpaqueMedium1 else SpotlightPreset.ChipTab,
                 enabled = enabled,
-                minTouchTarget = CouiMinTouchTarget,
+                scaleOnPress = enabled,
                 onClick = onClick,
             )
-            .padding(horizontal = 14.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -778,7 +783,7 @@ private fun CouiCapsuleAction(
 }
 
 /**
- * 头部信息卡：3:4 封面 + 标题 + 作者胶囊 + 车号 + 热度指标 + 标签胶囊。
+ * 头部信息卡：3:4 封面 + 标题 + 作者胶囊 + 可复制车号 + 结构化热度指标 + 标签胶囊。
  *
  * 这里是页面唯一的自绘卡片：封面参与转场飞行，需要与 Group 卡片同形状但独立持有尺寸与裁剪，
  * 所以不用 Group 包，改为手写「同形状 + 同底色」的容器。
@@ -791,7 +796,9 @@ private fun CouiAlbumHeroCard(
     fallbackTitle: String?,
     fallbackCoverUrl: String?,
     onOpenSearch: (query: String, scope: SearchScope) -> Unit,
+    onCopyId: (String) -> Unit,
 ) {
+    val dark = CouiKitTheme.isDark
     val scheme = CouiKitTheme.colorScheme
     val heroHost = LocalAlbumHeroHost.current
     val title = detail?.title?.trim()?.takeIf { it.isNotBlank() } ?: fallbackTitle?.trim().orEmpty()
@@ -799,17 +806,19 @@ private fun CouiAlbumHeroCard(
     val displayId = detail?.id?.trim()?.takeIf { it.isNotBlank() && it != "-1" } ?: albumId
     val authors = detail?.authors.orEmpty().map { it.trim() }.filter { it.isNotBlank() }
     val tags = detail?.tags.orEmpty().map { it.trim() }.filter { it.isNotBlank() }
-    val metrics = buildList {
+    val statChips = buildList {
         detail?.likes?.takeIf { it.isNotBlank() && it != "0" }?.let { add("喜欢 $it") }
         detail?.views?.takeIf { it.isNotBlank() && it != "0" }?.let { add("浏览 $it") }
         detail?.commentCount?.takeIf { it > 0 }?.let { add("评论 $it") }
-        detail?.pageCount?.takeIf { it > 0 }?.let { add("页数 $it") }
-    }.joinToString(" · ")
+        detail?.pageCount?.takeIf { it > 0 }?.let { add("${it} 页") }
+    }
+    val metaChipBg = scheme.onSurface.copy(alpha = if (dark) 0.08f else 0.05f)
+    val metaChipBorder = scheme.onSurface.copy(alpha = if (dark) 0.12f else 0.07f)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = CouiPageDefaults.horizontalMargin)
-            .padding(top = CouiPageDefaults.categoryTopSpacing, bottom = CouiPageDefaults.groupSpacing)
+            .padding(top = CouiPageDefaults.categoryTopSpacing)
             .clip(CouiPageDefaults.shape)
             .background(scheme.card),
     ) {
@@ -855,14 +864,15 @@ private fun CouiAlbumHeroCard(
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier
+                            .heightIn(min = 28.dp)
                             .couiPressable(
                                 shape = CouiCapsuleShape,
-                                backgroundColor = scheme.accent.copy(alpha = CouiSelectedContainerAlpha),
+                                backgroundColor = scheme.accent.copy(alpha = if (dark) 0.18f else CouiSelectedContainerAlpha),
                                 spotlight = SpotlightPreset.ChipTab,
-                                minTouchTarget = CouiMinTouchTarget,
-                            ) {
-                                onOpenSearch(authors.first(), SearchScope.AUTHOR)
-                            }
+                                scaleOnPress = true,
+                                onClick = { onOpenSearch(authors.first(), SearchScope.AUTHOR) },
+                            )
+                            .border(0.5.dp, scheme.accent.copy(alpha = if (dark) 0.34f else 0.22f), CouiCapsuleShape)
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -876,63 +886,85 @@ private fun CouiAlbumHeroCard(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "禁漫车 #$displayId",
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Start,
-                )
-                if (metrics.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .heightIn(min = 26.dp)
+                        .couiPressable(
+                            shape = CouiCapsuleShape,
+                            backgroundColor = metaChipBg,
+                            spotlight = SpotlightPreset.ChipTab,
+                            scaleOnPress = true,
+                            onClick = { onCopyId(displayId) },
+                        )
+                        .border(0.5.dp, metaChipBorder, CouiCapsuleShape)
+                        .padding(horizontal = 9.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
                     Text(
-                        text = metrics,
+                        text = "JM #$displayId",
                         kind = CouiTextKind.GroupFooter,
                         color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Start,
                     )
+                    Icon(
+                        imageVector = CouiIcons.Copy,
+                        contentDescription = "复制禁漫车号",
+                        modifier = Modifier.size(12.dp),
+                        tint = scheme.onSurfaceVariant,
+                    )
+                }
+                if (statChips.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        statChips.forEach { stat ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(CouiCapsuleShape)
+                                    .background(metaChipBg)
+                                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                            ) {
+                                Text(
+                                    text = stat,
+                                    kind = CouiTextKind.GroupFooter,
+                                    color = scheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    textAlign = TextAlign.Start,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
         if (tags.isNotEmpty()) {
+            Divider(startIndent = 16.dp, endIndent = 16.dp)
             FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 tags.forEach { tag ->
-                    Box(
-                        modifier = Modifier
-                            .couiPressable(
-                                shape = CouiCapsuleShape,
-                                backgroundColor = scheme.onSurface.copy(alpha = 0.06f),
-                                spotlight = SpotlightPreset.ChipTab,
-                                minTouchTarget = CouiMinTouchTarget,
-                            ) {
-                                onOpenSearch(tag, SearchScope.TAG)
-                            }
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            text = tag,
-                            kind = CouiTextKind.GroupFooter,
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Start,
-                        )
-                    }
+                    CouiTagCapsulePill(
+                        text = tag,
+                        compact = true,
+                        onClick = { onOpenSearch(tag, SearchScope.TAG) },
+                    )
                 }
             }
         }
     }
 }
 
-/** 阅读操作：独立主题高亮主阅读大按钮 + 下方等宽图标功能栏，彻底区分于标签胶囊。 */
+/** 阅读操作中心卡：将主题高亮主阅读按钮与四项常用功能瓦片收拢进同一张卡片，缩短跳转断层。 */
 @Composable
 private fun CouiReadActionsGroup(
     detail: AlbumDetail,
@@ -948,8 +980,18 @@ private fun CouiReadActionsGroup(
     onTrack: () -> Unit,
     onDownloadAll: (() -> Unit)?,
 ) {
+    val scheme = CouiKitTheme.colorScheme
     val startPhotoId = resumeId ?: detail.chapters.firstOrNull()?.id
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
+            .padding(top = CouiPageDefaults.categoryTopSpacing)
+            .clip(CouiPageDefaults.shape)
+            .background(scheme.card)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         CouiPrimaryActionButton(
             title = if (resumeId != null) "继续阅读" else "开始阅读",
             subtitle = when {
@@ -960,55 +1002,48 @@ private fun CouiReadActionsGroup(
             leadingIcon = CouiIcons.Book,
             trailingIcon = CouiIcons.Forward,
             enabled = startPhotoId != null,
-            modifier = Modifier
-                .padding(horizontal = CouiPageDefaults.horizontalMargin)
-                .padding(top = CouiPageDefaults.groupSpacing),
             onClick = { startPhotoId?.let { onRead(it, null) } },
         )
-        Group {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CouiDetailActionTile(
+                icon = CouiIcons.Star,
+                label = if (favorited) "已收藏" else "收藏",
+                modifier = Modifier.weight(1f),
+                active = favorited,
+                onClick = onFavorite,
+            )
+            CouiDetailActionTile(
+                icon = CouiIcons.Heart,
+                label = if (liked) "已喜欢" else "喜欢",
+                modifier = Modifier.weight(1f),
+                active = liked,
+                onClick = onLike,
+            )
+            // 追踪态是单独请求，失败过就一直是 null；入口不能跟着消失，否则用户得重进页面才能追更
+            if (loggedIn) {
                 CouiDetailActionTile(
-                    icon = CouiIcons.Star,
-                    label = if (favorited) "已收藏" else "收藏",
+                    icon = CouiIcons.Refresh,
+                    label = when {
+                        trackingBusy -> "处理中…"
+                        tracking == true -> "追更中"
+                        else -> "追更"
+                    },
                     modifier = Modifier.weight(1f),
-                    active = favorited,
-                    onClick = onFavorite,
+                    active = tracking == true,
+                    enabled = !trackingBusy,
+                    onClick = onTrack,
                 )
+            }
+            onDownloadAll?.let { download ->
                 CouiDetailActionTile(
-                    icon = CouiIcons.Heart,
-                    label = if (liked) "已喜欢" else "喜欢",
+                    icon = CouiIcons.Download,
+                    label = "下载",
                     modifier = Modifier.weight(1f),
-                    active = liked,
-                    onClick = onLike,
+                    onClick = download,
                 )
-                // 追踪态是单独请求，失败过就一直是 null；入口不能跟着消失，否则用户得重进页面才能追更
-                if (loggedIn) {
-                    CouiDetailActionTile(
-                        icon = CouiIcons.Refresh,
-                        label = when {
-                            trackingBusy -> "处理中…"
-                            tracking == true -> "追更中"
-                            else -> "追更"
-                        },
-                        modifier = Modifier.weight(1f),
-                        active = tracking == true,
-                        enabled = !trackingBusy,
-                        onClick = onTrack,
-                    )
-                }
-                onDownloadAll?.let { download ->
-                    CouiDetailActionTile(
-                        icon = CouiIcons.Download,
-                        label = "下载",
-                        modifier = Modifier.weight(1f),
-                        onClick = download,
-                    )
-                }
             }
         }
     }
@@ -1026,27 +1061,22 @@ private fun CouiDescriptionGroup(
     Group(
         title = "简介",
         headerActions = {
-            Text(
-                text = "复制",
-                kind = CouiTextKind.GroupFooter,
-                color = scheme.accent,
-                maxLines = 1,
-                modifier = Modifier
-                    .clip(CouiCapsuleShape)
-                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onCopy)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-            )
-            if (text.length > COUI_DESCRIPTION_COLLAPSE_THRESHOLD) {
-                Text(
-                    text = if (expanded) "收起" else "显示全部",
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.accent,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .clip(CouiCapsuleShape)
-                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
-                        .padding(start = 4.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CouiHeaderCapsuleAction(
+                    text = "复制",
+                    tinted = false,
+                    onClick = onCopy,
                 )
+                if (text.length > COUI_DESCRIPTION_COLLAPSE_THRESHOLD) {
+                    CouiHeaderCapsuleAction(
+                        text = if (expanded) "收起" else "展开",
+                        trailingIcon = if (expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                        onClick = onToggle,
+                    )
+                }
             }
         },
     ) {
@@ -1332,7 +1362,8 @@ private fun CouiCommentComposer(
                 .fillMaxWidth()
                 .heightIn(min = 84.dp)
                 .clip(CouiCommentFieldShape)
-                .background(scheme.container)
+                .background(scheme.background)
+                .border(0.5.dp, scheme.outlineVariant, CouiCommentFieldShape)
                 .padding(12.dp),
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -1496,7 +1527,8 @@ private fun CouiReplyDialog(
                 .fillMaxWidth()
                 .heightIn(min = 96.dp)
                 .clip(CouiCommentFieldShape)
-                .background(scheme.container)
+                .background(couiDialogSurfaceColor())
+                .border(couiDialogSurfaceBorder(), CouiCommentFieldShape)
                 .padding(12.dp),
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth()) {

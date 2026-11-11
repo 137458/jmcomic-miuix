@@ -2,7 +2,13 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,9 +19,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -29,10 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogPlacement
@@ -47,6 +60,7 @@ import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.switch.Switch
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
+import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
@@ -73,9 +87,9 @@ import com.jm3.app.miuix.ui.openUpdateReleasePage
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.updateBrowserFallbackUrl
 import com.jm3.app.miuix.ui.updateProgressText
-import com.jm3.app.miuix.ui.updateStatusText
 import com.jm3.app.miuix.update.ApkInstaller
 import com.jm3.app.miuix.update.UpdateDownloadState
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
@@ -231,24 +245,24 @@ internal fun CouiUpdateScreen(
                         )
                         .consumeWindowInsets(innerPadding),
                 ) {
-                    UpdateVersionGroup(
+                    UpdateHeroCard(
                         appName = appName,
                         currentVersion = currentVersion,
-                        statusText = updateStatusText(currentVersion, state),
-                        release = release,
-                        checking = state == null,
-                    )
-                    UpdateNotesGroup(
-                        title = changelogTitle(state),
                         state = state,
                         downloadState = downloadState,
-                        onRetryCheck = { attempt++ },
+                        onRecheck = { attempt++ },
                         onOpenRelease = ::openRelease,
                         onStartDownload = { asset -> deps.updateDownloader.start(asset) },
                         onCancelDownload = { deps.updateDownloader.cancel() },
                         onResetDownload = { deps.updateDownloader.reset() },
                         onInstall = ::install,
                     )
+                    if (release != null) {
+                        UpdateNotesGroup(
+                            title = changelogTitle(state),
+                            release = release,
+                        )
+                    }
                     UpdateSettingsGroup(
                         autoCheckUpdate = autoCheckUpdate,
                         ignoreSummary = ignoreSummary,
@@ -256,11 +270,9 @@ internal fun CouiUpdateScreen(
                         onAutoCheckChange = ::setAutoCheck,
                         onIgnoreToggle = { latestVersion?.let(::toggleIgnored) },
                     )
-                    UpdateActionsGroup(
+                    UpdateMetaGroup(
                         currentVersion = currentVersion,
                         release = release,
-                        checking = state == null,
-                        onRecheck = { attempt++ },
                         onOpenRelease = { openRelease(UpdateChecker.RELEASES_PAGE_URL) },
                     )
                 }
@@ -294,184 +306,333 @@ internal fun CouiUpdateScreen(
     }
 }
 
-/** 第一张卡：应用身份 + 检查结论 + 远端版本，替代旧页的头图 hero。 */
+/**
+ * ColorOS 风格软件更新顶部 Hero 视觉主卡：
+ * 顶部居中状态徽标 + 版本主标题 + 版本对比胶囊 + 内嵌下载进度 + 底部单一胶囊主操作。
+ */
 @Composable
-private fun UpdateVersionGroup(
+private fun UpdateHeroCard(
     appName: String,
     currentVersion: String,
-    statusText: String,
-    release: ReleaseInfo?,
-    checking: Boolean,
-) {
-    Group(modifier = Modifier.padding(top = 8.dp), title = "版本信息") {
-        Item(
-            title = { Text(text = appName, kind = CouiTextKind.ItemTitle) },
-            summary = { Text(text = statusText, kind = CouiTextKind.ItemSummary) },
-            trailing = {
-                Text(text = checkingAlt(checking, "检查中…", currentVersion), kind = CouiTextKind.GroupFooter)
-            },
-        )
-        Divider()
-        Item(
-            title = { Text(text = "远端最新版本", kind = CouiTextKind.ItemTitle) },
-            summary = {
-                val date = release?.publishedDate.orEmpty()
-                Text(
-                    text = when {
-                        release == null -> "尚未获取"
-                        date.isNotBlank() -> "发布于" + date
-                        else -> "已获取最新发布信息"
-                    },
-                    kind = CouiTextKind.ItemSummary,
-                )
-            },
-            trailing = {
-                Text(
-                    text = release?.version ?: "—",
-                    kind = CouiTextKind.ItemValue,
-                )
-            },
-        )
-    }
-}
-
-/** 检查中不为版本号让位：避免一次检查把「当前版本」换成转圈文案后回不去。 */
-private fun checkingAlt(checking: Boolean, whenChecking: String, otherwise: String): String =
-    if (checking) whenChecking else otherwise
-
-/** 更新日志卡：说明 + 下载区。失败与检查中同卡展示，重试入口不再另开一块。 */
-@Composable
-private fun UpdateNotesGroup(
-    title: String,
     state: UpdateOutcome?,
     downloadState: UpdateDownloadState,
-    onRetryCheck: () -> Unit,
+    onRecheck: () -> Unit,
     onOpenRelease: (String) -> Unit,
     onStartDownload: (com.jm3.core.update.ReleaseAsset) -> Unit,
     onCancelDownload: () -> Unit,
     onResetDownload: () -> Unit,
     onInstall: (File) -> Unit,
 ) {
+    val dark = CouiKitTheme.isDark
     val scheme = CouiKitTheme.colorScheme
-    Group(modifier = Modifier.padding(top = 8.dp), title = title) {
+    val release = when (state) {
+        is UpdateOutcome.Available -> state.release
+        is UpdateOutcome.UpToDate -> state.release
+        else -> null
+    }
+    val checking = state == null
+    val hasFailed = state is UpdateOutcome.Failed
+    val isAvailable = state is UpdateOutcome.Available
+    val accentTint = when {
+        hasFailed -> MiuixTheme.colorScheme.error
+        else -> scheme.accent
+    }
+    val badgeIcon = when {
+        checking -> CouiIcons.Refresh
+        isAvailable -> CouiIcons.Download
+        hasFailed -> CouiIcons.Info
+        else -> CouiIcons.Check
+    }
+    val headlineText = when {
+        checking -> "正在检测更新"
+        isAvailable -> "发现新版本"
+        hasFailed -> "检查更新失败"
+        else -> "已是最新版本"
+    }
+    val versionLine = when {
+        isAvailable && release != null -> "$appName ${release.version}"
+        else -> "$appName $currentVersion"
+    }
+    val subtitleText = when {
+        checking -> "当前版本 $currentVersion · 正在请求远端发布信息"
+        state is UpdateOutcome.Available -> buildString {
+            append("当前版本 ")
+            append(currentVersion)
+            if (state.release.publishedDate.isNotBlank()) {
+                append(" · 发布于 ")
+                append(state.release.publishedDate)
+            }
+        }
+        state is UpdateOutcome.UpToDate -> if (state.release.publishedDate.isNotBlank()) {
+            "当前已安装公开发布的最新版本（${state.release.publishedDate}）"
+        } else {
+            "当前已安装公开发布的最新版本"
+        }
+        state is UpdateOutcome.Failed -> state.message
+        else -> "当前版本 $currentVersion"
+    }
+
+    val spinAngle = if (checking) {
+        val transition = rememberInfiniteTransition(label = "coui-update-check-spin")
+        val angle by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1200, easing = LinearEasing),
+            ),
+            label = "coui-update-check-angle",
+        )
+        angle
+    } else {
+        0f
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
+            .padding(top = CouiPageDefaults.categoryTopSpacing)
+            .clip(CouiPageDefaults.shape)
+            .background(scheme.card)
+            .padding(horizontal = 20.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(68.dp)
+                .clip(CircleShape)
+                .background(accentTint.copy(alpha = if (dark) 0.16f else 0.10f))
+                .border(1.dp, accentTint.copy(alpha = if (dark) 0.30f else 0.20f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(accentTint.copy(alpha = if (dark) 0.24f else 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = badgeIcon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .graphicsLayer { rotationZ = spinAngle },
+                    tint = accentTint,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+        BasicText(
+            text = headlineText,
+            style = rememberCouiTextStyle(CouiTextKind.HomeTitle).copy(
+                color = scheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .clip(CouiCapsuleShape)
+                .background(accentTint.copy(alpha = if (dark) 0.18f else 0.11f))
+                .border(0.5.dp, accentTint.copy(alpha = if (dark) 0.34f else 0.22f), CouiCapsuleShape)
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        ) {
+            Text(
+                text = versionLine,
+                kind = CouiTextKind.ItemValue,
+                color = accentTint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = subtitleText,
+            kind = CouiTextKind.ItemSummary,
+            color = scheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        when {
+            checking -> UpdateHeroCapsuleButton(
+                text = "正在检查更新…",
+                enabled = false,
+                emphasised = false,
+                onClick = {},
+            )
+
+            state is UpdateOutcome.Available -> {
+                val asset = state.release.apk
+                if (asset != null) {
+                    Text(
+                        text = "安装包 " + asset.name + assetSizeSuffix(asset.size),
+                        kind = CouiTextKind.GroupFooter,
+                        color = scheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                when (downloadState) {
+                    is UpdateDownloadState.Idle -> UpdateHeroCapsuleButton(
+                        text = if (asset != null) "下载并安装" + assetSizeSuffix(asset.size) else "前往 Releases 下载",
+                        emphasised = true,
+                        onClick = {
+                            if (asset != null) onStartDownload(asset) else onOpenRelease(state.release.htmlUrl)
+                        },
+                    )
+
+                    is UpdateDownloadState.Downloading -> {
+                        CouiBodyText(
+                            text = "正在下载 " + updateProgressText(downloadState, withSize = true),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CouiProgressBar(progress = downloadState.progress)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = if (downloadState.speedBytesPerSec > 0L) {
+                                "速度 " + formatUpdateSpeed(downloadState.speedBytesPerSec)
+                            } else {
+                                "正在计算速度…"
+                            },
+                            kind = CouiTextKind.GroupFooter,
+                            color = scheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        UpdateHeroCapsuleButton(
+                            text = "取消下载",
+                            emphasised = false,
+                            onClick = onCancelDownload,
+                        )
+                    }
+
+                    is UpdateDownloadState.Done -> {
+                        UpdateHeroCapsuleButton(
+                            text = "立即安装",
+                            emphasised = true,
+                            onClick = { onInstall(downloadState.file) },
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CouiInlineButton(text = "重新下载", onClick = onResetDownload)
+                    }
+
+                    is UpdateDownloadState.Failed -> {
+                        CouiBodyText(
+                            text = downloadState.message,
+                            color = MiuixTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        UpdateHeroCapsuleButton(
+                            text = "重试下载",
+                            emphasised = true,
+                            onClick = onResetDownload,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CouiInlineButton(
+                            text = "用浏览器下载",
+                            onClick = { onOpenRelease(updateBrowserFallbackUrl(state.release)) },
+                        )
+                    }
+                }
+            }
+
+            state is UpdateOutcome.Failed -> {
+                UpdateHeroCapsuleButton(
+                    text = "重新检查更新",
+                    emphasised = true,
+                    onClick = onRecheck,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                CouiInlineButton(
+                    text = "在浏览器打开 Releases 页",
+                    onClick = { onOpenRelease(UpdateChecker.RELEASES_PAGE_URL) },
+                )
+            }
+
+            else -> UpdateHeroCapsuleButton(
+                text = "检查更新",
+                emphasised = true,
+                onClick = onRecheck,
+            )
+        }
+    }
+}
+
+/** Hero 卡底部全宽胶囊主操作：与 ColorOS 软件更新页底部单一突出胶囊对齐。 */
+@Composable
+private fun UpdateHeroCapsuleButton(
+    text: String,
+    emphasised: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val dark = CouiKitTheme.isDark
+    val scheme = CouiKitTheme.colorScheme
+    val bgColor = when {
+        !enabled -> scheme.onSurface.copy(alpha = if (dark) 0.08f else 0.06f)
+        emphasised -> scheme.accent
+        else -> scheme.accent.copy(alpha = if (dark) 0.18f else 0.12f)
+    }
+    val fgColor = when {
+        !enabled -> scheme.onSurfaceVariant
+        emphasised -> scheme.onAccent
+        else -> scheme.accent
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = bgColor,
+                spotlight = if (!enabled) null else if (emphasised) SpotlightPreset.OpaqueMedium1 else SpotlightPreset.ChipTab,
+                enabled = enabled,
+                scaleOnPress = enabled,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
+            .padding(horizontal = 20.dp, vertical = 11.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            kind = CouiTextKind.ItemTitle,
+            color = fgColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** 更新日志卡：已获取发布信息后专卡呈现 Markdown 说明，不再被下载按钮打断阅读。 */
+@Composable
+private fun UpdateNotesGroup(
+    title: String,
+    release: ReleaseInfo,
+) {
+    Group(title = title) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
                     horizontal = CouiPageDefaults.rowPadding,
-                    vertical = CouiPageDefaults.contentPadding,
+                    vertical = CouiPageDefaults.contentPadding + 2.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(NotesBlockSpacing),
         ) {
-            when (state) {
-                null -> CouiBodyText(text = "正在检查更新…")
-                is UpdateOutcome.Failed -> {
-                    CouiBodyText(
-                        text = state.message,
-                        color = scheme.onSurface,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        CouiInlineButton(text = CouiStrings.Retry, onClick = onRetryCheck)
-                        CouiInlineButton(
-                            text = "在浏览器打开 Releases 页",
-                            onClick = { onOpenRelease(UpdateChecker.RELEASES_PAGE_URL) },
-                        )
-                    }
-                }
-                is UpdateOutcome.UpToDate -> {
-                    Text(
-                        text = state.release.name.ifBlank { "版本特性说明" },
-                        kind = CouiTextKind.ItemTitle,
-                    )
-                    UpdateNotes(markdown = state.release.notes)
-                }
-                is UpdateOutcome.Available -> {
-                    Text(
-                        text = state.release.name.ifBlank { "版本特性说明" },
-                        kind = CouiTextKind.ItemTitle,
-                    )
-                    UpdateNotes(markdown = state.release.notes)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(CouiPageDefaults.dividerHeight)
-                            .background(scheme.outlineVariant),
-                    )
-                    UpdateDownloadBlock(
-                        release = state.release,
-                        downloadState = downloadState,
-                        onStartDownload = onStartDownload,
-                        onCancelDownload = onCancelDownload,
-                        onResetDownload = onResetDownload,
-                        onInstall = onInstall,
-                        onOpenRelease = onOpenRelease,
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** 下载区：四种下载态各给一条主行动，避免用户只能干等。 */
-@Composable
-private fun UpdateDownloadBlock(
-    release: ReleaseInfo,
-    downloadState: UpdateDownloadState,
-    onStartDownload: (com.jm3.core.update.ReleaseAsset) -> Unit,
-    onCancelDownload: () -> Unit,
-    onResetDownload: () -> Unit,
-    onInstall: (File) -> Unit,
-    onOpenRelease: (String) -> Unit,
-) {
-    val scheme = CouiKitTheme.colorScheme
-    val asset = release.apk
-    if (asset == null) {
-        Text(text = "该版本未附带安装包，请前往 Releases 页面手动下载。", kind = CouiTextKind.ItemSummary)
-        CouiInlineButton(text = "前往 Releases 页面", onClick = { onOpenRelease(release.htmlUrl) })
-        return
-    }
-    Text(
-        text = "安装包 " + asset.name + assetSizeSuffix(asset.size),
-        kind = CouiTextKind.GroupFooter,
-        color = scheme.onSurfaceVariant,
-    )
-    when (downloadState) {
-        is UpdateDownloadState.Idle -> CouiInlineButton(
-            text = "立即下载更新",
-            emphasised = true,
-            onClick = { onStartDownload(asset) },
-        )
-        is UpdateDownloadState.Downloading -> {
-            CouiBodyText(
-                text = "正在下载 " + updateProgressText(downloadState, withSize = true),
-            )
-            CouiProgressBar(progress = downloadState.progress)
             Text(
-                text = if (downloadState.speedBytesPerSec > 0L) {
-                    "速度 " + formatUpdateSpeed(downloadState.speedBytesPerSec)
-                } else {
-                    "正在计算速度…"
-                },
-                kind = CouiTextKind.GroupFooter,
-                color = scheme.onSurfaceVariant,
+                text = release.name.ifBlank { "版本特性说明" },
+                kind = CouiTextKind.ItemTitle,
             )
-            CouiInlineButton(text = "取消下载", onClick = onCancelDownload)
-        }
-        is UpdateDownloadState.Done -> {
-            CouiBodyText(text = "安装包已下载完成，点击安装完成升级。")
-            CouiInlineButton(text = "立即安装", emphasised = true, onClick = { onInstall(downloadState.file) })
-            CouiInlineButton(text = "重新下载", onClick = onResetDownload)
-        }
-        is UpdateDownloadState.Failed -> {
-            CouiBodyText(
-                text = downloadState.message,
-                color = MiuixTheme.colorScheme.error,
-            )
-            CouiInlineButton(text = CouiStrings.Retry, emphasised = true, onClick = { onResetDownload() })
-            CouiInlineButton(
-                text = "用浏览器下载",
-                onClick = { onOpenRelease(updateBrowserFallbackUrl(release)) },
-            )
+            UpdateNotes(markdown = release.notes)
         }
     }
 }
@@ -545,7 +706,7 @@ private fun UpdateSettingsGroup(
     onAutoCheckChange: (Boolean) -> Unit,
     onIgnoreToggle: () -> Unit,
 ) {
-    Group(modifier = Modifier.padding(top = 8.dp), title = "更新设置") {
+    Group(title = "更新设置") {
         Item(
             title = { Text(text = "自动检查更新", kind = CouiTextKind.ItemTitle) },
             summary = { Text(text = "每次启动应用时自动检查最新版本", kind = CouiTextKind.ItemSummary) },
@@ -563,37 +724,28 @@ private fun UpdateSettingsGroup(
     }
 }
 
-/** 操作卡：手动检查、Releases 页、两侧版本号。 */
+/** 版本信息与外部仓库入口。 */
 @Composable
-private fun UpdateActionsGroup(
+private fun UpdateMetaGroup(
     currentVersion: String,
     release: ReleaseInfo?,
-    checking: Boolean,
-    onRecheck: () -> Unit,
     onOpenRelease: () -> Unit,
 ) {
-    Group(modifier = Modifier.padding(top = 8.dp), title = "版本与操作") {
+    Group(title = "版本信息") {
         Item(
-            title = { Text(text = "手动检查更新", kind = CouiTextKind.ItemTitle) },
-            summary = {
-                Text(
-                    text = if (checking) "正在检索远端版本信息…" else "点击从 GitHub Releases 检索最新版本",
-                    kind = CouiTextKind.ItemSummary,
-                )
-            },
-            enabled = !checking,
-            onClick = if (checking) null else onRecheck,
+            title = { Text(text = "当前版本", kind = CouiTextKind.ItemTitle) },
+            trailing = { Text(text = currentVersion, kind = CouiTextKind.ItemValue) },
+        )
+        Divider()
+        Item(
+            title = { Text(text = "远端最新版本", kind = CouiTextKind.ItemTitle) },
+            trailing = { Text(text = release?.version ?: "—", kind = CouiTextKind.ItemValue) },
         )
         Divider()
         Item(
             title = { Text(text = "GitHub Releases", kind = CouiTextKind.ItemTitle) },
             summary = { Text(text = "在浏览器查看完整发布说明", kind = CouiTextKind.ItemSummary) },
             onClick = onOpenRelease,
-        )
-        Divider()
-        Item(
-            title = { Text(text = "当前版本", kind = CouiTextKind.ItemTitle) },
-            trailing = { Text(text = currentVersion, kind = CouiTextKind.ItemValue) },
         )
     }
 }
