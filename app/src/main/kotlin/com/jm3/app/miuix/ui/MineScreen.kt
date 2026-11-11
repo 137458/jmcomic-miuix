@@ -210,6 +210,7 @@ fun MineScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .readableWidth()
                 .verticalScroll(rememberScrollState()),
         ) {
             // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样

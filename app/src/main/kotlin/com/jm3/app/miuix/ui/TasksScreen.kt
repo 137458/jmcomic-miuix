@@ -232,7 +232,7 @@ fun TasksScreen(
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().readableWidth()) {
             when (val s = state) {
                 TasksUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 is TasksUiState.Failed -> if (s.sessionExpired) {

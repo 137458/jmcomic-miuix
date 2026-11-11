@@ -201,6 +201,7 @@ fun ProfileScreen(
             ProfileUiState.Loaded -> Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .readableWidth()
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState()),
             ) {

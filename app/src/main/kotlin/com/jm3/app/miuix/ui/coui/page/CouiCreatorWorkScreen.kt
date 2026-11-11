@@ -270,7 +270,7 @@ private fun CouiCreatorWorkBody(
                 scrollBehavior = scrollBehavior,
                 innerPadding = innerPadding,
                 horizontalPadding = null,
-                extraBottom = 24.dp,
+                extraBottom = 72.dp,
             )
             if (twoPane) {
                 Row(

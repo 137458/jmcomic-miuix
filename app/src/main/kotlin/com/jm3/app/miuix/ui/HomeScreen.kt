@@ -518,7 +518,7 @@ fun HomeScreen(
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().collapsibleSearchScroll(searchCollapse),
+                modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 contentPadding = innerPadding,
             ) {

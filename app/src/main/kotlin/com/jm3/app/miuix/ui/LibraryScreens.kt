@@ -332,7 +332,7 @@ fun LibraryScreen(
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().collapsibleSearchScroll(searchCollapse),
+                    modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                     contentPadding = innerPadding,
                 ) {
                     if (tab == 0) {
@@ -500,7 +500,7 @@ fun CreatorWorksScreen(
             ) {
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = innerPadding,
                 ) {
                     item(key = "hero") {
@@ -679,7 +679,7 @@ fun CreatorWorkDetailScreen(
                 val body = work!!
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = innerPadding,
                 ) {
                     if (body.contentText.isNotBlank()) {

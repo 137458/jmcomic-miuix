@@ -515,7 +515,7 @@ fun FavoritesScreen(
                 ) {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                         contentPadding = innerPadding,
                     ) {
                         item(key = "folder-selector") {
@@ -629,7 +629,7 @@ fun FavoritesScreen(
                 )
                 // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
                 else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = innerPadding,
                 ) {
                     item(key = "add-tag") {

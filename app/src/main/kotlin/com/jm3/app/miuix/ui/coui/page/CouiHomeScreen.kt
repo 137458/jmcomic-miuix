@@ -43,6 +43,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
@@ -507,7 +509,19 @@ fun CouiHomeScreen(
         // 之后顶栏展开/收缩正文都不再跟随（切 tab 回首页时标签行被大标题与搜索框压住）。
         // 底栏净空与 FAB 位置由 CouiAppScaffold 的 bottomBar 占位统一让出。
         val contentPadding = remember(header, innerPadding, density) {
-            header.contentPadding(innerPadding, density)
+            val base = header.contentPadding(innerPadding, density)
+            object : PaddingValues {
+                override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+                    base.calculateLeftPadding(layoutDirection)
+
+                override fun calculateTopPadding(): Dp = base.calculateTopPadding()
+
+                override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+                    base.calculateRightPadding(layoutDirection)
+
+                override fun calculateBottomPadding(): Dp =
+                    base.calculateBottomPadding() + 72.dp
+            }
         }
         val feedState = if (searching) results else feed
         // 大屏按 LocalWideLayout 的断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding，

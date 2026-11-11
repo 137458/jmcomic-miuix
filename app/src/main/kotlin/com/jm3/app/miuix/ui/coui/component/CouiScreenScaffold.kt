@@ -60,7 +60,8 @@ fun CouiScreenScaffold(
     actions: (@Composable RowScope.() -> Unit)? = null,
     floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
     scrollBehavior: CouiTopAppBarScrollBehavior = rememberCouiScreenScrollBehavior(),
-    horizontalPadding: Dp = CouiPageDefaults.horizontalMargin,
+    horizontalPadding: Dp = 0.dp,
+    extraBottom: Dp = if (floatingActionButton != null) 72.dp else 0.dp,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     CouiAppScaffold(
@@ -88,7 +89,7 @@ fun CouiScreenScaffold(
         },
         floatingActionButton = floatingActionButton,
     ) { innerPadding ->
-        content(couiScreenContentPadding(scrollBehavior, innerPadding, horizontalPadding))
+        content(couiScreenContentPadding(scrollBehavior, innerPadding, horizontalPadding, extraBottom))
     }
 }
 

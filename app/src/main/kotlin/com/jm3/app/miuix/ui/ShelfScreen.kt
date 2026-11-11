@@ -93,7 +93,7 @@ fun ShelfScreen(
             )
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().readableWidth(),
                 // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                 contentPadding = innerPadding,
             ) {

@@ -461,6 +461,7 @@ internal fun CouiBrowseScreen(
             scrollBehavior = scrollBehavior,
             innerPadding = innerPadding,
             horizontalPadding = null,
+            extraBottom = 72.dp,
         )
         LazyColumn(
             state = lazyState,

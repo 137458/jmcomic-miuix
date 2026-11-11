@@ -73,6 +73,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
@@ -271,6 +272,7 @@ internal fun CouiMineScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .readableWidth()
                 .couiVerticalScroll(scrollState)
                 // 折叠补偿后的留白进滚动内容内侧；Scaffold 原始 padding 被 consume，不能再整体平移视口
                 .padding(contentPadding)

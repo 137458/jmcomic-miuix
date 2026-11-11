@@ -282,7 +282,7 @@ private fun CouiCreatorBody(
                 scrollBehavior = scrollBehavior,
                 innerPadding = innerPadding,
                 horizontalPadding = null,
-                extraBottom = 24.dp,
+                extraBottom = 72.dp,
             )
             LazyColumn(
                 state = lazyState,

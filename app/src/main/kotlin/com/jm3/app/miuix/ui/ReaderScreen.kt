@@ -966,7 +966,7 @@ private fun ReaderPages(
                 // 轨道与列表共用同一份 contentPadding；横向模式用的是 Pager，不经过这里
                 TrackedLazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = innerPadding,
                 ) {
                     items(photo.images, key = { it.index }) { image ->

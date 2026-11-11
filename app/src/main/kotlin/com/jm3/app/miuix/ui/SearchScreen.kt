@@ -194,7 +194,7 @@ fun SearchScreen(
             }
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().readableWidth(),
                 contentPadding = innerPadding,
             ) {
                 when (val s = state) {

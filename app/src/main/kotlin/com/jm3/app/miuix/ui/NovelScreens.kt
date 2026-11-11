@@ -314,7 +314,7 @@ fun NovelListScreen(
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize().collapsibleSearchScroll(searchCollapse),
+                    modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                     contentPadding = innerPadding,
                 ) {
                     items(items, key = { it.id }) { item ->
@@ -584,7 +584,7 @@ fun NovelDetailScreen(
                 } else {
                     // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                         contentPadding = innerPadding,
                     ) {
                         item(key = "header") {
@@ -1012,6 +1012,7 @@ fun NovelReaderScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .readableWidth()
                         .verticalScroll(rememberScrollState())
                         // 内边距放在滚动容器内部，正文才能从玻璃顶栏下方穿过
                         .padding(

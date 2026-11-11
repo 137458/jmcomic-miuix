@@ -298,7 +298,7 @@ fun ForumScreen(
                     contentPadding = innerPadding,
                 ) {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                         state = listState,
                         contentPadding = innerPadding,
                     ) {

@@ -386,7 +386,7 @@ fun BrowseScreen(
             ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = innerPadding,
                 ) {
                     item(key = "filters") {
