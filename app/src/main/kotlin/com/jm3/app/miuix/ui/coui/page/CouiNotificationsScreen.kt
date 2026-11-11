@@ -74,6 +74,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiWorkCardShape
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
@@ -192,7 +193,7 @@ internal fun CouiNotificationsScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "标记失败").message.orEmpty(),
                 )
                 is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "标记失败：" + failureCopy(outcome.cause, "请稍后重试"),
+                    "标记失败：" + failureCopy(outcome.cause, CouiStrings.RetryLater),
                 )
             }
         }

@@ -65,6 +65,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
@@ -126,7 +127,7 @@ internal fun CouiWeekScreen(
             when (outcome) {
                 is SessionOutcome.Ok -> detail = outcome.value
                 else -> {
-                    val plan = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
+                    val plan = planLoad(outcome, hasContent = false, failureMessage = CouiStrings.LoadFailed)
                     detailExpired = plan.phase == ScreenLoadPhase.Expired
                     detailFailure = plan.message
                 }
@@ -154,7 +155,7 @@ internal fun CouiWeekScreen(
                     }
                 }
                 else -> {
-                    val plan = planLoad(outcome, hasContent = periods.isNotEmpty(), failureMessage = "加载失败")
+                    val plan = planLoad(outcome, hasContent = periods.isNotEmpty(), failureMessage = CouiStrings.LoadFailed)
                     if (plan.keepContent) {
                         // 有旧期数时刷新失败只降级提示，不把已有内容清空
                         periodsFailure = null

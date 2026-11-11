@@ -46,7 +46,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
@@ -80,6 +79,7 @@ import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.formatCheckInSummary
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.resolveCheckInResult
@@ -616,7 +616,7 @@ private fun MineCheckInGroup(
                     Text(text = expiredMessage, kind = CouiTextKind.PreferenceSummary, color = errorColor)
                 },
                 trailing = {
-                    Text(text = "去登录", kind = CouiTextKind.PreferenceValue, color = scheme.accent)
+                    Text(text = CouiStrings.OpenLogin, kind = CouiTextKind.PreferenceValue, color = scheme.accent)
                 },
                 onClick = onOpenLogin,
             )

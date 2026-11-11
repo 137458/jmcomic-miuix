@@ -200,8 +200,9 @@ fun couiDestructiveConfirmAction(
  * 整行随按下缩放会压过行内的滑选与长按，所以缩放由 [scaleOnPress] 显式打开。
  * 点击指示器置空，避免在实底卡片上再叠一层涟漪。语义角色由调用方决定，默认按钮。
  *
- * @param minTouchTarget 补足触区的最小边长；调用方把本修饰符写在固定尺寸之前，
- * 视觉内容仍按原尺寸居中，只有可点范围变大。
+ * @param minTouchTarget 补足触区的最小边长；视觉内容仍按原尺寸居中，只有可点范围变大。
+ * 本修饰符必须写在固定尺寸之前（`Modifier.couiPressable(...).size(40.dp)`）：写在 `.size()` 之后时，
+ * 外层固定尺寸把子约束钉死，扩边会被 coerceAtMost 钳回原尺寸，触区等于视觉尺寸。
  * @param scaleOnPress 小型控件（标签、图标键、胶囊）打开原厂缩放；整行列表项保持关闭。
  * @param spotlight 凝光材质预设；传 null 关闭。默认取 [SpotlightPreset.OpaqueSmall2]：
  * 与库顶栏按钮同档的中性表面，落在不透明底上按 OVERLAY 叠光。
@@ -413,7 +414,7 @@ fun CouiErrorGroup(
     modifier: Modifier = Modifier,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
-    Group(modifier = modifier, title = "加载失败", footer = message) {
+    Group(modifier = modifier, title = CouiStrings.LoadFailed, footer = message) {
         Item(
             title = {
                 Text(text = CouiStrings.Retry, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
@@ -1158,7 +1159,7 @@ fun CouiFeedLoginGroup(
     ) {
         Item(
             title = {
-                Text(text = "去登录", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                Text(text = CouiStrings.OpenLogin, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
             },
             trailing = {
                 Icon(
@@ -1170,6 +1171,31 @@ fun CouiFeedLoginGroup(
             },
             onClick = onOpenLogin,
         )
+    }
+}
+
+/**
+ * 屏级失败块：会话失效给登录入口，其余给重试。
+ *
+ * 会话失效时「重试」只会再吃一次 401，因此入口直接换成 [CouiFeedLoginGroup]，
+ * 不再把登录伪装成重试按钮；两者共用同一套「标题 + 说明 + 一行动作」形态。
+ */
+@Composable
+fun CouiScreenFailureGroup(
+    message: String?,
+    expired: Boolean,
+    onRetry: () -> Unit,
+    onOpenLogin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (expired) {
+        CouiFeedLoginGroup(
+            message = message.orEmpty().ifBlank { CouiStrings.LoginExpired },
+            modifier = modifier,
+            onOpenLogin = onOpenLogin,
+        )
+    } else {
+        CouiErrorGroup(message = message.orEmpty(), onRetry = onRetry, modifier = modifier)
     }
 }
 
@@ -1254,12 +1280,14 @@ fun CouiCommentRow(
     depth: Int = 0,
     maxIndentDepth: Int = COUI_COMMENT_MAX_INDENT_DEPTH,
     authorColor: Color = CouiTheme.colorSchemeFor(CouiTheme.isDark).accent,
-    bodyMaxLines: Int = 6,
+    avatarSize: Dp? = null,
+    // 默认不截断：正文最长可见行数由各页按自己的信息密度传入，组件不替页面决定
+    bodyMaxLines: Int = Int.MAX_VALUE,
     onReply: ((CommentItem) -> Unit)? = null,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
     val indentDepth = depth.coerceAtMost(maxIndentDepth)
-    val avatarSize = if (depth == 0) 40.dp else 30.dp
+    val resolvedAvatarSize = avatarSize ?: if (depth == 0) 40.dp else 30.dp
 
     Row(
         modifier = modifier
@@ -1270,7 +1298,7 @@ fun CouiCommentRow(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CouiAvatar(
                 url = item.avatarUrl,
-                size = avatarSize,
+                size = resolvedAvatarSize,
                 name = item.author,
                 contentDescription = item.author,
             )

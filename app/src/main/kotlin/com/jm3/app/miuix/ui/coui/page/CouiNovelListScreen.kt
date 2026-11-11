@@ -52,11 +52,11 @@ import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
@@ -64,6 +64,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.formatEpochSeconds
 import com.jm3.app.miuix.ui.novelActionNotice
@@ -137,7 +138,7 @@ fun CouiNovelListScreen(
                     val plan = planLoad(
                         outcome = outcome,
                         hasContent = items.isNotEmpty(),
-                        failureMessage = "加载失败",
+                        failureMessage = CouiStrings.LoadFailed,
                     )
                     if (plan.keepContent) {
                         snackbarHostState.showSnackbar(plan.notice.orEmpty())
@@ -245,19 +246,11 @@ fun CouiNovelListScreen(
 
                         failure != null -> item(key = "coui-novel-failed", span = { GridItemSpan(maxLineSpan) }) {
                             val planned = failure
-                            CouiErrorGroup(
-                                message = if (planned?.sessionExpired == true) {
-                                    SessionOutcome.Expired.message
-                                } else {
-                                    planned?.message.orEmpty()
-                                },
-                                onRetry = {
-                                    if (planned?.sessionExpired == true) {
-                                        onOpenLogin()
-                                    } else {
-                                        load(order.apiValue, appliedQuery, showLoading = true)
-                                    }
-                                },
+                            CouiScreenFailureGroup(
+                                message = planned?.message,
+                                expired = planned?.sessionExpired == true,
+                                onRetry = { load(order.apiValue, appliedQuery, showLoading = true) },
+                                onOpenLogin = onOpenLogin,
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                             )
                         }
@@ -452,15 +445,15 @@ private fun CouiNovelFavoriteBadge(
     val tint = if (favorite) CouiKitTheme.colorScheme.onAccent else onSurfaceVariant
     Box(
         modifier = modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(background)
             .couiPressable(
                 shape = CircleShape,
                 enabled = enabled,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
-            ),
+            )
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(background),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

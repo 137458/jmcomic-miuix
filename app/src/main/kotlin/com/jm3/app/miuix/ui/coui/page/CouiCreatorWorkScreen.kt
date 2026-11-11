@@ -68,6 +68,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
@@ -77,8 +78,6 @@ import com.jm3.core.model.CreatorWork
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
-
-private const val COUI_CREATOR_WORK_LOAD_FAILED = "加载失败"
 
 /** 正文与图片正文区占位比例：作者作品多是长图配文，图片区保持 0.72 的画幅。 */
 private const val COUI_CREATOR_WORK_IMAGE_ASPECT = 0.72f
@@ -144,7 +143,7 @@ private fun CouiCreatorWorkBody(
             state = when (outcome) {
                 is SessionOutcome.Ok -> CouiCreatorWorkState.Loaded(outcome.value)
                 else -> CouiCreatorWorkState.Failed(
-                    planLoad(outcome, hasContent = false, failureMessage = COUI_CREATOR_WORK_LOAD_FAILED),
+                    planLoad(outcome, hasContent = false, failureMessage = CouiStrings.LoadFailed),
                 )
             }
         }

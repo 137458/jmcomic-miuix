@@ -205,7 +205,7 @@ internal fun CouiBrowseScreen(
         val key = pageKey
         publish(key, ListState.Loading)
         scope.launch {
-            val next = authCall.call { gateway.browse(filter(), 1) }.asListState("加载失败")
+            val next = authCall.call { gateway.browse(filter(), 1) }.asListState(CouiStrings.LoadFailed)
             if (token != requestToken) return@launch
             publish(key, next)
         }
@@ -221,7 +221,7 @@ internal fun CouiBrowseScreen(
         val key = pageKey
         publish(key, ListState.Loading)
         scope.launch {
-            val next = authCall.call { gateway.browse(filter(), resolved) }.asListState("加载失败")
+            val next = authCall.call { gateway.browse(filter(), resolved) }.asListState(CouiStrings.LoadFailed)
             if (token != requestToken) return@launch
             publish(key, next)
             // 换页后回到顶部，否则新一页会停在上一页的滚动位置
@@ -859,17 +859,17 @@ private fun CouiCategoryRail(
             val active = option == selected
             Box(
                 modifier = Modifier
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        if (active) colors.accent.copy(alpha = CouiSelectedContainerAlpha)
-                        else Color.Transparent,
-                    )
                     .couiPressable(
                         shape = RoundedCornerShape(20.dp),
                         spotlight = SpotlightPreset.ChipTab,
                         minTouchTarget = CouiMinTouchTarget,
                         onClick = { onSelect(option) },
+                    )
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        if (active) colors.accent.copy(alpha = CouiSelectedContainerAlpha)
+                        else Color.Transparent,
                     )
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,

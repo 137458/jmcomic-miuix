@@ -227,7 +227,7 @@ fun CouiHomeScreen(
         scope.launch {
             val next = authCall.call { gateway.latest(page) }
             if (token != listToken) return@launch
-            rememberFeed(next.asListState("加载失败"))
+            rememberFeed(next.asListState(CouiStrings.LoadFailed))
         }
     }
 
@@ -300,7 +300,7 @@ fun CouiHomeScreen(
                 if (token == listToken) rememberResults(next.asListState("网络错误"))
             } else {
                 val next = authCall.call { gateway.latest(1) }
-                if (token == listToken) rememberFeed(next.asListState("加载失败"))
+                if (token == listToken) rememberFeed(next.asListState(CouiStrings.LoadFailed))
             }
             refreshing = false
         }
@@ -522,8 +522,10 @@ fun CouiHomeScreen(
                 override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
                     base.calculateRightPadding(layoutDirection)
 
+                // 竖排两枚 FAB 固定占位（上下外边距各 16 + 56 + 12 + 56），末项必须滚到它们上方；
+                // 不按 showBackToTop 拆分：回到顶部按钮显隐会让 contentPadding 在滚动中跳动
                 override fun calculateBottomPadding(): Dp =
-                    base.calculateBottomPadding() + 72.dp
+                    base.calculateBottomPadding() + 140.dp
             }
         }
         val feedState = if (searching) results else feed
@@ -614,7 +616,7 @@ fun CouiHomeScreen(
 
                 is ListState.Failed -> item(key = "coui-home-error") {
                     CouiErrorGroup(
-                        message = current.message.ifBlank { if (searching) "搜索失败" else "加载失败" },
+                        message = current.message.ifBlank { if (searching) "搜索失败" else CouiStrings.LoadFailed },
                         onRetry = {
                             if (searching) {
                                 runSearch(activeQuery, searchByTag, order)
@@ -901,9 +903,14 @@ private fun CouiTagCapsule(text: String, onClick: () -> Unit) {
     val colors = CouiTheme.colorScheme
     Box(
         modifier = Modifier
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                spotlight = SpotlightPreset.ChipTab,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
             .clip(CouiCapsuleShape)
             .background(colors.container)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -959,9 +966,9 @@ private fun CouiHeaderTextAction(text: String, onClick: () -> Unit) {
 private fun CouiRowIconAction(icon: ImageVector, description: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
+            .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .size(32.dp)
-            .clip(CircleShape)
-            .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
+            .clip(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

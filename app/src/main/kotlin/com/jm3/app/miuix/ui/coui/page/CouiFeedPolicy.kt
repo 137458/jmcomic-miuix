@@ -37,8 +37,9 @@ internal fun prefetchItemCount(prefetchDistanceDp: Float, rowHeightDp: Float): I
  * 触底判据的唯一实现在 core 的 [PagedFeed.shouldLoadMore]：本函数是「列表混排、拿不到行起点」时的适配器。
  *
  * 详情页评论列表的懒列表里还排着头图、章节等条目，评论只是尾部的一段，页面拿不到「第几项开始是评论」，
- * 只能把总项数当 [totalCount] 传进来；feed 级开关在调用方另行判断，这里借用一份恒为
- * 「还有下一页、不在加载中、上次没失败」的 feed 求值，判据与页面侧完全同源。
+ * 只能把总项数当 [totalCount] 传进来；这里借用一份恒为「还有下一页、不在加载中、上次没失败」的
+ * feed，只求 [PagedFeed.shouldLoadMore] 的下标比较部分——比较逻辑与页面侧同源，feed 级状态
+ * （还能不能加载、上次是否失败）不参与，由调用方按自己的 feed 另行判断。
  * 结果行起点已知的页面请直接用 [shouldPrefetchRow]，不要在这里再拼一份条件。
  */
 internal fun shouldPrefetch(index: Int, totalCount: Int, prefetchDistance: Int): Boolean =

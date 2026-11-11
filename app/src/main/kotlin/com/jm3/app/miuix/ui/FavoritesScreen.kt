@@ -614,18 +614,18 @@ fun FavoritesScreen(
                 user == null -> CenteredEmptyState(
                     title = "登录后查看标签收藏",
                     hint = "请先在「我的」页面登录",
-                    modifier = Modifier.padding(innerPadding),
+                    modifier = Modifier.padding(innerPadding).readableWidth(),
                 )
                 tagsErr != null -> ErrorScreen(
                     message = tagsErr,
                     onRetry = ::loadTags,
-                    modifier = Modifier.padding(innerPadding),
+                    modifier = Modifier.padding(innerPadding).readableWidth(),
                 )
-                list == null -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+                list == null -> LoadingScreen(modifier = Modifier.padding(innerPadding).readableWidth())
                 list.isEmpty() -> CenteredEmptyState(
                     title = "暂无标签收藏",
                     hint = "点击右上角「+」添加标签，这里就会显示",
-                    modifier = Modifier.padding(innerPadding),
+                    modifier = Modifier.padding(innerPadding).readableWidth(),
                 )
                 // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
                 else -> LazyColumn(

@@ -94,7 +94,6 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
-private const val COUI_CREATOR_LOAD_FAILED = "加载失败"
 private const val COUI_CREATOR_LOAD_MORE_FAILED = CouiStrings.LoadMoreFailedRetry
 private const val COUI_CREATOR_EMPTY = "暂无作品"
 private const val COUI_CREATOR_EMPTY_HINT = "换个语言或来源再试试"
@@ -206,7 +205,7 @@ private fun CouiCreatorBody(
                 }
 
                 else -> CouiCreatorState.Failed(
-                    planLoad(outcome, hasContent = false, failureMessage = COUI_CREATOR_LOAD_FAILED),
+                    planLoad(outcome, hasContent = false, failureMessage = CouiStrings.LoadFailed),
                 )
             }
         }
@@ -482,15 +481,15 @@ private fun CouiCreatorHeaderCard(
                     val shape = CouiCapsuleShape
                     Box(
                         modifier = Modifier
-                            .height(28.dp)
-                            .clip(shape)
-                            .background(scheme.accent.copy(alpha = 0.12f))
                             .couiPressable(
                                 shape = shape,
                                 spotlight = SpotlightPreset.ChipTab,
                                 minTouchTarget = CouiMinTouchTarget,
                                 onClick = { onOpenSponsor(sponsor) },
                             )
+                            .height(28.dp)
+                            .clip(shape)
+                            .background(scheme.accent.copy(alpha = 0.12f))
                             .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.Center,
                     ) {

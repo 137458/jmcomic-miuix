@@ -415,14 +415,14 @@ private fun CouiHistoryDeleteBadge(
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(scheme.container)
             .couiPressable(
                 shape = CircleShape,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
-            ),
+            )
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(scheme.container),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

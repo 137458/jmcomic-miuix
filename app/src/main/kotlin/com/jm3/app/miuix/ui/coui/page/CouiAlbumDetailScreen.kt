@@ -104,15 +104,14 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.ui.albumHeroHeader
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
@@ -154,6 +153,8 @@ private const val COUI_DESCRIPTION_COLLAPSE_THRESHOLD = 80
 private const val COUI_COMMENT_VISIBLE_REPLIES = 2
 /** 回复缩进的最大层级：更深的回复不再追加缩进，否则正文宽度会被挤没。 */
 private const val COUI_COMMENT_MAX_INDENT_DEPTH = 4
+/** 评论正文限行：详情页信息密度低于论坛，保留 12 行以容纳长评。 */
+private const val COUI_COMMENT_BODY_MAX_LINES = 12
 
 /**
  * COUI 作品详情页：头部信息卡、阅读操作、简介、预览、章节、作品信息、相关作品与评论区。
@@ -423,11 +424,11 @@ private fun CouiAlbumDetailScreenBody(
                         }
 
                         is AlbumUiState.Failed -> item(key = "album-failed") {
-                            val expired = albumState.sessionExpired
-                            CouiErrorGroup(
-                                message = if (expired) SessionOutcome.Expired.message else albumState.message,
-                                // 会话失效时重试只会再吃一次 401，入口直接给登录，与整屏失效同口径
-                                onRetry = if (expired) onOpenLogin else stateHolder::refresh,
+                            CouiScreenFailureGroup(
+                                message = albumState.message,
+                                expired = albumState.sessionExpired,
+                                onRetry = stateHolder::refresh,
+                                onOpenLogin = onOpenLogin,
                             )
                         }
 
@@ -555,10 +556,11 @@ private fun CouiAlbumDetailScreenBody(
                         }
 
                         is CommentsUiState.Failed -> item(key = "comments-failed") {
-                            val expired = commentsState.sessionExpired
-                            CouiErrorGroup(
-                                message = if (expired) SessionOutcome.Expired.message else commentsState.message,
-                                onRetry = if (expired) onOpenLogin else stateHolder::reloadComments,
+                            CouiScreenFailureGroup(
+                                message = commentsState.message,
+                                expired = commentsState.sessionExpired,
+                                onRetry = stateHolder::reloadComments,
+                                onOpenLogin = onOpenLogin,
                             )
                         }
 
@@ -580,6 +582,7 @@ private fun CouiAlbumDetailScreenBody(
                                     CouiCommentRow(
                                         item = row.item,
                                         depth = row.depth,
+                                        bodyMaxLines = COUI_COMMENT_BODY_MAX_LINES,
                                         onReply = { comment ->
                                             if (user == null) onOpenLogin() else stateHolder.setReplyTarget(comment)
                                         },

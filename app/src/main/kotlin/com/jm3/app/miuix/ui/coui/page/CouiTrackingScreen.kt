@@ -59,6 +59,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.formatEpochSeconds
 import com.jm3.app.miuix.ui.planLoad
@@ -238,7 +239,7 @@ internal fun CouiTrackingScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "操作失败").message.orEmpty(),
                 )
                 is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "操作失败：" + failureCopy(outcome.cause, "请稍后重试"),
+                    "操作失败：" + failureCopy(outcome.cause, CouiStrings.RetryLater),
                 )
             }
         }
@@ -362,7 +363,7 @@ internal fun CouiTrackingScreen(
                             } else {
                                 CouiLoadMoreFooter(
                                     feed = feed,
-                                    errorMessage = "加载失败",
+                                    errorMessage = CouiStrings.LoadFailed,
                                     onRetry = { loadMore() },
                                     modifier = Modifier.padding(top = 8.dp),
                                 )
@@ -396,9 +397,9 @@ private fun TrackingCancelAction(busy: Boolean, onClick: () -> Unit) {
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = Modifier
+            .couiPressable(shape = CircleShape, enabled = !busy, minTouchTarget = CouiMinTouchTarget, onClick = onClick)
             .size(40.dp)
-            .clip(CircleShape)
-            .couiPressable(shape = CircleShape, enabled = !busy, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
+            .clip(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

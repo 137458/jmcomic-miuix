@@ -40,17 +40,18 @@ import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.authorNames
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
@@ -179,7 +180,7 @@ fun CouiWatchHistoryScreen(
                     }
 
                     is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                        "删除失败：" + outcome.messageOr("请稍后重试"),
+                        "删除失败：" + outcome.messageOr(CouiStrings.RetryLater),
                     )
                 }
             }
@@ -218,15 +219,11 @@ fun CouiWatchHistoryScreen(
                             key = "coui-watch-failed",
                             span = { GridItemSpan(maxLineSpan) },
                         ) {
-                            CouiErrorGroup(
-                                message = if (state.sessionExpired) SessionOutcome.Expired.message else state.message,
-                                onRetry = {
-                                    if (state.sessionExpired) {
-                                        onOpenLogin()
-                                    } else {
-                                        fetch(1, replace = true, showLoading = true)
-                                    }
-                                },
+                            CouiScreenFailureGroup(
+                                message = state.message,
+                                expired = state.sessionExpired,
+                                onRetry = { fetch(1, replace = true, showLoading = true) },
+                                onOpenLogin = onOpenLogin,
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                             )
                         }
@@ -336,14 +333,14 @@ private fun CouiGridDeleteBadge(
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(scheme.container)
             .couiPressable(
                 shape = CircleShape,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
-            ),
+            )
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(scheme.container),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

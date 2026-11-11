@@ -55,12 +55,12 @@ import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
@@ -68,6 +68,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.libraryPageCount
 import com.jm3.app.miuix.ui.planLoad
@@ -130,7 +131,7 @@ fun CouiLibraryScreen(
         var picker by remember { mutableStateOf<CouiLibraryPicker?>(null) }
 
         fun applyFailure(outcome: SessionOutcome<*>, hasContent: Boolean) {
-            val plan = planLoad(outcome, hasContent = hasContent, failureMessage = "加载失败")
+            val plan = planLoad(outcome, hasContent = hasContent, failureMessage = CouiStrings.LoadFailed)
             if (plan.keepContent) {
                 scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
             } else {
@@ -257,19 +258,11 @@ fun CouiLibraryScreen(
 
                         failure != null -> item(key = "coui-library-failed", span = { GridItemSpan(maxLineSpan) }) {
                             val planned = failure
-                            CouiErrorGroup(
-                                message = if (planned?.phase == ScreenLoadPhase.Expired) {
-                                    SessionOutcome.Expired.message
-                                } else {
-                                    planned?.message.orEmpty()
-                                },
-                                onRetry = {
-                                    if (planned?.phase == ScreenLoadPhase.Expired) {
-                                        onOpenLogin()
-                                    } else {
-                                        load(activeFeed.page.coerceAtLeast(1), append = false)
-                                    }
-                                },
+                            CouiScreenFailureGroup(
+                                message = planned?.message,
+                                expired = planned?.phase == ScreenLoadPhase.Expired,
+                                onRetry = { load(activeFeed.page.coerceAtLeast(1), append = false) },
+                                onOpenLogin = onOpenLogin,
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                             )
                         }

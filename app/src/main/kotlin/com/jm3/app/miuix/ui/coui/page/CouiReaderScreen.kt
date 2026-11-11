@@ -506,8 +506,8 @@ private fun ReaderPages(
     // 评论抽屉内的回复：目标评论与发送态
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
     var replyBusy by remember { mutableStateOf(false) }
-    // 回复框草稿：换目标即清空，免得上一条的残稿被带进新回复
-    var replyText by remember { mutableStateOf("") }
+    // 回复框草稿：换目标即清空，免得上一条的残稿被带进新回复；跨旋转保留（发送成功后显式清空）
+    var replyText by rememberSaveable(photo.albumId) { mutableStateOf("") }
     var showTrackPrompt by remember { mutableStateOf(false) }
     var trackPromptShown by remember { mutableStateOf(false) }
     var trackMuteChecked by remember { mutableStateOf(false) }
@@ -844,6 +844,12 @@ private fun ReaderPages(
                 settings.setTrackPromptMuteUntil(System.currentTimeMillis() + TRACK_MUTE_DAYS_MS)
             }
         }
+    }
+
+    // 评论抽屉的展开状态跨旋转保留，但评论数据本身不是可保存类型：恢复后若已展开且没有数据，
+    // 补拉一次，否则用户看到的是「暂无评论」的假空态
+    LaunchedEffect(showCommentSheet, photo.albumId) {
+        if (showCommentSheet && comments == null && !commentsLoading && !commentsFailed) loadComments()
     }
 
     fun followSeries() {
@@ -2100,7 +2106,7 @@ private fun BoxScope.ReaderLoadFailedHint(onRetry: () -> Unit) {
     ) {
         Text(text = "图片加载失败", kind = CouiTextKind.Body, color = Color.White)
         Text(
-            text = "重试",
+            text = CouiStrings.Retry,
             kind = CouiTextKind.PreferenceTitle,
             color = CouiKitTheme.colorScheme.accent,
             modifier = Modifier

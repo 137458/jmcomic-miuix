@@ -78,7 +78,6 @@ import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 
-private const val COUI_SEARCH_LOAD_FAILED = "加载失败"
 private const val COUI_SEARCH_LOAD_MORE_FAILED = CouiStrings.LoadMoreFailedRetry
 private const val COUI_SEARCH_EMPTY = "无结果"
 private const val COUI_SEARCH_EMPTY_HINT = "换个关键词，或者少加几个筛选试试"
@@ -135,7 +134,7 @@ private fun CouiSearchBody(
         state = ListState.Loading
         coroutineScope.launch {
             val next = authCall.call { gateway.search(query, 1, order, scope, time) }
-                .asListState(COUI_SEARCH_LOAD_FAILED)
+                .asListState(CouiStrings.LoadFailed)
             if (token != requestToken) return@launch
             state = next
             if (next is ListState.Loaded && next.feed.items.isNotEmpty()) lazyState.scrollToItem(0)
@@ -151,7 +150,7 @@ private fun CouiSearchBody(
         state = ListState.Loading
         coroutineScope.launch {
             val next = authCall.call { gateway.search(query, resolved, order, scope, time) }
-                .asListState(COUI_SEARCH_LOAD_FAILED)
+                .asListState(CouiStrings.LoadFailed)
             if (token != requestToken) return@launch
             state = next
             if (next is ListState.Loaded && next.feed.items.isNotEmpty()) lazyState.scrollToItem(0)

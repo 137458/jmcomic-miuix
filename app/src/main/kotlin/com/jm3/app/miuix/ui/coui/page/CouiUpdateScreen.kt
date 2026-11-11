@@ -60,6 +60,7 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.formatUpdateSize
 import com.jm3.app.miuix.ui.formatUpdateSpeed
@@ -365,7 +366,7 @@ private fun UpdateNotesGroup(
                         color = scheme.onSurface,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        CouiInlineButton(text = "重试", onClick = onRetryCheck)
+                        CouiInlineButton(text = CouiStrings.Retry, onClick = onRetryCheck)
                         CouiInlineButton(
                             text = "在浏览器打开 Releases 页",
                             onClick = { onOpenRelease(UpdateChecker.RELEASES_PAGE_URL) },
@@ -463,7 +464,7 @@ private fun UpdateDownloadBlock(
                 kind = CouiTextKind.Body,
                 color = MiuixTheme.colorScheme.error,
             )
-            CouiInlineButton(text = "重试", emphasised = true, onClick = { onResetDownload() })
+            CouiInlineButton(text = CouiStrings.Retry, emphasised = true, onClick = { onResetDownload() })
             CouiInlineButton(
                 text = "用浏览器下载",
                 onClick = { onOpenRelease(updateBrowserFallbackUrl(release)) },
@@ -682,7 +683,7 @@ private fun UpdateAvailableDialog(
                 )
                 is UpdateDownloadState.Failed -> {
                     Text(text = downloadState.message, kind = CouiTextKind.Body, color = MiuixTheme.colorScheme.error)
-                    CouiInlineButton(text = "重试", onClick = onResetDownload)
+                    CouiInlineButton(text = CouiStrings.Retry, onClick = onResetDownload)
                 }
             }
         }

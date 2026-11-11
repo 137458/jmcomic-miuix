@@ -334,7 +334,7 @@ internal fun AlbumDetailScreen(
                 )
             }
         }
-        val validTags = detail.tags.map { it.trim() }.filter { it.isNotBlank() }
+        val validTags = detail.tags.map { it.trim() }.filter { it.isNotBlank() }.distinct()
         if (validTags.isNotEmpty()) {
             item(key = "tags-title") { SmallTitle(text = "标签") }
             item(key = "tags") {

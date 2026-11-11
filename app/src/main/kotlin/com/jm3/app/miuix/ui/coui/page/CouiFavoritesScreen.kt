@@ -66,6 +66,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
@@ -514,19 +515,11 @@ fun CouiFavoritesScreen(
                                 key = "coui-favorites-failed",
                                 span = { GridItemSpan(maxLineSpan) },
                             ) {
-                                CouiErrorGroup(
-                                    message = if (planned.phase == ScreenLoadPhase.Expired) {
-                                        SessionOutcome.Expired.message
-                                    } else {
-                                        planned.message.orEmpty()
-                                    },
-                                    onRetry = {
-                                        if (planned.phase == ScreenLoadPhase.Expired) {
-                                            onOpenLogin()
-                                        } else {
-                                            loadFirstPage()
-                                        }
-                                    },
+                                CouiScreenFailureGroup(
+                                    message = planned.message,
+                                    expired = planned.phase == ScreenLoadPhase.Expired,
+                                    onRetry = { loadFirstPage() },
+                                    onOpenLogin = onOpenLogin,
                                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                                 )
                             }
@@ -597,21 +590,21 @@ fun CouiFavoritesScreen(
                                     }
                                 }
                                 item(key = "coui-favorites-footer", span = { GridItemSpan(maxLineSpan) }) {
-                                    if (gridFeed.items.isEmpty()) {
-                                        Unit
-                                    } else if (clickPaging) {
-                                        CouiPagingGroup(
-                                            page = gridFeed.page,
-                                            pageCount = gridFeed.pageCount,
-                                            hasMore = gridFeed.hasMore,
-                                            onJumpPage = { target -> jumpToPage(target) },
-                                        )
-                                    } else {
-                                        CouiAutoLoadMoreEffect(feed = gridFeed, onLoadMore = { loadMore() })
-                                        CouiLoadMoreFooter(
-                                            feed = gridFeed,
-                                            onRetry = { loadMore() },
-                                        )
+                                    if (gridFeed.items.isNotEmpty()) {
+                                        if (clickPaging) {
+                                            CouiPagingGroup(
+                                                page = gridFeed.page,
+                                                pageCount = gridFeed.pageCount,
+                                                hasMore = gridFeed.hasMore,
+                                                onJumpPage = { target -> jumpToPage(target) },
+                                            )
+                                        } else {
+                                            CouiAutoLoadMoreEffect(feed = gridFeed, onLoadMore = { loadMore() })
+                                            CouiLoadMoreFooter(
+                                                feed = gridFeed,
+                                                onRetry = { loadMore() },
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1003,14 +996,14 @@ private fun CouiFavoritesDeleteBadge(
     val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(scheme.container)
             .couiPressable(
                 shape = CircleShape,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
-            ),
+            )
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(scheme.container),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

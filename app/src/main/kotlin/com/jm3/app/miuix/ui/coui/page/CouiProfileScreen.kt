@@ -75,6 +75,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
@@ -191,7 +192,7 @@ fun CouiProfileScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "保存失败").message.orEmpty(),
                 )
                 is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "保存失败：" + outcome.messageOr("请稍后重试"),
+                    "保存失败：" + outcome.messageOr(CouiStrings.RetryLater),
                 )
             }
         }
@@ -279,7 +280,7 @@ private fun ProfileReloginGroup(message: String, onOpenLogin: () -> Unit) {
             title = { ProfileRowTitle("重新登录") },
             trailing = {
                 Text(
-                    text = "去登录",
+                    text = CouiStrings.OpenLogin,
                     kind = CouiTextKind.PreferenceValue,
                     color = CouiKitTheme.colorScheme.accent,
                     textAlign = TextAlign.End,

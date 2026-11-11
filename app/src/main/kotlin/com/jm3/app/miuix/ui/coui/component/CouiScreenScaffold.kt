@@ -109,14 +109,15 @@ fun rememberCouiScreenScrollBehavior(canScroll: () -> Boolean = { true }): CouiT
  * 会把首次组合那一帧的顶栏高度冻结住——顶栏之后折叠/展开，正文都不再跟随
  * （切 tab 回到页面时，大标题与搜索框就压在正文首项上）。
  *
- * @param horizontalPadding 为空时保留 Scaffold 自己的左右净空。
+ * @param horizontalPadding 正文左右边距，默认 0：页面内容一律顶到窗口边缘，网格卡的视觉内衬由卡片自身
+ * （[CouiWorkCardTokens]）提供。传 null 才保留 Scaffold 自己的左右净空，仅供确实需要 inset 的整页内容使用。
  * @param extraBottom 页面在底栏净空之外补的尾部间隙。
  */
 @Composable
 fun couiScreenContentPadding(
     scrollBehavior: CouiTopAppBarScrollBehavior,
     innerPadding: PaddingValues,
-    horizontalPadding: Dp? = CouiPageDefaults.horizontalMargin,
+    horizontalPadding: Dp? = 0.dp,
     extraBottom: Dp = 0.dp,
 ): PaddingValues {
     val density = LocalDensity.current
@@ -184,13 +185,13 @@ internal fun CouiTopBarPlainBackButton(
 ) {
     Box(
         modifier = modifier
-            .size(CouiTopBarButtonSize)
-            .clip(CircleShape)
             .couiPressable(
                 shape = CircleShape,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
-            ),
+            )
+            .size(CouiTopBarButtonSize)
+            .clip(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -218,13 +219,13 @@ fun CouiTopBarAction(
     } else {
         Box(
             modifier = modifier
-                .size(CouiTopBarButtonSize)
-                .clip(CircleShape)
                 .couiPressable(
                     shape = CircleShape,
                     minTouchTarget = CouiMinTouchTarget,
                     onClick = onClick,
-                ),
+                )
+                .size(CouiTopBarButtonSize)
+                .clip(CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

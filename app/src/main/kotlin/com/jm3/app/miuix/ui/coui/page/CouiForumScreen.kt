@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -44,7 +42,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
@@ -90,6 +87,7 @@ import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiWorkCardShape
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
@@ -155,7 +153,7 @@ internal fun CouiForumScreen(
     var failedPage by remember { mutableIntStateOf(1) }
     var replyTarget by remember { mutableStateOf<CommentItem?>(null) }
     var replyBusy by remember { mutableStateOf(false) }
-    var composing by remember { mutableStateOf(false) }
+    var composing by rememberSaveable { mutableStateOf(false) }
     var composeBusy by remember { mutableStateOf(false) }
     var rulesExpanded by rememberSaveable { mutableStateOf(false) }
     // 请求代际号 + 在途协程：切档/翻页后晚到的旧响应不得覆盖新状态
@@ -245,7 +243,7 @@ internal fun CouiForumScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty(),
                 )
                 is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "回复失败：" + failureCopy(outcome.cause, "请稍后重试"),
+                    "回复失败：" + failureCopy(outcome.cause, CouiStrings.RetryLater),
                 )
             }
         }
@@ -270,7 +268,7 @@ internal fun CouiForumScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty(),
                 )
                 is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "发布失败：" + failureCopy(outcome.cause, "请稍后重试"),
+                    "发布失败：" + failureCopy(outcome.cause, CouiStrings.RetryLater),
                 )
             }
         }
@@ -447,7 +445,7 @@ internal fun CouiForumScreen(
                                 } else {
                                     CouiLoadMoreFooter(
                                         feed = feed,
-                                        errorMessage = "加载失败",
+                                        errorMessage = CouiStrings.LoadFailed,
                                         onRetry = { fetch(feed.page + 1, replace = false, showLoading = false) },
                                         modifier = Modifier.padding(top = 8.dp),
                                     )
@@ -549,10 +547,10 @@ private fun CouiForumTopic(
         ?: item.albumName?.filter { it.isDigit() }?.takeIf { it.isNotBlank() }
     val albumName = item.albumName?.takeIf { albumId != null }
     Column(modifier = Modifier.fillMaxWidth()) {
-        CouiCommentRow(item = item, depth = 0, onReply = onReply)
+        CouiCommentRow(item = item, depth = 0, bodyMaxLines = FORUM_BODY_MAX_LINES, onReply = onReply)
         val replies = remember(item.id) { flattenForumReplies(item) }
         replies.forEach { (reply, depth) ->
-            CouiCommentRow(item = reply, depth = depth, onReply = onReply)
+            CouiCommentRow(item = reply, depth = depth, bodyMaxLines = FORUM_BODY_MAX_LINES, onReply = onReply)
         }
         if (albumName != null && albumId != null) {
             val rowShape = CouiShape(radius = 10.dp, cornerWeight = 3f)

@@ -28,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -74,6 +73,7 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
@@ -123,8 +123,6 @@ private const val NOVEL_COMMENT_MAX_LENGTH = 300
 
 /** 评论正文最多铺多少行，超出交给「展开回复」与翻页，不把一屏塞满。 */
 private const val NOVEL_COMMENT_BODY_MAX_LINES = 12
-
-private const val NOVEL_DETAIL_LOAD_FAILED = "加载失败"
 
 private const val NOVEL_COMMENT_LOAD_FAILED = "评论加载失败"
 
@@ -267,7 +265,7 @@ private fun CouiNovelDetailBody(
                 CouiNovelDetailState.Loaded(outcome.value)
             } else {
                 CouiNovelDetailState.Failed(
-                    planLoad(outcome = outcome, hasContent = false, failureMessage = NOVEL_DETAIL_LOAD_FAILED),
+                    planLoad(outcome = outcome, hasContent = false, failureMessage = CouiStrings.LoadFailed),
                 )
             }
         }
@@ -756,7 +754,7 @@ private fun CouiNovelDetailFailure(plan: ScreenLoadPlan, onRetry: () -> Unit, on
             footer = plan.message.orEmpty(),
         ) {
             Item(
-                title = { Text(text = "去登录", kind = CouiTextKind.Body, color = scheme.accent) },
+                title = { Text(text = CouiStrings.OpenLogin, kind = CouiTextKind.Body, color = scheme.accent) },
                 trailing = {
                     Icon(
                         imageVector = CouiIcons.Forward,
@@ -1299,99 +1297,22 @@ private fun CouiNovelCommentComposer(
     }
 }
 
-/** 单条评论：按嵌套深度缩进，正文行数设上限，避免一条长评论占满整屏；行末留「回复」入口。 */
+/** 单条评论：行卡由 [CouiGroupRow] 提供，内容与其余页面共用 [CouiCommentRow]，避免第四份评论行实现。 */
 @Composable
 private fun CouiNovelCommentItemCard(
     row: CommentRow.Comment,
     isFirst: Boolean,
     onReply: (CommentItem) -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
-    val item = row.item
     CouiGroupRow(isFirst = isFirst, isLast = false, showDivider = false) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp + (12 * row.depth).dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(scheme.container),
-                ) {
-                    AlbumCoverImage(
-                        url = item.avatarUrl,
-                        contentDescription = item.author,
-                        modifier = Modifier.fillMaxSize(),
-                        crossfade = false,
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.author,
-                        kind = CouiTextKind.PreferenceTitle,
-                        color = scheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
-                    )
-                    val meta = remember(item.level, item.levelName, item.postDate) {
-                        listOfNotNull(
-                            item.level?.let { "Lv.$it" },
-                            item.levelName?.takeIf { it.isNotBlank() },
-                            item.postDate?.takeIf { it.isNotBlank() },
-                        ).joinToString(" · ")
-                    }
-                    if (meta.isNotBlank()) {
-                        Text(
-                            text = meta,
-                            kind = CouiTextKind.Description,
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Start,
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = item.content,
-                kind = CouiTextKind.Body,
-                color = scheme.onSurface,
-                maxLines = NOVEL_COMMENT_BODY_MAX_LINES,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Start,
-            )
-            if (item.likes > 0) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "♥ ${item.likes}",
-                    kind = CouiTextKind.Description,
-                    color = scheme.onSurfaceVariant,
-                    textAlign = TextAlign.Start,
-                )
-            }
-            // 回复入口贴在这一条正文下面：点在哪儿就从哪儿起笔，不用先选中再回到底部输入框
-            Text(
-                text = "回复",
-                kind = CouiTextKind.PreferenceValue,
-                color = scheme.accent,
-                maxLines = 1,
-                textAlign = TextAlign.Start,
-                modifier = Modifier
-                    .clip(CouiCapsuleShape)
-                    .couiPressable(
-                        shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
-                        minTouchTarget = CouiMinTouchTarget,
-                        onClick = { onReply(item) },
-                    )
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-            )
-        }
+        CouiCommentRow(
+            item = row.item,
+            depth = row.depth,
+            authorColor = CouiKitTheme.colorScheme.onSurface,
+            avatarSize = 28.dp,
+            bodyMaxLines = NOVEL_COMMENT_BODY_MAX_LINES,
+            onReply = onReply,
+        )
     }
 }
 

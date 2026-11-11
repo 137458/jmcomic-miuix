@@ -277,11 +277,11 @@ private fun CouiChapterRowCard(
                 trailing = {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
                             .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget) {
                                 onDownload(row.chapter, row.title)
-                            },
+                            }
+                            .size(32.dp)
+                            .clip(CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(

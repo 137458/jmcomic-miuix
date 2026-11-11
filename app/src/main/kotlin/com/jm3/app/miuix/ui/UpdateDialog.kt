@@ -41,6 +41,7 @@ import com.itos.coui.dialog.Dialog as CouiDialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.skin.LocalSkin
@@ -449,8 +450,10 @@ private fun CouiUpdateAvailableDialog(
                                 style = MiuixTheme.textStyles.footnote1,
                                 color = colors.accent,
                                 modifier = Modifier
+                                    .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                                        notesExpanded = !notesExpanded
+                                    }
                                     .clip(CouiCapsuleShape)
-                                    .couiPressable(shape = CouiCapsuleShape) { notesExpanded = !notesExpanded }
                                     .padding(top = NotesBlockSpacing, bottom = 4.dp),
                             )
                         }
@@ -464,8 +467,10 @@ private fun CouiUpdateAvailableDialog(
                     style = MiuixTheme.textStyles.footnote1,
                     color = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive,
                     modifier = Modifier
+                        .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                            onIgnore?.invoke(release.version)
+                        }
                         .clip(CouiCapsuleShape)
-                        .couiPressable(shape = CouiCapsuleShape) { onIgnore?.invoke(release.version) }
                         .padding(horizontal = 4.dp, vertical = 6.dp),
                 )
             }
