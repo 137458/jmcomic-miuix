@@ -17,14 +17,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,7 +39,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,8 +58,6 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
-import com.itos.coui.topappbar.CouiTopAppBarDefaults
-import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.AlbumCoverImage
@@ -68,7 +67,8 @@ import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
-import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -79,14 +79,12 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
-import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
+import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
-import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiWorkCardShape
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -95,6 +93,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
+import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.core.appendedBy
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentSegment
@@ -145,15 +144,15 @@ internal fun CouiForumScreen(
     val pageMode = deps.preferences.paginationMode
     val selectionHaptic = rememberSelectionHaptic()
     val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
+    val listStates = remember { List(ForumScope.entries.size) { LazyListState() } }
 
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
-    val forumScope = ForumScope.entries[scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)]
-    var feed by remember { mutableStateOf(PagedFeed<CommentItem>()) }
-    var state by remember { mutableStateOf<ForumUiState>(ForumUiState.Loading) }
+    val clampedScopeIndex = scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)
+    val feeds = remember { mutableStateMapOf<Int, PagedFeed<CommentItem>>() }
+    val states = remember { mutableStateMapOf<Int, ForumUiState>() }
     var refreshing by remember { mutableStateOf(false) }
     // 失败页码：重试要回到失败的那一页，而不是一律回第一页
-    var failedPage by remember { mutableIntStateOf(1) }
+    val failedPages = remember { mutableStateMapOf<Int, Int>() }
     var replyTarget by rememberSaveable(stateSaver = CommentItemNullableSaver) {
         mutableStateOf<CommentItem?>(null)
     }
@@ -164,10 +163,9 @@ internal fun CouiForumScreen(
     // 请求代际号 + 在途协程：切档/翻页后晚到的旧响应不得覆盖新状态
     var loadToken by remember { mutableIntStateOf(0) }
     var inFlightJob by remember { mutableStateOf<Job?>(null) }
+    var lastPageMode by remember { mutableStateOf(pageMode) }
 
-    val totalPages = feed.pageCount ?: feed.page
-
-    fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
+    fun applyFailure(targetTab: Int, outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
         val plan = planLoad(
             outcome = outcome,
             hasContent = inFlight.items.isNotEmpty(),
@@ -175,26 +173,33 @@ internal fun CouiForumScreen(
             stalePrefix = "加载失败：",
         )
         // 保留内容时只把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈
-        feed = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
+        feeds[targetTab] = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
         if (plan.phase == ScreenLoadPhase.Content) {
-            state = ForumUiState.Loaded
+            states[targetTab] = ForumUiState.Loaded
             plan.notice?.let { notice -> scope.launch { snackbarHostState.showSnackbar(notice) } }
         } else {
-            state = ForumUiState.Failed(plan)
+            states[targetTab] = ForumUiState.Failed(plan)
         }
     }
 
-    fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
+    fun fetch(
+        targetPage: Int,
+        replace: Boolean,
+        showLoading: Boolean,
+        targetTab: Int = clampedScopeIndex,
+    ) {
+        val currentFeed = feeds[targetTab] ?: PagedFeed()
+        val targetScope = ForumScope.entries[targetTab]
         // 追加请求在途时不再发起新的翻页：连点会并发打同一页，返回顺序错乱后列表会重复
-        val requested = if (replace) feed else feed.beginLoadMore()
-        if (!replace && requested === feed) return
-        if (showLoading) state = ForumUiState.Loading
-        feed = requested
-        failedPage = targetPage
+        val requested = if (replace) currentFeed else currentFeed.beginLoadMore()
+        if (!replace && requested === currentFeed) return
+        if (showLoading) states[targetTab] = ForumUiState.Loading
+        feeds[targetTab] = requested
+        failedPages[targetTab] = targetPage
         inFlightJob?.cancel()
         val token = ++loadToken
         inFlightJob = scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.forum(forumScope, targetPage) }
+            val outcome = deps.authCall.call { deps.gateway.forum(targetScope, targetPage) }
             if (token != loadToken) return@launch
             refreshing = false
             when (outcome) {
@@ -206,15 +211,15 @@ internal fun CouiForumScreen(
                     } else {
                         null
                     }
-                    feed = if (replace) {
+                    feeds[targetTab] = if (replace) {
                         PagedFeed<CommentItem>().replacedBy(resultPage)
                     } else {
                         requested.appendedBy(resultPage)
                     }.copy(page = targetPage, pageCount = pageCount)
-                    state = ForumUiState.Loaded
+                    states[targetTab] = ForumUiState.Loaded
                 }
-                SessionOutcome.Expired -> applyFailure(outcome, requested)
-                is SessionOutcome.Failed -> applyFailure(outcome, requested)
+                SessionOutcome.Expired -> applyFailure(targetTab, outcome, requested)
+                is SessionOutcome.Failed -> applyFailure(targetTab, outcome, requested)
             }
         }
     }
@@ -242,7 +247,8 @@ internal fun CouiForumScreen(
                 is SessionOutcome.Ok -> {
                     replyTarget = null
                     snackbarHostState.showSnackbar("回复已发送")
-                    fetch(feed.page, replace = true, showLoading = false)
+                    val activePage = (feeds[clampedScopeIndex] ?: PagedFeed()).page
+                    fetch(activePage, replace = true, showLoading = false, targetTab = clampedScopeIndex)
                 }
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(
                     planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty(),
@@ -266,8 +272,9 @@ internal fun CouiForumScreen(
                     composing = false
                     snackbarHostState.showSnackbar("发布成功")
                     // 新帖落在第一页首位，回到顶部才能看到刚发的内容
-                    listState.requestScrollToItem(0)
-                    fetch(targetPage = 1, replace = true, showLoading = false)
+                    val activeTab = clampedScopeIndex
+                    listStates[activeTab].requestScrollToItem(0)
+                    fetch(targetPage = 1, replace = true, showLoading = false, targetTab = activeTab)
                 }
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(
                     planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty(),
@@ -284,180 +291,220 @@ internal fun CouiForumScreen(
         if (user == null) onOpenLogin() else composing = true
     }
 
-    // 切档或换分页模式时重载第一页；首帧列表还没进组合，用 requestScrollToItem 登记滚动而不阻塞取数
-    LaunchedEffect(scopeIndex, pageMode) {
-        listState.requestScrollToItem(0)
-        fetch(targetPage = 1, replace = true, showLoading = true)
+    // 切档或换分页模式时重载；已缓存档位划回时保留列表并静默刷新
+    LaunchedEffect(clampedScopeIndex, pageMode) {
+        val modeChanged = lastPageMode != pageMode
+        if (modeChanged) {
+            feeds.clear()
+            states.clear()
+            failedPages.clear()
+            lastPageMode = pageMode
+        }
+        val showLoading = modeChanged || states[clampedScopeIndex] !is ForumUiState.Loaded
+        if (modeChanged) {
+            listStates[clampedScopeIndex].requestScrollToItem(0)
+        }
+        fetch(targetPage = 1, replace = true, showLoading = showLoading, targetTab = clampedScopeIndex)
     }
-    CouiFeedPrefetchEffect(
-        feed = feed,
-        rowStart = 0,
-        listState = listState,
-        enabled = pageMode != PaginationMode.CLICK && state == ForumUiState.Loaded,
-        onPrefetch = { fetch(feed.page + 1, replace = false, showLoading = false) },
-    )
 
     CouiTheme {
         val overscroll = rememberCouiOverscrollEffect()
-        val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-        val items = feed.items
-        val topicTotal = feed.total ?: 0
+        val scrollBehavior = rememberCouiScreenScrollBehavior {
+            val active = listStates[clampedScopeIndex]
+            active.canScrollForward || active.canScrollBackward
+        }
+        val pagerState = rememberSyncedTabPagerState(
+            selectedTab = clampedScopeIndex,
+            pageCount = ForumScope.entries.size,
+            onTabSelected = {
+                if (it != scopeIndex) {
+                    selectionHaptic()
+                    scopeIndex = it
+                }
+            },
+        )
 
-        CouiAppScaffold(
-            modifier = Modifier.fillMaxSize(),
-            topBar = {
-                LargeTopAppBar(
-                    title = { CouiTopBarTitle(text = "社区论坛", textAlign = TextAlign.Start) },
-                    navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
-                    actions = {
-                        CouiTopBarAction(
-                            icon = CouiIcons.Comment,
-                            contentDescription = "发帖",
-                            onClick = { openCompose() },
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                        CouiFeedRefreshAction(
-                            refreshing = refreshing,
-                            onRefresh = {
-                                if (!refreshing) {
-                                    refreshing = true
-                                    fetch(targetPage = 1, replace = true, showLoading = false)
-                                }
-                            },
-                        )
+        CouiScreenScaffold(
+            title = "社区论坛",
+            onBack = onBack,
+            scrollBehavior = scrollBehavior,
+            actions = {
+                CouiTopBarAction(
+                    icon = CouiIcons.Comment,
+                    contentDescription = "发帖",
+                    onClick = { openCompose() },
+                    modifier = Modifier.padding(end = 4.dp),
+                )
+                CouiFeedRefreshAction(
+                    refreshing = refreshing,
+                    onRefresh = {
+                        if (!refreshing) {
+                            refreshing = true
+                            fetch(targetPage = 1, replace = true, showLoading = false, targetTab = clampedScopeIndex)
+                        }
                     },
-                    scrollBehavior = scrollBehavior,
-                    colors = couiTopAppBarColors(),
                 )
             },
-        ) { innerPadding ->
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .readableWidth()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .consumeWindowInsets(innerPadding),
-                state = listState,
-                contentPadding = couiScreenContentPadding(scrollBehavior, innerPadding),
-                overscrollEffect = overscroll,
-            ) {
-                item(key = "forum-scopes") {
-                    CouiSegmentedCapsules(
-                        items = ForumScope.entries.map { it.label },
-                        selectedIndex = scopeIndex,
-                        onSelect = {
-                            if (it != scopeIndex) {
-                                selectionHaptic()
-                                scopeIndex = it
-                            }
-                        },
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = CouiPageDefaults.horizontalMargin),
-                    )
-                }
+            topBarBottom = {
+                CouiTopBarSegmentedTabs(
+                    items = ForumScope.entries.map { it.label },
+                    selectedIndex = clampedScopeIndex,
+                    onSelect = {
+                        if (it != scopeIndex) {
+                            selectionHaptic()
+                            scopeIndex = it
+                        }
+                    },
+                )
+            },
+        ) { contentPadding ->
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+            ) { pageIdx ->
+                val pageScope = ForumScope.entries[pageIdx]
+                val pageFeed = feeds[pageIdx] ?: PagedFeed()
+                val pageState = states[pageIdx] ?: ForumUiState.Loading
+                val pageFailedAt = failedPages[pageIdx] ?: 1
+                val pageListState = listStates[pageIdx]
+                val pageItems = pageFeed.items
+                val pageTopicTotal = pageFeed.total ?: 0
+                val pageTotalPages = pageFeed.pageCount ?: pageFeed.page
 
-                when (val current = state) {
-                    ForumUiState.Loading -> item(key = "forum-loading") {
-                        CouiLoadingGroup(
-                            modifier = Modifier.padding(top = 8.dp),
-                            text = "正在加载话题…",
-                        )
-                    }
-                    is ForumUiState.Failed -> if (current.plan.phase == ScreenLoadPhase.Expired) {
-                        item(key = "forum-expired") {
-                            CouiFeedLoginGroup(
-                                message = current.plan.message.orEmpty(),
-                                onOpenLogin = onOpenLogin,
-                            )
-                        }
-                    } else {
-                        item(key = "forum-error") {
-                            CouiErrorGroup(
-                                message = current.plan.message.orEmpty(),
-                                onRetry = { fetch(targetPage = failedPage, replace = true, showLoading = true) },
+                CouiFeedPrefetchEffect(
+                    feed = pageFeed,
+                    rowStart = 0,
+                    listState = pageListState,
+                    enabled = pageMode != PaginationMode.CLICK &&
+                        pageState == ForumUiState.Loaded &&
+                        pageIdx == clampedScopeIndex,
+                    onPrefetch = {
+                        fetch(pageFeed.page + 1, replace = false, showLoading = false, targetTab = pageIdx)
+                    },
+                )
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .readableWidth()
+                        .consumeWindowInsets(contentPadding),
+                    state = pageListState,
+                    contentPadding = contentPadding,
+                    overscrollEffect = overscroll,
+                ) {
+                    when (pageState) {
+                        ForumUiState.Loading -> item(key = "forum-loading") {
+                            CouiLoadingGroup(
                                 modifier = Modifier.padding(top = 8.dp),
+                                text = "正在加载话题…",
                             )
                         }
-                    }
-                    ForumUiState.Loaded -> {
-                        // 闲聊档的规则卡：折叠态给提要，展开态给全文
-                        if (forumScope == ForumScope.CHAT) {
-                            item(key = "forum-rules") {
-                                CouiForumRulesRow(
-                                    expanded = rulesExpanded,
-                                    onToggle = { rulesExpanded = !rulesExpanded },
+                        is ForumUiState.Failed -> if (pageState.plan.phase == ScreenLoadPhase.Expired) {
+                            item(key = "forum-expired") {
+                                CouiFeedLoginGroup(
+                                    message = pageState.plan.message.orEmpty(),
+                                    onOpenLogin = onOpenLogin,
                                 )
                             }
-                        }
-                        if (items.isEmpty()) {
-                            item(key = "forum-empty") {
-                                CouiEmptyGroup(
-                                    text = if (forumScope == ForumScope.CHAT) "闲聊区还没有帖子" else "暂无话题",
+                        } else {
+                            item(key = "forum-error") {
+                                CouiErrorGroup(
+                                    message = pageState.plan.message.orEmpty(),
+                                    onRetry = {
+                                        fetch(
+                                            targetPage = pageFailedAt,
+                                            replace = true,
+                                            showLoading = true,
+                                            targetTab = pageIdx,
+                                        )
+                                    },
                                     modifier = Modifier.padding(top = 8.dp),
                                 )
                             }
-                            item(key = "forum-empty-hint") {
-                                Footer(
-                                    text = if (forumScope == ForumScope.CHAT) {
-                                        "来开第一帖，聊聊作品之外的事"
-                                    } else {
-                                        "换个档位看看，或发一条新帖"
-                                    },
-                                )
-                            }
-                            item(key = "forum-empty-action") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 8.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    ForumCapsuleButton(text = "发布新帖", onClick = { openCompose() })
-                                }
-                            }
-                        } else {
-                            if (topicTotal > 0) {
-                                item(key = "forum-count") { Footer(text = "共 " + topicTotal + " 条话题") }
-                            }
-                            itemsIndexed(items, key = { _, item -> "forum-" + item.id }) { index, item ->
-                                CouiGroupRow(
-                                    isFirst = index == 0,
-                                    isLast = index == items.lastIndex,
-                                ) {
-                                    CouiForumTopic(
-                                        item = item,
-                                        onReply = { startReply(it) },
-                                        onOpenAlbum = onOpenAlbum,
+                        }
+                        ForumUiState.Loaded -> {
+                            // 闲聊档的规则卡：折叠态给提要，展开态给全文
+                            if (pageScope == ForumScope.CHAT) {
+                                item(key = "forum-rules") {
+                                    CouiForumRulesRow(
+                                        expanded = rulesExpanded,
+                                        onToggle = { rulesExpanded = !rulesExpanded },
                                     )
                                 }
                             }
-                            item(key = "forum-footer") {
-                                if (pageMode == PaginationMode.CLICK) {
-                                    // 只有一页时翻页条没有信息量，不占位
-                                    if (totalPages > 1) {
-                                        CouiPagingGroup(
-                                            page = feed.page,
-                                            pageCount = totalPages,
-                                            hasMore = feed.hasMore,
-                                            onJumpPage = { target ->
-                                                if (target != feed.page) {
-                                                    listState.requestScrollToItem(0)
-                                                    fetch(target, replace = true, showLoading = false)
-                                                }
+                            if (pageItems.isEmpty()) {
+                                item(key = "forum-empty") {
+                                    CouiEmptyGroup(
+                                        text = if (pageScope == ForumScope.CHAT) "闲聊区还没有帖子" else "暂无话题",
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    )
+                                }
+                                item(key = "forum-empty-hint") {
+                                    Footer(
+                                        text = if (pageScope == ForumScope.CHAT) {
+                                            "来开第一帖，聊聊作品之外的事"
+                                        } else {
+                                            "换个档位看看，或发一条新帖"
+                                        },
+                                    )
+                                }
+                                item(key = "forum-empty-action") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 8.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        ForumCapsuleButton(text = "发布新帖", onClick = { openCompose() })
+                                    }
+                                }
+                            } else {
+                                if (pageTopicTotal > 0) {
+                                    item(key = "forum-count") { Footer(text = "共 " + pageTopicTotal + " 条话题") }
+                                }
+                                itemsIndexed(pageItems, key = { _, item -> "forum-" + item.id }) { index, item ->
+                                    CouiGroupRow(
+                                        isFirst = index == 0,
+                                        isLast = index == pageItems.lastIndex,
+                                    ) {
+                                        CouiForumTopic(
+                                            item = item,
+                                            onReply = { startReply(it) },
+                                            onOpenAlbum = onOpenAlbum,
+                                        )
+                                    }
+                                }
+                                item(key = "forum-footer") {
+                                    if (pageMode == PaginationMode.CLICK) {
+                                        // 只有一页时翻页条没有信息量，不占位
+                                        if (pageTotalPages > 1) {
+                                            CouiPagingGroup(
+                                                page = pageFeed.page,
+                                                pageCount = pageTotalPages,
+                                                hasMore = pageFeed.hasMore,
+                                                onJumpPage = { target ->
+                                                    if (target != pageFeed.page) {
+                                                        pageListState.requestScrollToItem(0)
+                                                        fetch(target, replace = true, showLoading = false, targetTab = pageIdx)
+                                                    }
+                                                },
+                                                modifier = Modifier.padding(top = 8.dp),
+                                            )
+                                        }
+                                    } else {
+                                        CouiLoadMoreFooter(
+                                            feed = pageFeed,
+                                            errorMessage = CouiStrings.LoadFailed,
+                                            onRetry = {
+                                                fetch(pageFeed.page + 1, replace = false, showLoading = false, targetTab = pageIdx)
                                             },
                                             modifier = Modifier.padding(top = 8.dp),
                                         )
                                     }
-                                } else {
-                                    CouiLoadMoreFooter(
-                                        feed = feed,
-                                        errorMessage = CouiStrings.LoadFailed,
-                                        onRetry = { fetch(feed.page + 1, replace = false, showLoading = false) },
-                                        modifier = Modifier.padding(top = 8.dp),
-                                    )
                                 }
-                            }
-                            item(key = "forum-tail") {
-                                Spacer(modifier = Modifier.height(CouiPageDefaults.groupSpacing))
+                                item(key = "forum-tail") {
+                                    Spacer(modifier = Modifier.height(CouiPageDefaults.groupSpacing))
+                                }
                             }
                         }
                     }
@@ -515,21 +562,21 @@ private fun CouiForumRulesRow(expanded: Boolean, onToggle: () -> Unit) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = "社区规则",
-                    kind = CouiTextKind.PreferenceTitle,
+                    kind = CouiTextKind.ItemTitle,
                     color = scheme.onSurface,
                     maxLines = 1,
                     textAlign = TextAlign.Start,
                 )
                 Text(
                     text = if (expanded) FORUM_RULES_TEXT else "闲聊区发言前请先了解规则",
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     textAlign = TextAlign.Start,
                 )
             }
             Text(
                 text = if (expanded) "收起" else "展开",
-                kind = CouiTextKind.PreferenceValue,
+                kind = CouiTextKind.ItemValue,
                 color = scheme.accent,
                 maxLines = 1,
                 modifier = Modifier.padding(start = 12.dp),
@@ -592,14 +639,14 @@ private fun CouiForumTopic(
                 ) {
                     Text(
                         text = "相关作品",
-                        kind = CouiTextKind.Description,
+                        kind = CouiTextKind.GroupFooter,
                         color = scheme.onSurfaceVariant,
                         maxLines = 1,
                         textAlign = TextAlign.Start,
                     )
                     Text(
                         text = albumName,
-                        kind = CouiTextKind.PreferenceSummary,
+                        kind = CouiTextKind.ItemSummary,
                         color = scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -649,7 +696,7 @@ private fun ForumCapsuleButton(text: String, onClick: () -> Unit) {
     ) {
         Text(
             text = text,
-            kind = CouiTextKind.PreferenceValue,
+            kind = CouiTextKind.ItemValue,
             color = scheme.onAccent,
         )
     }
@@ -694,7 +741,7 @@ private fun CouiForumInputDialog(
         BasicTextField(
             value = draft,
             onValueChange = { draft = it.take(COMMENT_REPLY_MAX_LENGTH) },
-            textStyle = rememberCouiTextStyle(CouiTextKind.Body).copy(color = scheme.onSurface),
+            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
             cursorBrush = SolidColor(scheme.accent),
             modifier = Modifier
                 .fillMaxWidth()
@@ -705,9 +752,8 @@ private fun CouiForumInputDialog(
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (draft.isEmpty()) {
-                        Text(
+                        CouiBodyText(
                             text = placeholder,
-                            kind = CouiTextKind.Body,
                             color = scheme.onSurfaceVariant,
                             textAlign = TextAlign.Start,
                         )
@@ -718,7 +764,7 @@ private fun CouiForumInputDialog(
         )
         Text(
             text = draft.length.toString() + "/" + COMMENT_REPLY_MAX_LENGTH,
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = scheme.onSurfaceVariant,
             textAlign = TextAlign.Start,
             modifier = Modifier.padding(top = 6.dp),

@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -176,7 +177,7 @@ fun CouiWorkBadge(
     ) {
         Text(
             text = text,
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = if (highlighted) colors.onAccent else Color.White,
             maxLines = 1,
         )
@@ -202,7 +203,7 @@ fun BoxScope.CouiWorkAlbumCodeBadge(code: String?) {
 @Composable
 fun BoxScope.CouiWorkCategoryBadge(category: String?) {
     val label = couiNormalizedText(category) ?: return
-    val base = rememberCouiTextStyle(CouiTextKind.Description)
+    val base = rememberCouiTextStyle(CouiTextKind.GroupFooter)
     val lineHeight = couiPinnedLineHeight(CouiWorkCardTokens.CategoryBadgeFontSize, TextUnit.Unspecified)
     // 行高钉死成与字号同源的固定值：角标高低只跟字号有关，不随字形度量浮动
     val style = remember(base, lineHeight) {
@@ -247,10 +248,11 @@ fun CouiWorkRankBadge(rank: Int, modifier: Modifier = Modifier) {
         else -> null
     }
     if (metal == null) {
-        Text(
+        CouiCustomStyledText(
             text = rank.toString(),
-            kind = CouiTextKind.Stepper,
+            style = rememberCouiStepperTextStyle(),
             color = CouiTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
             modifier = modifier,
             maxLines = 1,
         )
@@ -265,7 +267,7 @@ fun CouiWorkRankBadge(rank: Int, modifier: Modifier = Modifier) {
     ) {
         Text(
             text = rank.toString(),
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             // 金属底是固定亮色，文字固定深色，不跟明暗主题翻转
             color = Color(0xFF1A1A1A),
             maxLines = 1,
@@ -468,7 +470,7 @@ fun CouiWorkThumbnail(
 /** 卡片标题：行高钉死并按 [maxLines] 行占位，单行与两行标题不会把同一排卡片撑成不同高度。 */
 @Composable
 private fun CouiWorkTitleText(title: String, maxLines: Int) {
-    val pinned = couiPinnedText(CouiTextKind.PreferenceTitle, maxLines)
+    val pinned = couiPinnedText(CouiTextKind.ItemTitle, maxLines)
     val color = CouiTheme.colorScheme.onSurface
     BasicText(
         text = title,
@@ -492,7 +494,7 @@ private fun CouiWorkTitleText(title: String, maxLines: Int) {
 @Composable
 private fun CouiWorkSubtitleText(authors: String?, category: String?) {
     val parts = remember(authors, category) { couiWorkSubtitleParts(authors, category) }
-    val pinned = couiPinnedText(CouiTextKind.PreferenceSummary, CouiWorkCardTokens.SubtitleLines)
+    val pinned = couiPinnedText(CouiTextKind.ItemSummary, CouiWorkCardTokens.SubtitleLines)
     val muted = CouiTheme.colorScheme.onSurfaceVariant
     val accent = CouiTheme.colorScheme.accent
     val author = parts.author
@@ -541,7 +543,7 @@ private fun CouiWorkSubtitleText(authors: String?, category: String?) {
  */
 @Composable
 private fun CouiWorkAuthorText(author: String?) {
-    val pinned = couiPinnedText(CouiTextKind.PreferenceSummary, CouiWorkCardTokens.SubtitleLines)
+    val pinned = couiPinnedText(CouiTextKind.ItemSummary, CouiWorkCardTokens.SubtitleLines)
     val muted = CouiTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = Modifier

@@ -2,7 +2,9 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,18 +14,19 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,16 +39,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.itos.coui.backdrop.rememberCouiBackdrop
+import com.itos.coui.chip.ChipTabButton
+import com.itos.coui.chip.ChipTabRow
+import com.itos.coui.chip.CouiChipTabItem
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogActionStyle
+import com.itos.coui.dialog.CouiDialogPlacement
+import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Footer
 import com.itos.coui.layout.Group
-import com.itos.coui.layout.Item
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
@@ -63,24 +74,28 @@ import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
-import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
-import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
+import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
+import com.jm3.app.miuix.ui.coui.component.LocalCouiAppBackdrop
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
+import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
-import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.orDegrade
@@ -101,6 +116,7 @@ import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
 
 /** 标签检索视图里结果行的起始下标：0 是「标签：xxx」标题，其后才是行。 */
 private const val TAG_FEED_ROW_START = 1
@@ -169,14 +185,16 @@ internal fun CouiBrowseScreen(
     val pageMode = deps.preferences.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
 
-    // 每周连载更新：首页一页 + 用户点「加载更多」追加；失败只影响这一块，不动主列表
+    // 每周连载更新：首页一页 + 用户点「加载更多」追加；分类模式收进顶栏入口弹层
     var weeklyFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
     var weeklyLoading by remember { mutableStateOf(true) }
     var weeklyFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var weeklyToken by remember { mutableIntStateOf(0) }
-    // 分类树只用来渲染标签区块；拿不到就整块降级成一行提示
+    // 分类树只用来渲染标签区块；拿不到时不显示顶栏「更多」入口，避免空弹窗
     var categoryTree by remember { mutableStateOf<CategoryTree?>(null) }
-    var categoriesExpanded by rememberSaveable { mutableStateOf(false) }
+    var weeklyDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var moreCategoriesDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var tagNavExpanded by rememberSaveable { mutableStateOf(false) }
     // 热门标签：与子分类一起构成结果列表之前的标签导航；拿不到就整块隐藏
     var hotTags by remember { mutableStateOf(emptyList<String>()) }
 
@@ -377,6 +395,7 @@ internal fun CouiBrowseScreen(
     }
 
     // 标签导航的数据：当前主分类的子分类 + 热门标签（热门标签只在分类模式给）
+    val categoryBlocks = categoryTree?.blocks.orEmpty()
     val subCategories = categoryTree
         ?.categories
         ?.firstOrNull { it.slug == category.apiValue }
@@ -384,15 +403,15 @@ internal fun CouiBrowseScreen(
         .orEmpty()
     val tagNavTags = if (mode == BrowseMode.CATEGORY) hotTags.take(HOT_TAG_LIMIT) else emptyList()
     val hasTagNav = subCategories.isNotEmpty() || tagNavTags.isNotEmpty()
-    // 结果行之前的条目：筛选 1 + 主分类与更多分类（分类模式 2）+ 标签导航（有才计）+ 周更与续页脚 2
-    val browseHeadCount = 1 +
-        (if (mode == BrowseMode.CATEGORY) 2 else 0) +
-        (if (hasTagNav) 1 else 0) +
-        2
+    val browseHeadCount = couiBrowseHeadCount(
+        isCategoryMode = mode == BrowseMode.CATEGORY,
+        hasTagNav = hasTagNav,
+        hasWeeklyPaging = weeklyFeed.items.isNotEmpty(),
+    )
 
     /*
      * 触底预取：把懒列表下标换算成结果行下标再判提前量。
-     * 周更与更多分类已经排在结果列表之前，行起点只由这串固定条目决定，追加一页后不会漂移；
+     * 周更与更多分类在分类模式下已移入弹层，行起点只由筛选、标签导航与标题决定，追加一页后不会漂移；
      * 采集与行高换算在 CouiFeedPrefetchEffect，本页只交当前 feed、行起点与取下一页的动作。
      */
     val browseTagView = tagKeyword != null
@@ -430,22 +449,45 @@ internal fun CouiBrowseScreen(
     val weekly = weeklyFeed
     val weeklyIsLoading = weeklyLoading
     val weeklyFail = weeklyFailure
+    val categoryBackdrop = if (Build.VERSION.SDK_INT >= 34) rememberCouiBackdrop() else null
+    val activeBackdrop = if (mode == BrowseMode.CATEGORY && keyword == null) categoryBackdrop else null
 
     CouiAppScaffold(
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
+        contentBackdrop = activeBackdrop,
         topBar = {
-            LargeTopAppBar(
-                title = { CouiTopBarTitle(text = if (keyword == null) mode.title else "标签：$keyword") },
-                navigationIcon = {
-                    if (keyword != null) {
-                        CouiTopBarBackButton(onClick = { tagKeyword = null })
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-                colors = couiTopAppBarColors(),
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                LargeTopAppBar(
+                    title = { CouiTopBarTitle(text = if (keyword == null) mode.title else "标签：$keyword") },
+                    navigationIcon = {
+                        if (keyword != null) {
+                            CouiTopBarBackButton(onClick = { tagKeyword = null })
+                        }
+                    },
+                    actions = {
+                        if (mode == BrowseMode.CATEGORY && keyword == null) {
+                            CouiTopBarAction(
+                                icon = CouiIcons.Clock,
+                                contentDescription = "每周连载更新",
+                                onClick = { weeklyDialogOpen = true },
+                            )
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = couiTopAppBarColors(),
+                )
+                if (mode == BrowseMode.CATEGORY && keyword == null) {
+                    CouiBrowseCategoryBar(
+                        options = BrowseCategory.entries,
+                        selected = category,
+                        onSelect = { categoryValue = it.apiValue },
+                        showMoreAction = categoryBlocks.isNotEmpty(),
+                        onOpenMore = { moreCategoriesDialogOpen = true },
+                    )
+                }
+            }
         },
         floatingActionButton = {
             CouiFab(
@@ -486,7 +528,7 @@ internal fun CouiBrowseScreen(
                             if (total != null) {
                                 Text(
                                     text = "共 $total 部",
-                                    kind = CouiTextKind.Description,
+                                    kind = CouiTextKind.GroupFooter,
                                     color = colors.onSurfaceVariant,
                                 )
                             }
@@ -564,72 +606,67 @@ internal fun CouiBrowseScreen(
                                 items = BrowseOrder.entries.map { it.label },
                                 selectedIndex = BrowseOrder.entries.indexOf(order),
                                 onSelect = { orderValue = BrowseOrder.entries[it].apiValue },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                small = true,
+                                modifier = Modifier.padding(
+                                    horizontal = CouiPageDefaults.horizontalMargin,
+                                    vertical = 8.dp,
+                                ),
                             )
                         } else {
                             CouiSegmentedCapsules(
                                 items = BrowseTime.entries.map { it.label },
                                 selectedIndex = BrowseTime.entries.indexOf(time),
                                 onSelect = { timeValue = BrowseTime.entries[it].apiValue },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                small = true,
+                                modifier = Modifier.padding(
+                                    horizontal = CouiPageDefaults.horizontalMargin,
+                                    vertical = 8.dp,
+                                ),
                             )
                             CouiSegmentedCapsules(
                                 items = BrowseOrder.entries.map { it.label },
                                 selectedIndex = BrowseOrder.entries.indexOf(order),
                                 onSelect = { orderValue = BrowseOrder.entries[it].apiValue },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                small = true,
+                                modifier = Modifier.padding(
+                                    horizontal = CouiPageDefaults.horizontalMargin,
+                                    vertical = 4.dp,
+                                ),
                             )
                         }
                     }
                 }
-                if (mode == BrowseMode.CATEGORY) {
-                    item(key = "coui-browse-categories") {
-                        // 9 个主分类塞不进 CouiSegmentedCapsules（它按 weight 等分且不横向滚动），
-                        // 这里保留可滑动的分类轨道，但选中态与分段胶囊同源：同一枚 accent 14% 容器、
-                        // 40dp 段高与 PreferenceValue 字阶，视觉上仍是同一套分段控件。
-                        CouiCategoryRail(
-                            options = BrowseCategory.entries,
-                            selected = category,
-                            onSelect = { categoryValue = it.apiValue },
-                        )
-                    }
-                    // 分类树给的标签区块原来排在无限列表尾部，滚不到；上移到结果之前，默认只展开一块
-                    item(key = "coui-browse-more-categories") {
-                        CouiMoreCategoriesGroup(
-                            tree = categoryTree,
-                            expanded = categoriesExpanded,
-                            onToggle = { categoriesExpanded = !categoriesExpanded },
-                            onTagClick = { openTag(it) },
-                        )
-                    }
-                }
                 if (hasTagNav) {
                     item(key = "coui-browse-tag-nav") {
-                        CouiTagNavGroup(
+                        CouiCollapsibleTagNavGroup(
                             subCategoryNames = subCategories.map { it.name },
                             hotTags = tagNavTags,
+                            expanded = tagNavExpanded,
+                            onToggle = { tagNavExpanded = !tagNavExpanded },
                             onTagClick = { openTag(it) },
                         )
                     }
                 }
-                // 周更与它的续页脚同样排在结果之前：无限滚动不会再把它们推到滚不到的位置
-                item(key = "coui-browse-weekly") {
-                    CouiWeeklyGroup(
-                        feed = weekly,
-                        loading = weeklyIsLoading,
-                        failure = weeklyFail,
-                        onRetry = { loadWeekly() },
-                        onOpenLogin = onOpenLogin,
-                        onOpenAlbum = onOpenAlbum,
-                    )
-                }
-                item(key = "coui-browse-weekly-paging") {
-                    if (weekly.items.isNotEmpty()) {
-                        CouiLoadMoreFooter(
+                if (mode == BrowseMode.RANK) {
+                    // 榜单模式仍就地保留每周连载更新与续页脚
+                    item(key = "coui-browse-weekly") {
+                        CouiWeeklyGroup(
                             feed = weekly,
-                            errorMessage = WEEKLY_LOAD_MORE_FAILED,
-                            onRetry = { loadMoreWeekly() },
+                            loading = weeklyIsLoading,
+                            failure = weeklyFail,
+                            onRetry = { loadWeekly() },
+                            onOpenLogin = onOpenLogin,
+                            onOpenAlbum = onOpenAlbum,
                         )
+                    }
+                    if (weekly.items.isNotEmpty()) {
+                        item(key = "coui-browse-weekly-paging") {
+                            CouiLoadMoreFooter(
+                                feed = weekly,
+                                errorMessage = WEEKLY_LOAD_MORE_FAILED,
+                                onRetry = { loadMoreWeekly() },
+                            )
+                        }
                     }
                 }
 
@@ -676,7 +713,7 @@ internal fun CouiBrowseScreen(
                                         if (total != null) {
                                             Text(
                                                 text = "共 $total 部",
-                                                kind = CouiTextKind.Description,
+                                                kind = CouiTextKind.GroupFooter,
                                                 color = colors.onSurfaceVariant,
                                             )
                                         }
@@ -732,6 +769,304 @@ internal fun CouiBrowseScreen(
             }
         }
     }
+
+    if (mode == BrowseMode.CATEGORY) {
+        CouiMoreCategoriesDialog(
+            visible = moreCategoriesDialogOpen && categoryBlocks.isNotEmpty(),
+            blocks = categoryBlocks,
+            onDismiss = { moreCategoriesDialogOpen = false },
+            onTagClick = { tag ->
+                moreCategoriesDialogOpen = false
+                openTag(tag)
+            },
+        )
+        CouiWeeklyUpdatesDialog(
+            visible = weeklyDialogOpen,
+            feed = weekly,
+            loading = weeklyIsLoading,
+            failure = weeklyFail,
+            onDismiss = { weeklyDialogOpen = false },
+            onRetry = { loadWeekly() },
+            onLoadMore = { loadMoreWeekly() },
+            onOpenLogin = {
+                weeklyDialogOpen = false
+                onOpenLogin()
+            },
+            onOpenAlbum = { albumId ->
+                weeklyDialogOpen = false
+                onOpenAlbum(albumId)
+            },
+        )
+    }
+}
+
+/** 顶栏下方主分类条：API 34+ 走原厂 ChipTabRow（含“更多”前置按钮与毛玻璃背景），低版本退化为轻量滚动胶囊栏。 */
+@Composable
+private fun CouiBrowseCategoryBar(
+    options: List<BrowseCategory>,
+    selected: BrowseCategory,
+    onSelect: (BrowseCategory) -> Unit,
+    showMoreAction: Boolean,
+    onOpenMore: () -> Unit,
+) {
+    val backdrop = LocalCouiAppBackdrop.current
+    val display = LocalView.current.display
+    val colors = CouiTheme.colorScheme
+    if (Build.VERSION.SDK_INT >= 34 && backdrop != null && display != null) {
+        val items = remember(options) {
+            options.map { option ->
+                CouiChipTabItem(key = option.apiValue, label = option.label)
+            }
+        }
+        ChipTabRow(
+            modifier = Modifier.fillMaxWidth().readableWidth(),
+            items = items,
+            selectedKey = selected.apiValue,
+            onSelectedKeyChange = { key ->
+                val target = options.firstOrNull { it.apiValue == key } ?: return@ChipTabRow
+                onSelect(target)
+            },
+            backdrop = backdrop,
+            leadingAction = {
+                ChipTabButton(
+                    onClick = onOpenMore,
+                    contentDescription = "更多分类",
+                    backdrop = backdrop,
+                    contentColor = colors.onSurface,
+                ) {
+                    Icon(
+                        imageVector = CouiIcons.Category,
+                        contentDescription = null,
+                        tint = colors.onSurface,
+                    )
+                }
+            },
+            leadingActionVisible = showMoreAction,
+        )
+    } else {
+        CouiFallbackCategoryBar(
+            options = options,
+            selected = selected,
+            onSelect = onSelect,
+            showMoreAction = showMoreAction,
+            onOpenMore = onOpenMore,
+        )
+    }
+}
+
+/** API 31-33 降级主分类轨道：32dp 轻量胶囊，保持与 ChipTabRow 一致的低高度占比。 */
+@Composable
+private fun CouiFallbackCategoryBar(
+    options: List<BrowseCategory>,
+    selected: BrowseCategory,
+    onSelect: (BrowseCategory) -> Unit,
+    showMoreAction: Boolean,
+    onOpenMore: () -> Unit,
+) {
+    val colors = CouiTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .readableWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showMoreAction) {
+            Box(
+                modifier = Modifier
+                    .padding(start = CouiPageDefaults.horizontalMargin, end = 8.dp)
+                    .size(32.dp)
+                    .clip(CouiCapsuleShape)
+                    .couiPressable(
+                        shape = CouiCapsuleShape,
+                        backgroundColor = colors.container,
+                        spotlight = SpotlightPreset.ChipTab,
+                        minTouchTarget = CouiMinTouchTarget,
+                        onClick = onOpenMore,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = CouiIcons.Category,
+                    contentDescription = "更多分类",
+                    modifier = Modifier.size(16.dp),
+                    tint = colors.onSurface,
+                )
+            }
+        }
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(
+                start = if (showMoreAction) 0.dp else CouiPageDefaults.horizontalMargin,
+                end = CouiPageDefaults.horizontalMargin,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(options, key = { it.apiValue }) { option ->
+                val active = option == selected
+                Box(
+                    modifier = Modifier
+                        .height(32.dp)
+                        .clip(CouiCapsuleShape)
+                        .background(
+                            if (active) colors.accent.copy(alpha = CouiSelectedContainerAlpha)
+                            else colors.container,
+                        )
+                        .couiPressable(
+                            shape = CouiCapsuleShape,
+                            spotlight = SpotlightPreset.ChipTab,
+                            minTouchTarget = CouiMinTouchTarget,
+                            onClick = { onSelect(option) },
+                        )
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = option.label,
+                        kind = CouiTextKind.GroupFooter,
+                        color = if (active) colors.accent else colors.onSurface,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 更多分类弹层：将冗长的分类标签树收进底部弹窗，主列表直接落回作品本身。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CouiMoreCategoriesDialog(
+    visible: Boolean,
+    blocks: List<CategoryBlock>,
+    onDismiss: () -> Unit,
+    onTagClick: (String) -> Unit,
+) {
+    val colors = CouiTheme.colorScheme
+    Dialog(
+        onDismissRequest = onDismiss,
+        visible = visible,
+        material = couiDialogMaterial(),
+        title = "更多分类",
+        placement = CouiDialogPlacement.Bottom,
+        confirmAction = CouiDialogAction(
+            text = "关闭",
+            onClick = onDismiss,
+            style = CouiDialogActionStyle.Secondary,
+        ),
+    ) {
+        blocks.forEachIndexed { index, block ->
+            if (index > 0) Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = block.title,
+                kind = CouiTextKind.GroupTitle,
+                color = colors.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                block.tags.forEach { tag ->
+                    CouiTagChip(text = tag, onClick = { onTagClick(tag) })
+                }
+            }
+        }
+    }
+}
+
+/** 每周连载更新弹层：普通列布局承载，避免在 Dialog 内嵌套无约束 LazyColumn。 */
+@Composable
+private fun CouiWeeklyUpdatesDialog(
+    visible: Boolean,
+    feed: PagedFeed<SearchResult>,
+    loading: Boolean,
+    failure: ScreenLoadPlan?,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
+    onOpenLogin: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+) {
+    val colors = CouiTheme.colorScheme
+    Dialog(
+        onDismissRequest = onDismiss,
+        visible = visible,
+        material = couiDialogMaterial(),
+        title = "每周连载更新",
+        placement = CouiDialogPlacement.Bottom,
+        confirmAction = CouiDialogAction(
+            text = "关闭",
+            onClick = onDismiss,
+            style = CouiDialogActionStyle.Secondary,
+        ),
+    ) {
+        when {
+            loading && feed.items.isEmpty() -> CouiBodyText(
+                text = "正在加载每周更新…",
+                color = colors.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            )
+
+            failure != null && feed.items.isEmpty() -> {
+                CouiBodyText(
+                    text = failure.message.orEmpty().ifBlank { "每周更新加载失败" },
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                CouiTagChip(
+                    text = if (failure.phase == ScreenLoadPhase.Expired) "去登录" else "重试",
+                    onClick = {
+                        if (failure.phase == ScreenLoadPhase.Expired) onOpenLogin() else onRetry()
+                    },
+                )
+            }
+
+            feed.items.isEmpty() -> CouiBodyText(
+                text = "暂无每周更新",
+                color = colors.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            )
+
+            else -> {
+                feed.items.forEachIndexed { index, result ->
+                    if (index > 0) Divider()
+                    CouiBrowseResultRow(
+                        result = result,
+                        rank = null,
+                        onClick = { onOpenAlbum(result.id) },
+                    )
+                }
+                when {
+                    feed.loadingMore -> Text(
+                        text = "正在加载更多…",
+                        kind = CouiTextKind.GroupFooter,
+                        color = colors.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    )
+                    feed.loadMoreFailed -> Box(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CouiTagChip(text = WEEKLY_LOAD_MORE_FAILED, onClick = onLoadMore)
+                    }
+                    feed.hasMore -> Box(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CouiTagChip(text = "加载更多", onClick = onLoadMore)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -778,119 +1113,94 @@ private fun CouiWeeklyGroup(
     }
 }
 
-/**
- * 更多分类：按分类树给的标签区块逐块列标签，点标签进入标签检索。
- *
- * 区块可能很长，默认只展开第一块，标题右侧给「全部分类 / 收起」；
- * 分类树拉不到时（离线或接口降级）退化成一行提示，不占整屏。
- */
+/** 可折叠子分类与热门标签导航卡片：默认收起以保持首屏清爽，点击标题栏按需展开。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CouiMoreCategoriesGroup(
-    tree: CategoryTree?,
+private fun CouiCollapsibleTagNavGroup(
+    subCategoryNames: List<String>,
+    hotTags: List<String>,
     expanded: Boolean,
     onToggle: () -> Unit,
     onTagClick: (String) -> Unit,
 ) {
-    val blocks = tree?.blocks.orEmpty()
-    Column(modifier = Modifier.fillMaxWidth()) {
-        CouiGroupTitle(
-            title = "更多分类",
-            actions = {
-                if (blocks.size > 1) {
-                    Text(
-                        text = if (expanded) "收起" else "全部分类",
-                        kind = CouiTextKind.Description,
-                        color = CouiTheme.colorScheme.accent,
-                        modifier = Modifier
-                            .clip(CouiCapsuleShape)
-                            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
-                }
-            },
-        )
-        if (blocks.isEmpty()) {
-            Group {
-                Item(
-                    title = {
-                        Text(
-                            text = "暂无更多分类",
-                            kind = CouiTextKind.Body,
-                            color = CouiTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Start,
-                        )
-                    },
-                )
-            }
-        } else {
-            val visible = if (expanded) blocks else blocks.take(1)
-            visible.forEach { block -> CouiCategoryBlock(block = block, onTagClick = onTagClick) }
-        }
+    val colors = CouiTheme.colorScheme
+    val totalCount = subCategoryNames.size + hotTags.size
+    val title = when {
+        subCategoryNames.isNotEmpty() && hotTags.isNotEmpty() -> "子分类与热门标签"
+        subCategoryNames.isNotEmpty() -> "子分类"
+        else -> "热门标签"
     }
-}
-
-/** 单个标签区块：卡片内用 FlowRow 排胶囊，标签可换行。 */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CouiCategoryBlock(
-    block: CategoryBlock,
-    onTagClick: (String) -> Unit,
-) {
-    Group(title = block.title) {
-        FlowRow(
+    Group {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            block.tags.forEach { tag ->
-                CouiTagChip(text = tag, onClick = { onTagClick(tag) })
-            }
-        }
-    }
-}
-
-/** 分类轨道：横向滚动的一等分胶囊，选中态复用 CouiSegmentedCapsules 的容器色与段高。 */
-@Composable
-private fun CouiCategoryRail(
-    options: List<BrowseCategory>,
-    selected: BrowseCategory,
-    onSelect: (BrowseCategory) -> Unit,
-) {
-    val colors = CouiTheme.colorScheme
-    LazyRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        items(options, key = { it.apiValue }) { option ->
-            val active = option == selected
-            Box(
-                modifier = Modifier
-                    .couiPressable(
-                        shape = RoundedCornerShape(20.dp),
-                        spotlight = SpotlightPreset.ChipTab,
-                        minTouchTarget = CouiMinTouchTarget,
-                        onClick = { onSelect(option) },
-                    )
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        if (active) colors.accent.copy(alpha = CouiSelectedContainerAlpha)
-                        else Color.Transparent,
-                    )
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = option.label,
-                    kind = CouiTextKind.PreferenceValue,
-                    color = if (active) colors.accent else colors.onSurfaceVariant,
-                    maxLines = 1,
+                .couiPressable(
+                    spotlight = SpotlightPreset.ChipTab,
+                    minTouchTarget = CouiMinTouchTarget,
+                    onClick = onToggle,
                 )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CouiBodyText(
+                text = title,
+                color = colors.onSurface,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "${totalCount} 项",
+                kind = CouiTextKind.GroupFooter,
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Icon(
+                imageVector = CouiIcons.Forward,
+                contentDescription = if (expanded) "收起" else "展开",
+                modifier = Modifier
+                    .size(16.dp)
+                    .rotate(if (expanded) 90f else 0f),
+                tint = colors.onSurfaceVariant,
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Divider()
+                if (subCategoryNames.isNotEmpty()) {
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        subCategoryNames.forEach { name ->
+                            CouiTagChip(text = name, onClick = { onTagClick(name) })
+                        }
+                    }
+                }
+                if (hotTags.isNotEmpty()) {
+                    if (subCategoryNames.isNotEmpty()) Divider()
+                    Text(
+                        text = "热门标签",
+                        kind = CouiTextKind.GroupFooter,
+                        color = colors.onSurfaceVariant,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.padding(start = 16.dp, top = 12.dp),
+                    )
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        hotTags.forEach { tag ->
+                            CouiTagChip(text = tag, onClick = { onTagClick(tag) })
+                        }
+                    }
+                }
             }
         }
     }
@@ -902,9 +1212,8 @@ private fun CouiTagChip(
     text: String,
     onClick: () -> Unit,
 ) {
-    Text(
+    CouiBodyText(
         text = text,
-        kind = CouiTextKind.Body,
         color = CouiTheme.colorScheme.onSurface,
         textAlign = TextAlign.Start,
         modifier = Modifier
@@ -917,52 +1226,6 @@ private fun CouiTagChip(
             )
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
-}
-
-/** 标签导航：当前主分类的子分类 + 热门标签，点一下直接按标签检索。 */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CouiTagNavGroup(
-    subCategoryNames: List<String>,
-    hotTags: List<String>,
-    onTagClick: (String) -> Unit,
-) {
-    Group(title = "按标签浏览") {
-        if (subCategoryNames.isNotEmpty()) {
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                subCategoryNames.forEach { name ->
-                    CouiTagChip(text = name, onClick = { onTagClick(name) })
-                }
-            }
-        }
-        if (hotTags.isNotEmpty()) {
-            if (subCategoryNames.isNotEmpty()) Divider()
-            Text(
-                text = "热门标签",
-                kind = CouiTextKind.Description,
-                color = CouiTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp),
-            )
-            FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                hotTags.forEach { tag ->
-                    CouiTagChip(text = tag, onClick = { onTagClick(tag) })
-                }
-            }
-        }
-    }
 }
 
 /**

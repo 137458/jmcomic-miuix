@@ -8,9 +8,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jm3.app.miuix.ui.skin.BottomBarSizePolicy
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.BottomBarSize
+import com.jm3.core.settings.UiSkin
+import top.yukonga.miuix.kmp.basic.NavigationBarDefaults
 
 /**
  * 底栏尺寸 token：尺寸档与形态档在组合期一次性解析成这份纯数值，
@@ -72,7 +75,7 @@ private val GenerousFloating = GlassBottomBarTokens(
     contentPadding = 108.dp,
 )
 
-/** 贴底通栏：横向撑满、无悬浮间隙与投影；净空只留条高（导航栏 inset 由外层 Scaffold 计入）。 */
+/** 贴底通栏：双端统一走 Miuix 官方 NavigationBar（ItemHeight = 64.dp），无悬浮间隙与投影。 */
 private fun docked(size: BottomBarSize): GlassBottomBarTokens {
     val base = when (size) {
         BottomBarSize.STANDARD -> StandardFloating
@@ -80,10 +83,11 @@ private fun docked(size: BottomBarSize): GlassBottomBarTokens {
     }
     return base.copy(
         form = BottomBarForm.DOCKED,
+        height = NavigationBarDefaults.ItemHeight,
         horizontalMargin = 0.dp,
         shadowAlphaLight = 0f,
         shadowAlphaDark = 0f,
-        contentPadding = base.height,
+        contentPadding = NavigationBarDefaults.ItemHeight,
     )
 }
 
@@ -97,13 +101,14 @@ internal fun bottomBarTokens(size: BottomBarSize, form: BottomBarForm): GlassBot
         BottomBarForm.DOCKED -> docked(size)
     }
 
-/** 组合期解析：尺寸档未显式设置时按窗口断点取默认档，形态档未设置即悬浮。 */
+/** 组合期解析：ColorOS 固定走标准档位；形态档未设置即悬浮。 */
 internal fun resolveBottomBarTokens(
     explicitSize: BottomBarSize?,
     explicitForm: BottomBarForm?,
     widthDp: Int,
+    skin: UiSkin = UiSkin.HYPEROS,
 ): GlassBottomBarTokens {
-    val size = BottomBarPreferencePolicy.resolveSize(explicitSize, widthDp)
+    val size = BottomBarSizePolicy.effective(skin, explicitSize, widthDp)
     val form = BottomBarPreferencePolicy.resolveForm(explicitForm)
     return bottomBarTokens(size, form)
 }

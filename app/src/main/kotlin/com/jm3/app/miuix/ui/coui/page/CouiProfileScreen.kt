@@ -70,6 +70,8 @@ import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.StringMapSaver
 import com.jm3.app.miuix.ui.StringSetSaver
 import com.jm3.app.miuix.ui.trackedProfileFieldMap
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -376,7 +378,7 @@ private fun ProfileLoadedContent(
             title = {
                 Text(
                     text = if (saving) "保存中…" else "保存修改",
-                    kind = CouiTextKind.PreferenceTitle,
+                    kind = CouiTextKind.ItemTitle,
                     color = CouiKitTheme.colorScheme.accent,
                     textAlign = TextAlign.Start,
                 )
@@ -449,10 +451,9 @@ private fun ProfileHeader(username: String, email: String, photoUrl: String?) {
             CouiAvatar(url = photoUrl, size = 64.dp, name = username)
             Spacer(Modifier.width(14.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
+                CouiSectionTitleText(
                     modifier = Modifier.fillMaxWidth(),
                     text = username.ifEmpty { "未命名" },
-                    kind = CouiTextKind.SectionTitle,
                     color = Color.White,
                     textAlign = TextAlign.Start,
                     maxLines = 1,
@@ -461,7 +462,7 @@ private fun ProfileHeader(username: String, email: String, photoUrl: String?) {
                 Text(
                     modifier = Modifier.fillMaxWidth(),
                     text = email.ifEmpty { "未绑定邮箱" },
-                    kind = CouiTextKind.PreferenceSummary,
+                    kind = CouiTextKind.ItemSummary,
                     color = Color.White.copy(alpha = 0.82f),
                     textAlign = TextAlign.Start,
                     maxLines = 1,
@@ -516,9 +517,8 @@ private fun ProfileFieldRow(
                 decorationBox = { innerTextField ->
                     Box {
                         if (fields[key].isNullOrEmpty() && placeholder.isNotEmpty()) {
-                            Text(
+                            CouiBodyText(
                                 text = placeholder,
-                                kind = CouiTextKind.Body,
                                 color = scheme.onSurfaceVariant.copy(alpha = 0.6f),
                                 textAlign = TextAlign.Start,
                             )
@@ -586,7 +586,7 @@ private fun ProfileRowTitle(text: String) {
     Text(
         modifier = Modifier.fillMaxWidth(),
         text = text,
-        kind = CouiTextKind.PreferenceTitle,
+        kind = CouiTextKind.ItemTitle,
         textAlign = TextAlign.Start,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -598,7 +598,7 @@ private fun ProfileRowSummary(text: String) {
     Text(
         modifier = Modifier.fillMaxWidth(),
         text = text,
-        kind = CouiTextKind.PreferenceSummary,
+        kind = CouiTextKind.ItemSummary,
         color = CouiKitTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Start,
     )
@@ -609,7 +609,7 @@ private fun ProfileRowValue(text: String) {
     Text(
         modifier = Modifier.padding(end = 4.dp),
         text = text,
-        kind = CouiTextKind.PreferenceValue,
+        kind = CouiTextKind.ItemValue,
         color = CouiKitTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.End,
     )

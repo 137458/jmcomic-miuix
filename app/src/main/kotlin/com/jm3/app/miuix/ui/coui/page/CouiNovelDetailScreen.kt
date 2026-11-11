@@ -75,6 +75,9 @@ import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.StringSetSaver
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -794,9 +797,8 @@ private fun CouiNovelHeroCard(
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
+                CouiSectionTitleText(
                     text = detail.name,
-                    kind = CouiTextKind.SectionTitle,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Start,
@@ -804,7 +806,7 @@ private fun CouiNovelHeroCard(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "NVL${detail.id}",
-                        kind = CouiTextKind.Description,
+                        kind = CouiTextKind.GroupFooter,
                         color = scheme.onSurfaceVariant,
                         textAlign = TextAlign.Start,
                     )
@@ -821,7 +823,7 @@ private fun CouiNovelHeroCard(
                     ) {
                         Text(
                             text = author,
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.accent,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -834,7 +836,7 @@ private fun CouiNovelHeroCard(
                         if (detail.serialStatus.isNotBlank()) append(" · ${detail.serialStatus}")
                         append(" · ${detail.chapters.size} 章")
                     },
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     textAlign = TextAlign.Start,
                 )
@@ -844,7 +846,7 @@ private fun CouiNovelHeroCard(
                         detail.totalViews?.let { append(" · 阅 $it") }
                         detail.likes?.let { append(" · ♥ $it") }
                     },
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     textAlign = TextAlign.Start,
                 )
@@ -883,7 +885,7 @@ private fun CouiNovelActionsGroup(
             title = {
                 Text(
                     text = if (savedChapter == null) "开始阅读" else "继续阅读",
-                    kind = CouiTextKind.PreferenceTitle,
+                    kind = CouiTextKind.ItemTitle,
                     color = if (detail.chapters.isEmpty()) scheme.onSurfaceVariant else scheme.accent,
                 )
             },
@@ -891,7 +893,7 @@ private fun CouiNovelActionsGroup(
                 {
                     Text(
                         text = title,
-                        kind = CouiTextKind.Description,
+                        kind = CouiTextKind.GroupFooter,
                         color = scheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -946,7 +948,7 @@ private fun CouiNovelDescriptionGroup(text: String, expanded: Boolean, onToggle:
             if (text.length > NOVEL_DESCRIPTION_COLLAPSE_THRESHOLD) {
                 Text(
                     text = if (expanded) "收起" else "显示全部",
-                    kind = CouiTextKind.Category,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.accent,
                     modifier = Modifier
                         .clip(CouiCapsuleShape)
@@ -961,9 +963,8 @@ private fun CouiNovelDescriptionGroup(text: String, expanded: Boolean, onToggle:
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text(
+            CouiBodyText(
                 text = text.ifBlank { "暂无简介" },
-                kind = CouiTextKind.Body,
                 color = scheme.onSurface,
                 maxLines = if (expanded) Int.MAX_VALUE else 4,
                 overflow = TextOverflow.Ellipsis,
@@ -1003,11 +1004,11 @@ private fun CouiNovelInfoGroup(detail: NovelDetail, dateFormat: DateTimeFormatte
 private fun CouiNovelInfoRow(title: String, value: String) {
     val scheme = CouiKitTheme.colorScheme
     Item(
-        title = { Text(text = title, kind = CouiTextKind.PreferenceTitle, textAlign = TextAlign.Start) },
+        title = { Text(text = title, kind = CouiTextKind.ItemTitle, textAlign = TextAlign.Start) },
         trailing = {
             Text(
                 text = value,
-                kind = CouiTextKind.PreferenceValue,
+                kind = CouiTextKind.ItemValue,
                 color = scheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -1022,7 +1023,7 @@ private fun CouiNovelInfoRow(title: String, value: String) {
 private fun CouiNovelSortAction(ascending: Boolean, onToggle: () -> Unit) {
     Text(
         text = if (ascending) "正序" else "倒序",
-        kind = CouiTextKind.Category,
+        kind = CouiTextKind.GroupFooter,
         color = CouiKitTheme.colorScheme.accent,
         modifier = Modifier
             .clip(CouiCapsuleShape)
@@ -1047,7 +1048,7 @@ private fun CouiNovelChapterRowCard(
                 title = {
                     Text(
                         text = row.title,
-                        kind = CouiTextKind.PreferenceTitle,
+                        kind = CouiTextKind.ItemTitle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Start,
@@ -1057,7 +1058,7 @@ private fun CouiNovelChapterRowCard(
                     {
                         Text(
                             text = row.summary,
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.onSurfaceVariant,
                             textAlign = TextAlign.Start,
                         )
@@ -1069,7 +1070,7 @@ private fun CouiNovelChapterRowCard(
                     if (row.showToggle) {
                         Text(
                             text = if (row.expanded) "收起" else "展开",
-                            kind = CouiTextKind.PreferenceValue,
+                            kind = CouiTextKind.ItemValue,
                             color = scheme.accent,
                         )
                     }
@@ -1091,9 +1092,8 @@ private fun CouiNovelChapterRowCard(
             Item(
                 contentPadding = PaddingValues(start = 32.dp, top = 10.dp, end = 16.dp, bottom = 10.dp),
                 title = {
-                    Text(
+                    CouiBodyText(
                         text = row.chapter.title.ifBlank { "未命名章节" },
-                        kind = CouiTextKind.Body,
                         color = scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1104,7 +1104,7 @@ private fun CouiNovelChapterRowCard(
                     {
                         Text(
                             text = marker,
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = if (row.highlighted) scheme.accent else scheme.onSurfaceVariant,
                             textAlign = TextAlign.Start,
                         )
@@ -1182,7 +1182,7 @@ private fun CouiNovelRelatedCard(item: NovelMeta, dateFormat: DateTimeFormatter,
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = item.name,
-            kind = CouiTextKind.PreferenceSummary,
+            kind = CouiTextKind.ItemSummary,
             color = scheme.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -1190,7 +1190,7 @@ private fun CouiNovelRelatedCard(item: NovelMeta, dateFormat: DateTimeFormatter,
         )
         Text(
             text = subtitle,
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = scheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1213,11 +1213,11 @@ private fun CouiNovelCommentComposer(
     Group {
         if (!loggedIn) {
             Item(
-                title = { Text(text = "登录后发表评论", kind = CouiTextKind.PreferenceTitle) },
+                title = { Text(text = "登录后发表评论", kind = CouiTextKind.ItemTitle) },
                 summary = {
                     Text(
                         text = "登录账号即可参与讨论",
-                        kind = CouiTextKind.Description,
+                        kind = CouiTextKind.GroupFooter,
                         color = scheme.onSurfaceVariant,
                         textAlign = TextAlign.Start,
                     )
@@ -1237,7 +1237,7 @@ private fun CouiNovelCommentComposer(
                 BasicTextField(
                     value = draft,
                     onValueChange = onDraft,
-                    textStyle = rememberCouiTextStyle(CouiTextKind.Body).copy(color = scheme.onSurface),
+                    textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
                     cursorBrush = SolidColor(scheme.accent),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1248,9 +1248,8 @@ private fun CouiNovelCommentComposer(
                     decorationBox = { innerTextField ->
                         Box {
                             if (draft.isEmpty()) {
-                                Text(
+                                CouiBodyText(
                                     text = "写下你的评论（最多 $NOVEL_COMMENT_MAX_LENGTH 字）",
-                                    kind = CouiTextKind.Body,
                                     color = scheme.onSurfaceVariant,
                                     textAlign = TextAlign.Start,
                                 )
@@ -1267,7 +1266,7 @@ private fun CouiNovelCommentComposer(
                 ) {
                     Text(
                         text = "${draft.length}/$NOVEL_COMMENT_MAX_LENGTH",
-                        kind = CouiTextKind.Description,
+                        kind = CouiTextKind.GroupFooter,
                         color = scheme.onSurfaceVariant,
                         textAlign = TextAlign.Start,
                     )
@@ -1341,7 +1340,7 @@ private fun CouiNovelReplyDialog(
             value = replyText,
             // 上限与评论区一致：回复走的也是小说评论接口，超长会被服务端整条拒掉
             onValueChange = { replyText = it.take(NOVEL_COMMENT_MAX_LENGTH) },
-            textStyle = rememberCouiTextStyle(CouiTextKind.Body).copy(color = scheme.onSurface),
+            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
             cursorBrush = SolidColor(scheme.accent),
             modifier = Modifier
                 .fillMaxWidth()
@@ -1352,9 +1351,8 @@ private fun CouiNovelReplyDialog(
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (replyText.isEmpty()) {
-                        Text(
+                        CouiBodyText(
                             text = "写下你的回复（最多 $NOVEL_COMMENT_MAX_LENGTH 字）",
-                            kind = CouiTextKind.Body,
                             color = scheme.onSurfaceVariant,
                             textAlign = TextAlign.Start,
                         )
@@ -1365,7 +1363,7 @@ private fun CouiNovelReplyDialog(
         )
         Text(
             text = "${replyText.length}/$NOVEL_COMMENT_MAX_LENGTH",
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = scheme.onSurfaceVariant,
             textAlign = TextAlign.Start,
             modifier = Modifier.padding(top = 6.dp),
@@ -1383,7 +1381,7 @@ private fun CouiNovelRepliesToggleRow(row: CommentRow.RepliesToggle, onToggle: (
             title = {
                 Text(
                     text = if (row.expanded) "收起回复" else "展开其余 ${row.hiddenCount} 条回复",
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.accent,
                     textAlign = TextAlign.Start,
                 )
@@ -1427,7 +1425,7 @@ private fun CouiNovelCapsuleButton(
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = text, kind = CouiTextKind.PreferenceValue, color = foreground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text = text, kind = CouiTextKind.ItemValue, color = foreground, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -1436,7 +1434,7 @@ private fun CouiNovelTagChip(text: String, onClick: () -> Unit) {
     val scheme = CouiKitTheme.colorScheme
     Text(
         text = text,
-        kind = CouiTextKind.Description,
+        kind = CouiTextKind.GroupFooter,
         color = scheme.onSurfaceVariant,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

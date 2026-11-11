@@ -40,14 +40,14 @@ class CouiMainScreenLayoutTest {
     }
 
     @Test
-    fun `底栏模式贴底档的净空等于条高`() {
+    fun `底栏模式贴底档的净空等于 Miuix NavigationBar 条高`() {
         val standard = bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.DOCKED)
-        assertEquals(56.dp, standard.height)
-        assertEquals(standard.height, couiBottomBarClearance(useRail = false, tokens = standard))
+        assertEquals(64.dp, standard.height)
+        assertEquals(64.dp, couiBottomBarClearance(useRail = false, tokens = standard))
 
         val generous = bottomBarTokens(BottomBarSize.GENEROUS, BottomBarForm.DOCKED)
-        assertEquals(72.dp, generous.height)
-        assertEquals(generous.height, couiBottomBarClearance(useRail = false, tokens = generous))
+        assertEquals(64.dp, generous.height)
+        assertEquals(64.dp, couiBottomBarClearance(useRail = false, tokens = generous))
     }
 
     @Test

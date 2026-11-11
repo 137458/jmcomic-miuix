@@ -68,6 +68,7 @@ import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.awaitGatewayReady
 import com.jm3.app.miuix.ui.checkInDisplay
 import com.jm3.app.miuix.ui.checkInFailureCopy
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
@@ -447,10 +448,9 @@ private fun MineAccountCard(
         CouiAvatar(url = user?.photoUrl, size = 56.dp, name = user?.username)
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
+            CouiSectionTitleText(
                 modifier = Modifier.fillMaxWidth(),
                 text = user?.username ?: "未登录",
-                kind = CouiTextKind.SectionTitle,
                 textAlign = TextAlign.Start,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -458,7 +458,7 @@ private fun MineAccountCard(
             Text(
                 modifier = Modifier.fillMaxWidth(),
                 text = user?.let { mineAccountSummary(it) } ?: "登录后同步收藏、书架与观看记录",
-                kind = CouiTextKind.PreferenceSummary,
+                kind = CouiTextKind.ItemSummary,
                 color = scheme.onSurfaceVariant,
                 textAlign = TextAlign.Start,
                 maxLines = 1,
@@ -494,7 +494,7 @@ private fun MineLoginCapsule(onOpenLogin: () -> Unit) {
             .padding(horizontal = 18.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = "登录", kind = CouiTextKind.PreferenceValue, color = scheme.onAccent)
+        Text(text = "登录", kind = CouiTextKind.ItemValue, color = scheme.onAccent)
     }
 }
 
@@ -533,7 +533,7 @@ private fun MineUnreadCapsule(count: Int) {
     ) {
         Text(
             text = if (count > 99) "99+" else count.toString(),
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = scheme.onAccent,
         )
     }
@@ -565,11 +565,11 @@ private fun MineNavRow(
     val scheme = CouiTheme.colorScheme
     Item(
         icon = { MineGroupIcon(icon) },
-        title = { Text(text = title, kind = CouiTextKind.PreferenceTitle, color = titleColor) },
+        title = { Text(text = title, kind = CouiTextKind.ItemTitle, color = titleColor) },
         // 空摘要仍占位会多出一条 13sp 行高，这里按有无文案条件渲染
         summary = {
             if (summary.isNotEmpty()) {
-                Text(text = summary, kind = CouiTextKind.PreferenceSummary, color = scheme.onSurfaceVariant)
+                Text(text = summary, kind = CouiTextKind.ItemSummary, color = scheme.onSurfaceVariant)
             }
         },
         trailing = {
@@ -578,7 +578,7 @@ private fun MineNavRow(
                 dot -> Box(Modifier.size(8.dp).clip(CircleShape).background(scheme.accent))
                 value != null -> Text(
                     text = value,
-                    kind = CouiTextKind.PreferenceValue,
+                    kind = CouiTextKind.ItemValue,
                     color = scheme.onSurfaceVariant,
                 )
             }
@@ -635,13 +635,13 @@ private fun MineCheckInGroup(
                             signedToday -> "今日已签到"
                             else -> "立即签到"
                         },
-                        kind = CouiTextKind.PreferenceTitle,
+                        kind = CouiTextKind.ItemTitle,
                     )
                 },
                 summary = {
                     Text(
                         text = formatCheckInSummary(status.eventName, signedToday),
-                        kind = CouiTextKind.PreferenceSummary,
+                        kind = CouiTextKind.ItemSummary,
                         color = scheme.onSurfaceVariant,
                     )
                 },
@@ -658,7 +658,7 @@ private fun MineCheckInGroup(
                                 tint = scheme.accent,
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text(text = "已签到", kind = CouiTextKind.PreferenceValue, color = scheme.accent)
+                            Text(text = "已签到", kind = CouiTextKind.ItemValue, color = scheme.accent)
                         }
                     }
                 },
@@ -678,10 +678,10 @@ private fun MineCheckInGroup(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text(text = "本月签到", kind = CouiTextKind.PreferenceSummary, color = scheme.onSurfaceVariant)
+                        Text(text = "本月签到", kind = CouiTextKind.ItemSummary, color = scheme.onSurfaceVariant)
                         Text(
                             text = display.progressLabel,
-                            kind = CouiTextKind.PreferenceSummary,
+                            kind = CouiTextKind.ItemSummary,
                             color = scheme.onSurfaceVariant,
                         )
                     }
@@ -710,7 +710,7 @@ private fun MineCheckInGroup(
                     if (display.missedDays > 0) {
                         Text(
                             text = "本月已有 ${display.missedDays} 天未签到",
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.onSurfaceVariant,
                         )
                     }
@@ -722,7 +722,7 @@ private fun MineCheckInGroup(
                         .fillMaxWidth()
                         .padding(start = CouiPageDefaults.rowPadding, end = CouiPageDefaults.rowPadding, bottom = 12.dp),
                     text = error,
-                    kind = CouiTextKind.PreferenceSummary,
+                    kind = CouiTextKind.ItemSummary,
                     color = errorColor,
                     textAlign = TextAlign.Start,
                 )

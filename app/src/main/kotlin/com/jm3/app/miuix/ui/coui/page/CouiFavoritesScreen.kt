@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -60,6 +61,8 @@ import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.authorNames
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -70,8 +73,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
+import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
@@ -82,6 +86,7 @@ import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
 import com.jm3.core.model.FavoriteFolderAction
@@ -118,6 +123,7 @@ fun CouiFavoritesScreen(
         val snackbarHostState = remember { SnackbarHostState() }
         val scope = rememberCoroutineScope()
         val gridState = rememberLazyGridState()
+        val tagsGridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
         val mode = deps.preferences.paginationMode
         val clickPaging = mode == PaginationMode.CLICK
@@ -469,11 +475,28 @@ fun CouiFavoritesScreen(
                 .forEach { add(it) }
         }
         val currentFolderName = folderOptions.firstOrNull { it.first == folderId }?.second ?: "全部"
+        val pagerState = rememberSyncedTabPagerState(
+            selectedTab = tabIndex,
+            pageCount = COUI_FAVORITE_TABS.size,
+            onTabSelected = { index -> if (index != tabIndex) tabIndex = index },
+        )
+        val scrollBehavior = rememberCouiScreenScrollBehavior {
+            val activeState = if (tabIndex == 0) gridState else tagsGridState
+            activeState.canScrollForward || activeState.canScrollBackward
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiScreenScaffold(
                 title = "我的收藏",
                 onBack = onBack,
+                scrollBehavior = scrollBehavior,
+                topBarBottom = {
+                    CouiTopBarSegmentedTabs(
+                        items = COUI_FAVORITE_TABS,
+                        selectedIndex = tabIndex,
+                        onSelect = { index -> if (index != tabIndex) tabIndex = index },
+                    )
+                },
                 actions = {
                     val addDesc = if (tabIndex == 0) "新建收藏夹" else "添加标签"
                     CouiTopBarAction(
@@ -495,29 +518,23 @@ fun CouiFavoritesScreen(
                     )
                 },
             ) { innerPadding ->
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(columns),
-                    state = gridState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .readableWidth()
-                        .consumeWindowInsets(innerPadding),
-                    contentPadding = innerPadding,
-                    horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                    verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                    overscrollEffect = rememberCouiOverscrollEffect(),
-                ) {
-                    item(key = "coui-favorites-tabs", span = { GridItemSpan(maxLineSpan) }) {
-                        CouiSegmentedCapsules(
-                            items = COUI_FAVORITE_TABS,
-                            selectedIndex = tabIndex,
-                            onSelect = { index -> if (index != tabIndex) tabIndex = index },
-                            modifier = Modifier
-                                .padding(horizontal = CouiPageDefaults.horizontalMargin)
-                                .padding(top = 8.dp),
-                        )
-                    }
-                    if (tabIndex == 0) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
+                        state = if (page == 0) gridState else tagsGridState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .readableWidth()
+                            .consumeWindowInsets(innerPadding),
+                        contentPadding = innerPadding,
+                        horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+                        verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+                        overscrollEffect = rememberCouiOverscrollEffect(),
+                    ) {
+                        if (page == 0) {
                         val gridFeed = feed
                         val planned = failure
                         when {
@@ -709,6 +726,7 @@ fun CouiFavoritesScreen(
                             }
                         }
                     }
+                    }
                 }
             }
 
@@ -851,7 +869,7 @@ fun CouiFavoritesScreen(
                     if (movableFolders.isEmpty()) {
                         Text(
                             text = "暂无其他收藏夹，请先新建收藏夹",
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.onSurfaceVariant,
                             maxLines = 2,
                             textAlign = TextAlign.Start,
@@ -966,7 +984,7 @@ private fun CouiFavoritesAlbumCard(
             val scheme = CouiKitTheme.colorScheme
             Text(
                 text = "移动到收藏夹",
-                kind = CouiTextKind.Description,
+                kind = CouiTextKind.GroupFooter,
                 color = scheme.accent,
                 maxLines = 1,
                 textAlign = TextAlign.Start,
@@ -1006,7 +1024,7 @@ private fun CouiFavoritesChipButton(
     ) {
         Text(
             text = label,
-            kind = CouiTextKind.PreferenceValue,
+            kind = CouiTextKind.ItemValue,
             color = scheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1051,9 +1069,8 @@ private fun CouiFavoritesPickerRow(
     onClick: () -> Unit,
 ) {
     val scheme = CouiKitTheme.colorScheme
-    Text(
+    CouiBodyText(
         text = label,
-        kind = CouiTextKind.Body,
         color = if (selected) scheme.accent else scheme.onSurface,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -1089,9 +1106,8 @@ private fun CouiFavoritesTextField(
         contentAlignment = Alignment.CenterStart,
     ) {
         if (value.isEmpty()) {
-            Text(
+            CouiBodyText(
                 text = placeholder,
-                kind = CouiTextKind.Body,
                 color = scheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1102,7 +1118,7 @@ private fun CouiFavoritesTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
-            textStyle = rememberCouiTextStyle(CouiTextKind.Body).copy(color = scheme.onSurface),
+            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
             cursorBrush = SolidColor(scheme.accent),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -1116,7 +1132,7 @@ private fun CouiFavoritesInlineError(message: String?, color: androidx.compose.u
     Spacer(modifier = Modifier.height(4.dp))
     Text(
         text = message,
-        kind = CouiTextKind.Description,
+        kind = CouiTextKind.GroupFooter,
         color = color,
         maxLines = 3,
         textAlign = TextAlign.Start,

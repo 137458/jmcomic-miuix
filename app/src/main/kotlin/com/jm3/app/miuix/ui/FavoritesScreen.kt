@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -437,6 +438,16 @@ fun FavoritesScreen(
             .forEach { add(it) }
     }
     val currentFolderName = folderOptions.firstOrNull { it.first == folderId }?.second ?: "全部"
+    val tagListState = rememberLazyListState()
+    val pagerState = rememberSyncedTabPagerState(
+        selectedTab = tabIndex,
+        pageCount = 2,
+        onTabSelected = { next ->
+            selectionHaptic()
+            tabIndex = next
+        },
+        useMiuixSpring = true,
+    )
     if (!clickPaging) {
         val scrollFeed = feed
         if (scrollFeed != null) {
@@ -491,7 +502,11 @@ fun FavoritesScreen(
         },
         snackbarHost = { GlassSnackbarHost(state = snackbarHostState) },
     ) { innerPadding ->
-        if (tabIndex == 0) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+        ) { page ->
+            if (page == 0) {
             val p = feed
             val planned = failure
             when {
@@ -633,6 +648,7 @@ fun FavoritesScreen(
                 )
                 // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
                 else -> LazyColumn(
+                    state = tagListState,
                     modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = innerPadding,
                 ) {
@@ -669,6 +685,7 @@ fun FavoritesScreen(
                     }
                 }
             }
+        }
         }
 
         OverlayDialog(

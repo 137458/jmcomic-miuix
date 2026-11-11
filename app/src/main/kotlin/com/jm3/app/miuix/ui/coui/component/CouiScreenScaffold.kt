@@ -6,9 +6,12 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -22,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
@@ -30,6 +34,7 @@ import com.itos.coui.topappbar.LargeTopAppBar
 import com.itos.coui.topappbar.TopAppBarButton
 import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.readableWidth
 import top.yukonga.miuix.kmp.basic.Icon
 
 // 顶栏按钮尺寸与 52dp 的 COUI 顶栏配套；图标沿用 22dp，和主框架底栏图标同档。
@@ -58,38 +63,86 @@ fun CouiScreenScaffold(
     onBack: (() -> Unit)? = null,
     backContentDescription: String = "返回",
     actions: (@Composable RowScope.() -> Unit)? = null,
+    topBarBottom: (@Composable () -> Unit)? = null,
     floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
     scrollBehavior: CouiTopAppBarScrollBehavior = rememberCouiScreenScrollBehavior(),
     horizontalPadding: Dp = 0.dp,
     extraBottom: Dp = if (floatingActionButton != null) 72.dp else 0.dp,
     content: @Composable (PaddingValues) -> Unit,
 ) {
+    val contentBackdrop = if (topBarBottom != null && Build.VERSION.SDK_INT >= 34) {
+        rememberCouiBackdrop()
+    } else {
+        null
+    }
     CouiAppScaffold(
         modifier = modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
+        contentBackdrop = contentBackdrop,
         topBar = {
-            LargeTopAppBar(
-                title = { CouiTopBarTitle(text = title) },
-                navigationIcon = {
-                    if (onBack != null) {
-                        CouiTopBarBackButton(onClick = onBack, contentDescription = backContentDescription)
-                    }
-                },
-                actions = {
-                    // 空槽不建组：组内是右对齐 Row，空组会多占一层布局与一次共享位移
-                    val slot = actions
-                    if (slot != null) {
-                        TopAppBarButtonGroup { slot() }
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-                colors = couiTopAppBarColors(),
-            )
+            val topAppBar = @Composable {
+                LargeTopAppBar(
+                    title = { CouiTopBarTitle(text = title) },
+                    navigationIcon = {
+                        if (onBack != null) {
+                            CouiTopBarBackButton(onClick = onBack, contentDescription = backContentDescription)
+                        }
+                    },
+                    actions = {
+                        // 空槽不建组：组内是右对齐 Row，空组会多占一层布局与一次共享位移
+                        val slot = actions
+                        if (slot != null) {
+                            TopAppBarButtonGroup { slot() }
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = couiTopAppBarColors(),
+                )
+            }
+            if (topBarBottom == null) {
+                topAppBar()
+            } else {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    topAppBar()
+                    topBarBottom()
+                }
+            }
         },
         floatingActionButton = floatingActionButton,
     ) { innerPadding ->
         content(couiScreenContentPadding(scrollBehavior, innerPadding, horizontalPadding, extraBottom))
+    }
+}
+
+/**
+ * 固定在折叠大顶栏下方的分段胶囊栏：放置在 `topBar` 槽内以免随 `HorizontalPager` 横向滚走，
+ * 并通过 [LocalCouiAppBackdrop] 让 API 34+ 原厂 [CouiSegmentedCapsules] 对正文区产生毛玻璃叠层。
+ */
+@Composable
+fun CouiTopBarSegmentedTabs(
+    items: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    small: Boolean = false,
+    enabled: Boolean = true,
+) {
+    val backdrop = LocalCouiAppBackdrop.current
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .readableWidth()
+            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 6.dp),
+    ) {
+        CouiSegmentedCapsules(
+            items = items,
+            selectedIndex = selectedIndex,
+            onSelect = onSelect,
+            small = small,
+            enabled = enabled,
+            backdrop = backdrop,
+        )
     }
 }
 

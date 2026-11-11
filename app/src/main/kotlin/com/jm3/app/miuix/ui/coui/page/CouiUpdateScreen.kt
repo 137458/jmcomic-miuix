@@ -52,6 +52,7 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
@@ -300,15 +301,15 @@ private fun UpdateVersionGroup(
 ) {
     Group(modifier = Modifier.padding(top = 8.dp), title = "版本信息") {
         Item(
-            title = { Text(text = appName, kind = CouiTextKind.PreferenceTitle) },
-            summary = { Text(text = statusText, kind = CouiTextKind.PreferenceSummary) },
+            title = { Text(text = appName, kind = CouiTextKind.ItemTitle) },
+            summary = { Text(text = statusText, kind = CouiTextKind.ItemSummary) },
             trailing = {
-                Text(text = checkingAlt(checking, "检查中…", currentVersion), kind = CouiTextKind.Description)
+                Text(text = checkingAlt(checking, "检查中…", currentVersion), kind = CouiTextKind.GroupFooter)
             },
         )
         Divider()
         Item(
-            title = { Text(text = "远端最新版本", kind = CouiTextKind.PreferenceTitle) },
+            title = { Text(text = "远端最新版本", kind = CouiTextKind.ItemTitle) },
             summary = {
                 val date = release?.publishedDate.orEmpty()
                 Text(
@@ -317,13 +318,13 @@ private fun UpdateVersionGroup(
                         date.isNotBlank() -> "发布于" + date
                         else -> "已获取最新发布信息"
                     },
-                    kind = CouiTextKind.PreferenceSummary,
+                    kind = CouiTextKind.ItemSummary,
                 )
             },
             trailing = {
                 Text(
                     text = release?.version ?: "—",
-                    kind = CouiTextKind.PreferenceValue,
+                    kind = CouiTextKind.ItemValue,
                 )
             },
         )
@@ -359,11 +360,10 @@ private fun UpdateNotesGroup(
             verticalArrangement = Arrangement.spacedBy(NotesBlockSpacing),
         ) {
             when (state) {
-                null -> Text(text = "正在检查更新…", kind = CouiTextKind.Body)
+                null -> CouiBodyText(text = "正在检查更新…")
                 is UpdateOutcome.Failed -> {
-                    Text(
+                    CouiBodyText(
                         text = state.message,
-                        kind = CouiTextKind.Body,
                         color = scheme.onSurface,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -377,14 +377,14 @@ private fun UpdateNotesGroup(
                 is UpdateOutcome.UpToDate -> {
                     Text(
                         text = state.release.name.ifBlank { "版本特性说明" },
-                        kind = CouiTextKind.PreferenceTitle,
+                        kind = CouiTextKind.ItemTitle,
                     )
                     UpdateNotes(markdown = state.release.notes)
                 }
                 is UpdateOutcome.Available -> {
                     Text(
                         text = state.release.name.ifBlank { "版本特性说明" },
-                        kind = CouiTextKind.PreferenceTitle,
+                        kind = CouiTextKind.ItemTitle,
                     )
                     UpdateNotes(markdown = state.release.notes)
                     Box(
@@ -422,13 +422,13 @@ private fun UpdateDownloadBlock(
     val scheme = CouiKitTheme.colorScheme
     val asset = release.apk
     if (asset == null) {
-        Text(text = "该版本未附带安装包，请前往 Releases 页面手动下载。", kind = CouiTextKind.PreferenceSummary)
+        Text(text = "该版本未附带安装包，请前往 Releases 页面手动下载。", kind = CouiTextKind.ItemSummary)
         CouiInlineButton(text = "前往 Releases 页面", onClick = { onOpenRelease(release.htmlUrl) })
         return
     }
     Text(
         text = "安装包 " + asset.name + assetSizeSuffix(asset.size),
-        kind = CouiTextKind.Description,
+        kind = CouiTextKind.GroupFooter,
         color = scheme.onSurfaceVariant,
     )
     when (downloadState) {
@@ -438,9 +438,8 @@ private fun UpdateDownloadBlock(
             onClick = { onStartDownload(asset) },
         )
         is UpdateDownloadState.Downloading -> {
-            Text(
+            CouiBodyText(
                 text = "正在下载 " + updateProgressText(downloadState, withSize = true),
-                kind = CouiTextKind.Body,
             )
             CouiProgressBar(progress = downloadState.progress)
             Text(
@@ -449,20 +448,19 @@ private fun UpdateDownloadBlock(
                 } else {
                     "正在计算速度…"
                 },
-                kind = CouiTextKind.Description,
+                kind = CouiTextKind.GroupFooter,
                 color = scheme.onSurfaceVariant,
             )
             CouiInlineButton(text = "取消下载", onClick = onCancelDownload)
         }
         is UpdateDownloadState.Done -> {
-            Text(text = "安装包已下载完成，点击安装完成升级。", kind = CouiTextKind.Body)
+            CouiBodyText(text = "安装包已下载完成，点击安装完成升级。")
             CouiInlineButton(text = "立即安装", emphasised = true, onClick = { onInstall(downloadState.file) })
             CouiInlineButton(text = "重新下载", onClick = onResetDownload)
         }
         is UpdateDownloadState.Failed -> {
-            Text(
+            CouiBodyText(
                 text = downloadState.message,
-                kind = CouiTextKind.Body,
                 color = MiuixTheme.colorScheme.error,
             )
             CouiInlineButton(text = CouiStrings.Retry, emphasised = true, onClick = { onResetDownload() })
@@ -501,14 +499,15 @@ private fun UpdateNotes(markdown: String) {
     val scheme = CouiKitTheme.colorScheme
     val blocks = remember(markdown) { MarkdownBlocks.parse(markdown) }
     if (blocks.isEmpty()) {
-        Text(text = "该版本未提供更新说明。", kind = CouiTextKind.Description)
+        Text(text = "该版本未提供更新说明。", kind = CouiTextKind.GroupFooter)
         return
     }
     blocks.forEach { block ->
         when (block) {
             is MarkdownBlock.Heading -> Text(
                 text = block.text,
-                kind = if (block.level <= 2) CouiTextKind.PreferenceTitle else CouiTextKind.Body,
+                kind = if (block.level <= 2) CouiTextKind.ItemTitle else CouiTextKind.Search,
+                textAlign = TextAlign.Start,
             )
             is MarkdownBlock.Bullet -> NotesLine(prefix = "·", text = block.text)
             is MarkdownBlock.Ordered -> NotesLine(prefix = block.number.toString() + ".", text = block.text)
@@ -518,7 +517,7 @@ private fun UpdateNotes(markdown: String) {
                     .height(CouiPageDefaults.dividerHeight)
                     .background(scheme.outlineVariant),
             )
-            is MarkdownBlock.Paragraph -> Text(text = block.text, kind = CouiTextKind.Body)
+            is MarkdownBlock.Paragraph -> CouiBodyText(text = block.text)
         }
     }
 }
@@ -527,9 +526,9 @@ private fun UpdateNotes(markdown: String) {
 private fun NotesLine(prefix: String, text: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(modifier = Modifier.width(NotesPrefixMinWidth)) {
-            Text(text = prefix, kind = CouiTextKind.Body)
+            CouiBodyText(text = prefix)
         }
-        Text(text = text, kind = CouiTextKind.Body)
+        CouiBodyText(text = text)
     }
 }
 
@@ -544,16 +543,16 @@ private fun UpdateSettingsGroup(
 ) {
     Group(modifier = Modifier.padding(top = 8.dp), title = "更新设置") {
         Item(
-            title = { Text(text = "自动检查更新", kind = CouiTextKind.PreferenceTitle) },
-            summary = { Text(text = "每次启动应用时自动检查最新版本", kind = CouiTextKind.PreferenceSummary) },
+            title = { Text(text = "自动检查更新", kind = CouiTextKind.ItemTitle) },
+            summary = { Text(text = "每次启动应用时自动检查最新版本", kind = CouiTextKind.ItemSummary) },
             trailing = {
                 Switch(checked = autoCheckUpdate, onCheckedChange = onAutoCheckChange)
             },
         )
         Divider()
         Item(
-            title = { Text(text = "忽略此版本", kind = CouiTextKind.PreferenceTitle) },
-            summary = { Text(text = ignoreSummary, kind = CouiTextKind.PreferenceSummary) },
+            title = { Text(text = "忽略此版本", kind = CouiTextKind.ItemTitle) },
+            summary = { Text(text = ignoreSummary, kind = CouiTextKind.ItemSummary) },
             enabled = ignoreEnabled,
             onClick = if (ignoreEnabled) onIgnoreToggle else null,
         )
@@ -571,11 +570,11 @@ private fun UpdateActionsGroup(
 ) {
     Group(modifier = Modifier.padding(top = 8.dp), title = "版本与操作") {
         Item(
-            title = { Text(text = "手动检查更新", kind = CouiTextKind.PreferenceTitle) },
+            title = { Text(text = "手动检查更新", kind = CouiTextKind.ItemTitle) },
             summary = {
                 Text(
                     text = if (checking) "正在检索远端版本信息…" else "点击从 GitHub Releases 检索最新版本",
-                    kind = CouiTextKind.PreferenceSummary,
+                    kind = CouiTextKind.ItemSummary,
                 )
             },
             enabled = !checking,
@@ -583,14 +582,14 @@ private fun UpdateActionsGroup(
         )
         Divider()
         Item(
-            title = { Text(text = "GitHub Releases", kind = CouiTextKind.PreferenceTitle) },
-            summary = { Text(text = "在浏览器查看完整发布说明", kind = CouiTextKind.PreferenceSummary) },
+            title = { Text(text = "GitHub Releases", kind = CouiTextKind.ItemTitle) },
+            summary = { Text(text = "在浏览器查看完整发布说明", kind = CouiTextKind.ItemSummary) },
             onClick = onOpenRelease,
         )
         Divider()
         Item(
-            title = { Text(text = "当前版本", kind = CouiTextKind.PreferenceTitle) },
-            trailing = { Text(text = currentVersion, kind = CouiTextKind.PreferenceValue) },
+            title = { Text(text = "当前版本", kind = CouiTextKind.ItemTitle) },
+            trailing = { Text(text = currentVersion, kind = CouiTextKind.ItemValue) },
         )
     }
 }
@@ -660,7 +659,7 @@ private fun UpdateAvailableDialog(
             if (release.publishedDate.isNotBlank()) {
                 Text(
                     text = "发布于 " + release.publishedDate,
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                 )
             }
@@ -668,22 +667,20 @@ private fun UpdateAvailableDialog(
                 is UpdateDownloadState.Idle -> Text(
                     text = asset?.let { "安装包 " + it.name + assetSizeSuffix(it.size) }
                         ?: "该版本未附带安装包，请前往 Releases 页面手动下载。",
-                    kind = CouiTextKind.PreferenceSummary,
+                    kind = CouiTextKind.ItemSummary,
                     color = scheme.onSurfaceVariant,
                 )
                 is UpdateDownloadState.Downloading -> {
-                    Text(
+                    CouiBodyText(
                         text = "正在下载 " + updateProgressText(downloadState, withSize = true),
-                        kind = CouiTextKind.Body,
                     )
                     CouiProgressBar(progress = downloadState.progress)
                 }
-                is UpdateDownloadState.Done -> Text(
+                is UpdateDownloadState.Done -> CouiBodyText(
                     text = "安装包已下载完成，点击安装完成升级。",
-                    kind = CouiTextKind.Body,
                 )
                 is UpdateDownloadState.Failed -> {
-                    Text(text = downloadState.message, kind = CouiTextKind.Body, color = MiuixTheme.colorScheme.error)
+                    CouiBodyText(text = downloadState.message, color = MiuixTheme.colorScheme.error)
                     CouiInlineButton(text = CouiStrings.Retry, onClick = onResetDownload)
                 }
             }
@@ -713,7 +710,7 @@ private fun CouiInlineButton(
             )
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        Text(text = text, kind = CouiTextKind.PreferenceValue, color = color)
+        Text(text = text, kind = CouiTextKind.ItemValue, color = color)
     }
 }
 

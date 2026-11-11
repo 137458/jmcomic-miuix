@@ -22,6 +22,7 @@ import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
@@ -168,7 +169,7 @@ internal fun LazyListScope.couiChapterItems(
                     val scheme = CouiKitTheme.colorScheme
                     Text(
                         text = if (plan.allExpanded) "全部收起" else "全部展开",
-                        kind = CouiTextKind.Category,
+                        kind = CouiTextKind.GroupFooter,
                         color = scheme.accent,
                         maxLines = 1,
                         modifier = Modifier
@@ -216,7 +217,7 @@ private fun CouiChapterRowCard(
                 title = {
                     Text(
                         text = row.title,
-                        kind = CouiTextKind.PreferenceTitle,
+                        kind = CouiTextKind.ItemTitle,
                         color = scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -226,7 +227,7 @@ private fun CouiChapterRowCard(
                     {
                         Text(
                             text = row.summary,
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.onSurfaceVariant,
                         )
                     }
@@ -237,7 +238,7 @@ private fun CouiChapterRowCard(
                     {
                         Text(
                             text = if (row.expanded) "收起" else "展开",
-                            kind = CouiTextKind.PreferenceValue,
+                            kind = CouiTextKind.ItemValue,
                             color = scheme.accent,
                         )
                     }
@@ -257,9 +258,8 @@ private fun CouiChapterRowCard(
             Item(
                 contentPadding = PaddingValues(start = 32.dp, top = 10.dp, end = 16.dp, bottom = 10.dp),
                 title = {
-                    Text(
+                    CouiBodyText(
                         text = row.title,
-                        kind = CouiTextKind.Body,
                         color = scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -269,7 +269,7 @@ private fun CouiChapterRowCard(
                     {
                         Text(
                             text = marker,
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = if (row.highlighted) scheme.accent else scheme.onSurfaceVariant,
                         )
                     }
@@ -301,7 +301,7 @@ private fun CouiChapterRowCard(
                 title = {
                     Text(
                         text = CouiStrings.EmptyChapters,
-                        kind = CouiTextKind.PreferenceTitle,
+                        kind = CouiTextKind.ItemTitle,
                         color = scheme.onSurfaceVariant,
                     )
                 },

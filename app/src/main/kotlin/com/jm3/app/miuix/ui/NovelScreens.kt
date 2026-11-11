@@ -16,8 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -25,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -113,6 +115,14 @@ internal fun novelActionNotice(
     is SessionOutcome.Failed -> NovelActionNotice(failurePrefix + outcome.messageOr(fallback), openLogin = false)
 }
 
+private data class NovelPageState(
+    val items: List<NovelMeta> = emptyList(),
+    val total: Int = 0,
+    val loading: Boolean = true,
+    val failure: ScreenLoadPlan? = null,
+    val loadedOnce: Boolean = false,
+)
+
 /** 小说列表页：排序 + 关键词搜索 + 点赞/收藏。 */
 @Composable
 fun NovelListScreen(
@@ -125,63 +135,104 @@ fun NovelListScreen(
     // 会话闸门只经 deps 取：路由层不再重复传第二份。
     val authCall = deps.authCall
     val user by deps.account.user.collectAsState()
+    val orders = NovelOrder.entries
     var orderName by rememberSaveable { mutableStateOf(NovelOrder.DEFAULT.name) }
-    val order = NovelOrder.entries.firstOrNull { it.name == orderName } ?: NovelOrder.DEFAULT
+    val order = orders.firstOrNull { it.name == orderName } ?: NovelOrder.DEFAULT
+    val clampedOrderIndex = orders.indexOf(order).coerceAtLeast(0)
     var query by rememberSaveable { mutableStateOf("") }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var appliedQuery by rememberSaveable { mutableStateOf("") }
-    var items by remember { mutableStateOf<List<NovelMeta>>(emptyList()) }
-    var total by remember { mutableIntStateOf(0) }
-    var loading by remember { mutableStateOf(true) }
-    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-    var refreshing by remember { mutableStateOf(false) }
+    var lastAppliedQuery by remember { mutableStateOf(appliedQuery) }
+    val pageStates = remember { mutableStateMapOf<Int, NovelPageState>() }
+    val listStates = remember { List(orders.size) { LazyListState() } }
+    var refreshingTab by remember { mutableStateOf<Int?>(null) }
     // 快速切换排序/搜索时旧响应不能覆盖新结果
-    var loadToken by remember { mutableIntStateOf(0) }
+    val loadTokens = remember { mutableStateMapOf<Int, Int>() }
     var busyId by remember { mutableStateOf<String?>(null) }
-    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
+    val selectionHaptic = rememberSelectionHaptic()
+    val pagerState = rememberSyncedTabPagerState(
+        selectedTab = clampedOrderIndex,
+        pageCount = orders.size,
+        onTabSelected = { index ->
+            val next = orders.getOrNull(index) ?: return@rememberSyncedTabPagerState
+            if (next != order) {
+                selectionHaptic()
+                orderName = next.name
+            }
+        },
+        useMiuixSpring = true,
+    )
     val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
-    val searchCollapse = rememberCollapsibleSearchState(listState = listState)
+    val searchCollapse = rememberCollapsibleSearchState(listState = listStates[clampedOrderIndex])
     // 列表层只建一份格式化器，行级 Composable 不再各自持有
     val dateFormat = rememberDateFormatter("yyyy-MM-dd")
 
-    fun load(orderValue: String, keyword: String, showLoading: Boolean) {
-        loadToken++
-        val token = loadToken
-        if (showLoading) loading = true
-        failure = null
+    fun load(targetOrderIdx: Int = clampedOrderIndex, keyword: String = appliedQuery, showLoading: Boolean) {
+        val targetOrder = orders[targetOrderIdx]
+        val token = (loadTokens[targetOrderIdx] ?: 0) + 1
+        loadTokens[targetOrderIdx] = token
+        val current = pageStates[targetOrderIdx] ?: NovelPageState()
+        pageStates[targetOrderIdx] = current.copy(loading = showLoading, failure = null)
         scope.launch {
             val outcome = authCall.call {
                 if (keyword.isBlank()) {
-                    deps.gateway.novelList(orderValue, 1)
+                    deps.gateway.novelList(targetOrder.apiValue, 1)
                 } else {
                     deps.gateway.searchNovels(keyword)
                 }
             }
-            if (token != loadToken) return@launch
-            loading = false
-            refreshing = false
+            if (refreshingTab == targetOrderIdx) refreshingTab = null
+            if (loadTokens[targetOrderIdx] != token || appliedQuery != keyword) return@launch
             if (outcome is SessionOutcome.Ok) {
-                items = outcome.value.items
-                total = outcome.value.total
+                pageStates[targetOrderIdx] = NovelPageState(
+                    items = outcome.value.items,
+                    total = outcome.value.total,
+                    loading = false,
+                    failure = null,
+                    loadedOnce = true,
+                )
             } else {
+                val latest = pageStates[targetOrderIdx] ?: NovelPageState()
                 // 已有列表就只提示并保留内容；没有内容才换整屏（失效换成「去登录」）
                 val plan = planLoad(
                     outcome = outcome,
-                    hasContent = items.isNotEmpty(),
+                    hasContent = latest.items.isNotEmpty(),
                     failureMessage = "加载失败",
                 )
                 if (plan.keepContent) {
+                    pageStates[targetOrderIdx] = latest.copy(loading = false)
                     snackbarHostState.showSnackbar(plan.notice.orEmpty())
                 } else {
-                    failure = plan
+                    pageStates[targetOrderIdx] = latest.copy(loading = false, failure = plan)
                 }
             }
         }
     }
 
-    LaunchedEffect(orderName, appliedQuery) {
-        load(order.apiValue, appliedQuery, showLoading = items.isEmpty())
+    LaunchedEffect(clampedOrderIndex, appliedQuery) {
+        val queryChanged = lastAppliedQuery != appliedQuery
+        if (queryChanged) {
+            lastAppliedQuery = appliedQuery
+            pageStates.clear()
+        }
+        val current = pageStates[clampedOrderIndex]
+        if (queryChanged || current == null || (!current.loadedOnce && current.failure == null && !current.loading)) {
+            listStates[clampedOrderIndex].requestScrollToItem(0)
+            load(
+                targetOrderIdx = clampedOrderIndex,
+                keyword = appliedQuery,
+                showLoading = current == null || current.items.isEmpty(),
+            )
+        }
+    }
+
+    fun updateCachedNovel(novelId: String, transform: (NovelMeta) -> NovelMeta) {
+        pageStates.keys.toList().forEach { tabIdx ->
+            val current = pageStates[tabIdx] ?: return@forEach
+            if (current.items.any { it.id == novelId }) {
+                pageStates[tabIdx] = current.copy(items = current.items.map { if (it.id == novelId) transform(it) else it })
+            }
+        }
     }
 
     /** 点赞：平台不支持取消，已赞时只提示。 */
@@ -197,7 +248,7 @@ fun NovelListScreen(
             busyId = null
             val notice = novelActionNotice(outcome, failurePrefix = "点赞失败：")
             if (notice == null) {
-                items = items.map { if (it.id == item.id) it.copy(liked = true) else it }
+                updateCachedNovel(item.id) { it.copy(liked = true) }
                 snackbarHostState.showSnackbar("点赞成功")
             } else {
                 snackbarHostState.showSnackbar(notice.message)
@@ -219,7 +270,7 @@ fun NovelListScreen(
             busyId = null
             val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
             if (notice == null) {
-                items = items.map { if (it.id == item.id) it.copy(favorite = !it.favorite) else it }
+                updateCachedNovel(item.id) { it.copy(favorite = !it.favorite) }
                 snackbarHostState.showSnackbar(if (item.favorite) "已取消收藏" else "已加入收藏")
             } else {
                 snackbarHostState.showSnackbar(notice.message)
@@ -228,14 +279,14 @@ fun NovelListScreen(
         }
     }
 
-    val selectionHaptic = rememberSelectionHaptic()
+    val activeTotal = pageStates[clampedOrderIndex]?.total ?: 0
 
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 GlassTopAppBar(
                     title = if (appliedQuery.isBlank()) "小说" else "小说搜索",
-                    subtitle = if (total > 0) "共 $total 本" else "",
+                    subtitle = if (activeTotal > 0) "共 $activeTotal 本" else "",
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                     color = Color.Transparent,
@@ -268,10 +319,10 @@ fun NovelListScreen(
                 }
                 // 排序收进胶囊条：与全站筛选同构，不再用设置卡片占掉半屏
                 GlassChipRow(
-                    tabs = NovelOrder.entries.map { it.label },
-                    selectedTabIndex = NovelOrder.entries.indexOf(order).coerceAtLeast(0),
+                    tabs = orders.map { it.label },
+                    selectedTabIndex = clampedOrderIndex,
                     onTabSelected = { index ->
-                        val next = NovelOrder.entries.getOrNull(index) ?: return@GlassChipRow
+                        val next = orders.getOrNull(index) ?: return@GlassChipRow
                         if (next == order) return@GlassChipRow
                         selectionHaptic()
                         orderName = next.name
@@ -284,48 +335,56 @@ fun NovelListScreen(
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
         collapsibleSearch = searchCollapse,
     ) { innerPadding ->
-        when {
-            loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            failure?.phase == ScreenLoadPhase.Expired -> LoginExpiredScreen(
-                onOpenLogin = onOpenLogin,
-                modifier = Modifier.padding(innerPadding),
-            )
-            failure != null -> ErrorScreen(
-                message = failure?.message.orEmpty(),
-                onRetry = { load(order.apiValue, appliedQuery, showLoading = true) },
-                modifier = Modifier.padding(innerPadding),
-            )
-            items.isEmpty() -> EmptyState(
-                title = if (appliedQuery.isBlank()) "暂无小说" else "没有找到相关小说",
-                hint = if (appliedQuery.isBlank()) "稍后再来看看" else "换个关键词再试试",
-                modifier = Modifier.padding(innerPadding),
-            )
-            else -> GlassPullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = {
-                    refreshing = true
-                    load(order.apiValue, appliedQuery, showLoading = false)
-                },
-                modifier = Modifier.fillMaxSize(),
-                pullToRefreshState = refreshState,
-                // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
-                contentPadding = innerPadding,
-            ) {
-                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+        ) { pageIdx ->
+            val pageState = pageStates[pageIdx] ?: NovelPageState()
+            val pageFailure = pageState.failure
+            val pageRefreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
+            when {
+                pageState.loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+                pageFailure?.phase == ScreenLoadPhase.Expired -> LoginExpiredScreen(
+                    onOpenLogin = onOpenLogin,
+                    modifier = Modifier.padding(innerPadding),
+                )
+                pageFailure != null -> ErrorScreen(
+                    message = pageFailure.message.orEmpty(),
+                    onRetry = { load(pageIdx, appliedQuery, showLoading = true) },
+                    modifier = Modifier.padding(innerPadding),
+                )
+                pageState.items.isEmpty() -> EmptyState(
+                    title = if (appliedQuery.isBlank()) "暂无小说" else "没有找到相关小说",
+                    hint = if (appliedQuery.isBlank()) "稍后再来看看" else "换个关键词再试试",
+                    modifier = Modifier.padding(innerPadding),
+                )
+                else -> GlassPullToRefresh(
+                    isRefreshing = refreshingTab == pageIdx,
+                    onRefresh = {
+                        refreshingTab = pageIdx
+                        load(pageIdx, appliedQuery, showLoading = false)
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    pullToRefreshState = pageRefreshState,
+                    // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                     contentPadding = innerPadding,
                 ) {
-                    items(items, key = { it.id }) { item ->
-                        NovelListRow(
-                            item = item,
-                            dateFormat = dateFormat,
-                            busy = busyId == item.id,
-                            onClick = { onOpenNovel(item.id) },
-                            onLike = { like(item) },
-                            onFavorite = { favorite(item) },
-                        )
+                    // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                    LazyColumn(
+                        state = listStates[pageIdx],
+                        modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
+                        contentPadding = innerPadding,
+                    ) {
+                        items(pageState.items, key = { it.id }) { item ->
+                            NovelListRow(
+                                item = item,
+                                dateFormat = dateFormat,
+                                busy = busyId == item.id,
+                                onClick = { onOpenNovel(item.id) },
+                                onLike = { like(item) },
+                                onFavorite = { favorite(item) },
+                            )
+                        }
                     }
                 }
             }

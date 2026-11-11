@@ -42,6 +42,7 @@ import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
+import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.WideScreenNavigation
 
@@ -278,18 +279,28 @@ fun MainScreen(
                         }
                     }
                 }
-                // 液态玻璃胶囊底栏：浮在内容之上以采样页面背景，宽度由内容与官方规范上限决定。
-                // 必须与内容同处 token provider：三层渲染与图标字号都读 LocalGlassBottomBarTokens，
-                // 放到 provider 之外只会永远拿到默认 StandardFloating，尺寸/形态档全部失效。
                 if (!useRail) {
-                    IosLiquidGlassNavigationBar(
-                        items = MainTab.entries.map { NavigationItem(label = it.label, icon = tabIcon(it)) },
-                        selectedIndex = tab,
-                        onItemClick = { tab = it },
-                        backdrop = backdrop,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                        badge = { index -> MainTab.entries.getOrNull(index)?.let(::badgeFor) },
-                    )
+                    if (barTokens.form == BottomBarForm.DOCKED) {
+                        MiuixDockedNavigationBar(
+                            items = MainTab.entries.map { MiuixDockedNavItem(label = it.label, icon = tabIcon(it)) },
+                            selectedIndex = tab,
+                            onSelect = { tab = it },
+                            badge = { index -> MainTab.entries.getOrNull(index)?.let(::badgeFor) },
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    } else {
+                        // 液态玻璃胶囊底栏：浮在内容之上以采样页面背景，宽度由内容与官方规范上限决定。
+                        // 必须与内容同处 token provider：三层渲染与图标字号都读 LocalGlassBottomBarTokens，
+                        // 放到 provider 之外只会永远拿到默认 StandardFloating，尺寸/形态档全部失效。
+                        IosLiquidGlassNavigationBar(
+                            items = MainTab.entries.map { NavigationItem(label = it.label, icon = tabIcon(it)) },
+                            selectedIndex = tab,
+                            onItemClick = { tab = it },
+                            backdrop = backdrop,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            badge = { index -> MainTab.entries.getOrNull(index)?.let(::badgeFor) },
+                        )
+                    }
                 }
             }
         }

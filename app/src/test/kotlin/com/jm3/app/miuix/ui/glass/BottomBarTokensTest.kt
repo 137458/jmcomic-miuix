@@ -6,6 +6,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
+import com.jm3.core.settings.UiSkin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -54,29 +55,28 @@ class BottomBarTokensTest {
     }
 
     @Test
-    fun `四种组合逐一可区分`() {
+    fun `四种组合按形态与尺寸档正确生效`() {
         val combos = BottomBarSize.entries.flatMap { size ->
             BottomBarForm.entries.map { form -> bottomBarTokens(size, form) }
         }
-        // 尺寸档：同一形态下条高、图标、字号逐项不同
-        for (form in BottomBarForm.entries) {
-            val standard = bottomBarTokens(BottomBarSize.STANDARD, form)
-            val generous = bottomBarTokens(BottomBarSize.GENEROUS, form)
-            assertTrue(generous.height.value > standard.height.value)
-            assertTrue(generous.iconSize.value > standard.iconSize.value)
-            assertTrue(generous.labelSize.value > standard.labelSize.value)
-        }
-        // 形态档：悬浮有横向边距与投影，贴底没有；净空也随形态不同
+        // 悬浮形态：尺寸档决定条高、图标与字号
+        val standardFloating = bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.FLOATING)
+        val generousFloating = bottomBarTokens(BottomBarSize.GENEROUS, BottomBarForm.FLOATING)
+        assertTrue(generousFloating.height.value > standardFloating.height.value)
+        assertTrue(generousFloating.iconSize.value > standardFloating.iconSize.value)
+        assertTrue(generousFloating.labelSize.value > standardFloating.labelSize.value)
+
+        // 贴底形态：双端统一走 Miuix NavigationBar，条高与净空固定为 64dp，去掉悬浮边距与投影
         for (size in BottomBarSize.entries) {
             val floating = bottomBarTokens(size, BottomBarForm.FLOATING)
             val docked = bottomBarTokens(size, BottomBarForm.DOCKED)
             assertTrue(floating.horizontalMargin.value > docked.horizontalMargin.value)
             assertTrue(floating.shadowAlphaLight > docked.shadowAlphaLight)
             assertTrue(floating.shadowAlphaDark > docked.shadowAlphaDark)
-            assertEquals(floating.height, docked.height)
+            assertEquals(64f, docked.height.value)
+            assertEquals(64f, docked.contentPadding.value)
             assertTrue(floating.contentPadding.value > docked.contentPadding.value)
         }
-        // 四份 token 必须各互不相同，避免两档退化成同一套几何
         assertEquals(4, combos.toSet().size)
     }
 
@@ -116,17 +116,28 @@ class BottomBarTokensTest {
     }
 
     @Test
-    fun `形态档在手机上同样可选并按 token 计算净空`() {
-        // 形态档没有设备限制：手机同样可选贴底，净空按条高、无悬浮边距
+    fun `形态档在手机上同样可选并按 Miuix NavigationBar 计算净空`() {
+        // 形态档没有设备限制：手机同样可选贴底，净空按 Miuix 64dp、无悬浮边距
         val phoneDocked = resolveBottomBarTokens(
             explicitSize = null,
             explicitForm = BottomBarForm.DOCKED,
             widthDp = 400,
         )
         assertEquals(BottomBarForm.DOCKED, phoneDocked.form)
-        assertEquals(56f, phoneDocked.height.value)
-        assertEquals(56f, phoneDocked.contentPadding.value)
+        assertEquals(64f, phoneDocked.height.value)
+        assertEquals(64f, phoneDocked.contentPadding.value)
         assertEquals(0f, phoneDocked.horizontalMargin.value)
+
+        // ColorOS 下即使显式偏好是偏大或窗口是大屏，仍收束到标准档位
+        val colorOsTablet = resolveBottomBarTokens(
+            explicitSize = BottomBarSize.GENEROUS,
+            explicitForm = BottomBarForm.FLOATING,
+            widthDp = 800,
+            skin = UiSkin.COLOROS,
+        )
+        assertEquals(BottomBarSize.STANDARD, colorOsTablet.size)
+        assertEquals(56f, colorOsTablet.height.value)
+        assertEquals(80f, colorOsTablet.contentPadding.value)
 
         val phoneFloating = resolveBottomBarTokens(
             explicitSize = null,

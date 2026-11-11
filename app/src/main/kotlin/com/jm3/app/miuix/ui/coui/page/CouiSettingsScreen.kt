@@ -64,6 +64,7 @@ import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ReaderSettingsState
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
@@ -163,13 +164,9 @@ fun CouiSettingsScreen(
 
         // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
         val paginationMode = deps.preferences.paginationMode
-        // 底栏尺寸/形态：偏好存 null 表示未显式设置，展示与生效都按同一处窗口断点解析
+        // 底栏形态：偏好存 null 表示未显式设置，ColorOS 不展示「底栏尺寸」
         val windowDp = rememberWindowDpSize()
         val widthDp = windowDp.width.toLayoutDpInt()
-        val bottomBarSize = BottomBarPreferencePolicy.resolveSize(deps.preferences.bottomBarSize, widthDp)
-        // 尺寸档只有「偏大」是强制选择；「普通」与未设置同义，都表示按设备自适应
-        val bottomBarSizeOption =
-            if (deps.preferences.bottomBarSize == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
         val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.preferences.bottomBarForm)
         // 宽屏导航：未设置时默认底栏，用户显式选侧栏才切换；
         // 该项只在 600dp 及以上（含小平板/折叠展开/分屏）渲染整行，其余设备完全隐藏。
@@ -210,17 +207,6 @@ fun CouiSettingsScreen(
             // 列表页此时已被设置路由移出组合；作废旧模式的缓存，回来时才会按新语义从第 1 页加载。
             deps.sessionCache.forgetPages()
             scope.launch { deps.preferences.repository.setPaginationMode(mode) }
-        }
-
-        fun applyBottomBarSize(size: BottomBarSize) {
-            // 「普通」表示自适应，清空显式值回到断点解析；只有「偏大」是需要落盘的强制选择
-            val target = if (size == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else null
-            if (target == deps.preferences.bottomBarSize) return
-            deps.preferences.bottomBarSize = target
-            scope.launch {
-                if (target == null) deps.preferences.repository.clearBottomBarSize()
-                else deps.preferences.repository.setBottomBarSize(target)
-            }
         }
 
         fun applyBottomBarForm(form: BottomBarForm) {
@@ -346,12 +332,7 @@ fun CouiSettingsScreen(
             PaginationMode.INFINITE -> "滚动到底自动加载下一页"
             PaginationMode.CLICK -> "列表底部显示上一页/下一页"
         }
-        val bottomBarSizeSummary = if (bottomBarSizeOption == BottomBarSize.GENEROUS) {
-            "偏大：所有设备都使用更高的底栏，图标与标签同步放大"
-        } else {
-            "普通：按设备自适应，手机用标准高度、平板用偏大高度" +
-                "（当前设备按" + (if (bottomBarSize == BottomBarSize.GENEROUS) "偏大" else "标准") + "显示）"
-        }
+        // 底栏大小固定仅在 HyperOS 开放，ColorOS 始终使用标准档位，但保留原存储值给 HyperOS
         val bottomBarFormSummary = when (bottomBarForm) {
             BottomBarForm.FLOATING -> "圆角胶囊，与屏幕底边留出悬浮间隙"
             BottomBarForm.DOCKED -> "贴底通栏，紧接导航栏上方并撑满宽度"
@@ -456,17 +437,6 @@ fun CouiSettingsScreen(
                         )
                         Divider()
                         CouiChoiceItem(
-                            title = "底栏尺寸",
-                            summary = bottomBarSizeSummary,
-                            value = bottomBarSizeOption.label,
-                            options = BottomBarSize.entries.map {
-                                it to if (it == BottomBarSize.STANDARD) "普通（自适应）" else it.label
-                            },
-                            current = bottomBarSizeOption,
-                            onSelect = ::applyBottomBarSize,
-                        )
-                        Divider()
-                        CouiChoiceItem(
                             title = "底栏形态",
                             summary = bottomBarFormSummary,
                             value = bottomBarForm.label,
@@ -525,7 +495,7 @@ fun CouiSettingsScreen(
                                 title = {
                                     Text(
                                         text = "线路诊断失败：" + message,
-                                        kind = CouiTextKind.PreferenceSummary,
+                                        kind = CouiTextKind.ItemSummary,
                                         color = if (CouiKitTheme.isDark) CouiColor.Night.RED else CouiColor.Day.RED,
                                         textAlign = TextAlign.Start,
                                     )
@@ -577,7 +547,7 @@ fun CouiSettingsScreen(
                                             if (domainsInput.value.isEmpty()) {
                                                 Text(
                                                     text = "每行一个域名，例如 api.example.com",
-                                                    kind = CouiTextKind.PreferenceSummary,
+                                                    kind = CouiTextKind.ItemSummary,
                                                     color = scheme.onSurfaceVariant,
                                                     textAlign = TextAlign.Start,
                                                 )
@@ -767,7 +737,7 @@ fun CouiSettingsScreen(
 /** 行标题统一走 PreferenceTitle 字阶，避免每行各写一份字号。 */
 @Composable
 private fun SettingsRowTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text = text, kind = CouiTextKind.PreferenceTitle, modifier = modifier)
+    Text(text = text, kind = CouiTextKind.ItemTitle, modifier = modifier)
 }
 
 /** 行说明用次要色：与标题拉开层级，同时跟随皮肤深浅。 */
@@ -775,7 +745,7 @@ private fun SettingsRowTitle(text: String, modifier: Modifier = Modifier) {
 private fun SettingsRowSummary(text: String) {
     Text(
         text = text,
-        kind = CouiTextKind.PreferenceSummary,
+        kind = CouiTextKind.ItemSummary,
         color = CouiKitTheme.colorScheme.onSurfaceVariant,
     )
 }
@@ -785,7 +755,7 @@ private fun SettingsRowSummary(text: String) {
 private fun SettingsRowValue(text: String) {
     Text(
         text = text,
-        kind = CouiTextKind.PreferenceValue,
+        kind = CouiTextKind.ItemValue,
         color = CouiKitTheme.colorScheme.onSurfaceVariant,
     )
 }
@@ -828,12 +798,11 @@ private fun SettingsDiagnosticLine(label: String, value: String) {
     Column(modifier = Modifier.padding(vertical = 5.dp)) {
         Text(
             text = label,
-            kind = CouiTextKind.PreferenceSummary,
+            kind = CouiTextKind.ItemSummary,
             color = CouiKitTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
+        CouiBodyText(
             text = value,
-            kind = CouiTextKind.Body,
             modifier = Modifier.padding(top = 1.dp),
         )
     }

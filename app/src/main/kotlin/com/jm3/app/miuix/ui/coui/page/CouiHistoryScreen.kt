@@ -411,7 +411,7 @@ private fun ColumnScope.CouiHistoryDetailLink(
     val linkShape = CouiShape(radius = 8.dp, cornerWeight = 2f)
     Text(
         text = "详情",
-        kind = CouiTextKind.Description,
+        kind = CouiTextKind.GroupFooter,
         color = accent,
         maxLines = 1,
         modifier = Modifier

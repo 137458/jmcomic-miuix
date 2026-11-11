@@ -77,3 +77,19 @@ internal fun rankOf(page: Int, stride: Int, index: Int): Int {
  */
 internal fun displayRank(clickPaging: Boolean, page: Int, stride: Int, index: Int): Int =
     if (clickPaging) rankOf(page, stride, index) else index.coerceAtLeast(0) + 1
+
+/**
+ * 浏览页结果行在 LazyColumn 中的起始下标（即结果列表前有多少固定头项）。
+ *
+ * 分类模式将主分类栏固定在顶栏、并将「更多分类」与「每周连载更新」收进弹层后，
+ * 列表头部只保留筛选胶囊、可选标签导航与结果区标题；榜单模式仍保留周更卡片。
+ */
+internal fun couiBrowseHeadCount(
+    isCategoryMode: Boolean,
+    hasTagNav: Boolean,
+    hasWeeklyPaging: Boolean = false,
+): Int = if (isCategoryMode) {
+    2 + if (hasTagNav) 1 else 0
+} else {
+    3 + (if (hasTagNav) 1 else 0) + (if (hasWeeklyPaging) 1 else 0)
+}

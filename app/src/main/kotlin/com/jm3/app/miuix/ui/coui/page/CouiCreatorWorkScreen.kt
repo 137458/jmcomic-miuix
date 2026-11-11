@@ -54,6 +54,8 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
@@ -186,9 +188,8 @@ private fun CouiCreatorWorkBody(
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                             ) {
-                                Text(
+                                CouiBodyText(
                                     text = loaded.contentText,
-                                    kind = CouiTextKind.Body,
                                     color = CouiKitTheme.colorScheme.onSurface,
                                     textAlign = TextAlign.Start,
                                 )
@@ -338,9 +339,8 @@ private fun CouiCreatorWorkMetaCard(work: CreatorWork) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(
+        CouiSectionTitleText(
             text = work.title,
-            kind = CouiTextKind.SectionTitle,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
@@ -349,7 +349,7 @@ private fun CouiCreatorWorkMetaCard(work: CreatorWork) {
         if (author != null) {
             Text(
                 text = author,
-                kind = CouiTextKind.Description,
+                kind = CouiTextKind.GroupFooter,
                 color = scheme.accent,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -359,7 +359,7 @@ private fun CouiCreatorWorkMetaCard(work: CreatorWork) {
         val date = work.workDate?.takeIf { it.isNotBlank() }
         Text(
             text = date ?: "创作时间未知",
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = scheme.onSurfaceVariant,
             textAlign = TextAlign.Start,
         )

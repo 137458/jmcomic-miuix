@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
 
 import androidx.compose.foundation.verticalScroll
@@ -116,39 +117,55 @@ fun LibraryScreen(
     var appliedQuery by rememberSaveable { mutableStateOf("") }
     var lang by rememberSaveable { mutableStateOf("") }
     var source by rememberSaveable { mutableStateOf("") }
-    // 两个 Tab 各有一份分页状态：作者列表与作品列表的条目类型不同，不能共用一份 feed
+    // 两个 Tab 各有一份分页与状态：左右滑动过渡期互不串屏
     var creatorFeed by remember { mutableStateOf(PagedFeed<CreatorMeta>()) }
     var workFeed by remember { mutableStateOf(PagedFeed<CreatorWorkMeta>()) }
     var filters by rememberSaveable { mutableStateOf(CreatorFilters()) }
-    var loading by remember { mutableStateOf(true) }
+    var loadingTab by remember { mutableStateOf<Int?>(0) }
+    var creatorLoadedOnce by remember { mutableStateOf(false) }
+    var workLoadedOnce by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
-    // 失效与失败共用一个落点：计划自己决定「整屏去登录」还是「给重试按钮」
-    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
+    // 失效与失败分 Tab 持有：切走再切回仍保留对应页的错误/重登提示
+    var creatorFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
+    var workFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     // 切换 Tab/筛选/搜索时旧响应不能覆盖新结果
     var loadToken by remember { mutableIntStateOf(0) }
     val paginationMode = deps.preferences.paginationMode
     // 阻尼阈值略低：下拉更轻快即触发刷新，回弹仍由库的弹簧曲线负责
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
-    val searchCollapse = rememberCollapsibleSearchState(listState = listState)
+    val creatorListState = rememberLazyListState()
+    val workListState = rememberLazyListState()
+    val searchCollapse = rememberCollapsibleSearchState(
+        listState = if (tab == 0) creatorListState else workListState,
+    )
+    val pagerState = rememberSyncedTabPagerState(
+        selectedTab = tab,
+        pageCount = LIBRARY_TABS.size,
+        onTabSelected = { next ->
+            selectionHaptic()
+            tab = next
+        },
+        useMiuixSpring = true,
+    )
 
     /** 失效与失败共用一个落点：[planLoad] 决定整屏去登录/给重试，还是有内容时只弹提示。 */
-    fun applyFailure(outcome: SessionOutcome<*>, hasContent: Boolean) {
+    fun applyFailure(tabIndex: Int, outcome: SessionOutcome<*>, hasContent: Boolean) {
         val plan = planLoad(outcome, hasContent = hasContent, failureMessage = "加载失败")
         if (plan.keepContent) {
             scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
+        } else if (tabIndex == 0) {
+            creatorFailure = plan
         } else {
-            failure = plan
+            workFailure = plan
         }
     }
 
-    fun load(targetPage: Int, append: Boolean) {
-        val tabIndex = tab
+    fun load(targetPage: Int, append: Boolean, targetTab: Int = tab) {
         val keyword = appliedQuery
         // 在不在拉、还能不能拉都交给 feed：重复触底不会再并发打同一页
-        val creatorRequest = if (append && tabIndex == 0) creatorFeed.beginLoadMore() else null
-        val workRequest = if (append && tabIndex != 0) workFeed.beginLoadMore() else null
+        val creatorRequest = if (append && targetTab == 0) creatorFeed.beginLoadMore() else null
+        val workRequest = if (append && targetTab != 0) workFeed.beginLoadMore() else null
         // 拦截必须在占用 token 之前：被拦下的重复触底若先自增 token，在途请求的结果会被丢弃，
         // feed 就永远停在 loadingMore，页脚一直转圈且再也拉不动。
         if (creatorRequest === creatorFeed || workRequest === workFeed) return
@@ -156,10 +173,10 @@ fun LibraryScreen(
         val token = loadToken
         if (creatorRequest != null) creatorFeed = creatorRequest
         if (workRequest != null) workFeed = workRequest
-        if (!append && !refreshing) loading = true
-        failure = null
+        if (!append && !refreshing) loadingTab = targetTab
+        if (targetTab == 0) creatorFailure = null else workFailure = null
         // 附加页说明列表已有内容；首屏与下拉刷新则按当前 Tab 是否已有条目决定要不要保住列表
-        val hasContent = append || if (tabIndex == 0) {
+        val hasContent = append || if (targetTab == 0) {
             creatorFeed.items.isNotEmpty()
         } else {
             workFeed.items.isNotEmpty()
@@ -167,14 +184,14 @@ fun LibraryScreen(
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
             val outcome = deps.authCall.call {
-                if (tabIndex == 0) {
+                if (targetTab == 0) {
                     deps.gateway.creatorAuthors(targetPage, keyword)
                 } else {
                     deps.gateway.creatorWorks(targetPage, keyword, lang, source)
                 }
             }
             if (token != loadToken) return@launch
-            loading = false
+            loadingTab = null
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> when (val value = outcome.value) {
@@ -182,6 +199,7 @@ fun LibraryScreen(
                         val slice = librarySlice(value.items, value.total, targetPage)
                         creatorFeed = creatorRequest?.append(slice) { it.id }
                             ?: PagedFeed<CreatorMeta>().replace(slice) { it.id }
+                        creatorLoadedOnce = true
                     }
 
                     is CreatorWorkPage -> {
@@ -189,15 +207,16 @@ fun LibraryScreen(
                         val slice = librarySlice(value.items, value.total, targetPage)
                         workFeed = workRequest?.append(slice) { it.id }
                             ?: PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
+                        workLoadedOnce = true
                     }
 
                     else -> Unit
                 }
 
-                SessionOutcome.Expired -> applyFailure(outcome, hasContent)
+                SessionOutcome.Expired -> applyFailure(targetTab, outcome, hasContent)
 
                 is SessionOutcome.Failed -> {
-                    applyFailure(outcome, hasContent)
+                    applyFailure(targetTab, outcome, hasContent)
                     // 附加页失败只影响页脚，重试入口交给页脚上的「加载失败，点击重试」
                     creatorRequest?.let { creatorFeed = it.failLoadMore() }
                     workRequest?.let { workFeed = it.failLoadMore() }
@@ -206,15 +225,20 @@ fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(tab, appliedQuery, lang, source) {
-        load(1, append = false)
+    LaunchedEffect(appliedQuery) {
+        creatorLoadedOnce = false
+        workLoadedOnce = false
     }
-    PaginationModeReloadEffect(paginationMode) { load(1, append = false) }
+    LaunchedEffect(lang, source) {
+        workLoadedOnce = false
+    }
+    LaunchedEffect(tab, appliedQuery, lang, source) {
+        load(1, append = false, targetTab = tab)
+    }
+    PaginationModeReloadEffect(paginationMode) { load(1, append = false, targetTab = tab) }
 
     val activeFeed: PagedFeed<*> = if (tab == 0) creatorFeed else workFeed
-    val itemCount = activeFeed.items.size
     val total = activeFeed.total ?: 0
-    val totalPages = libraryPageCount(total)
 
     GlassScaffold(
         topBar = {
@@ -292,93 +316,108 @@ fun LibraryScreen(
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
         collapsibleSearch = searchCollapse,
     ) { innerPadding ->
-        when {
-            loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            // 失效只能去登录，普通失败才给重试
-            failure != null -> {
-                val planned = failure
-                if (planned?.phase == ScreenLoadPhase.Expired) {
-                    LoginExpiredScreen(
-                        onOpenLogin = onOpenLogin,
-                        modifier = Modifier.padding(innerPadding),
-                    )
-                } else {
-                    ErrorScreen(
-                        message = planned?.message.orEmpty(),
-                        onRetry = { load(activeFeed.page.coerceAtLeast(1), append = false) },
-                        modifier = Modifier.padding(innerPadding),
-                    )
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+        ) { page ->
+            val pageFeed: PagedFeed<*> = if (page == 0) creatorFeed else workFeed
+            val pageItemCount = pageFeed.items.size
+            val pageTotal = pageFeed.total ?: 0
+            val pageTotalPages = libraryPageCount(pageTotal)
+            val pageFailure = if (page == 0) creatorFailure else workFailure
+            val pageLoadedOnce = if (page == 0) creatorLoadedOnce else workLoadedOnce
+            val pageLoading = loadingTab == page || (!pageLoadedOnce && pageFailure == null)
+            val pageListState = if (page == 0) creatorListState else workListState
+
+            when {
+                pageLoading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+                // 失效只能去登录，普通失败才给重试
+                pageFailure != null -> {
+                    if (pageFailure.phase == ScreenLoadPhase.Expired) {
+                        LoginExpiredScreen(
+                            onOpenLogin = onOpenLogin,
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                    } else {
+                        ErrorScreen(
+                            message = pageFailure.message.orEmpty(),
+                            onRetry = { load(pageFeed.page.coerceAtLeast(1), append = false, targetTab = page) },
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                    }
                 }
-            }
-            itemCount == 0 -> EmptyState(
-                title = if (appliedQuery.isBlank()) {
-                    if (tab == 0) "暂无创作者" else "暂无作品"
-                } else {
-                    "没有找到相关内容"
-                },
-                hint = if (appliedQuery.isBlank()) "换个筛选条件再试试" else "换个关键词再试试",
-                modifier = Modifier.padding(innerPadding),
-            )
-            else -> GlassPullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = {
-                    refreshing = true
-                    load(1, append = false)
-                },
-                modifier = Modifier.fillMaxSize(),
-                pullToRefreshState = refreshState,
-                // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
-                contentPadding = innerPadding,
-            ) {
-                // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
+
+                pageItemCount == 0 -> EmptyState(
+                    title = if (appliedQuery.isBlank()) {
+                        if (page == 0) "暂无创作者" else "暂无作品"
+                    } else {
+                        "没有找到相关内容"
+                    },
+                    hint = if (appliedQuery.isBlank()) "换个筛选条件再试试" else "换个关键词再试试",
+                    modifier = Modifier.padding(innerPadding),
+                )
+
+                else -> GlassPullToRefresh(
+                    isRefreshing = refreshing && tab == page,
+                    onRefresh = {
+                        refreshing = true
+                        load(1, append = false, targetTab = page)
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    pullToRefreshState = refreshState,
+                    // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                     contentPadding = innerPadding,
                 ) {
-                    if (tab == 0) {
-                        items(creatorFeed.items, key = { it.id }) { creator ->
-                            CreatorRow(creator = creator, onClick = { onOpenCreator(creator.id) })
-                        }
-                    } else {
-                        items(
-                            items = workFeed.items.chunked(gridColumns),
-                            key = { row -> row.joinToString(",") { it.id } },
-                        ) { row ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(WorkCardTokens.GridSpacing),
-                            ) {
-                                row.forEach { work ->
-                                    WorkCard(
-                                        title = work.title,
-                                        coverUrl = work.coverUrl,
-                                        platform = work.platform,
-                                        authorName = work.authorName,
-                                        workDate = work.workDate,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = { onOpenWork(work.id) },
-                                        onOpenAuthor = work.authorId?.let { id ->
-                                            { onOpenCreator(id) }
-                                        },
-                                    )
-                                }
-                                // 末行不足一列时补空位，避免剩余卡片被均分拉宽
-                                repeat(gridColumns - row.size) {
-                                    Spacer(modifier = Modifier.weight(1f))
+                    // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                    LazyColumn(
+                        state = pageListState,
+                        modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
+                        contentPadding = innerPadding,
+                    ) {
+                        if (page == 0) {
+                            items(creatorFeed.items, key = { it.id }) { creator ->
+                                CreatorRow(creator = creator, onClick = { onOpenCreator(creator.id) })
+                            }
+                        } else {
+                            items(
+                                items = workFeed.items.chunked(gridColumns),
+                                key = { row -> row.joinToString(",") { it.id } },
+                            ) { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(WorkCardTokens.GridSpacing),
+                                ) {
+                                    row.forEach { work ->
+                                        WorkCard(
+                                            title = work.title,
+                                            coverUrl = work.coverUrl,
+                                            platform = work.platform,
+                                            authorName = work.authorName,
+                                            workDate = work.workDate,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { onOpenWork(work.id) },
+                                            onOpenAuthor = work.authorId?.let { id ->
+                                                { onOpenCreator(id) }
+                                            },
+                                        )
+                                    }
+                                    // 末行不足一列时补空位，避免剩余卡片被均分拉宽
+                                    repeat(gridColumns - row.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }
-                    }
-                    item(key = "footer") {
-                        LibraryFooter(
-                            feed = activeFeed,
-                            mode = paginationMode,
-                            totalPages = totalPages,
-                            onLoadMore = { load(activeFeed.page + 1, append = true) },
-                            onPageChange = { target -> load(target, append = false) },
-                        )
+                        item(key = "footer") {
+                            LibraryFooter(
+                                feed = pageFeed,
+                                mode = paginationMode,
+                                totalPages = pageTotalPages,
+                                onLoadMore = { load(pageFeed.page + 1, append = true, targetTab = page) },
+                                onPageChange = { target -> load(target, append = false, targetTab = page) },
+                            )
+                        }
                     }
                 }
             }

@@ -71,6 +71,7 @@ import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.couiHomeExtraBottomDp
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
@@ -588,7 +589,7 @@ fun CouiHomeScreen(
                             if (!searching) {
                                 Text(
                                     text = "每周必看",
-                                    kind = CouiTextKind.Description,
+                                    kind = CouiTextKind.GroupFooter,
                                     color = homeColors.accent,
                                     modifier = Modifier
                                         .couiPressable(
@@ -603,7 +604,7 @@ fun CouiHomeScreen(
                             }
                             Text(
                                 text = "帮助",
-                                kind = CouiTextKind.Description,
+                                kind = CouiTextKind.GroupFooter,
                                 color = homeColors.onSurfaceVariant,
                                 modifier = Modifier
                                     .clip(CouiCapsuleShape)
@@ -714,13 +715,13 @@ fun CouiHomeScreen(
                                     title = {
                                         Text(
                                             text = word,
-                                            kind = CouiTextKind.PreferenceTitle,
+                                            kind = CouiTextKind.ItemTitle,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                     },
                                     summary = {
-                                        Text(text = "点按重新搜索", kind = CouiTextKind.PreferenceSummary)
+                                        Text(text = "点按重新搜索", kind = CouiTextKind.ItemSummary)
                                     },
                                     trailing = {
                                         CouiRowIconAction(
@@ -745,8 +746,8 @@ fun CouiHomeScreen(
                 Group(title = "更多") {
                     Item(
                         icon = { CouiAccentIcon(CouiIcons.Star) },
-                        title = { Text(text = "每周必看", kind = CouiTextKind.PreferenceTitle) },
-                        summary = { Text(text = "按周汇总的连载更新", kind = CouiTextKind.PreferenceSummary) },
+                        title = { Text(text = "每周必看", kind = CouiTextKind.ItemTitle) },
+                        summary = { Text(text = "按周汇总的连载更新", kind = CouiTextKind.ItemSummary) },
                         onClick = {
                             dismissSearchInput()
                             onOpenWeek()
@@ -755,8 +756,8 @@ fun CouiHomeScreen(
                     Divider()
                     Item(
                         icon = { CouiAccentIcon(CouiIcons.Info) },
-                        title = { Text(text = "搜索语法", kind = CouiTextKind.PreferenceTitle) },
-                        summary = { Text(text = "空格 / + / - 组合关键词", kind = CouiTextKind.PreferenceSummary) },
+                        title = { Text(text = "搜索语法", kind = CouiTextKind.ItemTitle) },
+                        summary = { Text(text = "空格 / + / - 组合关键词", kind = CouiTextKind.ItemSummary) },
                         onClick = { showSearchHelp = true },
                     )
                 }
@@ -802,7 +803,7 @@ private fun CouiHomeTrackSection(
                 val accent = CouiTheme.colorScheme.accent
                 Text(
                     text = "查看全部",
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = accent,
                     modifier = Modifier
                         .couiPressable(
@@ -871,7 +872,7 @@ private fun CouiSearchHeader(
     )
     Text(
         text = summary,
-        kind = CouiTextKind.Description,
+        kind = CouiTextKind.GroupFooter,
         color = CouiTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 8.dp),
     )
@@ -925,7 +926,7 @@ private fun CouiTagCapsule(text: String, onClick: () -> Unit) {
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = text, kind = CouiTextKind.Body, color = colors.onSurface)
+        CouiBodyText(text = text, color = colors.onSurface)
     }
 }
 
@@ -949,7 +950,7 @@ private fun CouiWorkFeedRow(album: SearchResult, onClick: () -> Unit) {
             if (tags.isNotEmpty()) {
                 Text(
                     text = tags,
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = CouiTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -963,7 +964,7 @@ private fun CouiWorkFeedRow(album: SearchResult, onClick: () -> Unit) {
 private fun CouiHeaderTextAction(text: String, onClick: () -> Unit) {
     Text(
         text = text,
-        kind = CouiTextKind.Description,
+        kind = CouiTextKind.GroupFooter,
         color = CouiTheme.colorScheme.accent,
         modifier = Modifier
             .clip(CouiCapsuleShape)
@@ -1007,10 +1008,10 @@ private fun CouiMessageRow(title: String, summary: String? = null, onClick: (() 
     val summarySlot: (@Composable () -> Unit)? = if (summaryText == null) {
         null
     } else {
-        { Text(text = summaryText, kind = CouiTextKind.PreferenceSummary) }
+        { Text(text = summaryText, kind = CouiTextKind.ItemSummary) }
     }
     Item(
-        title = { Text(text = title, kind = CouiTextKind.PreferenceTitle) },
+        title = { Text(text = title, kind = CouiTextKind.ItemTitle) },
         summary = summarySlot,
         onClick = onClick,
     )
@@ -1019,10 +1020,10 @@ private fun CouiMessageRow(title: String, summary: String? = null, onClick: (() 
 @Composable
 private fun CouiSyntaxRow(expression: String, meaning: String) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(text = expression, kind = CouiTextKind.PreferenceTitle)
+        Text(text = expression, kind = CouiTextKind.ItemTitle)
         Text(
             text = meaning,
-            kind = CouiTextKind.PreferenceSummary,
+            kind = CouiTextKind.ItemSummary,
             color = CouiTheme.colorScheme.onSurfaceVariant,
         )
     }

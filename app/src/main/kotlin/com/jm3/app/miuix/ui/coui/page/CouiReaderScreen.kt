@@ -123,6 +123,8 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -1106,14 +1108,14 @@ private fun ReaderPages(
                     CouiTopBarPlainBackButton(onClick = onBack)
                     Text(
                         text = photo.title,
-                        kind = CouiTextKind.Toolbar,
+                        kind = CouiTextKind.TopBar,
                         modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = pageLabel,
-                        kind = CouiTextKind.PreferenceValue,
+                        kind = CouiTextKind.ItemValue,
                         color = CouiKitTheme.colorScheme.accent,
                         modifier = Modifier
                             // 所在 HUD 面板本身已有凝光，这里不再叠第二层
@@ -1236,7 +1238,7 @@ private fun ReaderPages(
                 ) {
                     Text(
                         text = "第 $pickerValue 页 / 共 $totalPages 页",
-                        kind = CouiTextKind.PreferenceTitle,
+                        kind = CouiTextKind.ItemTitle,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (totalPages > 1) {
@@ -1270,7 +1272,7 @@ private fun ReaderPages(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 24.dp),
                     ) {
-                        Text(text = CouiStrings.EmptyChapters, kind = CouiTextKind.Body)
+                        CouiBodyText(text = CouiStrings.EmptyChapters)
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
@@ -1283,7 +1285,7 @@ private fun ReaderPages(
                                         } else {
                                             chapter.title
                                         },
-                                        kind = CouiTextKind.PreferenceTitle,
+                                        kind = CouiTextKind.ItemTitle,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -1422,9 +1424,8 @@ private fun ReaderPages(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 ) {
-                    Text(
+                    CouiBodyText(
                         text = "随时追踪最新连载漫画更新，不错过每一集精彩内容",
-                        kind = CouiTextKind.Body,
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1439,7 +1440,7 @@ private fun ReaderPages(
                         // 库复选框只画框，点击语义与热区由这一行自己提供
                         Checkbox(checked = trackMuteChecked)
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text(text = "3天不要显示", kind = CouiTextKind.PreferenceTitle)
+                        Text(text = "3天不要显示", kind = CouiTextKind.ItemTitle)
                     }
                 }
             }
@@ -1709,7 +1710,7 @@ internal fun ReaderHudAction(
         Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(22.dp), tint = tint)
         Text(
             text = label,
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = tint,
             modifier = Modifier.padding(top = 2.dp),
             maxLines = 1,
@@ -1747,7 +1748,7 @@ internal fun ReaderCommentComposer(
                 .padding(vertical = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = "登录后参与评论", kind = CouiTextKind.PreferenceTitle, color = scheme.accent)
+            Text(text = "登录后参与评论", kind = CouiTextKind.ItemTitle, color = scheme.accent)
         }
         return
     }
@@ -1760,13 +1761,13 @@ internal fun ReaderCommentComposer(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         if (text.isEmpty()) {
-            Text(text = "说点什么…", kind = CouiTextKind.Body, color = scheme.onSurfaceVariant)
+            CouiBodyText(text = "说点什么…", color = scheme.onSurfaceVariant)
         }
         BasicTextField(
             value = text,
             onValueChange = onTextChange,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = rememberCouiTextStyle(CouiTextKind.Body).copy(color = scheme.onSurface),
+            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
             cursorBrush = SolidColor(scheme.accent),
         )
     }
@@ -1776,7 +1777,7 @@ internal fun ReaderCommentComposer(
     ) {
         Text(
             text = text.length.toString() + "/" + COMMENT_REPLY_MAX_LENGTH,
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = scheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
         )
@@ -1800,7 +1801,7 @@ internal fun ReaderCommentComposer(
         ) {
             Text(
                 text = if (busy) "发送中…" else "发表",
-                kind = CouiTextKind.PreferenceValue,
+                kind = CouiTextKind.ItemValue,
                 color = if (enabled) scheme.onAccent else scheme.onSurfaceVariant,
             )
         }
@@ -1814,9 +1815,8 @@ internal fun ReaderDialogHint(text: String, onClick: (() -> Unit)? = null) {
         modifier = Modifier.fillMaxWidth().height(96.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
+        CouiBodyText(
             text = text,
-            kind = CouiTextKind.Body,
             color = CouiKitTheme.colorScheme.onSurfaceVariant,
             modifier = if (onClick != null) {
                 Modifier.couiPressable(minTouchTarget = CouiMinTouchTarget) { onClick() }.padding(vertical = 8.dp)
@@ -2139,10 +2139,10 @@ private fun BoxScope.ReaderLoadFailedHint(onRetry: () -> Unit) {
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text = "图片加载失败", kind = CouiTextKind.Body, color = Color.White)
+        CouiBodyText(text = "图片加载失败", color = Color.White)
         Text(
             text = CouiStrings.Retry,
-            kind = CouiTextKind.PreferenceTitle,
+            kind = CouiTextKind.ItemTitle,
             color = CouiKitTheme.colorScheme.accent,
             modifier = Modifier
                 .padding(top = 8.dp)

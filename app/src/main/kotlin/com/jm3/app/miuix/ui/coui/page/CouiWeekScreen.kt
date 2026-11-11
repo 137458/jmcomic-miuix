@@ -389,7 +389,7 @@ private fun WeekPeriodRow(
             ) {
                 Text(
                     text = period.title,
-                    kind = CouiTextKind.PreferenceValue,
+                    kind = CouiTextKind.ItemValue,
                     color = if (active) scheme.accent else scheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

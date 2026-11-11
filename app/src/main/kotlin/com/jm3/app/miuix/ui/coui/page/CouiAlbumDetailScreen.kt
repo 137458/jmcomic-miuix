@@ -107,6 +107,9 @@ import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.ui.StringSetSaver
 import com.jm3.app.miuix.ui.albumHeroHeader
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.COUI_COMMENT_MAX_INDENT_DEPTH
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
@@ -759,7 +762,7 @@ private fun CouiCapsuleAction(
     ) {
         Text(
             text = text,
-            kind = CouiTextKind.PreferenceValue,
+            kind = CouiTextKind.ItemValue,
             color = contentColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -834,9 +837,8 @@ private fun CouiAlbumHeroCard(
                 Spacer(modifier = Modifier.width(16.dp))
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                CouiSectionTitleText(
                     text = title.ifBlank { "作品详情" },
-                    kind = CouiTextKind.SectionTitle,
                     color = scheme.onSurface,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
@@ -859,7 +861,7 @@ private fun CouiAlbumHeroCard(
                     ) {
                         Text(
                             text = authors.joinToString("、"),
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.accent,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -870,7 +872,7 @@ private fun CouiAlbumHeroCard(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = "禁漫车 #$displayId",
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -880,7 +882,7 @@ private fun CouiAlbumHeroCard(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = metrics,
-                        kind = CouiTextKind.Description,
+                        kind = CouiTextKind.GroupFooter,
                         color = scheme.onSurfaceVariant,
                         textAlign = TextAlign.Start,
                     )
@@ -910,7 +912,7 @@ private fun CouiAlbumHeroCard(
                     ) {
                         Text(
                             text = tag,
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -947,7 +949,7 @@ private fun CouiReadActionsGroup(
             title = {
                 Text(
                     text = if (resumeId != null) "继续阅读" else "开始阅读",
-                    kind = CouiTextKind.PreferenceTitle,
+                    kind = CouiTextKind.ItemTitle,
                     color = if (startPhotoId != null) scheme.accent else scheme.onSurfaceVariant,
                     maxLines = 1,
                     textAlign = TextAlign.Start,
@@ -960,7 +962,7 @@ private fun CouiReadActionsGroup(
                         resumeId != null -> "接着上次读到的一话"
                         else -> "从第 1 话开始"
                     },
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
                     textAlign = TextAlign.Start,
@@ -1029,7 +1031,7 @@ private fun CouiDescriptionGroup(
         headerActions = {
             Text(
                 text = "复制",
-                kind = CouiTextKind.Category,
+                kind = CouiTextKind.GroupFooter,
                 color = scheme.accent,
                 maxLines = 1,
                 modifier = Modifier
@@ -1040,7 +1042,7 @@ private fun CouiDescriptionGroup(
             if (text.length > COUI_DESCRIPTION_COLLAPSE_THRESHOLD) {
                 Text(
                     text = if (expanded) "收起" else "显示全部",
-                    kind = CouiTextKind.Category,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.accent,
                     maxLines = 1,
                     modifier = Modifier
@@ -1056,9 +1058,8 @@ private fun CouiDescriptionGroup(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
-            Text(
+            CouiBodyText(
                 text = text,
-                kind = CouiTextKind.Body,
                 color = scheme.onSurface,
                 maxLines = if (expanded) Int.MAX_VALUE else 4,
                 overflow = TextOverflow.Ellipsis,
@@ -1106,12 +1107,12 @@ private fun CouiInfoGroup(
             Divider()
         }
         Item(
-            title = { Text(text = "禁漫车号", kind = CouiTextKind.PreferenceTitle, textAlign = TextAlign.Start) },
+            title = { Text(text = "禁漫车号", kind = CouiTextKind.ItemTitle, textAlign = TextAlign.Start) },
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "#$displayId",
-                        kind = CouiTextKind.PreferenceValue,
+                        kind = CouiTextKind.ItemValue,
                         color = scheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1156,12 +1157,12 @@ private fun CouiInfoRow(
 ) {
     val scheme = CouiKitTheme.colorScheme
     Item(
-        title = { Text(text = title, kind = CouiTextKind.PreferenceTitle, textAlign = TextAlign.Start) },
+        title = { Text(text = title, kind = CouiTextKind.ItemTitle, textAlign = TextAlign.Start) },
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = value,
-                    kind = CouiTextKind.PreferenceValue,
+                    kind = CouiTextKind.ItemValue,
                     color = scheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -1264,7 +1265,7 @@ private fun CouiRelatedGroup(
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = item.title,
-                        kind = CouiTextKind.PreferenceSummary,
+                        kind = CouiTextKind.ItemSummary,
                         color = scheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -1273,7 +1274,7 @@ private fun CouiRelatedGroup(
                     if (subtitle.isNotBlank()) {
                         Text(
                             text = subtitle,
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -1299,11 +1300,11 @@ private fun CouiCommentComposer(
     val scheme = CouiKitTheme.colorScheme
     if (!loggedIn) {
         Item(
-            title = { Text(text = "登录后发表评论", kind = CouiTextKind.PreferenceTitle, textAlign = TextAlign.Start) },
+            title = { Text(text = "登录后发表评论", kind = CouiTextKind.ItemTitle, textAlign = TextAlign.Start) },
             summary = {
                 Text(
                     text = "登录账号即可参与讨论",
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     textAlign = TextAlign.Start,
                 )
@@ -1328,7 +1329,7 @@ private fun CouiCommentComposer(
         BasicTextField(
             value = text,
             onValueChange = onTextChange,
-            textStyle = rememberCouiTextStyle(CouiTextKind.Body).copy(color = scheme.onSurface),
+            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
             cursorBrush = SolidColor(scheme.accent),
             modifier = Modifier
                 .fillMaxWidth()
@@ -1339,9 +1340,8 @@ private fun CouiCommentComposer(
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (text.isEmpty()) {
-                        Text(
+                        CouiBodyText(
                             text = "写下你的评论（最多 $COMMENT_REPLY_MAX_LENGTH 字）",
-                            kind = CouiTextKind.Body,
                             color = scheme.onSurfaceVariant,
                             textAlign = TextAlign.Start,
                         )
@@ -1358,7 +1358,7 @@ private fun CouiCommentComposer(
         ) {
             Text(
                 text = "${text.length}/$COMMENT_REPLY_MAX_LENGTH",
-                kind = CouiTextKind.Description,
+                kind = CouiTextKind.GroupFooter,
                 color = scheme.onSurfaceVariant,
                 textAlign = TextAlign.Start,
             )
@@ -1433,7 +1433,7 @@ private fun CouiDialogRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                kind = CouiTextKind.PreferenceTitle,
+                kind = CouiTextKind.ItemTitle,
                 color = if (danger) {
                     CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive
                 } else {
@@ -1446,7 +1446,7 @@ private fun CouiDialogRow(
             if (summary != null) {
                 Text(
                     text = summary,
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
                     textAlign = TextAlign.Start,
@@ -1493,7 +1493,7 @@ private fun CouiReplyDialog(
         BasicTextField(
             value = replyText,
             onValueChange = { replyText = it },
-            textStyle = rememberCouiTextStyle(CouiTextKind.Body).copy(color = scheme.onSurface),
+            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
             cursorBrush = SolidColor(scheme.accent),
             modifier = Modifier
                 .fillMaxWidth()
@@ -1504,9 +1504,8 @@ private fun CouiReplyDialog(
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (replyText.isEmpty()) {
-                        Text(
+                        CouiBodyText(
                             text = "写下你的回复（最多 $COMMENT_REPLY_MAX_LENGTH 字）",
-                            kind = CouiTextKind.Body,
                             color = scheme.onSurfaceVariant,
                             textAlign = TextAlign.Start,
                         )
@@ -1517,7 +1516,7 @@ private fun CouiReplyDialog(
         )
         Text(
             text = "${replyText.length}/$COMMENT_REPLY_MAX_LENGTH",
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = scheme.onSurfaceVariant,
             textAlign = TextAlign.Start,
             modifier = Modifier.padding(top = 6.dp),
@@ -1542,7 +1541,7 @@ private fun CouiRepliesToggle(
     ) {
         Text(
             text = if (row.expanded) "收起回复" else "展开 ${row.hiddenCount} 条回复",
-            kind = CouiTextKind.PreferenceValue,
+            kind = CouiTextKind.ItemValue,
             color = scheme.accent,
             maxLines = 1,
             textAlign = TextAlign.Start,

@@ -43,9 +43,19 @@ class CouiNavigationBarBranchTest {
     }
 
     @Test
-    fun `偏大档悬浮即使 API 满足也自绘`() {
-        assertFalse(couiUsesLibraryNavBar(bottomBarTokens(BottomBarSize.GENEROUS, BottomBarForm.FLOATING), 34))
-        assertFalse(couiUsesLibraryNavBar(bottomBarTokens(BottomBarSize.GENEROUS, BottomBarForm.FLOATING), 36))
+    fun `非悬浮形态在全系统版本统一走 Miuix 官方底栏`() {
+        val standardDocked = bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.DOCKED)
+        assertEquals(CouiNavBarMode.MIUIX_DOCKED, couiNavBarMode(standardDocked, sdkInt = 31))
+        assertEquals(CouiNavBarMode.MIUIX_DOCKED, couiNavBarMode(standardDocked, sdkInt = 34))
+        assertEquals(CouiNavBarMode.MIUIX_DOCKED, couiNavBarMode(standardDocked, sdkInt = 36))
+    }
+
+    @Test
+    fun `悬浮形态按 API 34 分流为 COUI 原厂与旧系统降级胶囊`() {
+        val floating = bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.FLOATING)
+        assertEquals(CouiNavBarMode.LEGACY_FLOATING, couiNavBarMode(floating, sdkInt = 33))
+        assertEquals(CouiNavBarMode.LIBRARY_FLOATING, couiNavBarMode(floating, sdkInt = 34))
+        assertEquals(CouiNavBarMode.LIBRARY_FLOATING, couiNavBarMode(floating, sdkInt = 36))
     }
 
     @Test

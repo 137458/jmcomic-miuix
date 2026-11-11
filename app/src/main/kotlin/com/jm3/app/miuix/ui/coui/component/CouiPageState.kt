@@ -202,13 +202,13 @@ fun CouiPagingGroup(
     val totalPages = pageCount?.toString() ?: "?"
     Group(modifier = modifier, footer = "第 $page / $totalPages 页") {
         Item(
-            title = { Text(text = "上一页", kind = CouiTextKind.Body, textAlign = TextAlign.Start) },
+            title = { CouiBodyText(text = "上一页", textAlign = TextAlign.Start) },
             enabled = page > 1,
             onClick = { onJumpPage(page - 1) },
         )
         Divider()
         Item(
-            title = { Text(text = "下一页", kind = CouiTextKind.Body, textAlign = TextAlign.Start) },
+            title = { CouiBodyText(text = "下一页", textAlign = TextAlign.Start) },
             enabled = pageCount?.let { page < it } ?: hasMore,
             onClick = { onJumpPage(page + 1) },
         )

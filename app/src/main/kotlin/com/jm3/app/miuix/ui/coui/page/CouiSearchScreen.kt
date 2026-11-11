@@ -49,6 +49,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.asListState
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
@@ -363,9 +364,8 @@ private fun CouiSearchFilterChip(label: String, selected: Boolean, onClick: () -
             .padding(horizontal = 14.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
+        CouiBodyText(
             text = label,
-            kind = CouiTextKind.Body,
             color = if (selected) scheme.accent else scheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -394,7 +394,7 @@ private fun CouiSearchResultRow(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = result.tags.take(3).joinToString(" · "),
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

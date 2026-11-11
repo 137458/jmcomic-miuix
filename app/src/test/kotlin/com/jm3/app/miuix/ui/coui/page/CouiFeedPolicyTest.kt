@@ -136,4 +136,19 @@ class CouiFeedPolicyTest {
         assertEquals(21, displayRank(clickPaging = true, page = 2, stride = 20, index = 0))
         assertEquals(72, displayRank(clickPaging = true, page = 3, stride = 24, index = 23))
     }
+
+    @Test
+    fun `分类模式列表头项只保留筛选与可选标签导航和结果标题`() {
+        assertEquals(2, couiBrowseHeadCount(isCategoryMode = true, hasTagNav = false))
+        assertEquals(3, couiBrowseHeadCount(isCategoryMode = true, hasTagNav = true))
+        // 分类模式下周更在弹层内，不影响主列表起始下标
+        assertEquals(2, couiBrowseHeadCount(isCategoryMode = true, hasTagNav = false, hasWeeklyPaging = true))
+    }
+
+    @Test
+    fun `榜单模式列表头项包含周更区块与可选续页脚`() {
+        assertEquals(3, couiBrowseHeadCount(isCategoryMode = false, hasTagNav = false, hasWeeklyPaging = false))
+        assertEquals(4, couiBrowseHeadCount(isCategoryMode = false, hasTagNav = true, hasWeeklyPaging = false))
+        assertEquals(5, couiBrowseHeadCount(isCategoryMode = false, hasTagNav = true, hasWeeklyPaging = true))
+    }
 }

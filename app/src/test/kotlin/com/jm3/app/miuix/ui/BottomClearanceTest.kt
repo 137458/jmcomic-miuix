@@ -44,13 +44,13 @@ class BottomClearanceTest {
                 floatingActionsBottomDp = 93f,
             ),
         )
-        // 贴底标准底栏：contentPadding=56, floatingActionsBottom=77 -> 145 - 76 = 69
+        // Miuix NavigationBar 贴底底栏：height=64, contentPadding=64, floatingActionsBottom=85 -> 153 - 84 = 69
         assertEquals(
             69f,
             glassHomeExtraBottomDp(
                 hasActions = true,
-                floatingBarContentPaddingDp = 56f,
-                floatingActionsBottomDp = 77f,
+                floatingBarContentPaddingDp = 64f,
+                floatingActionsBottomDp = 85f,
             ),
         )
         assertEquals(

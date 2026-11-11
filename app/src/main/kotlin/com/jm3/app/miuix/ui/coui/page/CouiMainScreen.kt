@@ -43,6 +43,7 @@ import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.toLayoutDpInt
+import com.jm3.core.settings.UiSkin
 import com.jm3.core.session.UnreadBadge
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.WideScreenNavigation
@@ -119,6 +120,7 @@ fun CouiMainScreen(
                 explicitSize = deps.preferences.bottomBarSize,
                 explicitForm = deps.preferences.bottomBarForm,
                 widthDp = widthDp,
+                skin = UiSkin.COLOROS,
             )
         }
         val useRail = wideScreenNavigation == WideScreenNavigation.RAIL

@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,7 +89,18 @@ fun NotificationsScreen(
     var tabValue by rememberSaveable { mutableStateOf(NotificationTab.ALL.name) }
     val selectionHaptic = rememberSelectionHaptic()
     val tab = NotificationTab.entries.firstOrNull { it.name == tabValue } ?: NotificationTab.ALL
+    val tabIndex = NotificationTab.entries.indexOf(tab).coerceAtLeast(0)
     val scope = rememberCoroutineScope()
+    val listStates = remember { List(NotificationTab.entries.size) { LazyListState() } }
+    val pagerState = rememberSyncedTabPagerState(
+        selectedTab = tabIndex,
+        pageCount = NotificationTab.entries.size,
+        onTabSelected = { next ->
+            selectionHaptic()
+            tabValue = NotificationTab.entries[next].name
+        },
+        useMiuixSpring = true,
+    )
 
     fun syncUnread(items: List<NotificationItem>) {
         unreadBadge.sync(items.count { !it.read })
@@ -155,7 +168,6 @@ fun NotificationsScreen(
     LaunchedEffect(Unit) { load() }
 
     val items = page?.items.orEmpty()
-    val visible = items.filter { tab.type == null || it.type == tab.type }
     val unread = items.count { !it.read }
     val tabLabels = NotificationTab.entries.map { entry ->
         val count = items.count { !it.read && (entry.type == null || it.type == entry.type) }
@@ -175,7 +187,7 @@ fun NotificationsScreen(
                 // 分类页签固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切换
                 GlassChipRow(
                     tabs = tabLabels,
-                    selectedTabIndex = NotificationTab.entries.indexOf(tab),
+                    selectedTabIndex = tabIndex,
                     onTabSelected = {
                         selectionHaptic()
                         tabValue = NotificationTab.entries[it].name
@@ -194,9 +206,14 @@ fun NotificationsScreen(
                 modifier = Modifier.padding(innerPadding),
             )
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            else -> Column(modifier = Modifier.fillMaxSize()) {
+            else -> HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+            ) { pageIndex ->
+                val pageTab = NotificationTab.entries[pageIndex]
+                val pageVisible = items.filter { pageTab.type == null || it.type == pageTab.type }
                 GlassPullToRefresh(
-                    isRefreshing = refreshing,
+                    isRefreshing = refreshing && tabIndex == pageIndex,
                     onRefresh = {
                         refreshing = true
                         load(showLoading = false)
@@ -206,16 +223,17 @@ fun NotificationsScreen(
                     contentPadding = innerPadding,
                 ) {
                     LazyColumn(
+                        state = listStates[pageIndex],
                         modifier = Modifier.fillMaxSize().readableWidth(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                         contentPadding = innerPadding,
                     ) {
-                        if (visible.isEmpty()) {
+                        if (pageVisible.isEmpty()) {
                             item(key = "empty") {
                                 EmptyState(
                                     title = if (items.isEmpty()) "暂无消息" else "暂无此类消息",
                                     // 站内页签下不存在「订阅作品更新」，提示语要按当前页签区分
-                                    hint = when (tab) {
+                                    hint = when (pageTab) {
                                         NotificationTab.NOTICE -> "暂无站内消息"
                                         NotificationTab.FOLLOW -> "订阅作品更新后会在这里收到通知"
                                         NotificationTab.ALL -> "订阅更新与站内消息都会出现在这里"
@@ -223,7 +241,7 @@ fun NotificationsScreen(
                                 )
                             }
                         }
-                        items(visible, key = { it.id }) { item ->
+                        items(pageVisible, key = { it.id }) { item ->
                             NotificationCard(
                                 item = item,
                                 expanded = item.id in expandedIds,

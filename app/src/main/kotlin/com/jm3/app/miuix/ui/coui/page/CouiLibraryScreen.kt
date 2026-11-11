@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -54,6 +55,9 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
+import com.jm3.app.miuix.ui.coui.component.rememberCouiActionTextStyle
+import com.jm3.app.miuix.ui.coui.component.CouiCustomStyledText
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
@@ -63,8 +67,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
+import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
@@ -76,6 +81,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.libraryPageCount
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
 import com.jm3.core.model.CreatorPage
@@ -113,7 +119,8 @@ fun CouiLibraryScreen(
 ) {
     CouiTheme {
         val scope = rememberCoroutineScope()
-        val gridState = rememberLazyGridState()
+        val creatorGridState = rememberLazyGridState()
+        val workGridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
         val paginationMode = deps.preferences.paginationMode
 
@@ -126,28 +133,32 @@ fun CouiLibraryScreen(
         var creatorFeed by remember { mutableStateOf(PagedFeed<CreatorMeta>()) }
         var workFeed by remember { mutableStateOf(PagedFeed<CreatorWorkMeta>()) }
         var filters by rememberSaveable { mutableStateOf(CreatorFilters()) }
-        var loading by remember { mutableStateOf(true) }
+        var loadingTab by remember { mutableStateOf<Int?>(0) }
+        var creatorLoadedOnce by remember { mutableStateOf(false) }
+        var workLoadedOnce by remember { mutableStateOf(false) }
         var refreshing by remember { mutableStateOf(false) }
-        var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
+        var creatorFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
+        var workFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
         // 切 Tab/筛选/搜索时旧响应不能覆盖新结果
         var loadToken by remember { mutableIntStateOf(0) }
         var picker by remember { mutableStateOf<CouiLibraryPicker?>(null) }
 
-        fun applyFailure(outcome: SessionOutcome<*>, hasContent: Boolean) {
+        fun applyFailure(tabIndex: Int, outcome: SessionOutcome<*>, hasContent: Boolean) {
             val plan = planLoad(outcome, hasContent = hasContent, failureMessage = CouiStrings.LoadFailed)
             if (plan.keepContent) {
                 scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
+            } else if (tabIndex == 0) {
+                creatorFailure = plan
             } else {
-                failure = plan
+                workFailure = plan
             }
         }
 
-        fun load(targetPage: Int, append: Boolean) {
-            val tabIndex = tab
+        fun load(targetPage: Int, append: Boolean, targetTab: Int = tab) {
             val keyword = appliedQuery
             // 在不在拉、还能不能拉都交给 feed：重复触底不会再并发打同一页
-            val creatorRequest = if (append && tabIndex == 0) creatorFeed.beginLoadMore() else null
-            val workRequest = if (append && tabIndex != 0) workFeed.beginLoadMore() else null
+            val creatorRequest = if (append && targetTab == 0) creatorFeed.beginLoadMore() else null
+            val workRequest = if (append && targetTab != 0) workFeed.beginLoadMore() else null
             // 拦截必须在占用 token 之前：被拦下的重复触底若先自增 token，在途请求的结果会被丢弃，
             // feed 就永远停在 loadingMore，页脚一直转圈且再也拉不动。
             if (creatorRequest === creatorFeed || workRequest === workFeed) return
@@ -155,23 +166,23 @@ fun CouiLibraryScreen(
             val token = loadToken
             if (creatorRequest != null) creatorFeed = creatorRequest
             if (workRequest != null) workFeed = workRequest
-            if (!append) loading = true
-            failure = null
-            val hasContent = append || if (tabIndex == 0) {
+            if (!append) loadingTab = targetTab
+            if (targetTab == 0) creatorFailure = null else workFailure = null
+            val hasContent = append || if (targetTab == 0) {
                 creatorFeed.items.isNotEmpty()
             } else {
                 workFeed.items.isNotEmpty()
             }
             scope.launch {
                 val outcome = deps.authCall.call {
-                    if (tabIndex == 0) {
+                    if (targetTab == 0) {
                         deps.gateway.creatorAuthors(targetPage, keyword)
                     } else {
                         deps.gateway.creatorWorks(targetPage, keyword, lang, source)
                     }
                 }
                 if (token != loadToken) return@launch
-                loading = false
+                loadingTab = null
                 refreshing = false
                 when (outcome) {
                     is SessionOutcome.Ok -> when (val value = outcome.value) {
@@ -179,6 +190,7 @@ fun CouiLibraryScreen(
                             val slice = couiLibrarySlice(value.items, value.total, targetPage)
                             creatorFeed = creatorRequest?.append(slice) { it.id }
                                 ?: PagedFeed<CreatorMeta>().replace(slice) { it.id }
+                            creatorLoadedOnce = true
                         }
 
                         is CreatorWorkPage -> {
@@ -186,15 +198,16 @@ fun CouiLibraryScreen(
                             val slice = couiLibrarySlice(value.items, value.total, targetPage)
                             workFeed = workRequest?.append(slice) { it.id }
                                 ?: PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
+                            workLoadedOnce = true
                         }
 
                         else -> Unit
                     }
 
-                    SessionOutcome.Expired -> applyFailure(outcome, hasContent)
+                    SessionOutcome.Expired -> applyFailure(targetTab, outcome, hasContent)
 
                     is SessionOutcome.Failed -> {
-                        applyFailure(outcome, hasContent)
+                        applyFailure(targetTab, outcome, hasContent)
                         // 附加页失败只影响页脚，重试入口交给页脚的「重新加载」
                         creatorRequest?.let { creatorFeed = it.failLoadMore() }
                         workRequest?.let { workFeed = it.failLoadMore() }
@@ -203,21 +216,41 @@ fun CouiLibraryScreen(
             }
         }
 
-        LaunchedEffect(tab, appliedQuery, lang, source) {
-            load(1, append = false)
+        LaunchedEffect(appliedQuery) {
+            creatorLoadedOnce = false
+            workLoadedOnce = false
         }
-        PaginationModeReloadEffect(paginationMode) { target -> load(target, append = false) }
+        LaunchedEffect(lang, source) {
+            workLoadedOnce = false
+        }
+        LaunchedEffect(tab, appliedQuery, lang, source) {
+            load(1, append = false, targetTab = tab)
+        }
+        PaginationModeReloadEffect(paginationMode) { target -> load(target, append = false, targetTab = tab) }
 
-        val activeFeed: PagedFeed<*> = if (tab == 0) creatorFeed else workFeed
-        val itemCount = activeFeed.items.size
-        val total = activeFeed.total ?: 0
-        val totalPages = libraryPageCount(total)
         val scheme = CouiKitTheme.colorScheme
+        val pagerState = rememberSyncedTabPagerState(
+            selectedTab = tab,
+            pageCount = COUI_LIBRARY_TABS.size,
+            onTabSelected = { index -> if (index != tab) tab = index },
+        )
+        val scrollBehavior = rememberCouiScreenScrollBehavior {
+            val activeState = if (tab == 0) creatorGridState else workGridState
+            activeState.canScrollForward || activeState.canScrollBackward
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiScreenScaffold(
                 title = "书库",
                 onBack = onBack,
+                scrollBehavior = scrollBehavior,
+                topBarBottom = {
+                    CouiTopBarSegmentedTabs(
+                        items = COUI_LIBRARY_TABS,
+                        selectedIndex = tab,
+                        onSelect = { index -> if (index != tab) tab = index },
+                    )
+                },
                 actions = {
                     if (appliedQuery.isNotBlank() || query.isNotBlank()) {
                         CouiTopBarAction(
@@ -242,161 +275,163 @@ fun CouiLibraryScreen(
                     )
                 },
             ) { innerPadding ->
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(columns),
-                    state = gridState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .readableWidth()
-                        .consumeWindowInsets(innerPadding),
-                    contentPadding = innerPadding,
-                    horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                    verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                    overscrollEffect = rememberCouiOverscrollEffect(),
-                ) {
-                    when {
-                        loading -> item(key = "coui-library-loading", span = { GridItemSpan(maxLineSpan) }) {
-                            CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 24.dp))
-                        }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    val pageFeed: PagedFeed<*> = if (page == 0) creatorFeed else workFeed
+                    val pageItemCount = pageFeed.items.size
+                    val pageTotal = pageFeed.total ?: 0
+                    val pageTotalPages = libraryPageCount(pageTotal)
+                    val pageFailure = if (page == 0) creatorFailure else workFailure
+                    val pageLoadedOnce = if (page == 0) creatorLoadedOnce else workLoadedOnce
+                    val pageLoading = loadingTab == page || (!pageLoadedOnce && pageFailure == null)
 
-                        failure != null -> item(key = "coui-library-failed", span = { GridItemSpan(maxLineSpan) }) {
-                            val planned = failure
-                            CouiScreenFailureGroup(
-                                message = planned?.message,
-                                expired = planned?.phase == ScreenLoadPhase.Expired,
-                                onRetry = { load(activeFeed.page.coerceAtLeast(1), append = false) },
-                                onOpenLogin = onOpenLogin,
-                                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                            )
-                        }
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
+                        state = if (page == 0) creatorGridState else workGridState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .readableWidth()
+                            .consumeWindowInsets(innerPadding),
+                        contentPadding = innerPadding,
+                        horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+                        verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+                        overscrollEffect = rememberCouiOverscrollEffect(),
+                    ) {
+                        when {
+                            pageLoading -> item(key = "coui-library-loading", span = { GridItemSpan(maxLineSpan) }) {
+                                CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 24.dp))
+                            }
 
-                        else -> {
-                            item(key = "coui-library-tabs", span = { GridItemSpan(maxLineSpan) }) {
-                                CouiSegmentedCapsules(
-                                    items = COUI_LIBRARY_TABS,
-                                    selectedIndex = tab,
-                                    onSelect = { index -> if (index != tab) tab = index },
-                                    modifier = Modifier
-                                        .padding(horizontal = CouiPageDefaults.horizontalMargin)
-                                        .padding(top = 8.dp),
+                            pageFailure != null -> item(key = "coui-library-failed", span = { GridItemSpan(maxLineSpan) }) {
+                                CouiScreenFailureGroup(
+                                    message = pageFailure.message,
+                                    expired = pageFailure.phase == ScreenLoadPhase.Expired,
+                                    onRetry = { load(pageFeed.page.coerceAtLeast(1), append = false, targetTab = page) },
+                                    onOpenLogin = onOpenLogin,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                                 )
                             }
-                            item(key = "coui-library-search", span = { GridItemSpan(maxLineSpan) }) {
-                                CouiLibrarySearchField(
-                                    value = query,
-                                    onValueChange = { query = it },
-                                    onSubmit = { appliedQuery = query.trim() },
-                                    placeholder = if (tab == 0) "搜索创作者" else "搜索作品",
-                                )
-                            }
-                            if (tab == 1 && !filters.isEmpty) {
-                                item(key = "coui-library-filters", span = { GridItemSpan(maxLineSpan) }) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 2.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(
-                                            CouiWorkCardTokens.GridSpacing,
-                                        ),
-                                    ) {
-                                        if (filters.languages.isNotEmpty()) {
-                                            CouiLibraryFilterChip(
-                                                label = "语言：" + lang.ifBlank { "全部" },
-                                                onClick = { picker = CouiLibraryPicker.Languages },
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                        }
-                                        if (filters.sources.isNotEmpty()) {
-                                            CouiLibraryFilterChip(
-                                                label = "来源：" + source.ifBlank { "全部" },
-                                                onClick = { picker = CouiLibraryPicker.Sources },
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            if (itemCount == 0) {
-                                item(key = "coui-library-empty", span = { GridItemSpan(maxLineSpan) }) {
-                                    CouiEmptyGroup(
-                                        text = if (appliedQuery.isBlank()) {
-                                            "换个筛选条件再试试"
-                                        } else {
-                                            "没有找到相关内容"
-                                        },
-                                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+
+                            else -> {
+                                item(key = "coui-library-search", span = { GridItemSpan(maxLineSpan) }) {
+                                    CouiLibrarySearchField(
+                                        value = query,
+                                        onValueChange = { query = it },
+                                        onSubmit = { appliedQuery = query.trim() },
+                                        placeholder = if (page == 0) "搜索创作者" else "搜索作品",
                                     )
                                 }
-                            } else {
-                                item(key = "coui-library-total", span = { GridItemSpan(maxLineSpan) }) {
-                                    if (total > 0) {
-                                        Text(
-                                            text = "共 " + total + " 项",
-                                            kind = CouiTextKind.Description,
-                                            color = scheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            textAlign = TextAlign.Start,
+                                if (page == 1 && !filters.isEmpty) {
+                                    item(key = "coui-library-filters", span = { GridItemSpan(maxLineSpan) }) {
+                                        Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(horizontal = CouiPageDefaults.horizontalMargin)
-                                                .padding(top = 4.dp),
-                                        )
+                                                .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 2.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(
+                                                CouiWorkCardTokens.GridSpacing,
+                                            ),
+                                        ) {
+                                            if (filters.languages.isNotEmpty()) {
+                                                CouiLibraryFilterChip(
+                                                    label = "语言：" + lang.ifBlank { "全部" },
+                                                    onClick = { picker = CouiLibraryPicker.Languages },
+                                                    modifier = Modifier.weight(1f),
+                                                )
+                                            }
+                                            if (filters.sources.isNotEmpty()) {
+                                                CouiLibraryFilterChip(
+                                                    label = "来源：" + source.ifBlank { "全部" },
+                                                    onClick = { picker = CouiLibraryPicker.Sources },
+                                                    modifier = Modifier.weight(1f),
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                                if (tab == 0) {
-                                    items(items = creatorFeed.items, key = { "coui-creator-" + it.id }) { creator ->
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            contentAlignment = Alignment.TopCenter,
-                                        ) {
-                                            CouiWorkGridCard(
-                                                title = creator.name.ifBlank { creator.id },
-                                                coverUrl = creator.avatarUrl ?: creator.backgroundUrl,
-                                                onClick = { onOpenCreator(creator.id) },
-                                                coverContentDescription = creator.name,
-                                                subtitle = creator.updateText?.takeIf { it.isNotBlank() }?.let {
-                                                    "更新于 " + it
-                                                },
-                                            )
-                                        }
+                                if (pageItemCount == 0) {
+                                    item(key = "coui-library-empty", span = { GridItemSpan(maxLineSpan) }) {
+                                        CouiEmptyGroup(
+                                            text = if (appliedQuery.isBlank()) {
+                                                "换个筛选条件再试试"
+                                            } else {
+                                                "没有找到相关内容"
+                                            },
+                                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                                        )
                                     }
                                 } else {
-                                    items(items = workFeed.items, key = { "coui-work-" + it.id }) { work ->
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            contentAlignment = Alignment.TopCenter,
-                                        ) {
-                                            CouiWorkGridCard(
-                                                title = work.title.ifBlank { "无题" },
-                                                coverUrl = work.coverUrl,
-                                                onClick = { onOpenWork(work.id) },
-                                                coverContentDescription = work.title,
-                                                subtitle = work.authorName?.takeIf { it.isNotBlank() },
-                                                category = work.platform?.takeIf { it.isNotBlank() },
-                                                footer = {
-                                                    CouiLibraryWorkDate(workDate = work.workDate)
-                                                },
+                                    item(key = "coui-library-total", span = { GridItemSpan(maxLineSpan) }) {
+                                        if (pageTotal > 0) {
+                                            Text(
+                                                text = "共 " + pageTotal + " 项",
+                                                kind = CouiTextKind.GroupFooter,
+                                                color = scheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                textAlign = TextAlign.Start,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                                    .padding(top = 4.dp),
                                             )
                                         }
                                     }
-                                }
-                                item(key = "coui-library-footer", span = { GridItemSpan(maxLineSpan) }) {
-                                    if (paginationMode == PaginationMode.CLICK) {
-                                        CouiPagingGroup(
-                                            page = activeFeed.page,
-                                            pageCount = totalPages,
-                                            hasMore = activeFeed.hasMore,
-                                            onJumpPage = { target -> load(target, append = false) },
-                                        )
+                                    if (page == 0) {
+                                        items(items = creatorFeed.items, key = { "coui-creator-" + it.id }) { creator ->
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                contentAlignment = Alignment.TopCenter,
+                                            ) {
+                                                CouiWorkGridCard(
+                                                    title = creator.name.ifBlank { creator.id },
+                                                    coverUrl = creator.avatarUrl ?: creator.backgroundUrl,
+                                                    onClick = { onOpenCreator(creator.id) },
+                                                    coverContentDescription = creator.name,
+                                                    subtitle = creator.updateText?.takeIf { it.isNotBlank() }?.let {
+                                                        "更新于 " + it
+                                                    },
+                                                )
+                                            }
+                                        }
                                     } else {
-                                        CouiAutoLoadMoreEffect(
-                                            feed = activeFeed,
-                                            onLoadMore = { load(activeFeed.page + 1, append = true) },
-                                        )
-                                        CouiLoadMoreFooter(
-                                            feed = activeFeed,
-                                            onRetry = { load(activeFeed.page + 1, append = true) },
-                                        )
+                                        items(items = workFeed.items, key = { "coui-work-" + it.id }) { work ->
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                contentAlignment = Alignment.TopCenter,
+                                            ) {
+                                                CouiWorkGridCard(
+                                                    title = work.title.ifBlank { "无题" },
+                                                    coverUrl = work.coverUrl,
+                                                    onClick = { onOpenWork(work.id) },
+                                                    coverContentDescription = work.title,
+                                                    subtitle = work.authorName?.takeIf { it.isNotBlank() },
+                                                    category = work.platform?.takeIf { it.isNotBlank() },
+                                                    footer = {
+                                                        CouiLibraryWorkDate(workDate = work.workDate)
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    }
+                                    item(key = "coui-library-footer", span = { GridItemSpan(maxLineSpan) }) {
+                                        if (paginationMode == PaginationMode.CLICK) {
+                                            CouiPagingGroup(
+                                                page = pageFeed.page,
+                                                pageCount = pageTotalPages,
+                                                hasMore = pageFeed.hasMore,
+                                                onJumpPage = { target -> load(target, append = false, targetTab = page) },
+                                            )
+                                        } else {
+                                            CouiAutoLoadMoreEffect(
+                                                feed = pageFeed,
+                                                onLoadMore = { load(pageFeed.page + 1, append = true, targetTab = page) },
+                                            )
+                                            CouiLoadMoreFooter(
+                                                feed = pageFeed,
+                                                onRetry = { load(pageFeed.page + 1, append = true, targetTab = page) },
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -454,7 +489,7 @@ private fun ColumnScope.CouiLibraryWorkDate(workDate: String?) {
     val date = workDate?.takeIf { it.isNotBlank() } ?: return
     Text(
         text = date,
-        kind = CouiTextKind.Description,
+        kind = CouiTextKind.GroupFooter,
         color = CouiKitTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
         textAlign = TextAlign.Start,
@@ -484,7 +519,7 @@ private fun CouiLibraryFilterChip(
     ) {
         Text(
             text = label,
-            kind = CouiTextKind.PreferenceValue,
+            kind = CouiTextKind.ItemValue,
             color = scheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -501,9 +536,8 @@ private fun CouiLibraryPickerRow(
     onClick: () -> Unit,
 ) {
     val scheme = CouiKitTheme.colorScheme
-    Text(
+    CouiBodyText(
         text = label,
-        kind = CouiTextKind.Body,
         color = if (selected) scheme.accent else scheme.onSurface,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -561,10 +595,11 @@ private fun CouiLibrarySearchField(
             )
         }
         if (value.isNotEmpty()) {
-            Text(
+            CouiCustomStyledText(
                 text = "搜索",
-                kind = CouiTextKind.SearchCancel,
+                style = rememberCouiActionTextStyle(),
                 color = scheme.accent,
+                textAlign = TextAlign.Center,
                 maxLines = 1,
                 modifier = Modifier
                     .clip(CouiCapsuleShape)

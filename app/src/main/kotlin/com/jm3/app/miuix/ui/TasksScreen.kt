@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -24,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -100,8 +103,12 @@ fun TasksScreen(
     val filters = TaskFilter.entries
     var typeIndex by rememberSaveable { mutableIntStateOf(0) }
     var filterIndex by rememberSaveable { mutableIntStateOf(0) }
-    var state by remember { mutableStateOf<TasksUiState>(TasksUiState.Loading) }
-    var refreshing by remember { mutableStateOf(false) }
+    val clampedTypeIndex = typeIndex.coerceIn(0, types.lastIndex)
+    val clampedFilterIndex = filterIndex.coerceIn(0, filters.lastIndex)
+    val states = remember { mutableStateMapOf<Int, TasksUiState>() }
+    val gridStates = remember { List(types.size) { LazyGridState() } }
+    var lastFilterIndex by remember { mutableIntStateOf(clampedFilterIndex) }
+    var refreshingTab by remember { mutableStateOf<Int?>(null) }
     // 佩戴状态以本地覆盖优先：切换成功后服务端已更新，但账号缓存不会立刻刷新
     var equippedTitleOverride by remember { mutableStateOf<String?>(null) }
     var equippedBadgeId by remember { mutableStateOf<String?>(null) }
@@ -109,9 +116,15 @@ fun TasksScreen(
     val selectionHaptic = rememberSelectionHaptic()
     val scope = rememberCoroutineScope()
     val user by deps.account.user.collectAsState()
-
-    val type = types[typeIndex]
-    val filter = filters[filterIndex]
+    val pagerState = rememberSyncedTabPagerState(
+        selectedTab = clampedTypeIndex,
+        pageCount = types.size,
+        onTabSelected = { next ->
+            selectionHaptic()
+            typeIndex = next
+        },
+        useMiuixSpring = true,
+    )
 
     // 换账号后旧账号的佩戴覆盖不能留在界面上
     LaunchedEffect(user?.uid) {
@@ -150,33 +163,34 @@ fun TasksScreen(
         }
     }
 
-    // 快速切换页签时旧响应不能覆盖新条件的结果，慢网下否则会把 A 类型的结果画在 B 类型的格子位置
-    var requestToken by remember { mutableIntStateOf(0) }
+    // 快速切换筛选时旧响应不能覆盖新条件的结果，慢网下否则会把旧条件的结果画在当前格子位置
+    val requestTokens = remember { mutableStateMapOf<Int, Int>() }
 
     /** 失效与失败共用一个落点：已有成就格就保留，只弹提示；否则整屏化，失效换成「去登录」。 */
-    fun applyFailure(outcome: SessionOutcome<*>) {
+    fun applyFailure(targetTypeIdx: Int, outcome: SessionOutcome<*>) {
         val plan = planLoad(
             outcome = outcome,
-            hasContent = state is TasksUiState.Loaded,
+            hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
             failureMessage = "成就列表加载失败",
         )
         if (plan.keepContent) {
             scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
         } else {
-            state = TasksUiState.Failed(
+            states[targetTypeIdx] = TasksUiState.Failed(
                 message = plan.message.orEmpty(),
                 sessionExpired = plan.phase == ScreenLoadPhase.Expired,
             )
         }
     }
 
-    fun load(showLoading: Boolean = true) {
-        if (showLoading) state = TasksUiState.Loading
-        requestToken++
-        val token = requestToken
-        // 请求发出时定住筛选条件：响应回来时页签可能已经切走
-        val requestType = type
-        val requestFilter = filter
+    fun load(targetTypeIdx: Int = clampedTypeIndex, showLoading: Boolean = true) {
+        if (showLoading) states[targetTypeIdx] = TasksUiState.Loading
+        val token = (requestTokens[targetTypeIdx] ?: 0) + 1
+        requestTokens[targetTypeIdx] = token
+        // 请求发出时定住筛选条件：响应回来时筛选可能已经切走
+        val requestType = types[targetTypeIdx]
+        val requestFilterIdx = clampedFilterIndex
+        val requestFilter = filters[requestFilterIdx]
         scope.launch {
             val outcome = deps.authCall.call {
                 // 勋章图与 API 同域；封面域名未就绪时退回当前 API 域名，仍为空才不展示图片
@@ -185,20 +199,30 @@ fun TasksScreen(
                     .ifBlank { runCatching { deps.gateway.usedDomain() }.getOrNull().orEmpty() }
                 TasksUiState.Loaded(deps.gateway.tasks(requestType, requestFilter), host)
             }
-            // 令牌已被更新的请求替换：这次响应属于旧条件，整体丢弃（含刷新态复位）
-            if (token != requestToken) return@launch
-            refreshing = false
+            if (refreshingTab == targetTypeIdx) refreshingTab = null
+            // 令牌或筛选已被更新的请求替换：这次响应属于旧条件，整体丢弃
+            if (requestTokens[targetTypeIdx] != token || clampedFilterIndex != requestFilterIdx) return@launch
             when (outcome) {
-                is SessionOutcome.Ok -> state = outcome.value
+                is SessionOutcome.Ok -> states[targetTypeIdx] = outcome.value
 
-                SessionOutcome.Expired -> applyFailure(outcome)
+                SessionOutcome.Expired -> applyFailure(targetTypeIdx, outcome)
 
-                is SessionOutcome.Failed -> applyFailure(outcome)
+                is SessionOutcome.Failed -> applyFailure(targetTypeIdx, outcome)
             }
         }
     }
 
-    LaunchedEffect(typeIndex, filterIndex) { load() }
+    LaunchedEffect(clampedTypeIndex, clampedFilterIndex) {
+        val filterChanged = lastFilterIndex != clampedFilterIndex
+        if (filterChanged) {
+            lastFilterIndex = clampedFilterIndex
+            states.clear()
+        }
+        if (filterChanged || states[clampedTypeIndex] == null) {
+            gridStates[clampedTypeIndex].requestScrollToItem(0)
+            load(targetTypeIdx = clampedTypeIndex, showLoading = true)
+        }
+    }
 
     GlassScaffold(
         topBar = {
@@ -212,7 +236,7 @@ fun TasksScreen(
                 // 两组筛选页签固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切换
                 GlassChipRow(
                     tabs = types.map { it.label },
-                    selectedTabIndex = typeIndex,
+                    selectedTabIndex = clampedTypeIndex,
                     onTabSelected = {
                         selectionHaptic()
                         typeIndex = it
@@ -221,7 +245,7 @@ fun TasksScreen(
                 )
                 GlassChipRow(
                     tabs = filters.map { it.label },
-                    selectedTabIndex = filterIndex,
+                    selectedTabIndex = clampedFilterIndex,
                     onTabSelected = {
                         selectionHaptic()
                         filterIndex = it
@@ -232,36 +256,44 @@ fun TasksScreen(
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Column(modifier = Modifier.fillMaxSize().readableWidth()) {
-            when (val s = state) {
-                TasksUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-                is TasksUiState.Failed -> if (s.sessionExpired) {
-                    LoginExpiredScreen(
-                        onOpenLogin = onOpenLogin,
-                        modifier = Modifier.padding(innerPadding),
-                    )
-                } else {
-                    ErrorScreen(
-                        message = s.message,
-                        onRetry = { load() },
-                        modifier = Modifier.padding(innerPadding),
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+        ) { pageIdx ->
+            val pageType = types[pageIdx]
+            val pageState = states[pageIdx] ?: TasksUiState.Loading
+            Column(modifier = Modifier.fillMaxSize().readableWidth()) {
+                when (pageState) {
+                    TasksUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+                    is TasksUiState.Failed -> if (pageState.sessionExpired) {
+                        LoginExpiredScreen(
+                            onOpenLogin = onOpenLogin,
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                    } else {
+                        ErrorScreen(
+                            message = pageState.message,
+                            onRetry = { load(targetTypeIdx = pageIdx) },
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                    }
+                    is TasksUiState.Loaded -> TaskGrid(
+                        type = pageType,
+                        page = pageState.page,
+                        imageHost = pageState.imageHost,
+                        gridState = gridStates[pageIdx],
+                        equippedTitle = equippedTitleOverride ?: user?.levelName,
+                        equippedBadgeId = equippedBadgeId,
+                        claimingId = claimingId,
+                        contentPadding = innerPadding,
+                        refreshing = refreshingTab == pageIdx,
+                        onRefresh = {
+                            refreshingTab = pageIdx
+                            load(targetTypeIdx = pageIdx, showLoading = false)
+                        },
+                        onClaim = { item -> claim(pageType, item) },
                     )
                 }
-                is TasksUiState.Loaded -> TaskGrid(
-                    type = type,
-                    page = s.page,
-                    imageHost = s.imageHost,
-                    equippedTitle = equippedTitleOverride ?: user?.levelName,
-                    equippedBadgeId = equippedBadgeId,
-                    claimingId = claimingId,
-                    contentPadding = innerPadding,
-                    refreshing = refreshing,
-                    onRefresh = {
-                        refreshing = true
-                        load(showLoading = false)
-                    },
-                    onClaim = { item -> claim(type, item) },
-                )
             }
         }
     }
@@ -272,6 +304,7 @@ private fun TaskGrid(
     type: TaskType,
     page: TaskPage,
     imageHost: String,
+    gridState: LazyGridState,
     equippedTitle: String?,
     equippedBadgeId: String?,
     claimingId: String?,
@@ -291,6 +324,7 @@ private fun TaskGrid(
         LazyVerticalGrid(
             // 自适应列宽：窄屏自动降到 3 列，避免单格被压到放不下勋章图
             columns = GridCells.Adaptive(minSize = TaskGridMinCellWidth),
+            state = gridState,
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
             contentPadding = contentPadding,

@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui.skin
 
+import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.UiSkin
 import kotlin.test.Test
 import top.yukonga.miuix.kmp.nav.transition.NavMotion
@@ -59,5 +60,35 @@ class SkinPoliciesTest {
         assertTrue(color.sheetCorner.value != hyper.sheetCorner.value)
         assertTrue(color.dialogCorner != null)
         assertTrue(color.dialogCorner!!.value != hyper.cardCorner.value)
+    }
+
+    @Test
+    fun hyperOsSupportsBottomBarSizeSettingAndKeepsRequestedSize() {
+        assertTrue(BottomBarSizePolicy.supports(UiSkin.HYPEROS))
+        assertEquals(
+            BottomBarSize.GENEROUS,
+            BottomBarSizePolicy.effective(UiSkin.HYPEROS, BottomBarSize.GENEROUS, widthDp = 400),
+        )
+        assertEquals(
+            BottomBarSize.STANDARD,
+            BottomBarSizePolicy.effective(UiSkin.HYPEROS, null, widthDp = 400),
+        )
+        assertEquals(
+            BottomBarSize.GENEROUS,
+            BottomBarSizePolicy.effective(UiSkin.HYPEROS, null, widthDp = 800),
+        )
+    }
+
+    @Test
+    fun colorOsDisablesBottomBarSizeSettingAndForcesStandard() {
+        assertFalse(BottomBarSizePolicy.supports(UiSkin.COLOROS))
+        assertEquals(
+            BottomBarSize.STANDARD,
+            BottomBarSizePolicy.effective(UiSkin.COLOROS, BottomBarSize.GENEROUS, widthDp = 400),
+        )
+        assertEquals(
+            BottomBarSize.STANDARD,
+            BottomBarSizePolicy.effective(UiSkin.COLOROS, null, widthDp = 800),
+        )
     }
 }

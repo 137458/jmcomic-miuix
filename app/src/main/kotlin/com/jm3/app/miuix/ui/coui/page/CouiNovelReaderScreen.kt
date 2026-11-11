@@ -59,6 +59,9 @@ import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.novelActionNotice
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
@@ -276,16 +279,15 @@ fun CouiNovelReaderScreen(
                                     bottom = bottomInset,
                                 ),
                         ) {
-                            Text(
+                            CouiSectionTitleText(
                                 text = body.title,
-                                kind = CouiTextKind.SectionTitle,
                                 textAlign = TextAlign.Start,
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             // 正文要跟字号设置走，文本件按 kind 固定字号，这里用基础文本配主题行高
                             BasicText(
                                 text = body.contentText,
-                                style = rememberCouiTextStyle(CouiTextKind.Body).copy(
+                                style = rememberCouiBodyTextStyle().copy(
                                     color = scheme.onSurface,
                                     fontSize = fontSize.sp,
                                     lineHeight = (fontSize * 1.75).sp,
@@ -317,7 +319,7 @@ fun CouiNovelReaderScreen(
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
                             Text(
                                 text = chapter?.title ?: "阅读",
-                                kind = CouiTextKind.Toolbar,
+                                kind = CouiTextKind.TopBar,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -325,7 +327,7 @@ fun CouiNovelReaderScreen(
                             if (novelName.isNotBlank()) {
                                 Text(
                                     text = novelName,
-                                    kind = CouiTextKind.Description,
+                                    kind = CouiTextKind.GroupFooter,
                                     color = scheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -334,7 +336,7 @@ fun CouiNovelReaderScreen(
                         }
                         Text(
                             text = if (lang == "tw") "繁" else "简",
-                            kind = CouiTextKind.PreferenceValue,
+                            kind = CouiTextKind.ItemValue,
                             color = scheme.accent,
                             modifier = Modifier
                                 // 所在 HUD 面板本身已有凝光，这里不再叠第二层
@@ -416,7 +418,7 @@ fun CouiNovelReaderScreen(
                 ) {
                     Text(
                         text = "当前字号 " + fontSize + "sp",
-                        kind = CouiTextKind.PreferenceTitle,
+                        kind = CouiTextKind.ItemTitle,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     // 字号是离散档位，滚轮比滑杆更容易一档一档停准；不环回，避免从最大档直接跳回最小档
@@ -504,7 +506,7 @@ private fun NovelFontStep(
     ) {
         Text(
             text = label,
-            kind = CouiTextKind.PreferenceTitle,
+            kind = CouiTextKind.ItemTitle,
             color = if (enabled) scheme.accent else scheme.onSurfaceVariant,
         )
     }
@@ -674,9 +676,8 @@ private fun NovelCommentsPanel(
                     feed.hasMore -> Group {
                         Item(
                             title = {
-                                Text(
+                                CouiBodyText(
                                     text = "加载更多",
-                                    kind = CouiTextKind.Body,
                                     textAlign = TextAlign.Start,
                                 )
                             },

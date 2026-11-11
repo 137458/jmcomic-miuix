@@ -89,6 +89,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.itos.coui.backdrop.CouiBackdrop
+import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
@@ -108,6 +109,7 @@ import com.itos.coui.motion.couiPressMotion
 import com.itos.coui.motion.rememberCouiPressMotion
 import com.itos.coui.navigation.CouiNavigationItem
 import com.itos.coui.navigation.NavigationBar
+import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
@@ -118,6 +120,8 @@ import com.itos.coui.theme.LocalCouiContentColor
 import com.itos.coui.theme.LocalCouiTextStyle
 import com.itos.coui.topappbar.CouiTopAppBarColors
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
+import com.jm3.app.miuix.ui.MiuixDockedNavItem
+import com.jm3.app.miuix.ui.MiuixDockedNavigationBar
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
@@ -129,6 +133,13 @@ import com.jm3.core.paging.PagedFeed
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.NavigationBarDefaults
+
+/**
+ * 由 [CouiAppScaffold] 提供的正文区采样源：仅当页面装配了带 [CouiBackdrop] 需求的顶栏扩展条
+ * 或浮层时创建（API 34+），让库顶栏的同级扩展控件（`ChipTabRow` / `SegmentedControl`）可采样滚动正文。
+ */
+val LocalCouiAppBackdrop = staticCompositionLocalOf<CouiBackdrop?> { null }
 
 /**
  * COUI 页面骨架：顶栏、底栏净空与 FAB 都在本页 Scaffold 装配。
@@ -142,6 +153,7 @@ fun CouiAppScaffold(
     topBar: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
+    contentBackdrop: CouiBackdrop? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     // 净空值不含系统导航栏 inset，占位也要让出同一条底部安全区
@@ -149,7 +161,11 @@ fun CouiAppScaffold(
     // 库 Scaffold 的 windowInsets 只含系统栏，IME 避让按库要求由宿主缩小视口（Scaffold.kt:45）
     Scaffold(
         modifier = modifier.imePadding(),
-        topBar = topBar,
+        topBar = {
+            CompositionLocalProvider(LocalCouiAppBackdrop provides contentBackdrop) {
+                topBar()
+            }
+        },
         bottomBar = {
             if (barClearance > 0.dp) {
                 Spacer(
@@ -161,7 +177,20 @@ fun CouiAppScaffold(
             }
         },
         floatingActionButton = floatingActionButton,
-        content = content,
+        content = { innerPadding ->
+            if (contentBackdrop != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .couiBackdrop(contentBackdrop)
+                        .background(CouiTheme.colorScheme.background),
+                ) {
+                    content(innerPadding)
+                }
+            } else {
+                content(innerPadding)
+            }
+        },
     )
 }
 
@@ -386,7 +415,7 @@ fun CouiLoadingGroup(
     Group(modifier = modifier) {
         Item(
             title = {
-                Text(text = text, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                CouiBodyText(text = text, textAlign = TextAlign.Start)
             },
         )
     }
@@ -401,7 +430,7 @@ fun CouiEmptyGroup(
     Group(modifier = modifier) {
         Item(
             title = {
-                Text(text = text, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                CouiBodyText(text = text, textAlign = TextAlign.Start)
             },
         )
     }
@@ -418,7 +447,7 @@ fun CouiErrorGroup(
     Group(modifier = modifier, title = CouiStrings.LoadFailed, footer = message) {
         Item(
             title = {
-                Text(text = CouiStrings.Retry, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                CouiBodyText(text = CouiStrings.Retry, textAlign = TextAlign.Start)
             },
             trailing = {
                 Icon(
@@ -453,7 +482,7 @@ fun CouiLoadMoreFooter(
         error != null -> Group(modifier = modifier, footer = error) {
             Item(
                 title = {
-                    Text(text = CouiStrings.Reload, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                    CouiBodyText(text = CouiStrings.Reload, textAlign = TextAlign.Start)
                 },
                 trailing = {
                     Icon(
@@ -470,7 +499,7 @@ fun CouiLoadMoreFooter(
         loading -> Group(modifier = modifier, footer = "正在获取下一页…") {
             Item(
                 title = {
-                    Text(text = "正在加载更多…", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                    CouiBodyText(text = "正在加载更多…", textAlign = TextAlign.Start)
                 },
             )
         }
@@ -478,7 +507,7 @@ fun CouiLoadMoreFooter(
         endReached -> Group(modifier = modifier, footer = "没有更多了") {
             Item(
                 title = {
-                    Text(text = "已经到底了", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                    CouiBodyText(text = "已经到底了", textAlign = TextAlign.Start)
                 },
             )
         }
@@ -557,10 +586,20 @@ private val CouiRailLabelSpacing = 4.dp
  * 图标与字号，贴底档要通栏与上圆角，低版本没有原厂浮动材质，三者都只能按 token 自绘。
  * sdkInt 由调用方传入，纯函数在 JVM 单测里可覆盖全部组合。
  */
+internal enum class CouiNavBarMode {
+    LIBRARY_FLOATING,
+    LEGACY_FLOATING,
+    MIUIX_DOCKED,
+}
+
+internal fun couiNavBarMode(tokens: GlassBottomBarTokens, sdkInt: Int): CouiNavBarMode = when {
+    tokens.form == BottomBarForm.DOCKED -> CouiNavBarMode.MIUIX_DOCKED
+    sdkInt >= CouiLibraryNavBarMinSdk && tokens.size == BottomBarSize.STANDARD -> CouiNavBarMode.LIBRARY_FLOATING
+    else -> CouiNavBarMode.LEGACY_FLOATING
+}
+
 internal fun couiUsesLibraryNavBar(tokens: GlassBottomBarTokens, sdkInt: Int): Boolean =
-    tokens.size == BottomBarSize.STANDARD &&
-        tokens.form == BottomBarForm.FLOATING &&
-        sdkInt >= CouiLibraryNavBarMinSdk
+    couiNavBarMode(tokens, sdkInt) == CouiNavBarMode.LIBRARY_FLOATING
 
 /** 自绘底栏的宽度上限：复算库的 maximumMenuWidth + 两侧圆键留白，换实现时条宽不跳变。 */
 internal fun couiPlainNavMaxWidth(itemCount: Int): Dp =
@@ -597,13 +636,10 @@ internal fun couiPlainNavReleaseTarget(
 }
 
 /**
- * COUI 底栏：原厂浮动材质底栏（能走库时）与同一套几何的自绘底栏（其余情况）。
- *
- * 库 NavigationBar 的 FloatingNode 先 `clip(shape)` 再 `drawBehind` 叠凝光，裁剪是对的，
- * 真正要接的是它一直没被调用的那条分支：库自己算条高 56dp、菜单项 48dp、横向 16dp 边距、
- * 底距 16dp + 无手势条时 8dp 底距，并给三个浮动节点分别叠凝光。宿主只需把主框架那一个
- * backdrop 传进去。贴底、偏大档与 API 34 以下没有原厂浮动材质，由 [CouiPlainNavigationBar]
- * 按 token 自绘，条高/项高/边距/底距与库保持同一套数值，切换实现时底栏不跳变。
+ * COUI 底栏路由：
+ * - [BottomBarForm.DOCKED]：双端共用 Miuix 官方 NavigationBar，不再手写贴底横条；
+ * - [BottomBarForm.FLOATING] + API 34+：走 COUI 原厂浮动材质底栏；
+ * - [BottomBarForm.FLOATING] + API 31–33：走 [CouiPlainNavigationBar] 标准浮动胶囊降级方案。
  */
 @Composable
 internal fun CouiNavigationBar(
@@ -614,23 +650,46 @@ internal fun CouiNavigationBar(
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
 ) {
-    // 先判版本再判 token：@RequiresApi 分支的守卫必须是 SDK_INT 比较，否则 Lint 报 CallRequiresApi
-    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk && couiUsesLibraryNavBar(tokens, Build.VERSION.SDK_INT)) {
-        CouiLibraryNavigationBar(
-            items = items,
-            selectedIndex = selectedIndex,
-            onSelect = onSelect,
-            backdrop = backdrop,
-            modifier = modifier,
-        )
-    } else {
-        CouiPlainNavigationBar(
-            items = items,
-            selectedIndex = selectedIndex,
-            onSelect = onSelect,
-            tokens = tokens,
-            modifier = modifier,
-        )
+    when (couiNavBarMode(tokens, Build.VERSION.SDK_INT)) {
+        CouiNavBarMode.LIBRARY_FLOATING -> {
+            // 先判版本再进库分支：@RequiresApi 守卫必须是 SDK_INT 比较，否则 Lint 报 CallRequiresApi
+            if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
+                CouiLibraryNavigationBar(
+                    items = items,
+                    selectedIndex = selectedIndex,
+                    onSelect = onSelect,
+                    backdrop = backdrop,
+                    modifier = modifier,
+                )
+            }
+        }
+
+        CouiNavBarMode.MIUIX_DOCKED -> {
+            val scheme = CouiTheme.colorScheme
+            MiuixDockedNavigationBar(
+                items = remember(items) {
+                    items.map { item -> MiuixDockedNavItem(label = item.title, icon = item.icon) }
+                },
+                selectedIndex = selectedIndex,
+                onSelect = onSelect,
+                color = scheme.surface,
+                itemColors = NavigationBarDefaults.navigationBarItemColors(
+                    unselectedContentColor = scheme.onSurfaceVariant,
+                    selectedContentColor = scheme.accentOnSurface,
+                ),
+                modifier = modifier,
+            )
+        }
+
+        CouiNavBarMode.LEGACY_FLOATING -> {
+            CouiPlainNavigationBar(
+                items = items,
+                selectedIndex = selectedIndex,
+                onSelect = onSelect,
+                tokens = tokens,
+                modifier = modifier,
+            )
+        }
     }
 }
 
@@ -701,27 +760,22 @@ private fun CouiPlainNavigationBar(
             .padding(
                 start = tokens.horizontalMargin,
                 end = tokens.horizontalMargin,
-                top = if (tokens.floating) CouiBarTopMargin else 0.dp,
-                bottom = if (tokens.floating) CouiBarBottomMargin + bottomMargin else 0.dp,
+                top = CouiBarTopMargin,
+                bottom = CouiBarBottomMargin + bottomMargin,
             ),
         contentAlignment = Alignment.BottomCenter,
     ) {
         Row(
-            modifier = (if (tokens.floating) Modifier.widthIn(max = couiPlainNavMaxWidth(items.size)) else Modifier)
+            modifier = Modifier
+                .widthIn(max = couiPlainNavMaxWidth(items.size))
                 .fillMaxWidth()
-                .then(
-                    if (tokens.floating) {
-                        Modifier.dropShadow(
-                            shape = shape,
-                            shadow = Shadow(
-                                radius = CouiBarShadowRadius,
-                                color = Color.Black,
-                                alpha = if (CouiTheme.isDark) tokens.shadowAlphaDark else tokens.shadowAlphaLight,
-                            ),
-                        )
-                    } else {
-                        Modifier
-                    },
+                .dropShadow(
+                    shape = shape,
+                    shadow = Shadow(
+                        radius = CouiBarShadowRadius,
+                        color = Color.Black,
+                        alpha = if (CouiTheme.isDark) tokens.shadowAlphaDark else tokens.shadowAlphaLight,
+                    ),
                 )
                 .clip(shape)
                 .background(colors.container)
@@ -1014,12 +1068,11 @@ fun CouiFab(
 val LocalCouiFallbackContentColor = staticCompositionLocalOf<Color> { Color.Unspecified }
 
 /**
- * 胶囊分段选择：页面内切换用，替代需要独立背景源的 ChipTabRow。
+ * 胶囊分段选择：优先委托给 COUI 库官方 [SegmentedControl]（API 34+ 支持滑选、弹性阻尼与微光），
+ * 低版本回落至等分胶囊实现。
  *
- * 选中态取强调色容器，未选中态取分组容器色，高度与 COUI 行高对齐。
- * 反馈按库的 ChipTab 预设拼：外层 48dp 触区只负责命中与选中语义，
- * 凝光与按压缩放挂在 40dp 可见胶囊上（[SpotlightPreset.ChipTab] + 不透明容器底），
- * 保证材质按可见轮廓折射而不是按触区尺寸铺开；文本走 [CouiTextKind.PreferenceValue] 档。
+ * [backdrop] 默认为空，使用不透明分组底色，可安全放进滚动列表与卡片组内；
+ * 传独立前景材质源时走透明模糊。[small] 对应库内 32dp 紧凑档（默认 40dp）。
  */
 @Composable
 fun CouiSegmentedCapsules(
@@ -1027,17 +1080,83 @@ fun CouiSegmentedCapsules(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    small: Boolean = false,
+    enabled: Boolean = true,
+    backdrop: CouiBackdrop? = null,
+) {
+    if (items.isEmpty()) return
+    val clampedIndex = selectedIndex.coerceIn(0, items.lastIndex)
+    if (Build.VERSION.SDK_INT >= 34) {
+        CouiLibrarySegmentedControl(
+            items = items,
+            selectedIndex = clampedIndex,
+            onSelect = onSelect,
+            modifier = modifier,
+            small = small,
+            enabled = enabled,
+            backdrop = backdrop,
+        )
+        return
+    }
+    CouiFallbackSegmentedCapsules(
+        items = items,
+        selectedIndex = clampedIndex,
+        onSelect = onSelect,
+        modifier = modifier,
+        small = small,
+        enabled = enabled,
+    )
+}
+
+@RequiresApi(34)
+@Composable
+private fun CouiLibrarySegmentedControl(
+    items: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier,
+    small: Boolean,
+    enabled: Boolean,
+    backdrop: CouiBackdrop?,
+) {
+    val renderer = remember(backdrop != null) {
+        if (backdrop != null) runCatching { CouiFloatingRenderer.standalone() }.getOrNull() else null
+    }
+    val effectiveBackdrop = if (renderer != null) backdrop else null
+    SegmentedControl(
+        modifier = modifier.fillMaxWidth(),
+        labels = items,
+        selectedIndex = selectedIndex,
+        onSelected = onSelect,
+        backdrop = effectiveBackdrop,
+        dark = CouiTheme.isDark,
+        enabled = enabled,
+        small = small,
+        renderer = renderer,
+    )
+}
+
+@Composable
+private fun CouiFallbackSegmentedCapsules(
+    items: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier,
+    small: Boolean,
+    enabled: Boolean,
 ) {
     val colors: CouiColorScheme = CouiTheme.colorSchemeFor(CouiTheme.isDark)
-    val labelStyle = rememberCouiTextStyle(CouiTextKind.PreferenceValue)
+    val labelStyle = rememberCouiTextStyle(CouiTextKind.ItemValue)
+    val capsuleHeight = if (small) 32.dp else 40.dp
+    val containerPadding = if (small) 2.dp else 4.dp
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(CouiCapsuleShape)
             .background(colors.container)
-            .padding(horizontal = 4.dp)
+            .padding(horizontal = containerPadding)
             .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(containerPadding),
     ) {
         items.forEachIndexed { index, label ->
             val selected = index == selectedIndex
@@ -1046,10 +1165,10 @@ fun CouiSegmentedCapsules(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    // 触区按 48dp 起算，胶囊本体 40dp 居中；容器只留横向内衬，段高不再凑数
-                    .height(CouiMinTouchTarget)
+                    .height(if (small) 40.dp else CouiMinTouchTarget)
                     .selectable(
                         selected = selected,
+                        enabled = enabled,
                         interactionSource = capsuleInteraction,
                         indication = null,
                         role = Role.Tab,
@@ -1060,7 +1179,7 @@ fun CouiSegmentedCapsules(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(40.dp)
+                        .height(capsuleHeight)
                         .graphicsLayer {
                             scaleX = press.scale.value
                             scaleY = press.scale.value
@@ -1077,16 +1196,18 @@ fun CouiSegmentedCapsules(
                         .couiPressMotion(press = press, cancelOnConsumedMove = false)
                         .couiSpotlightLight(
                             preset = SpotlightPreset.ChipTab,
-                            interactive = true,
+                            interactive = enabled,
                             color = if (selected) colors.accent else colors.onSurfaceVariant,
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
+                    val textColor = if (selected) colors.accent else colors.onSurfaceVariant
                     BasicText(
                         text = label,
                         style = labelStyle,
-                        color = { if (selected) colors.accent else colors.onSurfaceVariant },
+                        color = { if (enabled) textColor else textColor.copy(alpha = 0.38f) },
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -1139,7 +1260,7 @@ fun CouiFeedRefreshAction(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(imageVector = CouiIcons.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(text = if (refreshing) CouiStrings.Refreshing else CouiStrings.Refresh, kind = CouiTextKind.Description, color = tint)
+        Text(text = if (refreshing) CouiStrings.Refreshing else CouiStrings.Refresh, kind = CouiTextKind.GroupFooter, color = tint)
     }
 }
 
@@ -1160,7 +1281,7 @@ fun CouiFeedLoginGroup(
     ) {
         Item(
             title = {
-                Text(text = CouiStrings.OpenLogin, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                CouiBodyText(text = CouiStrings.OpenLogin, textAlign = TextAlign.Start)
             },
             trailing = {
                 Icon(
@@ -1243,12 +1364,19 @@ fun CouiAvatar(
                     .clip(CircleShape),
             )
         } else if (initial != null) {
-            val textKind = if (size >= 56.dp) CouiTextKind.SectionTitle else CouiTextKind.PreferenceTitle
-            Text(
-                text = initial,
-                kind = textKind,
-                color = colors.onSurfaceVariant,
-            )
+            if (size >= 56.dp) {
+                CouiSectionTitleText(
+                    text = initial,
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                Text(
+                    text = initial,
+                    kind = CouiTextKind.ItemTitle,
+                    color = colors.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -1306,7 +1434,7 @@ fun CouiCommentRow(
             item.level?.let { level ->
                 Text(
                     text = "Lv.$level",
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = colors.onSurfaceVariant,
                     maxLines = 1,
                     modifier = Modifier.padding(top = 2.dp),
@@ -1322,7 +1450,7 @@ fun CouiCommentRow(
                 ) {
                     Text(
                         text = item.author,
-                        kind = CouiTextKind.PreferenceSummary,
+                        kind = CouiTextKind.ItemSummary,
                         color = authorColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1332,7 +1460,7 @@ fun CouiCommentRow(
                     item.levelName?.takeIf { it.isNotBlank() }?.let { levelName ->
                         Text(
                             text = "· $levelName",
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = colors.onSurfaceVariant,
                             maxLines = 1,
                             modifier = Modifier.padding(start = 4.dp),
@@ -1342,7 +1470,7 @@ fun CouiCommentRow(
                 if (item.likes > 0) {
                     Text(
                         text = "赞 ${item.likes}",
-                        kind = CouiTextKind.Description,
+                        kind = CouiTextKind.GroupFooter,
                         color = colors.onSurfaceVariant,
                         maxLines = 1,
                         modifier = Modifier.padding(start = 8.dp),
@@ -1352,7 +1480,7 @@ fun CouiCommentRow(
             item.postDate?.takeIf { it.isNotBlank() }?.let { date ->
                 Text(
                     text = date,
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = colors.onSurfaceVariant,
                     maxLines = 1,
                     textAlign = TextAlign.Start,
@@ -1378,18 +1506,16 @@ fun CouiCommentRow(
                 segments.forEach { segment ->
                     when (segment) {
                         is CommentSegment.Text -> if (segment.text.isNotBlank()) {
-                            Text(
+                            CouiBodyText(
                                 text = segment.text,
-                                kind = CouiTextKind.Body,
                                 color = colors.onSurface,
                                 maxLines = bodyMaxLines,
                                 overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Start,
                             )
                         }
-                        is CommentSegment.Album -> Text(
+                        is CommentSegment.Album -> CouiBodyText(
                             text = segment.label,
-                            kind = CouiTextKind.Body,
                             color = colors.accent,
                             textAlign = TextAlign.Start,
                         )
@@ -1399,7 +1525,7 @@ fun CouiCommentRow(
             onReply?.let { reply ->
                 Text(
                     text = "回复",
-                    kind = CouiTextKind.PreferenceValue,
+                    kind = CouiTextKind.ItemValue,
                     color = colors.accent,
                     maxLines = 1,
                     textAlign = TextAlign.Start,

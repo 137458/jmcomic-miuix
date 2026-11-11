@@ -15,13 +15,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -92,16 +94,23 @@ fun ForumScreen(
     val pageMode = deps.preferences.paginationMode
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
-    val forumScope = ForumScope.entries[scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)]
-    var feed by remember { mutableStateOf(PagedFeed<CommentItem>()) }
-    var state by remember { mutableStateOf<ForumUiState>(ForumUiState.Loading) }
+    val clampedScopeIndex = scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)
+    val feeds = remember { mutableStateMapOf<Int, PagedFeed<CommentItem>>() }
+    val states = remember { mutableStateMapOf<Int, ForumUiState>() }
+    val failedPages = remember { mutableStateMapOf<Int, Int>() }
     var refreshing by remember { mutableStateOf(false) }
-    // 记录最近一次失败的页码：重试要回到失败的那一页，而不是一律回到第一页
-    var failedPage by remember { mutableIntStateOf(1) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
-    // 档位切换与翻页都会整块换掉列表内容，滚动位置必须一起回到顶部：
-    // 否则新内容会沿用上一档/上一页的偏移，进来先看到列表中段
-    val listState = rememberLazyListState()
+    // 每个档位各自保存滚动偏移，左右滑切页后回到原档位不再丢失位置
+    val listStates = remember { List(ForumScope.entries.size) { LazyListState() } }
+    val pagerState = rememberSyncedTabPagerState(
+        selectedTab = clampedScopeIndex,
+        pageCount = ForumScope.entries.size,
+        onTabSelected = { next ->
+            selectionHaptic()
+            scopeIndex = next
+        },
+        useMiuixSpring = true,
+    )
     var replyTarget by rememberSaveable(stateSaver = CommentItemNullableSaver) { mutableStateOf<CommentItem?>(null) }
     var replyBusy by remember { mutableStateOf(false) }
     var composing by rememberSaveable { mutableStateOf(false) }
@@ -111,12 +120,10 @@ fun ForumScreen(
     // 每次发起请求自增：切换档位/刷新/翻页后，晚到的旧响应不得覆盖新状态
     var loadToken by remember { mutableIntStateOf(0) }
     var inFlightJob by remember { mutableStateOf<Job?>(null) }
-
-    /** 总页数：接口 total 可用时按每页 10 条折算，否则退化为当前页。 */
-    val totalPages = feed.pageCount ?: feed.page
+    var lastPageMode by remember { mutableStateOf(pageMode) }
 
     /** 失效与失败共用一条落点：有内容就保留列表、只标记页脚与提示，没内容才整屏。 */
-    fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
+    fun applyFailure(targetTab: Int, outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
         val plan = planLoad(
             outcome = outcome,
             hasContent = inFlight.items.isNotEmpty(),
@@ -124,27 +131,35 @@ fun ForumScreen(
             stalePrefix = "加载失败：",
         )
         // 保留内容时只把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈
-        feed = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
+        feeds[targetTab] = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
         if (plan.phase == ScreenLoadPhase.Content) {
-            state = ForumUiState.Loaded
+            states[targetTab] = ForumUiState.Loaded
             plan.notice?.let { notice -> scope.launch { snackbarHostState.showSnackbar(notice) } }
         } else {
-            state = ForumUiState.Failed(plan)
+            states[targetTab] = ForumUiState.Failed(plan)
         }
     }
 
-    fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
+    fun fetch(
+        targetPage: Int,
+        replace: Boolean,
+        showLoading: Boolean,
+        targetTab: Int = clampedScopeIndex,
+    ) {
+        val currentFeed = feeds[targetTab] ?: PagedFeed()
+        val targetScope = ForumScope.entries[targetTab]
         // 翻页请求在途时不再发起新的翻页：连点会并发打同一页，返回顺序错乱后列表会重复
-        val requested = if (replace) feed else feed.beginLoadMore()
-        if (!replace && requested === feed) return
-        if (showLoading) state = ForumUiState.Loading
+        val requested = if (replace) currentFeed else currentFeed.beginLoadMore()
+        if (!replace && requested === currentFeed) return
+        if (showLoading) states[targetTab] = ForumUiState.Loading
         // 追加请求要立刻进入加载态，页脚才能显示进度；置位同时充当在途守卫
-        feed = requested
+        feeds[targetTab] = requested
+        failedPages[targetTab] = targetPage
         // 新请求取代旧请求：先取消在途协程（省掉无用的网络等待），再用令牌挡住无法取消的晚到结果
         inFlightJob?.cancel()
         val token = ++loadToken
         inFlightJob = scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.forum(forumScope, targetPage) }
+            val outcome = deps.authCall.call { deps.gateway.forum(targetScope, targetPage) }
             if (token != loadToken) return@launch
             refreshing = false
             when (outcome) {
@@ -156,18 +171,18 @@ fun ForumScreen(
                     } else {
                         null
                     }
-                    feed = if (replace) {
+                    feeds[targetTab] = if (replace) {
                         PagedFeed<CommentItem>().replacedBy(resultPage)
                     } else {
                         requested.appendedBy(resultPage)
                     }.copy(page = targetPage, pageCount = pageCount)
-                    state = ForumUiState.Loaded
+                    states[targetTab] = ForumUiState.Loaded
                 }
 
                 // 会话失效：同一张 401 不能再报成「论坛加载失败」，能做的只有去登录
-                SessionOutcome.Expired -> applyFailure(outcome, requested)
+                SessionOutcome.Expired -> applyFailure(targetTab, outcome, requested)
 
-                is SessionOutcome.Failed -> applyFailure(outcome, requested)
+                is SessionOutcome.Failed -> applyFailure(targetTab, outcome, requested)
             }
         }
     }
@@ -195,7 +210,8 @@ fun ForumScreen(
                 is SessionOutcome.Ok -> {
                     replyTarget = null
                     snackbarHostState.showSnackbar("回复已发送")
-                    fetch(feed.page, replace = true, showLoading = false)
+                    val activePage = (feeds[clampedScopeIndex] ?: PagedFeed()).page
+                    fetch(activePage, replace = true, showLoading = false, targetTab = clampedScopeIndex)
                 }
 
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty())
@@ -217,8 +233,9 @@ fun ForumScreen(
                     composing = false
                     snackbarHostState.showSnackbar("发布成功")
                     // 新帖落在第一页首位，回到顶部才能看到刚发的内容
-                    scope.launch { listState.scrollToItem(0) }
-                    fetch(targetPage = 1, replace = true, showLoading = false)
+                    val activeTab = clampedScopeIndex
+                    scope.launch { listStates[activeTab].scrollToItem(0) }
+                    fetch(targetPage = 1, replace = true, showLoading = false, targetTab = activeTab)
                 }
 
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty())
@@ -234,11 +251,21 @@ fun ForumScreen(
     }
 
     // 切换档位或分页模式时按新语义重载第一页，避免两种翻页状态混用
-    LaunchedEffect(scopeIndex, pageMode) {
-        // 首帧这里列表还没进组合（Loading 态不是列表），scrollToItem 会挂起等待布局而不返回，
-        // 取数协程因此永远不执行；requestScrollToItem 只登记待处理滚动，不阻塞取数。
-        listState.requestScrollToItem(0)
-        fetch(targetPage = 1, replace = true, showLoading = true)
+    LaunchedEffect(clampedScopeIndex, pageMode) {
+        val pageModeChanged = lastPageMode != pageMode
+        if (pageModeChanged) {
+            lastPageMode = pageMode
+            feeds.clear()
+            states.clear()
+            failedPages.clear()
+        }
+        val activeState = states[clampedScopeIndex]
+        if (pageModeChanged || activeState == null || activeState is ForumUiState.Loading) {
+            // 首帧这里列表还没进组合（Loading 态不是列表），scrollToItem 会挂起等待布局而不返回，
+            // 取数协程因此永远不执行；requestScrollToItem 只登记待处理滚动，不阻塞取数。
+            listStates[clampedScopeIndex].requestScrollToItem(0)
+            fetch(targetPage = 1, replace = true, showLoading = true, targetTab = clampedScopeIndex)
+        }
     }
 
     GlassScaffold(
@@ -260,7 +287,7 @@ fun ForumScreen(
                 // 档位筛选固定于列表之外：与顶栏同处玻璃层
                 GlassChipRow(
                     tabs = ForumScope.entries.map { it.label },
-                    selectedTabIndex = scopeIndex,
+                    selectedTabIndex = clampedScopeIndex,
                     onTabSelected = {
                         selectionHaptic()
                         scopeIndex = it
@@ -271,91 +298,106 @@ fun ForumScreen(
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        when (val s = state) {
-            ForumUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            is ForumUiState.Failed -> if (s.plan.phase == ScreenLoadPhase.Expired) {
-                LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
-            } else {
-                ErrorScreen(
-                    message = s.plan.message.orEmpty(),
-                    onRetry = { fetch(targetPage = failedPage, replace = true, showLoading = true) },
-                    modifier = Modifier.padding(innerPadding),
-                )
-            }
-            // 加载成功就渲染列表：即使没有内容也保留列表本体，
-            // 闲聊档的规则卡与下拉刷新在空态下才不会跟着一起消失
-            ForumUiState.Loaded -> {
-                // 列表内容穿到玻璃顶栏（顶栏 + 档位条）下方，顶栏才能采样到真实背景
-                GlassPullToRefresh(
-                    isRefreshing = refreshing,
-                    onRefresh = {
-                        refreshing = true
-                        fetch(targetPage = 1, replace = true, showLoading = false)
-                    },
-                    pullToRefreshState = refreshState,
-                    modifier = Modifier.fillMaxSize(),
-                    // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
-                    contentPadding = innerPadding,
-                ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().readableWidth(),
-                        state = listState,
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+        ) { pageIdx ->
+            val pageScope = ForumScope.entries[pageIdx]
+            val pageFeed = feeds[pageIdx] ?: PagedFeed()
+            val pageState = states[pageIdx] ?: ForumUiState.Loading
+            val pageFailed = failedPages[pageIdx] ?: 1
+            val pageListState = listStates[pageIdx]
+            val pageTotalPages = pageFeed.pageCount ?: 1
+            when (pageState) {
+                ForumUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+                is ForumUiState.Failed -> if (pageState.plan.phase == ScreenLoadPhase.Expired) {
+                    LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
+                } else {
+                    ErrorScreen(
+                        message = pageState.plan.message.orEmpty(),
+                        onRetry = {
+                            fetch(targetPage = pageFailed, replace = true, showLoading = true, targetTab = pageIdx)
+                        },
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                }
+                // 加载成功就渲染列表：即使没有内容也保留列表本体，
+                // 闲聊档的规则卡与下拉刷新在空态下才不会跟着一起消失
+                ForumUiState.Loaded -> {
+                    // 列表内容穿到玻璃顶栏（顶栏 + 档位条）下方，顶栏才能采样到真实背景
+                    GlassPullToRefresh(
+                        isRefreshing = refreshing && pageIdx == clampedScopeIndex,
+                        onRefresh = {
+                            refreshing = true
+                            fetch(targetPage = 1, replace = true, showLoading = false, targetTab = pageIdx)
+                        },
+                        pullToRefreshState = refreshState,
+                        modifier = Modifier.fillMaxSize(),
+                        // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                         contentPadding = innerPadding,
                     ) {
-                        if (forumScope == ForumScope.CHAT) {
-                            item(key = "rules") {
-                                ForumRulesCard(
-                                    expanded = rulesExpanded,
-                                    onToggle = { rulesExpanded = !rulesExpanded },
-                                )
-                            }
-                        }
-                        val topicTotal = feed.total ?: 0
-                        if (feed.items.isEmpty()) {
-                            item(key = "empty") {
-                                ForumEmptyState(forumScope = forumScope, onCompose = ::openCompose)
-                            }
-                        } else {
-                            if (topicTotal > 0) {
-                                item(key = "count") {
-                                    Text(
-                                        text = "共 $topicTotal 条话题",
-                                        style = MiuixTheme.textStyles.footnote2,
-                                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(start = 20.dp, top = 6.dp, bottom = 2.dp),
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().readableWidth(),
+                            state = pageListState,
+                            contentPadding = innerPadding,
+                        ) {
+                            if (pageScope == ForumScope.CHAT) {
+                                item(key = "rules") {
+                                    ForumRulesCard(
+                                        expanded = rulesExpanded,
+                                        onToggle = { rulesExpanded = !rulesExpanded },
                                     )
                                 }
                             }
-                            items(feed.items, key = { it.id }) { item ->
-                                ForumTopicCard(
-                                    item = item,
-                                    onReply = ::startReply,
-                                    onOpenAlbum = onOpenAlbum,
-                                )
-                            }
-                            item(key = "footer") {
-                                if (pageMode == PaginationMode.CLICK) {
-                                    // 只有一页时翻页条没有信息量，不占位
-                                    if (totalPages > 1) {
-                                        PagerBar(
-                                            page = feed.page,
-                                            totalPages = totalPages,
-                                            // 目标页就是当前页时不重发；在途判定由 feed 自己持有
-                                            onPageChange = { target ->
-                                                if (target != feed.page) {
-                                                    scope.launch { listState.scrollToItem(0) }
-                                                    fetch(target, replace = true, showLoading = false)
-                                                }
+                            val topicTotal = pageFeed.total ?: 0
+                            if (pageFeed.items.isEmpty()) {
+                                item(key = "empty") {
+                                    ForumEmptyState(forumScope = pageScope, onCompose = ::openCompose)
+                                }
+                            } else {
+                                if (topicTotal > 0) {
+                                    item(key = "count") {
+                                        Text(
+                                            text = "共 $topicTotal 条话题",
+                                            style = MiuixTheme.textStyles.footnote2,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 20.dp, top = 6.dp, bottom = 2.dp),
+                                        )
+                                    }
+                                }
+                                items(pageFeed.items, key = { it.id }) { item ->
+                                    ForumTopicCard(
+                                        item = item,
+                                        onReply = ::startReply,
+                                        onOpenAlbum = onOpenAlbum,
+                                    )
+                                }
+                                item(key = "footer") {
+                                    if (pageMode == PaginationMode.CLICK) {
+                                        // 只有一页时翻页条没有信息量，不占位
+                                        if (pageTotalPages > 1) {
+                                            PagerBar(
+                                                page = pageFeed.page,
+                                                totalPages = pageTotalPages,
+                                                // 目标页就是当前页时不重发；在途判定由 feed 自己持有
+                                                onPageChange = { target ->
+                                                    if (target != pageFeed.page) {
+                                                        scope.launch { pageListState.scrollToItem(0) }
+                                                        fetch(target, replace = true, showLoading = false, targetTab = pageIdx)
+                                                    }
+                                                },
+                                            )
+                                        }
+                                    } else {
+                                        LoadMoreFooter(
+                                            feed = pageFeed,
+                                            onLoadMore = {
+                                                fetch(pageFeed.page + 1, replace = false, showLoading = false, targetTab = pageIdx)
                                             },
                                         )
                                     }
-                                } else {
-                                    LoadMoreFooter(
-                                        feed = feed,
-                                        onLoadMore = { fetch(feed.page + 1, replace = false, showLoading = false) },
-                                    )
                                 }
                             }
                         }

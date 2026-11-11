@@ -63,6 +63,8 @@ import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -429,16 +431,15 @@ private fun CouiCreatorHeaderCard(
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
+                CouiSectionTitleText(
                     text = header.authorName,
-                    kind = CouiTextKind.SectionTitle,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Start,
                 )
                 Text(
                     text = "$worksCount 部作品",
-                    kind = CouiTextKind.Description,
+                    kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     textAlign = TextAlign.Start,
                 )
@@ -467,7 +468,7 @@ private fun CouiCreatorHeaderCard(
                     ) {
                         Text(
                             text = sponsor.name,
-                            kind = CouiTextKind.Description,
+                            kind = CouiTextKind.GroupFooter,
                             color = scheme.accent,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -522,7 +523,7 @@ private fun CouiCreatorFilterRow(
     ) {
         Text(
             text = title,
-            kind = CouiTextKind.Description,
+            kind = CouiTextKind.GroupFooter,
             color = scheme.onSurfaceVariant,
             modifier = Modifier.padding(start = CouiPageDefaults.horizontalMargin),
         )
@@ -546,9 +547,8 @@ private fun CouiCreatorFilterRow(
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
+                    CouiBodyText(
                         text = option.ifBlank { COUI_CREATOR_ALL_FILTER },
-                        kind = CouiTextKind.Body,
                         color = if (option == selected) scheme.accent else scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
