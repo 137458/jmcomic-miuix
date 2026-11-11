@@ -7,10 +7,13 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -35,6 +38,7 @@ import com.itos.coui.topappbar.LargeTopAppBar
 import com.itos.coui.topappbar.TopAppBarButton
 import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.readableWidth
 import top.yukonga.miuix.kmp.basic.Icon
 
@@ -57,6 +61,7 @@ private val CouiTopBarIconSize = 22.dp
  * @param scrollBehavior 需要按列表滚动范围控制折叠时传入（见 [rememberCouiScreenScrollBehavior]）。
  * @param horizontalPadding 正文左右边距；铺满屏幕的内容（整幅栅格、全出血轮播）传 0.dp。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CouiScreenScaffold(
     title: String,
@@ -68,7 +73,10 @@ fun CouiScreenScaffold(
     floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
     scrollBehavior: CouiTopAppBarScrollBehavior = rememberCouiScreenScrollBehavior(),
     horizontalPadding: Dp = 0.dp,
-    extraBottom: Dp = if (floatingActionButton != null) 72.dp else 0.dp,
+    extraBottom: Dp = couiPageExtraBottomDp(
+        hasFab = floatingActionButton != null,
+        isImeVisible = WindowInsets.isImeVisible,
+    ).dp,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val contentBackdrop = if (topBarBottom != null && Build.VERSION.SDK_INT >= 34) {
@@ -167,12 +175,16 @@ fun rememberCouiScreenScrollBehavior(canScroll: () -> Boolean = { true }): CouiT
  * （[CouiWorkCardTokens]）提供。传 null 才保留 Scaffold 自己的左右净空，仅供确实需要 inset 的整页内容使用。
  * @param extraBottom 页面在底栏净空之外补的尾部间隙。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun couiScreenContentPadding(
     scrollBehavior: CouiTopAppBarScrollBehavior,
     innerPadding: PaddingValues,
     horizontalPadding: Dp? = 0.dp,
-    extraBottom: Dp = 0.dp,
+    extraBottom: Dp = couiPageExtraBottomDp(
+        hasFab = false,
+        isImeVisible = WindowInsets.isImeVisible,
+    ).dp,
 ): PaddingValues {
     val density = LocalDensity.current
     // 库侧已把顶部留白与折叠位移合在一起并把负值收敛到 0，这里只补左右边距，不重复做加减
@@ -190,6 +202,22 @@ fun couiScreenContentPadding(
             override fun calculateBottomPadding(): Dp = corrected.calculateBottomPadding() + extraBottom
         }
     }
+}
+
+/**
+ * 在已有 [PaddingValues] 上追加统一的底部安全留白，供未使用 [couiScreenContentPadding] 的页面复用。
+ */
+fun PaddingValues.couiWithBottomPadding(extra: Dp): PaddingValues = object : PaddingValues {
+    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+        this@couiWithBottomPadding.calculateLeftPadding(layoutDirection)
+
+    override fun calculateTopPadding(): Dp = this@couiWithBottomPadding.calculateTopPadding()
+
+    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+        this@couiWithBottomPadding.calculateRightPadding(layoutDirection)
+
+    override fun calculateBottomPadding(): Dp =
+        this@couiWithBottomPadding.calculateBottomPadding() + extra
 }
 
 /**

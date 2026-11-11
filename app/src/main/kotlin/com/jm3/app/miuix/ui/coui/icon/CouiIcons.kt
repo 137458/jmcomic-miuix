@@ -840,6 +840,187 @@ object CouiIcons {
         }
     }.build()
 
+    /** Lucide slug: `search`. */
+    val Search: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.Search",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(21f, 21f)
+            lineTo(16.66f, 16.66f)
+            moveTo(3f, 11f)
+            arcTo(8f, 8f, 0f, true, false, 19f, 11f)
+            arcTo(8f, 8f, 0f, true, false, 3f, 11f)
+            close()
+        }
+    }.build()
+
+    /** Lucide slug: `heart`. */
+    val Heart: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.Heart",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(2f, 9.5f)
+            arcTo(5.5f, 5.5f, 0f, false, true, 11.591f, 5.824f)
+            arcTo(0.56f, 0.56f, 0f, false, false, 12.409f, 5.824f)
+            arcTo(5.49f, 5.49f, 0f, false, true, 22f, 9.5f)
+            curveTo(22f, 11.79f, 20.5f, 13.5f, 19f, 15f)
+            lineTo(13.508f, 20.313f)
+            arcTo(2f, 2f, 0f, false, true, 10.508f, 20.332f)
+            lineTo(5f, 15f)
+            curveTo(3.5f, 13.5f, 2f, 11.8f, 2f, 9.5f)
+        }
+    }.build()
+
+    /** Lucide slug: `chevrons-up-down`. */
+    val ChevronsUpDown: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.ChevronsUpDown",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(7f, 15f)
+            lineTo(12f, 20f)
+            lineTo(17f, 15f)
+            moveTo(7f, 9f)
+            lineTo(12f, 4f)
+            lineTo(17f, 9f)
+        }
+    }.build()
+
+    /** Lucide slug: `chevron-down`. */
+    val ChevronDown: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.ChevronDown",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(6f, 9f)
+            lineTo(12f, 15f)
+            lineTo(18f, 9f)
+        }
+    }.build()
+
+    /** Lucide slug: `chevron-up`. */
+    val ChevronUp: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.ChevronUp",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(18f, 15f)
+            lineTo(12f, 9f)
+            lineTo(6f, 15f)
+        }
+    }.build()
+
+    /** Lucide slug: `calendar`. */
+    val Calendar: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.Calendar",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(8f, 2f)
+            verticalLineTo(6f)
+            moveTo(16f, 2f)
+            verticalLineTo(6f)
+            moveTo(5f, 4f)
+            horizontalLineTo(19f)
+            arcTo(2f, 2f, 0f, false, true, 21f, 6f)
+            verticalLineTo(20f)
+            arcTo(2f, 2f, 0f, false, true, 19f, 22f)
+            horizontalLineTo(5f)
+            arcTo(2f, 2f, 0f, false, true, 3f, 20f)
+            verticalLineTo(6f)
+            arcTo(2f, 2f, 0f, false, true, 5f, 4f)
+            close()
+            moveTo(3f, 10f)
+            horizontalLineTo(21f)
+        }
+    }.build()
+
+    /** Lucide slug: `calendar-check`. */
+    val CalendarCheck: ImageVector = ImageVector.Builder(
+        name = "CouiIcons.CalendarCheck",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            moveTo(8f, 2f)
+            verticalLineTo(6f)
+            moveTo(16f, 2f)
+            verticalLineTo(6f)
+            moveTo(5f, 4f)
+            horizontalLineTo(19f)
+            arcTo(2f, 2f, 0f, false, true, 21f, 6f)
+            verticalLineTo(20f)
+            arcTo(2f, 2f, 0f, false, true, 19f, 22f)
+            horizontalLineTo(5f)
+            arcTo(2f, 2f, 0f, false, true, 3f, 20f)
+            verticalLineTo(6f)
+            arcTo(2f, 2f, 0f, false, true, 5f, 4f)
+            close()
+            moveTo(3f, 10f)
+            horizontalLineTo(21f)
+            moveTo(9f, 16f)
+            lineTo(11f, 18f)
+            lineTo(15f, 14f)
+        }
+    }.build()
+
     /** Lucide slug: `copy`. */
     val Copy: ImageVector = ImageVector.Builder(
         name = "CouiIcons.Copy",

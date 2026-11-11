@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
@@ -58,6 +59,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -111,6 +113,7 @@ import com.itos.coui.navigation.CouiNavigationItem
 import com.itos.coui.navigation.NavigationBar
 import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.text.rememberCouiTextStyle
@@ -196,6 +199,9 @@ fun CouiAppScaffold(
 
 /** 可点件最小触摸目标：无障碍基线 48dp，低于它的可见按钮靠留白补足触区。 */
 val CouiMinTouchTarget = 48.dp
+
+/** 全 COUI 评论、回复与筛选输入区的统一圆角轮廓：比卡片更方，输入区不随皮肤随意变形。 */
+val CouiCommentFieldShape = CouiShape(radius = 16.dp, cornerWeight = 3f)
 
 /**
  * 破坏性确认按钮：红底白字的主操作。
@@ -432,6 +438,147 @@ fun CouiEmptyGroup(
             title = {
                 CouiBodyText(text = text, textAlign = TextAlign.Start)
             },
+        )
+    }
+}
+
+/**
+ * 详情页主阅读大按钮：全宽主题高亮胶囊 CTA，明确区分于下方次级功能瓦片与尾部纯文本标签。
+ */
+@Composable
+fun CouiPrimaryActionButton(
+    title: String,
+    subtitle: String? = null,
+    leadingIcon: ImageVector? = null,
+    trailingIcon: ImageVector? = null,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val bgColor = if (enabled) colors.accent else colors.container
+    val contentColor = if (enabled) colors.onAccent else colors.onSurfaceVariant
+    val titleStyle = rememberCouiTextStyle(CouiTextKind.ItemTitle).copy(
+        color = contentColor,
+        fontWeight = FontWeight.SemiBold,
+    )
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = bgColor,
+                spotlight = if (enabled) SpotlightPreset.OpaqueSmall1 else null,
+                enabled = enabled,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (leadingIcon != null) {
+            Icon(
+                imageVector = leadingIcon,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = contentColor,
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            BasicText(
+                text = title,
+                style = titleStyle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    kind = CouiTextKind.ItemSummary,
+                    color = contentColor.copy(alpha = if (enabled) 0.86f else 1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Start,
+                )
+            }
+        }
+        if (trailingIcon != null) {
+            Icon(
+                imageVector = trailingIcon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = contentColor.copy(alpha = if (enabled) 0.9f else 0.7f),
+            )
+        }
+    }
+}
+
+/**
+ * 详情页功能栏等宽瓦片：上方图标 + 下方状态文案的实底结构，放在分组卡片内承载收藏、喜欢、追更、下载等功能。
+ */
+@Composable
+fun CouiDetailActionTile(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+) {
+    val dark = CouiTheme.isDark
+    val colors = CouiTheme.colorSchemeFor(dark)
+    val bgColor = when {
+        active && dark -> lerp(colors.container, colors.accent, 0.24f)
+        active -> lerp(colors.card, colors.accent, 0.14f)
+        dark -> lerp(colors.container, Color.White, 0.06f)
+        else -> colors.background
+    }
+    val fgColor = when {
+        active -> colors.accent
+        enabled || onClick == null -> colors.onSurface
+        else -> colors.onSurfaceVariant
+    }
+    val baseModifier = modifier
+        .heightIn(min = 58.dp)
+        .let { m ->
+            if (onClick != null) {
+                m.couiPressable(
+                    shape = CouiCommentFieldShape,
+                    backgroundColor = bgColor,
+                    spotlight = if (enabled) SpotlightPreset.ChipTab else null,
+                    enabled = enabled,
+                    minTouchTarget = CouiMinTouchTarget,
+                    onClick = onClick,
+                )
+            } else {
+                m
+                    .clip(CouiCommentFieldShape)
+                    .background(bgColor)
+            }
+        }
+        .padding(horizontal = 6.dp, vertical = 10.dp)
+    Column(
+        modifier = baseModifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(20.dp),
+            tint = fgColor,
+        )
+        Text(
+            text = label,
+            kind = CouiTextKind.ItemSummary,
+            color = fgColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -1184,7 +1331,7 @@ private fun CouiFallbackSegmentedCapsules(
                             scaleX = press.scale.value
                             scaleY = press.scale.value
                         }
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(CouiCapsuleShape)
                         // 未选中段也垫容器色：凝光要有不透明底才不会被页面底色吃掉
                         .background(
                             if (selected) {
