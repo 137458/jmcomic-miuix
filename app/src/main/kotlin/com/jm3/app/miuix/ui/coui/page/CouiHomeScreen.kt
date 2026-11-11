@@ -73,6 +73,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
+import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
@@ -599,7 +600,7 @@ fun CouiHomeScreen(
                                     .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) { showSearchHelp = true }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                             )
-                            CouiRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
+                            CouiFeedRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
                         }
                     },
                 )
@@ -935,29 +936,6 @@ private fun CouiWorkFeedRow(album: SearchResult, onClick: () -> Unit) {
             }
         },
     )
-}
-
-/** 分组标题行里的刷新入口：COUI 没有下拉刷新，加载反馈只靠文案与禁用态。 */
-@Composable
-private fun CouiRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
-    val colors = CouiTheme.colorScheme
-    val tint = if (refreshing) colors.onSurfaceVariant else colors.accent
-    Row(
-        modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = !refreshing, minTouchTarget = CouiMinTouchTarget, onClick = onRefresh)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = CouiIcons.Refresh,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = tint,
-        )
-        Text(text = if (refreshing) "刷新中" else "刷新", kind = CouiTextKind.Description, color = tint)
-    }
 }
 
 @Composable

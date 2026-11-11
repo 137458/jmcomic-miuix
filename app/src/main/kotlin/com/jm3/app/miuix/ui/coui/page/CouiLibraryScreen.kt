@@ -53,6 +53,7 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
+import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
@@ -385,7 +386,7 @@ fun CouiLibraryScreen(
                                             onJumpPage = { target -> load(target, append = false) },
                                         )
                                     } else {
-                                        CouiLibraryAutoLoadEffect(
+                                        CouiAutoLoadMoreEffect(
                                             feed = activeFeed,
                                             onLoadMore = { load(activeFeed.page + 1, append = true) },
                                         )
@@ -570,15 +571,6 @@ private fun CouiLibrarySearchField(
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }
-    }
-}
-
-/** 触底续页：滚动模式下列表末尾进入视口就拉下一页，失败时不自动重试。 */
-@Composable
-private fun CouiLibraryAutoLoadEffect(feed: PagedFeed<*>, onLoadMore: () -> Unit) {
-    LaunchedEffect(feed.page, feed.loadingMore, feed.loadMoreFailed) {
-        if (!feed.canLoadMore || feed.loadingMore || feed.loadMoreFailed) return@LaunchedEffect
-        onLoadMore()
     }
 }
 

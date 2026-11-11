@@ -58,8 +58,10 @@ import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.authorNames
+import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
@@ -605,7 +607,7 @@ fun CouiFavoritesScreen(
                                             onJumpPage = { target -> jumpToPage(target) },
                                         )
                                     } else {
-                                        CouiFavoritesAutoLoadEffect(feed = gridFeed, onLoadMore = { loadMore() })
+                                        CouiAutoLoadMoreEffect(feed = gridFeed, onLoadMore = { loadMore() })
                                         CouiLoadMoreFooter(
                                             feed = gridFeed,
                                             errorMessage = "没拿到下一页，可点击重试",
@@ -623,9 +625,10 @@ fun CouiFavoritesScreen(
                                 key = "coui-tags-login",
                                 span = { GridItemSpan(maxLineSpan) },
                             ) {
-                                CouiEmptyGroup(
-                                    text = "登录后查看标签收藏",
+                                CouiFeedLoginGroup(
+                                    message = "登录后查看标签收藏",
                                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                                    onOpenLogin = onOpenLogin,
                                 )
                             }
 
@@ -1099,13 +1102,4 @@ private fun CouiFavoritesInlineError(message: String?, color: androidx.compose.u
         textAlign = TextAlign.Start,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     )
-}
-
-/** 触底续页：滚动模式下列表末尾进入视口就拉下一页，失败时不自动重试。 */
-@Composable
-private fun CouiFavoritesAutoLoadEffect(feed: PagedFeed<*>, onLoadMore: () -> Unit) {
-    LaunchedEffect(feed.page, feed.loadingMore, feed.loadMoreFailed) {
-        if (!feed.canLoadMore || feed.loadingMore || feed.loadMoreFailed) return@LaunchedEffect
-        onLoadMore()
-    }
 }

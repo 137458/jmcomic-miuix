@@ -42,6 +42,7 @@ import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
+import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
@@ -309,7 +310,7 @@ fun CouiHistoryScreen(
                                             onJumpPage = { target -> jumpToPage(target) },
                                         )
                                     } else {
-                                        CouiHistoryAutoLoadEffect(feed = feed, onLoadMore = { loadMore() })
+                                        CouiAutoLoadMoreEffect(feed = feed, onLoadMore = { loadMore() })
                                         CouiLoadMoreFooter(
                                             feed = feed,
                                             errorMessage = "没拿到下一页，可点击重试",
@@ -439,18 +440,3 @@ private fun couiHistorySubtitle(
     album: CouiAlbumHistory,
     dateFormat: java.time.format.DateTimeFormatter,
 ): String = "共读 " + album.chapters + " 话 · " + formatEpochMillis(album.latest.updatedAt, dateFormat)
-
-/**
- * 栅格触底取下一页：页脚项进入组合即触发一次，键随页码与加载态变化，
- * 因此短列表（页脚一直在屏内）不会停在「可加载但没人拉」的死角。
- */
-@Composable
-private fun CouiHistoryAutoLoadEffect(
-    feed: PagedFeed<*>,
-    onLoadMore: () -> Unit,
-) {
-    LaunchedEffect(feed.page, feed.loadingMore, feed.loadMoreFailed) {
-        if (!feed.canLoadMore || feed.loadingMore || feed.loadMoreFailed) return@LaunchedEffect
-        onLoadMore()
-    }
-}

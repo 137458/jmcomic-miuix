@@ -70,8 +70,11 @@ import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
+import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
@@ -545,10 +548,10 @@ private fun CouiForumTopic(
         ?: item.albumName?.filter { it.isDigit() }?.takeIf { it.isNotBlank() }
     val albumName = item.albumName?.takeIf { albumId != null }
     Column(modifier = Modifier.fillMaxWidth()) {
-        CouiForumComment(item = item, depth = 0, onReply = onReply)
+        CouiCommentRow(item = item, depth = 0, onReply = onReply)
         val replies = remember(item.id) { flattenForumReplies(item) }
         replies.forEach { (reply, depth) ->
-            CouiForumComment(item = reply, depth = depth, onReply = onReply)
+            CouiCommentRow(item = reply, depth = depth, onReply = onReply)
         }
         if (albumName != null && albumId != null) {
             val rowShape = CouiShape(radius = 10.dp, cornerWeight = 3f)
@@ -607,177 +610,6 @@ private fun CouiForumTopic(
         }
     }
 }
-
-/** 楼层行：头像 + 等级 + 徽章 + 分段正文，回复入口在正文下方。 */
-@Composable
-private fun CouiForumComment(
-    item: CommentItem,
-    depth: Int,
-    onReply: (CommentItem) -> Unit,
-) {
-    val scheme = CouiKitTheme.colorScheme
-    val indentDepth = depth.coerceAtMost(FORUM_MAX_INDENT_DEPTH)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp + (indentDepth * 12).dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
-            .drawReplyLine(depth = depth, color = scheme.outlineVariant),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            ForumAvatar(
-                url = item.avatarUrl,
-                size = if (depth == 0) 40.dp else 30.dp,
-                contentDescription = item.author,
-            )
-            item.level?.let { level ->
-                Text(
-                    text = "Lv.$level",
-                    kind = CouiTextKind.Description,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = item.author,
-                    kind = CouiTextKind.PreferenceSummary,
-                    color = scheme.accent,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                item.levelName?.takeIf { it.isNotBlank() }?.let { levelName ->
-                    Text(
-                        text = "· " + levelName,
-                        kind = CouiTextKind.Description,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        modifier = Modifier.padding(start = 4.dp),
-                    )
-                }
-                if (item.likes > 0) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = "赞 " + item.likes,
-                        kind = CouiTextKind.Description,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
-            }
-            item.postDate?.takeIf { it.isNotBlank() }?.let { date ->
-                Text(
-                    text = date,
-                    kind = CouiTextKind.Description,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    textAlign = TextAlign.Start,
-                )
-            }
-            if (item.badges.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    item.badges.forEach { badge ->
-                        ForumAvatar(url = badge, size = 22.dp, contentDescription = "徽章")
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            CouiForumBody(item = item)
-            Text(
-                text = "回复",
-                kind = CouiTextKind.PreferenceValue,
-                color = scheme.accent,
-                maxLines = 1,
-                textAlign = TextAlign.Start,
-                modifier = Modifier
-                    .clip(CouiCapsuleShape)
-                    .couiPressable(
-                        shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
-                        minTouchTarget = CouiMinTouchTarget,
-                        onClick = { onReply(item) },
-                    )
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-            )
-        }
-    }
-}
-
-/** 正文分段：推荐作品拆成可点链接，其余按原文换行展示。 */
-@Composable
-private fun CouiForumBody(item: CommentItem) {
-    val scheme = CouiKitTheme.colorScheme
-    val segments = item.body.ifEmpty { listOf(CommentSegment.Text(item.content)) }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        segments.forEach { segment ->
-            when (segment) {
-                is CommentSegment.Text -> if (segment.text.isNotBlank()) {
-                    Text(
-                        text = segment.text,
-                        kind = CouiTextKind.Body,
-                        color = scheme.onSurface,
-                        maxLines = FORUM_BODY_MAX_LINES,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
-                    )
-                }
-                is CommentSegment.Album -> Text(
-                    text = segment.label,
-                    kind = CouiTextKind.Body,
-                    color = scheme.accent,
-                    textAlign = TextAlign.Start,
-                )
-            }
-        }
-    }
-}
-
-/** 头像与徽章的圆形图：底色圆垫在下方，缺图也不出透明空洞。 */
-@Composable
-private fun ForumAvatar(url: String?, size: androidx.compose.ui.unit.Dp, contentDescription: String?) {
-    val scheme = CouiKitTheme.colorScheme
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(scheme.container),
-    ) {
-        if (!url.isNullOrBlank()) {
-            AsyncImage(
-                model = url,
-                contentDescription = contentDescription,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(size)
-                    .clip(CircleShape),
-            )
-        }
-    }
-}
-
-/** 回复线：仅深层回复绘制，贴在缩进区外侧，标识归属层级。 */
-private fun Modifier.drawReplyLine(depth: Int, color: Color): Modifier =
-    if (depth == 0) {
-        this
-    } else {
-        this.then(
-            Modifier.drawBehind {
-                drawRect(
-                    color = color,
-                    topLeft = Offset(-6.dp.toPx(), 0f),
-                    size = Size(2.dp.toPx(), size.height),
-                )
-            },
-        )
-    }
 
 /** 楼层扁平化：只保留两层缩进，更深的回复按最深层级展示，避免正文被挤成一条。 */
 private fun flattenForumReplies(root: CommentItem): List<Pair<CommentItem, Int>> {

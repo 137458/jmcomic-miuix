@@ -38,6 +38,7 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.authorNames
+import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
@@ -281,7 +282,7 @@ fun CouiWatchHistoryScreen(
                                             },
                                         )
                                     } else {
-                                        CouiGridAutoLoadEffect(feed = feed, onLoadMore = { loadMore() })
+                                        CouiAutoLoadMoreEffect(feed = feed, onLoadMore = { loadMore() })
                                         CouiLoadMoreFooter(
                                             feed = feed,
                                             errorMessage = "没拿到下一页，可点击重试",
@@ -352,20 +353,5 @@ private fun CouiGridDeleteBadge(
             modifier = Modifier.size(14.dp),
             tint = scheme.onSurfaceVariant,
         )
-    }
-}
-
-/**
- * 栅格触底取下一页：页脚项进入组合即触发一次，键随页码与加载态变化，
- * 因此短列表（页脚一直在屏内）不会停在「可加载但没人拉」的死角。
- */
-@Composable
-private fun CouiGridAutoLoadEffect(
-    feed: PagedFeed<*>,
-    onLoadMore: () -> Unit,
-) {
-    LaunchedEffect(feed.page, feed.loadingMore, feed.loadMoreFailed) {
-        if (!feed.canLoadMore || feed.loadingMore || feed.loadMoreFailed) return@LaunchedEffect
-        onLoadMore()
     }
 }

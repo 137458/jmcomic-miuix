@@ -104,6 +104,8 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.ui.albumHeroHeader
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiAvatar
+import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
@@ -112,6 +114,8 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
@@ -148,10 +152,6 @@ private const val COUI_DESCRIPTION_COLLAPSE_THRESHOLD = 80
 private const val COUI_COMMENT_VISIBLE_REPLIES = 2
 /** 回复缩进的最大层级：更深的回复不再追加缩进，否则正文宽度会被挤没。 */
 private const val COUI_COMMENT_MAX_INDENT_DEPTH = 4
-/** 单条评论正文最多展示的行数；超长评论折叠成省略号，避免整条铺满一屏。 */
-private const val COUI_COMMENT_BODY_MAX_LINES = 12
-/** 徽章图的无障碍描述：徽章本身无文字，读屏需要知道这里是一枚徽章。 */
-private const val COUI_COMMENT_BADGE_DESCRIPTION = "徽章"
 
 /**
  * COUI 作品详情页：头部信息卡、阅读操作、简介、预览、章节、作品信息、相关作品与评论区。
@@ -364,23 +364,19 @@ private fun CouiAlbumDetailScreenBody(
                         // 槽内必须接顶栏下发的字阶（LocalCouiTextStyle），否则折叠后按 16sp 比例缩成 7sp
                         title = { CouiTopBarTitle(text = currentTitle) },
                         navigationIcon = {
-                            CouiTopBarIconButton(
-                                icon = CouiIcons.Back,
-                                description = "返回",
-                                onClick = onBack,
-                            )
+                            CouiTopBarBackButton(onClick = onBack)
                         },
                         actions = {
                             if (loadedDetail != null) {
-                                CouiTopBarIconButton(
+                                CouiTopBarAction(
                                     icon = CouiIcons.Share,
-                                    description = "分享",
+                                    contentDescription = "分享",
                                     onClick = { share(loadedDetail) },
                                 )
                                 if (loadedDetail.chapters.size > 1) {
-                                    CouiTopBarIconButton(
+                                    CouiTopBarAction(
                                         icon = CouiIcons.Download,
-                                        description = "下载全部",
+                                        contentDescription = "下载全部",
                                         onClick = { downloadAll(loadedDetail.id, loadedDetail.chapters) },
                                     )
                                 }
@@ -690,41 +686,6 @@ private fun CouiAlbumDetailScreenBody(
                 busy = uiState.replyBusy,
                 onDismiss = { stateHolder.setReplyTarget(null) },
                 onSend = stateHolder::sendReply,
-            )
-        }
-    }
-}
-
-/** 顶栏图标位：API 34 起顶栏自带工具栏背景作用域，直接用库的 [TopAppBarButton]；更低版本回落成 44dp 自绘图标位。 */
-@Composable
-private fun CouiTopBarIconButton(
-    icon: ImageVector,
-    description: String,
-    onClick: () -> Unit,
-) {
-    // 库内 TopAppBarButton 依赖 LocalCouiToolbarBackdrop（顶栏内部提供），低版本没有该作用域
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        TopAppBarButton(onClick = onClick) {
-            Icon(
-                imageVector = icon,
-                contentDescription = description,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-    } else {
-        val scheme = CouiKitTheme.colorScheme
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget, onClick = onClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = description,
-                modifier = Modifier.size(22.dp),
-                tint = scheme.onSurface,
             )
         }
     }
@@ -1371,184 +1332,6 @@ private fun CouiCommentComposer(
                 enabled = !busy && text.isNotBlank(),
                 onClick = onSend,
             )
-        }
-    }
-}
-
-/** 评论单条：头像 + 等级/称号 + 徽章 + 分段正文。回复不在这里递归，已由 [flattenComments] 摊平后逐行入列表。 */
-@Composable
-private fun CouiCommentRow(
-    item: CommentItem,
-    depth: Int = 0,
-    onReply: ((CommentItem) -> Unit)? = null,
-) {
-    val scheme = CouiKitTheme.colorScheme
-    // 缩进只按层级累加到上限：层级仍然逐层传下去（回复线照画），但不再继续吃掉正文宽度
-    val indentDepth = depth.coerceAtMost(COUI_COMMENT_MAX_INDENT_DEPTH)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp + (indentDepth * 12).dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
-            .drawBehind {
-                if (depth > 0) {
-                    // 回复线：贴在缩进区外侧的竖线，标识回复归属层级
-                    drawRect(
-                        color = scheme.outlineVariant,
-                        topLeft = Offset(-6.dp.toPx(), 0f),
-                        size = Size(2.dp.toPx(), size.height),
-                    )
-                }
-            },
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CouiCommentAvatar(
-                url = item.avatarUrl,
-                size = if (depth == 0) 40.dp else 30.dp,
-                contentDescription = item.author,
-            )
-            item.level?.let { level ->
-                Text(
-                    text = "Lv.$level",
-                    kind = CouiTextKind.Description,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = item.author,
-                        kind = CouiTextKind.PreferenceSummary,
-                        color = scheme.accent,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    item.levelName?.takeIf { it.isNotBlank() }?.let { levelName ->
-                        Text(
-                            text = "· $levelName",
-                            kind = CouiTextKind.Description,
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 1,
-                            modifier = Modifier.padding(start = 4.dp),
-                        )
-                    }
-                }
-                if (item.likes > 0) {
-                    Text(
-                        text = "赞 ${item.likes}",
-                        kind = CouiTextKind.Description,
-                        color = scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
-            }
-            item.postDate?.takeIf { it.isNotBlank() }?.let { date ->
-                Text(
-                    text = date,
-                    kind = CouiTextKind.Description,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    textAlign = TextAlign.Start,
-                )
-            }
-            if (item.badges.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    item.badges.forEach { badge ->
-                        CouiCommentAvatar(
-                            url = badge,
-                            size = 22.dp,
-                            contentDescription = COUI_COMMENT_BADGE_DESCRIPTION,
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            CouiCommentBody(item)
-            onReply?.let { reply ->
-                Text(
-                    text = "回复",
-                    kind = CouiTextKind.PreferenceValue,
-                    color = scheme.accent,
-                    maxLines = 1,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier
-                        .clip(CouiCapsuleShape)
-                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget) { reply(item) }
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                )
-            }
-        }
-    }
-}
-
-/**
- * 头像与徽章统一的圆形图片：底色圆垫在图片下方，缺图、加载中、加载失败都不会露出透明空洞。
- */
-@Composable
-private fun CouiCommentAvatar(
-    url: String?,
-    size: Dp,
-    contentDescription: String? = null,
-) {
-    val scheme = CouiKitTheme.colorScheme
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(scheme.container),
-    ) {
-        if (!url.isNullOrBlank()) {
-            AsyncImage(
-                model = url,
-                contentDescription = contentDescription,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(size)
-                    .clip(CircleShape),
-            )
-        }
-    }
-}
-
-/** 正文按分段渲染：推荐作品拆成强调链接，其余按原文换行展示。 */
-@Composable
-private fun CouiCommentBody(item: CommentItem) {
-    val scheme = CouiKitTheme.colorScheme
-    val segments = item.body.ifEmpty { listOf(CommentSegment.Text(item.content)) }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        segments.forEach { segment ->
-            when (segment) {
-                is CommentSegment.Text -> if (segment.text.isNotBlank()) {
-                    Text(
-                        text = segment.text,
-                        kind = CouiTextKind.Body,
-                        color = scheme.onSurface,
-                        maxLines = COUI_COMMENT_BODY_MAX_LINES,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
-                    )
-                }
-
-                is CommentSegment.Album -> Text(
-                    text = segment.label,
-                    kind = CouiTextKind.Body,
-                    color = scheme.accent,
-                    textAlign = TextAlign.Start,
-                )
-            }
         }
     }
 }

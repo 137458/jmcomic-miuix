@@ -67,6 +67,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
@@ -428,7 +429,7 @@ private fun ProfileHeader(username: String, email: String, photoUrl: String?) {
                 .padding(CouiPageDefaults.rowPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ProfileAvatar(photoUrl = photoUrl, name = username)
+            CouiAvatar(url = photoUrl, size = 64.dp, name = username)
             Spacer(Modifier.width(14.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -450,31 +451,6 @@ private fun ProfileHeader(username: String, email: String, photoUrl: String?) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ProfileAvatar(photoUrl: String?, name: String) {
-    val scheme = CouiKitTheme.colorScheme
-    val modifier = Modifier.size(64.dp)
-    if (!photoUrl.isNullOrBlank()) {
-        AsyncImage(
-            model = photoUrl,
-            contentDescription = "头像",
-            contentScale = ContentScale.Crop,
-            modifier = modifier.clip(CircleShape),
-        )
-    } else {
-        Box(
-            modifier = modifier.clip(CircleShape).background(scheme.container),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "客",
-                kind = CouiTextKind.SectionTitle,
-                color = scheme.onSurfaceVariant,
-            )
         }
     }
 }

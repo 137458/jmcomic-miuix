@@ -53,6 +53,8 @@ import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
+import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
@@ -389,32 +391,4 @@ private fun WeekPeriodRow(
             }
         }
     }
-}
-
-/** 顶栏刷新胶囊：信息流各页共用同一形态，避免每页各写一套。 */
-@Composable
-internal fun CouiFeedRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
-    val tint = if (refreshing) scheme.onSurfaceVariant else scheme.accent
-    Row(
-        modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = !refreshing, minTouchTarget = CouiMinTouchTarget, onClick = onRefresh)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(imageVector = CouiIcons.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(text = if (refreshing) "刷新中" else "刷新", kind = CouiTextKind.Description, color = tint)
-    }
-}
-
-/** 登录过期时的落点：解释原因并把重新登录入口放在手边，信息流各页共用。 */
-@Composable
-internal fun CouiFeedLoginGroup(message: String, onOpenLogin: () -> Unit) {
-    CouiErrorGroup(
-        message = message.ifBlank { "登录已过期，请重新登录" },
-        onRetry = onOpenLogin,
-        modifier = Modifier.padding(top = 8.dp),
-    )
 }

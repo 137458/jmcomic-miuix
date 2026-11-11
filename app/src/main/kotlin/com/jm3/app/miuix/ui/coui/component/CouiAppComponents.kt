@@ -71,6 +71,7 @@ import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -86,6 +87,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
@@ -120,6 +122,8 @@ import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.bottomBarShape
+import com.jm3.core.model.CommentItem
+import com.jm3.core.model.CommentSegment
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
@@ -161,7 +165,7 @@ fun CouiAppScaffold(
 }
 
 /** 可点件最小触摸目标：无障碍基线 48dp，低于它的可见按钮靠留白补足触区。 */
-internal val CouiMinTouchTarget = 48.dp
+val CouiMinTouchTarget = 48.dp
 
 /**
  * 破坏性确认按钮：红底白字的主操作。
@@ -1104,6 +1108,281 @@ fun CouiPressHapticEffect(
         interactionSource.interactions.collect { interaction ->
             if (interaction is PressInteraction.Press) {
                 view.performCouiHapticFeedback(feedback)
+            }
+        }
+    }
+}
+
+/** 顶栏刷新胶囊：信息流各页共用同一形态，避免每页各写一套。 */
+@Composable
+fun CouiFeedRefreshAction(
+    refreshing: Boolean,
+    modifier: Modifier = Modifier,
+    onRefresh: () -> Unit,
+) {
+    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val tint = if (refreshing) colors.onSurfaceVariant else colors.accent
+    Row(
+        modifier = modifier
+            .clip(CouiCapsuleShape)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                spotlight = SpotlightPreset.ChipTab,
+                enabled = !refreshing,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onRefresh,
+            )
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(imageVector = CouiIcons.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        Text(text = if (refreshing) "刷新中" else "刷新", kind = CouiTextKind.Description, color = tint)
+    }
+}
+
+/** 登录过期或未登录时的落点卡片：解释原因并提供明确的「去登录」入口。 */
+@Composable
+fun CouiFeedLoginGroup(
+    message: String = "登录已过期，请重新登录",
+    modifier: Modifier = Modifier,
+    onOpenLogin: () -> Unit,
+) {
+    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val displayText = message.ifBlank { "登录已过期，请重新登录" }
+    Group(
+        modifier = modifier.padding(top = 8.dp),
+        title = "需要登录",
+        footer = displayText,
+    ) {
+        Item(
+            title = {
+                Text(text = "去登录", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+            },
+            trailing = {
+                Icon(
+                    imageVector = CouiIcons.Forward,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.accent,
+                )
+            },
+            onClick = onOpenLogin,
+        )
+    }
+}
+
+/** 触底续页：滚动模式下列表末尾进入视口就拉下一页，失败时不自动重试。 */
+@Composable
+fun CouiAutoLoadMoreEffect(
+    feed: PagedFeed<*>,
+    onLoadMore: () -> Unit,
+) {
+    LaunchedEffect(feed.page, feed.loadingMore, feed.loadMoreFailed) {
+        if (!feed.canLoadMore || feed.loadingMore || feed.loadMoreFailed) return@LaunchedEffect
+        onLoadMore()
+    }
+}
+
+/**
+ * 统一的圆形头像与徽章：底色圆垫在下方，缺图、加载中或失败均不留透明空洞；
+ * 支持传入昵称首字母占位。
+ */
+@Composable
+fun CouiAvatar(
+    url: String?,
+    size: Dp = 40.dp,
+    name: String? = null,
+    contentDescription: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val initial = name?.trim()?.firstOrNull()?.uppercaseChar()?.toString()
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(colors.container),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!url.isNullOrBlank()) {
+            AsyncImage(
+                model = url,
+                contentDescription = contentDescription ?: name ?: "头像",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape),
+            )
+        } else if (initial != null) {
+            val textKind = if (size >= 56.dp) CouiTextKind.SectionTitle else CouiTextKind.PreferenceTitle
+            Text(
+                text = initial,
+                kind = textKind,
+                color = colors.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 回复线：深层回复贴在缩进区外侧的竖线，标识回复归属层级。 */
+fun Modifier.drawReplyLine(depth: Int, color: Color): Modifier =
+    if (depth <= 0) {
+        this
+    } else {
+        drawBehind {
+            val x = -6.dp.toPx()
+            drawLine(
+                color = color,
+                start = Offset(x, 0f),
+                end = Offset(x, size.height),
+                strokeWidth = 2.dp.toPx(),
+            )
+        }
+    }
+
+const val COUI_COMMENT_MAX_INDENT_DEPTH = 3
+
+/**
+ * 统一评论行组件：收拢相册详情、论坛、阅读器与小说详情的评论呈现。
+ */
+@Composable
+fun CouiCommentRow(
+    item: CommentItem,
+    modifier: Modifier = Modifier,
+    depth: Int = 0,
+    maxIndentDepth: Int = COUI_COMMENT_MAX_INDENT_DEPTH,
+    authorColor: Color = CouiTheme.colorSchemeFor(CouiTheme.isDark).accent,
+    bodyMaxLines: Int = 6,
+    onReply: ((CommentItem) -> Unit)? = null,
+) {
+    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val indentDepth = depth.coerceAtMost(maxIndentDepth)
+    val avatarSize = if (depth == 0) 40.dp else 30.dp
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp + (indentDepth * 12).dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
+            .drawReplyLine(depth = depth, color = colors.outlineVariant),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CouiAvatar(
+                url = item.avatarUrl,
+                size = avatarSize,
+                name = item.author,
+                contentDescription = item.author,
+            )
+            item.level?.let { level ->
+                Text(
+                    text = "Lv.$level",
+                    kind = CouiTextKind.Description,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = item.author,
+                        kind = CouiTextKind.PreferenceSummary,
+                        color = authorColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    item.levelName?.takeIf { it.isNotBlank() }?.let { levelName ->
+                        Text(
+                            text = "· $levelName",
+                            kind = CouiTextKind.Description,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
+                }
+                if (item.likes > 0) {
+                    Text(
+                        text = "赞 ${item.likes}",
+                        kind = CouiTextKind.Description,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
+            item.postDate?.takeIf { it.isNotBlank() }?.let { date ->
+                Text(
+                    text = date,
+                    kind = CouiTextKind.Description,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    textAlign = TextAlign.Start,
+                )
+            }
+            if (item.badges.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    item.badges.forEach { badge ->
+                        CouiAvatar(
+                            url = badge,
+                            size = 22.dp,
+                            contentDescription = "徽章",
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            val segments = item.body.ifEmpty { listOf(CommentSegment.Text(item.content)) }
+            Column(modifier = Modifier.fillMaxWidth()) {
+                segments.forEach { segment ->
+                    when (segment) {
+                        is CommentSegment.Text -> if (segment.text.isNotBlank()) {
+                            Text(
+                                text = segment.text,
+                                kind = CouiTextKind.Body,
+                                color = colors.onSurface,
+                                maxLines = bodyMaxLines,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Start,
+                            )
+                        }
+                        is CommentSegment.Album -> Text(
+                            text = segment.label,
+                            kind = CouiTextKind.Body,
+                            color = colors.accent,
+                            textAlign = TextAlign.Start,
+                        )
+                    }
+                }
+            }
+            onReply?.let { reply ->
+                Text(
+                    text = "回复",
+                    kind = CouiTextKind.PreferenceValue,
+                    color = colors.accent,
+                    maxLines = 1,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier
+                        .clip(CouiCapsuleShape)
+                        .couiPressable(
+                            shape = CouiCapsuleShape,
+                            spotlight = SpotlightPreset.ChipTab,
+                            minTouchTarget = CouiMinTouchTarget,
+                            onClick = { reply(item) },
+                        )
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                )
             }
         }
     }

@@ -122,7 +122,9 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLibraryNavBarMinSdk
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
@@ -1671,57 +1673,11 @@ internal fun ReaderHudAction(
 @Composable
 internal fun ReaderCommentRow(item: CommentItem, onReply: () -> Unit) {
     val scheme = CouiKitTheme.colorScheme
-    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(scheme.outlineVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (item.avatarUrl != null) {
-                AsyncImage(model = item.avatarUrl, contentDescription = null, modifier = Modifier.fillMaxSize())
-            } else {
-                Text(text = item.author.take(1), kind = CouiTextKind.PreferenceTitle)
-            }
-        }
-        Column(modifier = Modifier.weight(1f).padding(start = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = item.author,
-                    kind = CouiTextKind.PreferenceSummary,
-                    color = scheme.accentOnSurface,
-                    modifier = Modifier.weight(1f, fill = false),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val postDate = item.postDate
-                if (!postDate.isNullOrBlank()) {
-                    Text(
-                        text = postDate,
-                        kind = CouiTextKind.Description,
-                        color = scheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 8.dp),
-                        maxLines = 1,
-                    )
-                }
-            }
-            Text(
-                text = item.content,
-                kind = CouiTextKind.Body,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            )
-            Text(
-                text = "回复",
-                kind = CouiTextKind.Description,
-                color = scheme.accentOnSurface,
-                modifier = Modifier
-                    .padding(top = 6.dp)
-                    .couiPressable(minTouchTarget = CouiMinTouchTarget) { onReply() }
-                    .padding(vertical = 2.dp),
-            )
-        }
-    }
+    CouiCommentRow(
+        item = item,
+        authorColor = scheme.accentOnSurface,
+        onReply = { onReply() },
+    )
 }
 
 /** 评论输入区：未登录只给登录入口，登录后是输入框加字数与发表。 */

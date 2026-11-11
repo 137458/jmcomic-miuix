@@ -72,6 +72,7 @@ import com.jm3.app.miuix.ui.checkInFailureCopy
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiAvatar
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
@@ -440,7 +441,7 @@ private fun MineAccountCard(
             .padding(horizontal = CouiPageDefaults.rowPadding, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MineAvatar(photoUrl = user?.photoUrl, name = user?.username)
+        CouiAvatar(url = user?.photoUrl, size = 56.dp, name = user?.username)
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
@@ -474,32 +475,6 @@ private fun mineAccountSummary(user: Jm3User): String {
     val levelName = user.levelName?.trim().orEmpty()
     val level = if (levelName.isEmpty()) "Lv.${user.level}" else "Lv.${user.level} $levelName"
     return "$level · 硬币 ${user.coin} · 经验 ${user.currentExp}/${user.nextLevelExp}"
-}
-
-/** 没有头像时用昵称首字母占位，避免空圈比未登录卡片更可疑。 */
-@Composable
-private fun MineAvatar(photoUrl: String?, name: String?) {
-    val scheme = CouiTheme.colorScheme
-    val modifier = Modifier.size(56.dp)
-    if (!photoUrl.isNullOrBlank()) {
-        AsyncImage(
-            model = photoUrl,
-            contentDescription = "头像",
-            contentScale = ContentScale.Crop,
-            modifier = modifier.clip(CircleShape),
-        )
-    } else {
-        Box(
-            modifier = modifier.clip(CircleShape).background(scheme.container),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = name?.trim()?.firstOrNull()?.uppercaseChar()?.toString() ?: "客",
-                kind = CouiTextKind.SectionTitle,
-                color = scheme.onSurfaceVariant,
-            )
-        }
-    }
 }
 
 @Composable
