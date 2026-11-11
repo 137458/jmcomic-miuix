@@ -63,11 +63,7 @@ import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.ScreenLoadPlan
-import com.jm3.app.miuix.ui.awaitGatewayReady
 import com.jm3.app.miuix.ui.checkInDisplay
-import com.jm3.app.miuix.ui.checkInFailureCopy
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -86,18 +82,13 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.formatCheckInSummary
-import com.jm3.app.miuix.ui.planLoad
-import com.jm3.app.miuix.ui.resolveCheckInResult
-import com.jm3.app.miuix.ui.retryCheckInLoad
-import com.jm3.core.Jm3Log
+import com.jm3.app.miuix.ui.rememberMineCheckInHolder
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.Jm3User
 import com.jm3.core.runCatchingSuspending
-import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.UnreadBadge
 import java.time.LocalDate
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -126,133 +117,14 @@ internal fun CouiMineScreen(
     onOpenNovel: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
-    val user by deps.account.user.collectAsState()
+    val user by deps.session.account.user.collectAsState()
     val unread by unreadBadge.count.collectAsState()
     val downloads by deps.downloadManager.queue.updates.collectAsState()
     val activeDownloads = downloads.activeDownloadCount()
     val scope = rememberCoroutineScope()
-
-    var checkInStatus by remember { mutableStateOf<DailyCheckInStatus?>(null) }
-    var checkInLoading by remember { mutableStateOf(false) }
-    var checkInError by remember { mutableStateOf<String?>(null) }
-    // 会话失效会同时把 user 置空，签到卡本应整块消失；用独立标记把它留在原位解释原因并给出登录入口
-    var checkInExpiredMessage by remember { mutableStateOf<String?>(null) }
-    var checkInBusy by remember { mutableStateOf(false) }
-    // 记录「哪一天签到成功」而不是布尔值：应用跨过午夜后不会继续显示昨天的「今日已签到」
-    var checkedInOn by remember { mutableStateOf<LocalDate?>(null) }
+    val checkInHolder = rememberMineCheckInHolder(deps = deps, uid = user?.uid, snackbarHostState = snackbarHostState)
+    val checkInState = checkInHolder.viewState
     var confirmLogout by remember { mutableStateOf(false) }
-
-    /** 失效与失败共用一条落点：卡片的失效态只解释原因并给出登录入口。 */
-    fun applyCheckInPlan(plan: ScreenLoadPlan) {
-        when (plan.phase) {
-            ScreenLoadPhase.Expired -> {
-                checkInExpiredMessage = plan.message
-                checkInError = null
-            }
-
-            ScreenLoadPhase.Failed -> checkInError = plan.message
-            ScreenLoadPhase.Content -> Unit
-        }
-    }
-
-    // 加载签到状态；失败保留 error 由卡片上的重试行兜底
-    fun loadCheckInStatus() {
-        val uid = user?.uid ?: return
-        scope.launch {
-            // 启动恢复会先置登录态再注入 Cookie：AuthCall 的闸门保证注入完成前不发出请求
-            checkInLoading = true
-            checkInError = null
-            // 冷启动时域名管理器可能还在跑库的初始化链，先等 READY 再发，避免首个请求直接撞上初始化失败；
-            // 超时也照常发：真实网络错误必须显示出来，不能让卡片永远停在加载中
-            awaitGatewayReady(ready = { runCatching { deps.gateway.domainsReady() }.getOrDefault(false) })
-            val outcome = retryCheckInLoad(
-                attempt = { deps.authCall.call { deps.gateway.dailyCheckInStatus(uid) } },
-            )
-            checkInLoading = false
-            when (outcome) {
-                is SessionOutcome.Ok -> checkInStatus = outcome.value
-                SessionOutcome.Expired -> applyCheckInPlan(
-                    planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败"),
-                )
-
-                is SessionOutcome.Failed -> {
-                    // 库侧失败此前完全不可见（异常被吞、slf4j 无绑定），这里至少留下类型与 message
-                    Jm3Log.warn(
-                        "CheckIn",
-                        "签到状态加载失败（${outcome.cause?.javaClass?.name ?: "无异常"}）：${outcome.message.orEmpty()}",
-                        outcome.cause,
-                    )
-                    checkInError = checkInFailureCopy(outcome, "签到状态加载失败，请稍后重试")
-                }
-            }
-        }
-    }
-
-    /** 签到后的回读：失效时仍只解释原因并留登录入口，不把「未生效」误报给用户。 */
-    suspend fun refreshCheckInStatus(uid: String): DailyCheckInStatus? {
-        val outcome = deps.authCall.call {
-            runCatchingSuspending { deps.gateway.dailyCheckInStatus(uid) }.getOrNull()
-        }
-        return when (outcome) {
-            is SessionOutcome.Ok -> outcome.value
-
-            SessionOutcome.Expired -> {
-                applyCheckInPlan(planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败"))
-                null
-            }
-
-            is SessionOutcome.Failed -> null
-        }
-    }
-
-    // 签到成功后刷新进度并提示；本次会话内禁止重复点击
-    fun performCheckIn(status: DailyCheckInStatus) {
-        val uid = user?.uid ?: return
-        val today = LocalDate.now()
-        if (checkInBusy || checkedInOn == today) return
-        checkInBusy = true
-        checkInError = null
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.dailyCheckIn(uid, status.dailyId) }
-            checkInBusy = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    // 请求已成功落地，但回读可能撞上服务端/CDN 缓存延迟：两次都没标记时按乐观补签展示
-                    var refreshed = refreshCheckInStatus(uid)
-                    if (refreshed != null && !refreshed.isSignedOn(today.dayOfMonth)) {
-                        delay(400)
-                        val retry = refreshCheckInStatus(uid)
-                        if (retry != null) refreshed = retry
-                    }
-                    val resolution = resolveCheckInResult(
-                        current = checkInStatus,
-                        refreshed = refreshed,
-                        todayDayOfMonth = today.dayOfMonth,
-                    )
-                    resolution.status?.let { checkInStatus = it }
-                    // 回读为 null 时没有任何证据说明今天已落账，不能锁死按钮，否则当天无法重试
-                    if (resolution.markToday) checkedInOn = today
-                    snackbarHostState.showSnackbar(resolution.message)
-                }
-
-                SessionOutcome.Expired -> applyCheckInPlan(
-                    planLoad(outcome, hasContent = false, failureMessage = "签到失败，请重试"),
-                )
-
-                is SessionOutcome.Failed -> checkInError = checkInFailureCopy(outcome, "签到失败，请稍后重试")
-            }
-        }
-    }
-    // 切换账号时清掉上一个账号的签到状态，避免串号
-    LaunchedEffect(user?.uid) {
-        checkInStatus = null
-        checkInError = null
-        checkedInOn = null
-        // 清会话也会把 user 置空，此时不能顺手抹掉失效提示，否则用户看不到「为什么突然要重新登录」
-        if (user == null) return@LaunchedEffect
-        checkInExpiredMessage = null
-        loadCheckInStatus()
-    }
 
     val scrollState = rememberScrollState()
     val topBarBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
@@ -292,16 +164,16 @@ internal fun CouiMineScreen(
                 onOpenProfile = onOpenProfile,
             )
 
-            if (user != null || checkInExpiredMessage != null) {
+            if (user != null || checkInState.expiredMessage != null) {
                 MineCheckInGroup(
-                    status = checkInStatus,
-                    loading = checkInLoading,
-                    busy = checkInBusy,
-                    error = checkInError,
-                    expiredMessage = checkInExpiredMessage,
-                    checkedInOn = checkedInOn,
-                    onCheckIn = { performCheckIn(it) },
-                    onReload = { loadCheckInStatus() },
+                    status = checkInState.status,
+                    loading = checkInState.loading,
+                    busy = checkInState.busy,
+                    error = checkInState.error,
+                    expiredMessage = checkInState.expiredMessage,
+                    checkedInOn = checkInState.checkedInOn,
+                    onCheckIn = { checkInHolder.checkIn(it) },
+                    onReload = { checkInHolder.reload() },
                     onOpenLogin = onOpenLogin,
                 )
             }
@@ -416,7 +288,7 @@ internal fun CouiMineScreen(
         confirmAction = couiDestructiveConfirmAction(text = "确认退出") {
             confirmLogout = false
             scope.launch {
-                if (runCatchingSuspending { deps.account.logout() }.isSuccess) {
+                if (runCatchingSuspending { deps.session.account.logout() }.isSuccess) {
                     snackbarHostState.showSnackbar("已退出登录")
                 } else {
                     snackbarHostState.showSnackbar("退出登录失败，请稍后重试")

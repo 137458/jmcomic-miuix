@@ -1,8 +1,10 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.toFeed
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -134,5 +136,30 @@ class SessionCacheTest {
 
         assertTrue(cache.homeSide.isEmpty)
         assertEquals(ListState.Loading, cache.stateOf(SessionListKey.HomeFeed))
+    }
+
+    @Test
+    fun 签到状态按账号缓存且退出清空后不串号() {
+        val cache = SessionCache()
+        val today = LocalDate.of(2026, 11, 12)
+        val statusA = DailyCheckInStatus(1, "A", "1/7", 1, 7)
+        val statusB = DailyCheckInStatus(2, "B", "2/7", 2, 7)
+
+        cache.rememberCheckIn("1001", statusA, today)
+        cache.rememberCheckIn("1002", statusB, null)
+
+        assertEquals(SessionCache.CachedCheckInState(statusA, today), cache.checkInOf("1001"))
+        assertEquals(SessionCache.CachedCheckInState(statusB, null), cache.checkInOf("1002"))
+
+        // 切换分页模式只作废列表，不应清掉账号签到态
+        cache.forgetPages()
+        assertEquals(SessionCache.CachedCheckInState(statusA, today), cache.checkInOf("1001"))
+        // 跨过午夜后，昨天缓存的签到状态必须失效，不能继续复用昨天日历
+        assertNull(cache.checkInForToday("1001", today.plusDays(1)))
+        assertEquals(SessionCache.CachedCheckInState(statusA, today), cache.checkInForToday("1001", today))
+
+        cache.clear()
+        assertNull(cache.checkInOf("1001"))
+        assertNull(cache.checkInOf("1002"))
     }
 }

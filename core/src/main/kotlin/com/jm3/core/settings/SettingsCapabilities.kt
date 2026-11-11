@@ -274,3 +274,19 @@ interface NotificationPermissionSettings : SettingsKeyStore {
         writeBoolean(SettingsKeys.NOTIFICATION_ASKED, true)
     }
 }
+
+/** 每日签到日期持久化：按账号保存已确认签到的日期，避免切页或重启后受 CDN 缓存回退。 */
+interface CheckInSettings : SettingsKeyStore {
+
+    suspend fun lastCheckInDate(uid: String): String? {
+        val normalizedUid = uid.trim()
+        if (normalizedUid.isEmpty()) return null
+        return CheckInDateRecord.normalize(readString(SettingsKeys.checkInLastDate(normalizedUid)))
+    }
+
+    suspend fun setLastCheckInDate(uid: String, isoDate: String?) {
+        val normalizedUid = uid.trim()
+        if (normalizedUid.isEmpty()) return
+        writeString(SettingsKeys.checkInLastDate(normalizedUid), CheckInDateRecord.normalize(isoDate))
+    }
+}

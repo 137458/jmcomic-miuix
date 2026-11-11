@@ -60,3 +60,14 @@ object VersionSettingText {
 
     fun normalize(raw: String?): String? = raw?.trim()?.takeIf { it.isNotEmpty() }
 }
+
+/** 每日签到日期文本归一：仅保留合法 ISO 日期（YYYY-MM-DD），非法文本视为未记录。 */
+object CheckInDateRecord {
+
+    private val ISO_DATE_PATTERN = Regex("""\d{4}-\d{2}-\d{2}""")
+
+    fun normalize(raw: String?): String? {
+        val trimmed = raw?.trim()?.takeIf { ISO_DATE_PATTERN.matches(it) } ?: return null
+        return runCatching { java.time.LocalDate.parse(trimmed).toString() }.getOrNull()
+    }
+}

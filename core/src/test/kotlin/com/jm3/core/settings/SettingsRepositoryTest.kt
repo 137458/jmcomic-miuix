@@ -61,4 +61,22 @@ class SettingsRepositoryTest {
         r.markNotificationPermissionAsked()
         assertEquals(true, r.notificationPermissionAsked())
     }
+
+    @Test
+    fun 签到日期按账号读写并过滤非法日期与空白账号() = runTest {
+        val r = repo()
+        assertEquals(null, r.lastCheckInDate("1001"))
+
+        r.setLastCheckInDate("1001", " 2026-11-12 ")
+        r.setLastCheckInDate("1002", "2026-11-11")
+        assertEquals("2026-11-12", r.lastCheckInDate("1001"))
+        assertEquals("2026-11-11", r.lastCheckInDate("1002"))
+
+        // 非法或空值写为清空，不误当已签
+        r.setLastCheckInDate("1001", "not-a-date")
+        assertEquals(null, r.lastCheckInDate("1001"))
+
+        r.setLastCheckInDate("   ", "2026-11-12")
+        assertEquals(null, r.lastCheckInDate("   "))
+    }
 }

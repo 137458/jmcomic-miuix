@@ -4,6 +4,7 @@ import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.CheckInDay
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.settings.InMemorySettingsRepository
 import io.github.jukomu.jmcomic.api.exception.JmClientInitializationException
 import io.github.jukomu.jmcomic.api.exception.NetworkException
 import java.net.SocketTimeoutException
@@ -339,6 +340,165 @@ class CheckInLoadPolicyTest {
         assertEquals(0f, display.progress)
         assertEquals(0, display.progressPercent)
         assertEquals("0/0 天 · 0%", display.progressLabel)
+    }
+
+    @Test
+    fun `本地已确认今日签到时CDN返回旧日历仍保持已签到并补齐当天进度`() {
+        val today = LocalDate.of(2026, 11, 15)
+        val staleServer = checkInStatus(
+            signedDays = 9,
+            days = listOf(
+                CheckInDay(dayOfMonth = 14, signed = true, bonus = false),
+                CheckInDay(dayOfMonth = 15, signed = false, bonus = false),
+            ),
+        )
+
+        val resolved = reconcileLoadedCheckInStatus(
+            loaded = staleServer,
+            recordedCheckedInOn = today,
+            today = today,
+        )
+
+        assertEquals(today, resolved.checkedInOn)
+        assertFalse(resolved.confirmedByServer)
+        assertTrue(resolved.status.isSignedOn(15))
+        assertEquals(10, resolved.status.signedDays)
+        assertTrue(checkInDisplay(resolved.status, resolved.checkedInOn, today).signedToday)
+    }
+
+    @Test
+    fun `服务端日历已含今日签到时自动同步今日确认状态`() {
+        val today = LocalDate.of(2026, 11, 15)
+        val freshServer = checkInStatus(
+            signedDays = 10,
+            days = listOf(CheckInDay(dayOfMonth = 15, signed = true, bonus = false)),
+        )
+
+        val resolved = reconcileLoadedCheckInStatus(
+            loaded = freshServer,
+            recordedCheckedInOn = today.minusDays(1),
+            today = today,
+        )
+
+        assertEquals(today, resolved.checkedInOn)
+        assertTrue(resolved.confirmedByServer)
+        assertSame(freshServer, resolved.status)
+    }
+
+    @Test
+    fun `本地记录为昨天且服务端未签时不误判今日已签到`() {
+        val today = LocalDate.of(2026, 11, 15)
+        val freshServer = checkInStatus(
+            signedDays = 9,
+            days = listOf(CheckInDay(dayOfMonth = 15, signed = false, bonus = false)),
+        )
+
+        val resolved = reconcileLoadedCheckInStatus(
+            loaded = freshServer,
+            recordedCheckedInOn = today.minusDays(1),
+            today = today,
+        )
+
+        assertNull(resolved.checkedInOn)
+        assertFalse(resolved.confirmedByServer)
+        assertFalse(resolved.status.isSignedOn(15))
+        assertEquals(9, resolved.status.signedDays)
+    }
+
+    @Test
+    fun `繁简体重复签到提示与日期文本解析均可正确识别`() {
+        assertTrue(isAlreadyCheckedInMessage("已經簽到過了"))
+        assertTrue(isAlreadyCheckedInMessage("今日已签到过"))
+        assertFalse(isAlreadyCheckedInMessage("网络超时"))
+        assertFalse(isAlreadyCheckedInMessage(null))
+
+        assertEquals(LocalDate.of(2026, 11, 12), parseRecordedCheckInDate("2026-11-12"))
+        assertNull(parseRecordedCheckInDate("invalid"))
+        assertNull(parseRecordedCheckInDate(null))
+    }
+
+    @Test
+    fun `签到协作者在切页与重开遇到CDN旧缓存时仍保持今日已签到`() = runBlocking {
+        val settings = InMemorySettingsRepository()
+        val today = LocalDate.of(2026, 11, 15)
+        val staleCdn = checkInStatus(
+            signedDays = 9,
+            days = listOf(
+                CheckInDay(dayOfMonth = 14, signed = true, bonus = false),
+                CheckInDay(dayOfMonth = 15, signed = false, bonus = false),
+            ),
+        )
+        val messages = mutableListOf<String>()
+
+        // 第一轮：用户点击签到，服务端接口返回成功但回读仍带 CDN 旧日历
+        val firstSession = SessionCache()
+        val firstCoordinator = CheckInCoordinator(
+            settings = settings,
+            sessionCache = firstSession,
+            initialUid = "1001",
+            today = { today },
+            sleep = {},
+            awaitReady = { true },
+            fetchStatus = { SessionOutcome.Ok(staleCdn) },
+            submitCheckIn = { _, _ -> SessionOutcome.Ok(Unit) },
+            showMessage = { messages += it },
+        )
+        firstCoordinator.syncAccount("1001")
+        assertFalse(checkInDisplay(firstCoordinator.state.status, firstCoordinator.state.checkedInOn, today).signedToday)
+
+        firstCoordinator.checkIn(firstCoordinator.state.status!!)
+        assertEquals(today, firstCoordinator.state.checkedInOn)
+        assertTrue(checkInDisplay(firstCoordinator.state.status, firstCoordinator.state.checkedInOn, today).signedToday)
+        assertEquals("2026-11-15", settings.lastCheckInDate("1001"))
+
+        // 第二轮：模拟冷启动重建进程（新 SessionCache，沿用已落盘的 SettingsRepository），CDN 依旧返回 staleCdn
+        val restartedCoordinator = CheckInCoordinator(
+            settings = settings,
+            sessionCache = SessionCache(),
+            initialUid = "1001",
+            today = { today },
+            sleep = {},
+            awaitReady = { true },
+            fetchStatus = { SessionOutcome.Ok(staleCdn) },
+            submitCheckIn = { _, _ -> error("不应在已签到后重发签到请求") },
+            showMessage = { messages += it },
+        )
+        restartedCoordinator.syncAccount("1001")
+        assertEquals(today, restartedCoordinator.state.checkedInOn)
+        assertTrue(checkInDisplay(restartedCoordinator.state.status, restartedCoordinator.state.checkedInOn, today).signedToday)
+        assertEquals(10, restartedCoordinator.state.status?.signedDays)
+    }
+
+    @Test
+    fun `手动点击遇到繁体重复签到提示时自动同步今日已签到并持久化`() = runBlocking {
+        val settings = InMemorySettingsRepository()
+        val sessionCache = SessionCache()
+        val today = LocalDate.of(2026, 11, 15)
+        val staleCdn = checkInStatus(
+            signedDays = 9,
+            days = listOf(CheckInDay(dayOfMonth = 15, signed = false, bonus = false)),
+        )
+        val messages = mutableListOf<String>()
+        val coordinator = CheckInCoordinator(
+            settings = settings,
+            sessionCache = sessionCache,
+            initialUid = "1001",
+            today = { today },
+            sleep = {},
+            awaitReady = { true },
+            fetchStatus = { SessionOutcome.Ok(staleCdn) },
+            submitCheckIn = { _, _ -> SessionOutcome.Failed("已經簽到過了") },
+            showMessage = { messages += it },
+        )
+
+        coordinator.syncAccount("1001")
+        coordinator.checkIn(coordinator.state.status!!)
+
+        assertEquals(today, coordinator.state.checkedInOn)
+        assertNull(coordinator.state.error)
+        assertTrue(coordinator.state.status?.isSignedOn(15) == true)
+        assertEquals("2026-11-15", settings.lastCheckInDate("1001"))
+        assertEquals(listOf("今日已签到"), messages)
     }
 
     /** 构造签到状态：日历缺省为「昨天已签」，便于区分「当天缺条目」与「当天未签」。 */

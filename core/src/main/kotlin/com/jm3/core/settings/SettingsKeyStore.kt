@@ -70,4 +70,7 @@ internal object SettingsKeys {
 
     /** 每个章节独立成键：保存该章节上次读到的页码。 */
     fun readerLastPage(photoId: String): String = "reader_last_page_" + photoId
+
+    /** 每个账号独立成键：记录最后确认已签到的本地日期（YYYY-MM-DD）。 */
+    fun checkInLastDate(uid: String): String = "check_in_last_date_" + uid
 }

@@ -1,12 +1,26 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
+import com.jm3.core.Jm3Log
 import com.jm3.core.model.CheckInDay
 import com.jm3.core.model.DailyCheckInStatus
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.settings.CheckInSettings
 import java.time.LocalDate
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /**
  * 首屏签到状态加载的退避节奏：立即一次，失败后等 1s、再失败等 3s 各重试一次。
@@ -111,6 +125,7 @@ internal fun resolveCheckInResult(
 
 /** 在日历上补记 [dayOfMonth]：已有当天条目只改标记，缺省则追加一天，已签天数同步加一。 */
 private fun DailyCheckInStatus.markSignedOn(dayOfMonth: Int): DailyCheckInStatus {
+    if (isSignedOn(dayOfMonth)) return this
     val hasDay = days.any { it.dayOfMonth == dayOfMonth }
     val updatedDays = if (hasDay) {
         days.map { if (it.dayOfMonth == dayOfMonth) it.copy(signed = true) else it }
@@ -157,4 +172,331 @@ internal fun checkInDisplay(
         progressPercent = percent,
         progressLabel = "${status?.signedDays ?: 0}/${status?.totalDays ?: 0} 天 · $percent%",
     )
+}
+
+/** 初屏/切页加载签到状态后的合并结论：避免服务端 CDN 旧缓存覆盖已确认的今日签到态。 */
+internal data class CheckInLoadResolution(
+    val status: DailyCheckInStatus,
+    val checkedInOn: LocalDate?,
+    val confirmedByServer: Boolean,
+)
+
+internal fun parseRecordedCheckInDate(raw: String?): LocalDate? {
+    val text = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return runCatching { LocalDate.parse(text) }.getOrNull()
+}
+
+internal fun isAlreadyCheckedInMessage(message: String?): Boolean {
+    val text = message?.trim().orEmpty()
+    if (text.isEmpty()) return false
+    return text.contains("已签到") ||
+        text.contains("已经签到") ||
+        text.contains("已簽到") ||
+        text.contains("已經簽到")
+}
+
+internal fun reconcileLoadedCheckInStatus(
+    loaded: DailyCheckInStatus,
+    recordedCheckedInOn: LocalDate?,
+    today: LocalDate,
+): CheckInLoadResolution {
+    if (loaded.isSignedOn(today.dayOfMonth)) {
+        return CheckInLoadResolution(
+            status = loaded,
+            checkedInOn = today,
+            confirmedByServer = true,
+        )
+    }
+    if (recordedCheckedInOn == today) {
+        return CheckInLoadResolution(
+            status = loaded.markSignedOn(today.dayOfMonth),
+            checkedInOn = today,
+            confirmedByServer = false,
+        )
+    }
+    return CheckInLoadResolution(
+        status = loaded,
+        checkedInOn = null,
+        confirmedByServer = false,
+    )
+}
+
+/** 每日签到页面的共享 UI 状态。 */
+internal data class CheckInViewState(
+    val status: DailyCheckInStatus? = null,
+    val loading: Boolean = false,
+    val error: String? = null,
+    val expiredMessage: String? = null,
+    val busy: Boolean = false,
+    val checkedInOn: LocalDate? = null,
+)
+
+/**
+ * 每日签到状态协作者：两套皮肤共用同一套持久化和 CDN 缓存兜底逻辑。
+ *
+ * 1. 切换 tab 重建页面时先从 [sessionCache] 读取同日快照，避免先闪一次「加载中」或丢掉已签到态；
+ * 2. 冷启动/重开时从 [settings]（`jm3_settings`）恢复当天已确认的签到日期，即便服务端 `/daily`
+ *    仍返回过期的 CDN 缓存，也会把状态维持在「今日已签到」并补齐当天进度。
+ */
+internal class CheckInCoordinator(
+    private val settings: CheckInSettings,
+    private val sessionCache: SessionCache,
+    private val initialUid: String? = null,
+    private val today: () -> LocalDate = { LocalDate.now() },
+    private val sleep: suspend (Long) -> Unit = { delay(it) },
+    private val awaitReady: suspend () -> Boolean,
+    private val fetchStatus: suspend (String) -> SessionOutcome<DailyCheckInStatus>,
+    private val fetchStatusOnce: suspend (String) -> SessionOutcome<DailyCheckInStatus?> = fetchStatus,
+    private val submitCheckIn: suspend (String, Int) -> SessionOutcome<Unit>,
+    private val showMessage: suspend (String) -> Unit,
+    private val logWarn: (String, Throwable?) -> Unit = { message, cause -> Jm3Log.warn("CheckIn", message, cause) },
+    private val onStateChanged: (CheckInViewState) -> Unit = {},
+) {
+    private var activeUid: String? = initialUid
+
+    var state: CheckInViewState = seedInitialState(initialUid)
+        private set
+
+    private fun seedInitialState(uid: String?): CheckInViewState {
+        val normalizedUid = uid ?: return CheckInViewState()
+        val now = today()
+        val cached = sessionCache.checkInForToday(normalizedUid, now) ?: return CheckInViewState()
+        val checkedInToday = cached.checkedInOn?.takeIf { it == now }
+        return CheckInViewState(status = cached.status, checkedInOn = checkedInToday)
+    }
+
+    private inline fun update(transform: (CheckInViewState) -> CheckInViewState) {
+        state = transform(state)
+        onStateChanged(state)
+    }
+
+    suspend fun syncAccount(uid: String?) {
+        activeUid = uid
+        if (uid == null) {
+            // 清会话也会把 user 置空，此时不能顺手抹掉失效提示，否则用户看不到「为什么突然要重新登录」
+            update { it.copy(status = null, loading = false, error = null, busy = false, checkedInOn = null) }
+            return
+        }
+        val now = today()
+        val cached = sessionCache.checkInForToday(uid, now)
+        val persisted = parseRecordedCheckInDate(settings.lastCheckInDate(uid))?.takeIf { it == now }
+        if (activeUid != uid) return
+        val knownCheckedIn = persisted ?: cached?.checkedInOn?.takeIf { it == now }
+        val seededStatus = cached?.status?.let { s ->
+            if (knownCheckedIn == now) reconcileLoadedCheckInStatus(s, now, now).status else s
+        }
+        update {
+            CheckInViewState(
+                status = seededStatus,
+                checkedInOn = knownCheckedIn,
+            )
+        }
+        load()
+    }
+
+    suspend fun load() {
+        val uid = activeUid ?: return
+        update { it.copy(loading = it.status == null, error = null) }
+        awaitReady()
+        if (activeUid != uid) return
+        val outcome = retryCheckInLoad(
+            attempt = { fetchStatus(uid) },
+            sleep = sleep,
+        )
+        if (activeUid != uid) return
+        update { it.copy(loading = false) }
+        when (outcome) {
+            is SessionOutcome.Ok -> {
+                val now = today()
+                val persisted = parseRecordedCheckInDate(settings.lastCheckInDate(uid))?.takeIf { it == now }
+                val knownCheckedIn = persisted ?: state.checkedInOn?.takeIf { it == now }
+                val resolved = reconcileLoadedCheckInStatus(
+                    loaded = outcome.value,
+                    recordedCheckedInOn = knownCheckedIn,
+                    today = now,
+                )
+                update {
+                    it.copy(
+                        status = resolved.status,
+                        checkedInOn = resolved.checkedInOn,
+                        error = null,
+                        expiredMessage = null,
+                    )
+                }
+                sessionCache.rememberCheckIn(uid, resolved.status, resolved.checkedInOn, now)
+                if (resolved.confirmedByServer) {
+                    settings.setLastCheckInDate(uid, now.toString())
+                }
+            }
+
+            SessionOutcome.Expired -> {
+                val msg = planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败").message
+                update { it.copy(expiredMessage = msg, error = null) }
+            }
+
+            is SessionOutcome.Failed -> {
+                logWarn(
+                    "签到状态加载失败（${outcome.cause?.javaClass?.name ?: "无异常"}）：${outcome.message.orEmpty()}",
+                    outcome.cause,
+                )
+                update { cur ->
+                    if (cur.status == null) {
+                        cur.copy(error = checkInFailureCopy(outcome, "签到状态加载失败，请稍后重试"))
+                    } else {
+                        cur
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshOnce(uid: String): DailyCheckInStatus? = when (val outcome = fetchStatusOnce(uid)) {
+        is SessionOutcome.Ok -> outcome.value
+        SessionOutcome.Expired -> {
+            val msg = planLoad(outcome, hasContent = false, failureMessage = "签到状态加载失败").message
+            update { it.copy(expiredMessage = msg, error = null) }
+            null
+        }
+        is SessionOutcome.Failed -> null
+    }
+
+    suspend fun checkIn(targetStatus: DailyCheckInStatus) {
+        val uid = activeUid ?: return
+        val now = today()
+        if (state.busy || state.checkedInOn == now) return
+        update { it.copy(busy = true, error = null) }
+        val outcome = submitCheckIn(uid, targetStatus.dailyId)
+        if (activeUid != uid) return
+        update { it.copy(busy = false) }
+        when {
+            outcome is SessionOutcome.Ok -> {
+                var refreshed = refreshOnce(uid)
+                if (refreshed != null && !refreshed.isSignedOn(now.dayOfMonth)) {
+                    sleep(400L)
+                    if (activeUid != uid) return
+                    val retry = refreshOnce(uid)
+                    if (retry != null) refreshed = retry
+                }
+                if (activeUid != uid) return
+                val resolution = resolveCheckInResult(
+                    current = state.status ?: targetStatus,
+                    refreshed = refreshed,
+                    todayDayOfMonth = now.dayOfMonth,
+                )
+                val nextStatus = resolution.status ?: state.status
+                val nextCheckedIn = if (resolution.markToday) now else state.checkedInOn
+                update { it.copy(status = nextStatus, checkedInOn = nextCheckedIn) }
+                if (resolution.markToday) {
+                    settings.setLastCheckInDate(uid, now.toString())
+                    sessionCache.rememberCheckIn(uid, nextStatus, now, now)
+                }
+                showMessage(resolution.message)
+            }
+
+            outcome is SessionOutcome.Failed && isAlreadyCheckedInMessage(outcome.message) -> {
+                val refreshed = refreshOnce(uid)
+                if (activeUid != uid) return
+                val base = refreshed ?: state.status ?: targetStatus
+                val resolved = reconcileLoadedCheckInStatus(
+                    loaded = base,
+                    recordedCheckedInOn = now,
+                    today = now,
+                )
+                update {
+                    it.copy(
+                        status = resolved.status,
+                        checkedInOn = now,
+                        error = null,
+                        expiredMessage = null,
+                    )
+                }
+                settings.setLastCheckInDate(uid, now.toString())
+                sessionCache.rememberCheckIn(uid, resolved.status, now, now)
+                showMessage("今日已签到")
+            }
+
+            outcome is SessionOutcome.Expired -> {
+                val msg = planLoad(outcome, hasContent = false, failureMessage = "签到失败，请重试").message
+                update { it.copy(expiredMessage = msg, error = null) }
+            }
+
+            outcome is SessionOutcome.Failed -> {
+                update { it.copy(error = checkInFailureCopy(outcome, "签到失败，请稍后重试")) }
+            }
+        }
+    }
+}
+
+/** 面向我的页的统一签到状态持有人：ColorOS 与 HyperOS 双皮肤共享同一条链路。 */
+@Stable
+internal class MineCheckInHolder(
+    private val deps: ScreenDeps,
+    private val snackbarHostState: SnackbarHostState,
+    private val scope: kotlinx.coroutines.CoroutineScope,
+) {
+    var viewState by mutableStateOf(CheckInViewState())
+        private set
+
+    private val coordinator = CheckInCoordinator(
+        settings = deps.preferences.repository,
+        sessionCache = deps.sessionCache,
+        awaitReady = {
+            awaitGatewayReady(ready = { runCatching { deps.gateway.domainsReady() }.getOrDefault(false) })
+        },
+        fetchStatus = { targetUid ->
+            deps.authCall.call { deps.gateway.dailyCheckInStatus(targetUid) }
+        },
+        fetchStatusOnce = { targetUid ->
+            deps.authCall.call {
+                runCatchingSuspending { deps.gateway.dailyCheckInStatus(targetUid) }.getOrNull()
+            }
+        },
+        submitCheckIn = { targetUid, dailyId ->
+            deps.authCall.call { deps.gateway.dailyCheckIn(targetUid, dailyId) }
+        },
+        showMessage = { message ->
+            snackbarHostState.showSnackbar(message)
+        },
+        onStateChanged = { next -> viewState = next },
+    )
+
+    suspend fun syncAccount(uid: String?) {
+        coordinator.syncAccount(uid)
+    }
+
+    fun seedIfPresent(uid: String?) {
+        if (uid == null) return
+        val cached = deps.sessionCache.checkInForToday(uid, LocalDate.now()) ?: return
+        if (viewState.status == null && cached.status != null) {
+            viewState = CheckInViewState(
+                status = cached.status,
+                checkedInOn = cached.checkedInOn?.takeIf { it == LocalDate.now() },
+            )
+        }
+    }
+
+    fun reload() {
+        scope.launch { coordinator.load() }
+    }
+
+    fun checkIn(status: DailyCheckInStatus) {
+        scope.launch { coordinator.checkIn(status) }
+    }
+}
+
+@Composable
+internal fun rememberMineCheckInHolder(
+    deps: ScreenDeps,
+    uid: String?,
+    snackbarHostState: SnackbarHostState,
+): MineCheckInHolder {
+    val scope = rememberCoroutineScope()
+    val holder = remember(deps, snackbarHostState, scope) {
+        MineCheckInHolder(deps = deps, snackbarHostState = snackbarHostState, scope = scope)
+    }
+    holder.seedIfPresent(uid)
+    LaunchedEffect(holder, uid) {
+        holder.syncAccount(uid)
+    }
+    return holder
 }

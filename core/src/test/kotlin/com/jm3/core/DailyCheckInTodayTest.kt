@@ -84,4 +84,31 @@ class DailyCheckInTodayTest {
     fun 签到进度在无天数时为0() {
         assertEquals(0f, DailyCheckInStatus(1, "", "", 0, 0).progress)
     }
+
+    @Test
+    fun 签到日历_月日短格式与时间戳格式均可解析为当月日号() {
+        val got = checkIn(
+            listOf(
+                listOf(
+                    record("11-12", signed = true),
+                    record("11/05", signed = false),
+                    record("2026-10-31 08:30:00", signed = true),
+                    record("2026-10-30T19:00:00Z", signed = true),
+                ),
+            ),
+        ).toDailyCheckInStatus()
+        assertEquals(listOf(12, 5, 31, 30), got.days.map { it.dayOfMonth })
+        assertTrue(got.isSignedOn(12))
+        assertFalse(got.isSignedOn(5))
+        assertTrue(got.isSignedOn(31))
+        assertTrue(got.isSignedOn(30))
+    }
+
+    @Test
+    fun 签到日历_非法月份的月日格式被跳过() {
+        val got = checkIn(
+            listOf(listOf(record("13-12", signed = true), record("00-01", signed = true))),
+        ).toDailyCheckInStatus()
+        assertEquals(emptyList(), got.days)
+    }
 }

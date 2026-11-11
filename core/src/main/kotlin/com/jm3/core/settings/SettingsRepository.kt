@@ -30,7 +30,8 @@ interface SettingsRepository :
     ReaderSettings,
     NovelSettings,
     UpdateSettings,
-    NotificationPermissionSettings {
+    NotificationPermissionSettings,
+    CheckInSettings {
 
     companion object {
         const val SEARCH_HISTORY_LIMIT = SearchHistory.LIMIT

@@ -1,8 +1,10 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.runtime.mutableStateMapOf
+import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PagedFeed
+import java.time.LocalDate
 
 /**
  * 一份列表的加载状态：首页发现流、首页搜索结果、浏览页结果共用同一套三态。
@@ -100,6 +102,41 @@ internal class SessionCache {
     /** 首页侧栏数据；与分页列表无关，整份替换。 */
     var homeSide: HomeSideData = HomeSideData()
 
+    /** 该账号当前会话缓存的签到状态与已确认签到日。 */
+    data class CachedCheckInState(
+        val status: DailyCheckInStatus?,
+        val checkedInOn: LocalDate?,
+        val fetchedOn: LocalDate? = checkedInOn,
+    )
+
+    private val checkInStates = mutableMapOf<String, CachedCheckInState>()
+
+    fun checkInOf(uid: String): CachedCheckInState? =
+        uid.trim().takeIf { it.isNotEmpty() }?.let { checkInStates[it] }
+
+    /** 仅返回同一天内缓存的签到快照；跨过午夜后视为过期并返回 null。 */
+    fun checkInForToday(uid: String, today: LocalDate): CachedCheckInState? =
+        checkInOf(uid)?.takeIf { it.fetchedOn == today || it.checkedInOn == today }
+
+    fun rememberCheckIn(
+        uid: String,
+        status: DailyCheckInStatus?,
+        checkedInOn: LocalDate?,
+        fetchedOn: LocalDate? = checkedInOn,
+    ) {
+        val normalizedUid = uid.trim()
+        if (normalizedUid.isEmpty()) return
+        if (status == null && checkedInOn == null) {
+            checkInStates.remove(normalizedUid)
+        } else {
+            checkInStates[normalizedUid] = CachedCheckInState(
+                status = status,
+                checkedInOn = checkedInOn,
+                fetchedOn = fetchedOn,
+            )
+        }
+    }
+
     /** 该身份下已加载的结果；没有就返回 Loading，页面照常去请求。 */
     fun stateOf(key: SessionListKey): ListState = entries[key] ?: ListState.Loading
 
@@ -135,6 +172,7 @@ internal class SessionCache {
     fun clear() {
         entries.clear()
         homeSide = HomeSideData()
+        checkInStates.clear()
         engagement.clear()
     }
 }
