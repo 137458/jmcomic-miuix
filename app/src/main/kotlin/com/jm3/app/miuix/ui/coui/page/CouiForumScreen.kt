@@ -675,6 +675,7 @@ private fun CouiForumInputDialog(
         ),
         dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
         dark = CouiKitTheme.isDark,
+        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
         title = title,
         // 回复框是多行输入，贴底弹出更符合"从下往上写"的直觉；显式声明以免依赖库默认值
         placement = CouiDialogPlacement.Bottom,

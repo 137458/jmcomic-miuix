@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
@@ -754,6 +755,7 @@ fun CouiHomeScreen(
 
     Dialog(
         onDismissRequest = { showSearchHelp = false },
+        material = CouiDialogDefaults.material(CouiTheme.isDark),
         // visible 非空时退场窗口由库持有；外层 if 会在关闭瞬间把弹窗抽走，动画来不及播
         visible = showSearchHelp,
         confirmAction = CouiDialogAction(text = "知道了", onClick = { showSearchHelp = false }),

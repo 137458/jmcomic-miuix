@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
@@ -613,6 +614,8 @@ private fun UpdateAvailableDialog(
     Dialog(
         onDismissRequest = onDismiss,
         visible = show,
+        dark = CouiKitTheme.isDark,
+        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
         placement = CouiDialogPlacement.Center,
         title = "发现新版本 " + release.version,
         message = "当前版本 " + currentVersion,

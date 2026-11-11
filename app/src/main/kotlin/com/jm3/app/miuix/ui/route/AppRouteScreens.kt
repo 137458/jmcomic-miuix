@@ -2,8 +2,10 @@
 
 package com.jm3.app.miuix.ui.route
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import com.itos.coui.menu.ProvideCouiMenuBackdrop
 import com.jm3.core.settings.UiSkin
 
 /**
@@ -24,6 +26,14 @@ fun SkinRoute(
 ) {
     val stateHolder = rememberSaveableStateHolder()
     stateHolder.SaveableStateProvider(uiSkin.name) {
-        if (uiSkin == UiSkin.COLOROS) colorOs() else hyperOs()
+        if (uiSkin == UiSkin.COLOROS) {
+            ProvideCouiMenuBackdrop { backdropModifier ->
+                Box(modifier = backdropModifier) {
+                    colorOs()
+                }
+            }
+        } else {
+            hyperOs()
+        }
     }
 }

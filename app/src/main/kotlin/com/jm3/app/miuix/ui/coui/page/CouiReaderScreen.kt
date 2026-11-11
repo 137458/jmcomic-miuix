@@ -98,6 +98,7 @@ import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.checkbox.Checkbox
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.diagnostic.renderDiagnosticProbe
 import com.itos.coui.effect.CouiFloatingMaterial
@@ -1185,6 +1186,7 @@ private fun ReaderPages(
         Dialog(
             onDismissRequest = { showPageSheet = false },
             visible = showPageSheet,
+            material = CouiDialogDefaults.material(CouiKitTheme.isDark),
             title = "跳页",
             confirmAction = CouiDialogAction(
                 text = "跳转到第 $pickerValue 页",
@@ -1226,6 +1228,7 @@ private fun ReaderPages(
         Dialog(
             onDismissRequest = { showChapterSheet = false },
             visible = showChapterSheet,
+            material = CouiDialogDefaults.material(CouiKitTheme.isDark),
             title = "章节",
             confirmAction = CouiDialogAction(text = "关闭", onClick = { showChapterSheet = false }),
         ) {
@@ -1273,6 +1276,7 @@ private fun ReaderPages(
         Dialog(
             onDismissRequest = { showCommentSheet = false },
             visible = showCommentSheet,
+            material = CouiDialogDefaults.material(CouiKitTheme.isDark),
             title = "评论",
             confirmAction = CouiDialogAction(text = "关闭", onClick = { showCommentSheet = false }),
         ) {
@@ -1329,6 +1333,7 @@ private fun ReaderPages(
         Dialog(
             onDismissRequest = { if (!replyBusy) replyTarget = null },
             visible = replyTarget != null,
+            material = CouiDialogDefaults.material(CouiKitTheme.isDark),
             title = "回复 " + replyTarget?.author.orEmpty(),
             confirmAction = CouiDialogAction(
                 text = if (replyBusy) "发送中…" else "发送",
@@ -1362,6 +1367,7 @@ private fun ReaderPages(
         Dialog(
             onDismissRequest = { closeTrackPrompt() },
             visible = showTrackPrompt,
+            material = CouiDialogDefaults.material(CouiKitTheme.isDark),
             title = "已经最后一话了！",
             confirmAction = CouiDialogAction(
                 text = if (trackBusy) "追踪中…" else "追踪连载",

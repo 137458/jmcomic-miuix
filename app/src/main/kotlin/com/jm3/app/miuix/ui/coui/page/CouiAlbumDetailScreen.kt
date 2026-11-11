@@ -1358,6 +1358,7 @@ private fun CouiFolderDialog(
             colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
         ),
         dark = CouiKitTheme.isDark,
+        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
         title = if (favorited) "移动收藏夹" else "选择收藏夹",
     ) {
         val allLabel = folders["0"] ?: "全部收藏"
@@ -1449,6 +1450,7 @@ private fun CouiReplyDialog(
         ),
         dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
         dark = CouiKitTheme.isDark,
+        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
         title = "回复 ${targetAuthor.orEmpty()}",
     ) {
         BasicTextField(

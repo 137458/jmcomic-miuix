@@ -24,6 +24,7 @@
 
 ### 优化
 
+- 优化了弹出层凝光背景与材质表现：在路由根节点注入 `ProvideCouiMenuBackdrop`，为所有气泡菜单和弹出层提供背景采样上下文，解决菜单退化为无光实底的问题；在更新弹窗、首页帮助、作品详情、阅读器与论坛等主流程 Dialog 中显式配置 `material = CouiDialogDefaults.material(isDark)`，启用原生 Kawase 玻璃磨砂与跟随凝光材质。
 - 优化了公共组件架构与状态防假：将通用登录引导组件 `CouiFeedLoginGroup` 迁入公共组件库并解绑 `CouiErrorGroup`，独立渲染明确的「去登录」操作按钮，消除了 6 个跨域页面对周历页的反向依赖，并在收藏页未登录空态中接入该引导；抽取公共 `CouiCommentRow`、`CouiAvatar`、`CouiAutoLoadMoreEffect`、`CouiFeedRefreshAction` 与 `drawReplyLine`，收拢相册详情、论坛、阅读器、个人中心及各列表触底与刷新胶囊的重复自绘；相册详情页顶栏返回键与操作项统一对齐为 40dp 标准组件。
 - 优化了列表与页面布局的避让与大屏适配：为 7 个包含悬浮操作按钮（FAB）的页面统一补充 72dp 底部安全避让间距，彻底消除滚动到底部时最后一项被遮挡的问题；将 `CouiScreenScaffold` 默认水平内边距归零，消除二级页面由于骨架层叠加注入导致的双层内衬；在 `CouiMineScreen` 与 HyperOS 全部 16 个主页面的根滚动容器上全量补齐 `readableWidth()` 大屏自适应限宽，保障平板与折叠屏展开态下的居中与可读性。
 

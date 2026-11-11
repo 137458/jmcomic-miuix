@@ -372,6 +372,7 @@ private fun CouiUpdateAvailableDialog(
         visible = show,
         title = "发现新版本",
         dark = CouiKitTheme.isDark,
+        material = CouiDialogDefaults.material(CouiKitTheme.isDark),
         onDismissRequest = onDismiss,
         confirmAction = CouiDialogAction(
             text = plan.primaryText,
