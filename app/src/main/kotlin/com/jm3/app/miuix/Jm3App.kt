@@ -89,6 +89,7 @@ import com.jm3.app.miuix.ui.route.SkinRoute
 import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.ui.skin.SkinMotion
+import com.jm3.app.miuix.ui.skin.SkinTokens
 import com.jm3.app.miuix.ui.skin.navMotionOrDefault
 import com.jm3.app.miuix.ui.skin.skinTokensFor
 import com.jm3.core.paging.PaginationModePolicy
@@ -117,7 +118,9 @@ import top.yukonga.miuix.kmp.nav.core.NavKey
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.unit.LayoutDirection
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
+import top.yukonga.miuix.kmp.nav.transition.NavTransition
 import top.yukonga.miuix.kmp.nav.transition.NavTransitionScope
 import top.yukonga.miuix.kmp.nav.transition.navDirectionalTransition
 import top.yukonga.miuix.kmp.nav.transition.navGraphicsTransition
@@ -355,7 +358,7 @@ private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode 
     }
 
 /**
- * 详情页页面变换：进入与退出共用同一段实现，只做 alpha，不做位移。
+ * 详情页页面变换（HyperOS）：只做 alpha，不做位移。
  *
  * 共享元素按根坐标插值，页面若整宽平移，头图的根坐标矩形每一帧都在变，飞行落点就会漂；
  * 所以这一页和它覆盖的那一页都不平移，位移感交给飞行的封面本身。
@@ -363,8 +366,24 @@ private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode 
  * relativeDepth 是有符号的：进入时新页 -1 → 0、旧页 0 → 1；退出时旧页 0 → -1、下页 1 → 0。
  * 因此同一段 alpha 在两端天然是正反两向，且手势期间由手指直接驱动。
  */
-private val albumDetailPageTransform: GraphicsLayerScope.(NavTransitionScope) -> Unit = { scope ->
+private val albumDetailFadeTransform: GraphicsLayerScope.(NavTransitionScope) -> Unit = { scope ->
     if (scope.relativeDepth <= 0f) alpha = (1f + scope.relativeDepth).coerceIn(0f, 1f)
+}
+
+/**
+ * 详情页页面变换（COUI）：整页从右缘滑入、向右侧滑出，和系统返回的手感一致。
+ *
+ * 只做 alpha 的变换在 COUI 上会退化成「幽灵叠影」：这台机器在提交返回手势前不给三方应用手势进度
+ * （dispatcher 与系统 OnBackAnimationCallback 收到的 progress 恒为 0），relativeDepth 直到提交才从 0 跳到 -1，
+ * 于是整段收场只剩一次半透明交叉淡出。改成位移后：有进度时照旧跟手，没有进度时也是一次干净的滑出。
+ * 共享元素的落点由 albumHeroHeader 用详情根坐标抵消同层级祖先变换，页面平移不会把飞行终点带偏。
+ */
+private val albumDetailSlideTransform: GraphicsLayerScope.(NavTransitionScope) -> Unit = { scope ->
+    val depth = scope.relativeDepth
+    if (depth <= 0f) {
+        val factor = if (scope.layoutDirection == LayoutDirection.Rtl) -1f else 1f
+        translationX = factor * (-depth).coerceIn(0f, 1f) * scope.layoutSize.width
+    }
 }
 
 /**
@@ -372,28 +391,32 @@ private val albumDetailPageTransform: GraphicsLayerScope.(NavTransitionScope) ->
  *
  * 对应 eh 项目 Navigation Compose 的 enterTransition / popEnterTransition 写法；
  * Miuix Nav 没有 AnimatedContentTransitionScope，用 navDirectionalTransition 表达同一语义。
- * 转场物理按皮肤取值：HyperOS 沿用 Miuix 默认，ColorOS 用自有时间曲线。
+ * 转场形态与物理按皮肤取值：HyperOS 沿用 Miuix 默认的淡入 + 封面飞行，ColorOS 走整页滑动。
  */
-private fun albumDetailTransitionFor(motion: SkinMotion) = navDirectionalTransition(
-    navGraphicsTransition(
-        opaqueDepth = 1f,
-        dismissDirection = NavSwipeDirection.None,
-        block = albumDetailPageTransform,
-        motion = motion.navMotionOrDefault(),
-    ),
-    navGraphicsTransition(
-        opaqueDepth = 1f,
-        dismissDirection = NavSwipeDirection.None,
-        block = albumDetailPageTransform,
-        motion = motion.navMotionOrDefault(),
-    ),
-    navGraphicsTransition(
-        opaqueDepth = 1f,
-        dismissDirection = NavSwipeDirection.LeftToRight,
-        block = albumDetailPageTransform,
-        motion = motion.navMotionOrDefault(),
-    ),
-)
+private fun albumDetailTransitionFor(skin: SkinTokens): NavTransition {
+    val motion = skin.motion.navMotionOrDefault()
+    val transform = if (skin.id == UiSkin.COLOROS) albumDetailSlideTransform else albumDetailFadeTransform
+    return navDirectionalTransition(
+        navGraphicsTransition(
+            opaqueDepth = 1f,
+            dismissDirection = NavSwipeDirection.None,
+            block = transform,
+            motion = motion,
+        ),
+        navGraphicsTransition(
+            opaqueDepth = 1f,
+            dismissDirection = NavSwipeDirection.None,
+            block = transform,
+            motion = motion,
+        ),
+        navGraphicsTransition(
+            opaqueDepth = 1f,
+            dismissDirection = NavSwipeDirection.LeftToRight,
+            block = transform,
+            motion = motion,
+        ),
+    )
+}
 
 @Composable
 fun Jm3App() {
@@ -431,7 +454,7 @@ fun Jm3App() {
     val skin = remember(uiSkin) { skinTokensFor(uiSkin) }
     // 动态取色只在 HyperOS 生效；ColorOS 固定自有色板，盘上开关值保留以便切回恢复。
     val effectiveDynamicColor = DynamicColorPolicy.effective(uiSkin, dynamicColor)
-    val albumDetailTransition = remember(skin) { albumDetailTransitionFor(skin.motion) }
+    val albumDetailTransition = remember(skin) { albumDetailTransitionFor(skin) }
     val controller = remember(themeMode, effectiveDynamicColor, skin) {
         ThemeController(
             colorSchemeMode = themeMode.toColorSchemeMode(effectiveDynamicColor),
@@ -445,22 +468,23 @@ fun Jm3App() {
     val heroHost = remember { AlbumHeroHost() }
     // 退栈前先把头图送回列表卡片再出栈；任一端拿不到矩形时退化成普通退栈。
     // 返回手势期间详情页已按手势进度起飞，这里只兜底非手势路径，避免同一段动画被重置。
+    // ColorOS 走整页位移滑出（albumDetailSlideTransform），页面完整退场，不触发反向飞行。
     val popBack: () -> Unit = {
         (backStack.lastOrNull() as? Route.AlbumDetail)?.let { route ->
             val flight = heroHost.flight
             val alreadyFlying = flight != null && flight.albumId == route.albumId && heroHost.isBackwardFlight(flight.id)
-            if (!alreadyFlying) heroHost.startBackward(route.albumId)
+            if (!alreadyFlying && uiSkin != UiSkin.COLOROS) heroHost.startBackward(route.albumId)
         }
         backStack.removeLastOrNull()
     }
     // 兜底：侧滑返回等不经过 popBack 的退出路径，靠栈顶变化补一次反向飞行
     var lastTopAlbumId by remember { mutableStateOf<String?>(null) }
     val topAlbumId = (backStack.lastOrNull() as? Route.AlbumDetail)?.albumId
-    LaunchedEffect(topAlbumId) {
+    LaunchedEffect(topAlbumId, uiSkin) {
         val previous = lastTopAlbumId
         // 上层作品仍然留在栈里（详情 A 里再进详情 B）不算退出，否则会给 A 起一段停在起点的反向飞行
         val stillStacked = previous != null && backStack.any { (it as? Route.AlbumDetail)?.albumId == previous }
-        if (previous != null && !stillStacked && heroHost.flight == null && heroHost.pending == null) {
+        if (previous != null && !stillStacked && heroHost.flight == null && heroHost.pending == null && uiSkin != UiSkin.COLOROS) {
             heroHost.startBackward(previous)
         }
         lastTopAlbumId = topAlbumId

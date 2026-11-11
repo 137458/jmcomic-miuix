@@ -1,16 +1,27 @@
+# Gradle & Android 构建产物
 .gradle/
 build/
+**/build/
+app/build/
+core/build/
 .kotlin/
 local.properties
 .idea/
 *.iml
 .tools/
 *.apk
-# 工作草稿与私密调研文档不入库（工程约束：Git 仅公开交付物）
+.cxx/
+**/.cxx/
+.externalNativeBuild/
+
+# 逆向与临时分析产物
+.tmp-miuix/
+androidMain/
+
+# 工作草稿、私密调研与辅助工具文档（工程约束：Git 仅公开交付物）
 implementation_plan.md
 OPTIMIZATION_PLAN.md
 research/
 .screenshots/
 .scratch/
-# 上游 miuix KMP 源码摘录：仅本地参考，不参与构建，防止误提交
-androidMain/
+.trae/

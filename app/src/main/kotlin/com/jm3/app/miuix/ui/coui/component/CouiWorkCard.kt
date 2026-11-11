@@ -27,11 +27,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -187,7 +189,11 @@ fun BoxScope.CouiWorkCategoryBadge(category: String?) {
     val lineHeight = couiPinnedLineHeight(CouiWorkCardTokens.CategoryBadgeFontSize, TextUnit.Unspecified)
     // 行高钉死成与字号同源的固定值：角标高低只跟字号有关，不随字形度量浮动
     val style = remember(base, lineHeight) {
-        base.copy(fontSize = CouiWorkCardTokens.CategoryBadgeFontSize, lineHeight = lineHeight)
+        base.copy(
+            fontSize = CouiWorkCardTokens.CategoryBadgeFontSize,
+            lineHeight = lineHeight,
+            fontWeight = FontWeight.Medium,
+        )
     }
     Box(
         modifier = Modifier
@@ -310,7 +316,6 @@ fun CouiWorkGridCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(shape)
                 .background(CouiTheme.colorScheme.container),
         ) {
             CouiWorkCover(
@@ -318,7 +323,7 @@ fun CouiWorkGridCard(
                 albumId = albumId,
                 title = title,
                 contentDescription = coverContentDescription,
-                shape = shape,
+                shape = RectangleShape,
                 modifier = Modifier.fillMaxWidth().aspectRatio(CouiWorkCardTokens.CoverAspect),
             )
             badge?.invoke(this)
@@ -369,15 +374,6 @@ fun CouiWorkRowCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .couiPressMotion(press = press, cancelOnConsumedMove = true)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                role = Role.Button,
-            ) {
-                if (albumId != null) heroHost?.startForward(albumId, coverUrl, cornerDp, title)
-                onClick()
-            }
             .graphicsLayer {
                 scaleX = press.scale.value
                 scaleY = press.scale.value
@@ -385,7 +381,16 @@ fun CouiWorkRowCard(
             .clip(shape)
             // 全宽行也是不透明表面：垫卡片底色后再叠光；封面不透明，光画在内容之上才看得见
             .background(CouiTheme.colorScheme.card)
-            .couiSpotlightLight(SpotlightPreset.OpaqueMedium1, interactive = true, aboveContent = true),
+            .couiPressMotion(press = press, cancelOnConsumedMove = true)
+            .couiSpotlightLight(SpotlightPreset.OpaqueMedium1, interactive = true, aboveContent = true)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+            ) {
+                if (albumId != null) heroHost?.startForward(albumId, coverUrl, cornerDp, title)
+                onClick()
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         leading?.invoke(this)
@@ -444,7 +449,7 @@ private fun CouiWorkTitleText(title: String, maxLines: Int) {
     val color = CouiTheme.colorScheme.onSurface
     BasicText(
         text = title,
-        style = pinned.style,
+        style = pinned.style.copy(fontWeight = FontWeight.Medium),
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = pinned.blockHeight),
