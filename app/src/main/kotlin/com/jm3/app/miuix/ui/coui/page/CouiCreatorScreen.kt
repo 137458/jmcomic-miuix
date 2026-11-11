@@ -80,6 +80,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
@@ -94,7 +95,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 private const val COUI_CREATOR_LOAD_FAILED = "加载失败"
-private const val COUI_CREATOR_LOAD_MORE_FAILED = "没拿到下一页，可点击重试"
+private const val COUI_CREATOR_LOAD_MORE_FAILED = CouiStrings.LoadMoreFailedRetry
 private const val COUI_CREATOR_EMPTY = "暂无作品"
 private const val COUI_CREATOR_EMPTY_HINT = "换个语言或来源再试试"
 private const val COUI_CREATOR_NO_SPONSOR_URL = "该平台暂无链接"

@@ -65,6 +65,7 @@ import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CollapsingTopAppBar
 import com.itos.coui.topappbar.rememberCouiCollapsingAppBarState
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.HomeSideData
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
@@ -629,7 +630,7 @@ fun CouiHomeScreen(
                     val items = loadedFeed.items
                     if (items.isEmpty()) {
                         item(key = "coui-home-empty") {
-                            CouiEmptyGroup(text = if (searching) "没有找到作品" else "还没有内容")
+                            CouiEmptyGroup(text = if (searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent)
                         }
                         item(key = "coui-home-empty-hint") {
                             Footer(

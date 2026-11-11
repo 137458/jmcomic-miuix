@@ -313,7 +313,6 @@ fun CouiHistoryScreen(
                                         CouiAutoLoadMoreEffect(feed = feed, onLoadMore = { loadMore() })
                                         CouiLoadMoreFooter(
                                             feed = feed,
-                                            errorMessage = "没拿到下一页，可点击重试",
                                             onRetry = { loadMore() },
                                         )
                                     }

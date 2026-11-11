@@ -392,7 +392,6 @@ fun CouiLibraryScreen(
                                         )
                                         CouiLoadMoreFooter(
                                             feed = activeFeed,
-                                            errorMessage = "没拿到下一页，可点击重试",
                                             onRetry = { load(activeFeed.page + 1, append = true) },
                                         )
                                     }

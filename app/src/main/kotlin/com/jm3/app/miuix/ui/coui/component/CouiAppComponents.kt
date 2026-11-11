@@ -119,6 +119,7 @@ import com.itos.coui.theme.LocalCouiTextStyle
 import com.itos.coui.topappbar.CouiTopAppBarColors
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.bottomBarShape
@@ -415,7 +416,7 @@ fun CouiErrorGroup(
     Group(modifier = modifier, title = "加载失败", footer = message) {
         Item(
             title = {
-                Text(text = "重试", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                Text(text = CouiStrings.Retry, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
             },
             trailing = {
                 Icon(
@@ -450,7 +451,7 @@ fun CouiLoadMoreFooter(
         error != null -> Group(modifier = modifier, footer = error) {
             Item(
                 title = {
-                    Text(text = "重新加载", kind = CouiTextKind.Body, textAlign = TextAlign.Start)
+                    Text(text = CouiStrings.Reload, kind = CouiTextKind.Body, textAlign = TextAlign.Start)
                 },
                 trailing = {
                     Icon(
@@ -492,7 +493,7 @@ fun CouiLoadMoreFooter(
 @Composable
 fun CouiLoadMoreFooter(
     feed: PagedFeed<*>,
-    errorMessage: String,
+    errorMessage: String = CouiStrings.LoadMoreFailedRetry,
     modifier: Modifier = Modifier,
     onRetry: () -> Unit,
 ) {
@@ -1137,22 +1138,22 @@ fun CouiFeedRefreshAction(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(imageVector = CouiIcons.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(text = if (refreshing) "刷新中" else "刷新", kind = CouiTextKind.Description, color = tint)
+        Text(text = if (refreshing) CouiStrings.Refreshing else CouiStrings.Refresh, kind = CouiTextKind.Description, color = tint)
     }
 }
 
 /** 登录过期或未登录时的落点卡片：解释原因并提供明确的「去登录」入口。 */
 @Composable
 fun CouiFeedLoginGroup(
-    message: String = "登录已过期，请重新登录",
+    message: String = CouiStrings.LoginExpired,
     modifier: Modifier = Modifier,
     onOpenLogin: () -> Unit,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
-    val displayText = message.ifBlank { "登录已过期，请重新登录" }
+    val displayText = message.ifBlank { CouiStrings.LoginExpired }
     Group(
         modifier = modifier.padding(top = 8.dp),
-        title = "需要登录",
+        title = CouiStrings.NeedLogin,
         footer = displayText,
     ) {
         Item(

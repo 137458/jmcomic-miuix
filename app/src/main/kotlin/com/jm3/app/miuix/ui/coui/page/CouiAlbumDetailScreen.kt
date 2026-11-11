@@ -120,6 +120,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberReaderImageLoader
@@ -562,7 +563,7 @@ private fun CouiAlbumDetailScreenBody(
 
                         is CommentsUiState.Loaded -> if (commentsState.feed.items.isEmpty()) {
                             item(key = "comments-empty") {
-                                CouiEmptyGroup(text = "暂无评论，来抢沙发")
+                                CouiEmptyGroup(text = CouiStrings.EmptyComments)
                             }
                         }
                     }
@@ -920,7 +921,7 @@ private fun CouiReadActionsGroup(
             summary = {
                 Text(
                     text = when {
-                        startPhotoId == null -> "暂无章节"
+                        startPhotoId == null -> CouiStrings.EmptyChapters
                         resumeId != null -> "接着上次读到的一话"
                         else -> "从第 1 话开始"
                     },

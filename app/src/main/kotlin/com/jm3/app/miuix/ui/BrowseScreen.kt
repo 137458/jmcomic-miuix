@@ -406,7 +406,7 @@ fun BrowseScreen(
                                         contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
-                                        items(subCategories) { sub ->
+                                        items(subCategories, key = { it.name }) { sub ->
                                             TextButton(
                                                 text = sub.name,
                                                 onClick = { openTag(sub.name) },
@@ -424,7 +424,7 @@ fun BrowseScreen(
                                         contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
-                                        items(hotTags.take(12)) { tag ->
+                                        items(hotTags.take(12), key = { it }) { tag ->
                                             TextButton(
                                                 text = tag,
                                                 onClick = { openTag(tag) },
@@ -556,7 +556,7 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
         }
     } else {
         LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
-            items(blocks) { block ->
+            items(blocks, key = { it.title }) { block ->
                 SmallTitle(text = block.title)
                 Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 4.dp)) {
                     FlowRow(

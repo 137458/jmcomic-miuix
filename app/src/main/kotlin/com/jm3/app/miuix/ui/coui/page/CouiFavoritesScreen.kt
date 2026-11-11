@@ -610,7 +610,6 @@ fun CouiFavoritesScreen(
                                         CouiAutoLoadMoreEffect(feed = gridFeed, onLoadMore = { loadMore() })
                                         CouiLoadMoreFooter(
                                             feed = gridFeed,
-                                            errorMessage = "没拿到下一页，可点击重试",
                                             onRetry = { loadMore() },
                                         )
                                     }

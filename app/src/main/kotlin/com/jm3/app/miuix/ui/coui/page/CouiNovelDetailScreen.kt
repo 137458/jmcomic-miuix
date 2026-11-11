@@ -89,6 +89,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.formatEpochSeconds
 import com.jm3.app.miuix.ui.novelActionNotice
@@ -127,7 +128,7 @@ private const val NOVEL_DETAIL_LOAD_FAILED = "加载失败"
 
 private const val NOVEL_COMMENT_LOAD_FAILED = "评论加载失败"
 
-private const val NOVEL_COMMENT_LOAD_MORE_FAILED = "没拿到下一页，可点击重试"
+private const val NOVEL_COMMENT_LOAD_MORE_FAILED = CouiStrings.LoadMoreFailedRetry
 
 /** 相关作品卡的宽度与封面高度：与浏览页相关作品行同尺寸，避免同一屏出现两种卡宽。 */
 private val NOVEL_HERO_COVER_WIDTH = 100.dp
@@ -330,7 +331,7 @@ private fun CouiNovelDetailBody(
         val current = currentDetail() ?: return
         val target = current.chapters.firstOrNull { it.ncid == savedChapterId } ?: current.chapters.firstOrNull()
         if (target == null) {
-            scope.launch { snackbarHostState.showSnackbar("暂无章节") }
+            scope.launch { snackbarHostState.showSnackbar(CouiStrings.EmptyChapters) }
             return
         }
         openChapter(target)
@@ -514,7 +515,7 @@ private fun CouiNovelDetailBody(
                 )
             }
             if (chapterRows.isEmpty()) {
-                item(key = "novel-chapters-empty") { CouiEmptyGroup(text = "暂无章节") }
+                item(key = "novel-chapters-empty") { CouiEmptyGroup(text = CouiStrings.EmptyChapters) }
             } else {
                 itemsIndexed(
                     items = chapterRows,
@@ -565,7 +566,7 @@ private fun CouiNovelDetailBody(
                     )
                 }
                 commentFeed.items.isEmpty() -> item(key = "novel-comments-empty") {
-                    CouiEmptyGroup(text = "暂无评论，来说点什么吧")
+                    CouiEmptyGroup(text = CouiStrings.EmptyComments)
                 }
                 else -> {
                     val rows = flattenComments(roots = commentFeed.items, expandedIds = expandedReplies)

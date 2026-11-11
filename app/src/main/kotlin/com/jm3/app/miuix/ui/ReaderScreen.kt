@@ -68,6 +68,7 @@ import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.size.Size
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
@@ -1089,7 +1090,7 @@ private fun ReaderPages(
         ) {
             if (chapters.isEmpty()) {
                 Text(
-                    text = "暂无章节信息",
+                    text = CouiStrings.EmptyChapters,
                     style = MiuixTheme.textStyles.body2,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                 )
@@ -1132,7 +1133,7 @@ private fun ReaderPages(
                     }
 
                     page == null || page.items.isEmpty() -> Text(
-                        text = "还没有评论，来抢沙发吧",
+                        text = CouiStrings.EmptyComments,
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),

@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
@@ -299,7 +300,7 @@ internal fun AlbumDetailScreen(
             )
         }
         if (detail.chapters.isEmpty()) {
-            item(key = "chapters-empty") { EmptyState(title = "暂无章节") }
+            item(key = "chapters-empty") { EmptyState(title = CouiStrings.EmptyChapters) }
         }
         ChapterGroups.of(detail.chapters, Chapter::id).forEach { group ->
             item(key = "chapter-group-" + group.id) {
@@ -342,7 +343,7 @@ internal fun AlbumDetailScreen(
                     contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(validTags) { tag ->
+                    items(validTags, key = { it }) { tag ->
                         TextButton(
                             text = tag,
                             onClick = { onOpenSearch(tag, SearchScope.TAG) },
@@ -423,7 +424,7 @@ internal fun AlbumDetailScreen(
                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                             if (cs.feed.items.isEmpty()) {
                                 Text(
-                                    text = "暂无评论，来抢沙发",
+                                    text = CouiStrings.EmptyComments,
                                     style = MiuixTheme.textStyles.footnote1,
                                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 16.dp),

@@ -27,6 +27,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.core.ChapterLabels
 import com.jm3.core.model.Chapter
 import com.jm3.core.reader.ChapterGroups
@@ -299,7 +300,7 @@ private fun CouiChapterRowCard(
             Item(
                 title = {
                     Text(
-                        text = "暂无章节",
+                        text = CouiStrings.EmptyChapters,
                         kind = CouiTextKind.PreferenceTitle,
                         color = scheme.onSurfaceVariant,
                     )

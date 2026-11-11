@@ -136,6 +136,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.data.download.decodePhotoPages
@@ -1239,7 +1240,7 @@ private fun ReaderPages(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 24.dp),
                     ) {
-                        Text(text = "暂无章节信息", kind = CouiTextKind.Body)
+                        Text(text = CouiStrings.EmptyChapters, kind = CouiTextKind.Body)
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
@@ -1291,7 +1292,7 @@ private fun ReaderPages(
                             onClick = ::loadComments,
                         )
 
-                        page == null || page.items.isEmpty() -> ReaderDialogHint(text = "还没有评论，来抢沙发吧")
+                        page == null || page.items.isEmpty() -> ReaderDialogHint(text = CouiStrings.EmptyComments)
 
                         else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                             items(page.items, key = { it.id }) { item ->

@@ -66,6 +66,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.core.appendedBy
 import com.jm3.core.model.CommentItem
@@ -624,7 +625,7 @@ private fun NovelCommentsPanel(
             )
 
             feed.items.isEmpty() -> CouiEmptyGroup(
-                text = "暂无评论，来说点什么吧",
+                text = CouiStrings.EmptyComments,
                 modifier = Modifier.fillMaxWidth(),
             )
 

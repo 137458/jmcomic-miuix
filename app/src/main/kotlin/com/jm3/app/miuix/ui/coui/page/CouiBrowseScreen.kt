@@ -80,6 +80,7 @@ import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
@@ -103,7 +104,7 @@ import kotlinx.coroutines.launch
 private const val TAG_FEED_ROW_START = 1
 
 /** 主列表与标签列表共用的续页失败提示，文案与 HyperOS 版浏览页一致。 */
-private const val BROWSE_LOAD_MORE_FAILED = "没拿到下一页，可点击重试"
+private const val BROWSE_LOAD_MORE_FAILED = CouiStrings.LoadMoreFailedRetry
 
 /** 标签视图的续页失败提示。 */
 private const val TAG_LOAD_MORE_FAILED = "标签结果没拿到下一页，可点击重试"
@@ -652,7 +653,7 @@ internal fun CouiBrowseScreen(
                         }
                         if (feed.items.isEmpty()) {
                             item(key = "coui-browse-empty") {
-                                CouiEmptyGroup(text = "这里还没有作品")
+                                CouiEmptyGroup(text = CouiStrings.EmptyWorks)
                             }
                             // 空态的补充说明留在卡下：公共件只负责卡片正文
                             item(key = "coui-browse-empty-hint") {
@@ -854,7 +855,7 @@ private fun CouiCategoryRail(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        items(options) { option ->
+        items(options, key = { it.apiValue }) { option ->
             val active = option == selected
             Box(
                 modifier = Modifier

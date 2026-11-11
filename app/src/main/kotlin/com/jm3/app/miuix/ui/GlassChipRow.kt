@@ -67,7 +67,7 @@ fun GlassChipRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        items(tabs.size) { index ->
+        items(tabs.size, key = { tabs[it] }) { index ->
             GlassChip(
                 text = tabs[index],
                 selected = index == selectedTabIndex,

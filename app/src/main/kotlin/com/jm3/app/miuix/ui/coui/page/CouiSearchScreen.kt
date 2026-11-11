@@ -64,6 +64,7 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.appendedBy
@@ -78,7 +79,7 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 
 private const val COUI_SEARCH_LOAD_FAILED = "加载失败"
-private const val COUI_SEARCH_LOAD_MORE_FAILED = "没拿到下一页，可点击重试"
+private const val COUI_SEARCH_LOAD_MORE_FAILED = CouiStrings.LoadMoreFailedRetry
 private const val COUI_SEARCH_EMPTY = "无结果"
 private const val COUI_SEARCH_EMPTY_HINT = "换个关键词，或者少加几个筛选试试"
 
