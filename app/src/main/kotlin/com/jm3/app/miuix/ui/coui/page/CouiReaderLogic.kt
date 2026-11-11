@@ -152,3 +152,55 @@ internal fun couiShouldHandleReaderVolumeKey(
     hasZoomOverlay: Boolean,
     hasOpenModal: Boolean,
 ): Boolean = delta != 0 && !hasZoomOverlay && !hasOpenModal
+
+internal enum class CouiReaderHudPlacement {
+    TOP,
+    BOTTOM,
+}
+
+internal data class CouiReaderHudShadowSpec(
+    val elevationDp: Float,
+    val shadowAlpha: Float,
+    val lightYDp: Float,
+    val lightZDp: Float,
+    val lightRadiusDp: Float,
+    val causticBottomDp: Float,
+    val causticSdfDp: Float,
+    val causticAlpha: Float,
+    val smoothCorner: Boolean,
+)
+
+/** 依据顶/底浮栏位置与明暗/凝光开关计算浮栏阴影与焦散几何，避免顶栏底缘出现异常白光晕。 */
+internal fun couiReaderHudShadowSpec(
+    placement: CouiReaderHudPlacement,
+    dark: Boolean,
+    contourGlowEnabled: Boolean,
+): CouiReaderHudShadowSpec = when (placement) {
+    CouiReaderHudPlacement.TOP -> CouiReaderHudShadowSpec(
+        elevationDp = if (contourGlowEnabled) 16f else 100f,
+        shadowAlpha = (if (contourGlowEnabled) 30f else if (dark) 68f else 34f) / 255f * 0.75f,
+        lightYDp = if (contourGlowEnabled) -160f else if (dark) -240f else -200f,
+        lightZDp = if (contourGlowEnabled) 0f else 10000f,
+        lightRadiusDp = if (contourGlowEnabled) 800f else 2000f,
+        causticBottomDp = 0f,
+        causticSdfDp = 0f,
+        causticAlpha = 0f,
+        smoothCorner = true,
+    )
+
+    CouiReaderHudPlacement.BOTTOM -> CouiReaderHudShadowSpec(
+        elevationDp = if (contourGlowEnabled) 24f else 350f,
+        shadowAlpha = when {
+            contourGlowEnabled -> 0x23 / 255f
+            dark -> 0x78 / 255f
+            else -> 0x28 / 255f
+        },
+        lightYDp = if (contourGlowEnabled) -320f else -160f,
+        lightZDp = if (contourGlowEnabled) 0f else 10000f,
+        lightRadiusDp = if (contourGlowEnabled) 1600f else 2000f,
+        causticBottomDp = 4.9f,
+        causticSdfDp = 10.4f,
+        causticAlpha = 0x42 / 255f,
+        smoothCorner = true,
+    )
+}

@@ -196,4 +196,49 @@ class CouiReaderLogicTest {
 
     private fun couiHasOpenDialog(state: CouiReaderModalState, hasReplyTarget: Boolean): Boolean =
         couiHasOpenReaderModal(state, hasReplyTarget)
+
+    @Test
+    fun 阅读器HUD阴影按顶底位置区分并关闭顶栏向下焦散溢光() {
+        val topContourDark = couiReaderHudShadowSpec(
+            placement = CouiReaderHudPlacement.TOP,
+            dark = true,
+            contourGlowEnabled = true,
+        )
+        assertEquals(0f, topContourDark.causticBottomDp)
+        assertEquals(0f, topContourDark.causticSdfDp)
+        assertEquals(0f, topContourDark.causticAlpha)
+        assertEquals(16f, topContourDark.elevationDp)
+        assertTrue(topContourDark.smoothCorner)
+
+        val topPlainLight = couiReaderHudShadowSpec(
+            placement = CouiReaderHudPlacement.TOP,
+            dark = false,
+            contourGlowEnabled = false,
+        )
+        assertEquals(0f, topPlainLight.causticAlpha)
+        assertEquals(100f, topPlainLight.elevationDp)
+        assertEquals(10000f, topPlainLight.lightZDp)
+        assertTrue(topPlainLight.smoothCorner)
+
+        val bottomContourDark = couiReaderHudShadowSpec(
+            placement = CouiReaderHudPlacement.BOTTOM,
+            dark = true,
+            contourGlowEnabled = true,
+        )
+        assertEquals(4.9f, bottomContourDark.causticBottomDp)
+        assertEquals(10.4f, bottomContourDark.causticSdfDp)
+        assertEquals(0x42 / 255f, bottomContourDark.causticAlpha)
+        assertEquals(24f, bottomContourDark.elevationDp)
+        assertTrue(bottomContourDark.smoothCorner)
+
+        val bottomPlainDark = couiReaderHudShadowSpec(
+            placement = CouiReaderHudPlacement.BOTTOM,
+            dark = false,
+            contourGlowEnabled = false,
+        )
+        assertEquals(350f, bottomPlainDark.elevationDp)
+        assertEquals(0x28 / 255f, bottomPlainDark.shadowAlpha)
+        assertEquals(4.9f, bottomPlainDark.causticBottomDp)
+        assertTrue(bottomPlainDark.smoothCorner)
+    }
 }

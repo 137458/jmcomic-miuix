@@ -113,26 +113,27 @@ import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.effect.couiFloatingSurface
 import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.layout.Divider
-import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
 import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.shape.CouiShape
 import com.itos.coui.slider.Slider
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
+import com.itos.coui.topappbar.TopAppBarSurface
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLibraryNavBarMinSdk
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
@@ -1109,17 +1110,18 @@ private fun ReaderPages(
             }
         }
 
-        // HUD 顶栏：返回 + 书名 + 页码（点击跳页）+ 上一话/下一话
-        if (chromeVisible) {
+        // HUD 顶栏：外层 TopAppBarSurface 提供顶部渐进模糊与柔和过渡，内层悬浮胶囊只画自身前景
+        ReaderTopAppBarSurface(
+            visible = chromeVisible,
+            backdrop = hudBackdrop,
+        ) {
             ReaderHudBar(
                 backdrop = hudBackdrop,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = ReaderHudBarVerticalMargin)
                     .fillMaxWidth()
                     .readableWidth(),
                 height = ReaderHudTopHeight,
+                placement = CouiReaderHudPlacement.TOP,
                 diagnosticName = "readerHud/top",
             ) {
                 Row(
@@ -1164,7 +1166,7 @@ private fun ReaderPages(
             }
         }
 
-        // HUD 底栏：模式/目录/评论/收藏/喜欢五个动作
+        // HUD 底栏：等分槽位匹配 CouiCapsuleShape 横向胶囊指示器与触区
         if (chromeVisible) {
             ReaderHudBar(
                 backdrop = hudBackdrop,
@@ -1175,33 +1177,43 @@ private fun ReaderPages(
                     .fillMaxWidth()
                     .readableWidth(),
                 height = ReaderHudBottomHeight,
+                placement = CouiReaderHudPlacement.BOTTOM,
                 diagnosticName = "readerHud/bottom",
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ReaderHudAction(
                         icon = if (horizontal) CouiIcons.Sort else CouiIcons.Book,
                         label = if (horizontal) "直向" else "左右",
+                        modifier = Modifier.weight(1f),
                         onClick = { switchMode(!horizontal) },
                     )
                     ReaderHudAction(
                         icon = CouiIcons.List,
                         label = "章节",
+                        modifier = Modifier.weight(1f),
                         onClick = { modalState = modalState.open(CouiReaderModal.CHAPTERS) },
                     )
-                    ReaderHudAction(icon = CouiIcons.Comment, label = "评论", onClick = ::openComments)
+                    ReaderHudAction(
+                        icon = CouiIcons.Comment,
+                        label = "评论",
+                        modifier = Modifier.weight(1f),
+                        onClick = ::openComments,
+                    )
                     ReaderHudAction(
                         icon = CouiIcons.Folder,
                         label = "收藏",
+                        modifier = Modifier.weight(1f),
                         active = favorited,
                         onClick = ::toggleFavorite,
                     )
                     ReaderHudAction(
                         icon = CouiIcons.Star,
                         label = "喜欢",
+                        modifier = Modifier.weight(1f),
                         active = liked,
                         onClick = ::toggleLike,
                     )
@@ -1263,49 +1275,47 @@ private fun ReaderPages(
             ),
             dismissAction = CouiDialogAction(text = "取消", onClick = { modalState = modalState.dismiss() }),
         ) {
-            Group {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "第 $pickerValue 页 / 共 $totalPages 页",
-                            kind = CouiTextKind.ItemTitle,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (totalPages > 1) {
-                            ReaderPageJumpStepper(
-                                icon = CouiIcons.Minus,
-                                contentDescription = "上一页",
-                                enabled = pickerValue > 1,
-                                onClick = { pickerValue = couiStepJumpPage(pickerValue, -1, totalPages) },
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            ReaderPageJumpStepper(
-                                icon = CouiIcons.Plus,
-                                contentDescription = "下一页",
-                                enabled = pickerValue < totalPages,
-                                onClick = { pickerValue = couiStepJumpPage(pickerValue, 1, totalPages) },
-                            )
-                        }
-                    }
+                    Text(
+                        text = "第 $pickerValue 页 / 共 $totalPages 页",
+                        kind = CouiTextKind.ItemTitle,
+                        modifier = Modifier.weight(1f),
+                    )
                     if (totalPages > 1) {
-                        Slider(
-                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                            value = pickerValue.toFloat(),
-                            onValueChange = { pickerValue = it.roundToInt().coerceIn(1, totalPages) },
-                            valueRange = 1f..totalPages.toFloat(),
-                            // 滑杆只停整数页：两端各留一档，中间档数就是总页数减二
-                            steps = (totalPages - 2).coerceAtLeast(0),
-                            // 短章节把可落位点画出来，页码不用靠猜；长章节点位会密到成带，改回纯滑杆
-                            showTickMarks = totalPages <= PageSliderTickMaxPages,
+                        ReaderPageJumpStepper(
+                            icon = CouiIcons.Minus,
+                            contentDescription = "上一页",
+                            enabled = pickerValue > 1,
+                            onClick = { pickerValue = couiStepJumpPage(pickerValue, -1, totalPages) },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ReaderPageJumpStepper(
+                            icon = CouiIcons.Plus,
+                            contentDescription = "下一页",
+                            enabled = pickerValue < totalPages,
+                            onClick = { pickerValue = couiStepJumpPage(pickerValue, 1, totalPages) },
                         )
                     }
+                }
+                if (totalPages > 1) {
+                    Slider(
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        value = pickerValue.toFloat(),
+                        onValueChange = { pickerValue = it.roundToInt().coerceIn(1, totalPages) },
+                        valueRange = 1f..totalPages.toFloat(),
+                        // 滑杆只停整数页：两端各留一档，中间档数就是总页数减二
+                        steps = (totalPages - 2).coerceAtLeast(0),
+                        // 短章节把可落位点画出来，页码不用靠猜；长章节点位会密到成带，改回纯滑杆
+                        showTickMarks = totalPages <= PageSliderTickMaxPages,
+                    )
                 }
             }
         }
@@ -1318,46 +1328,44 @@ private fun ReaderPages(
             title = "章节",
             confirmAction = CouiDialogAction(text = "关闭", onClick = { modalState = modalState.dismiss() }),
         ) {
-            Group {
-                if (chapters.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 24.dp),
-                    ) {
-                        CouiBodyText(text = CouiStrings.EmptyChapters)
+            if (chapters.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                ) {
+                    CouiBodyText(text = CouiStrings.EmptyChapters)
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                    items(chapters, key = { it.id }) { chapter ->
+                        Item(
+                            title = {
+                                Text(
+                                    text = if (chapter.id == photo.photoId) {
+                                        chapter.title + "（当前话）"
+                                    } else {
+                                        chapter.title
+                                    },
+                                    kind = CouiTextKind.ItemTitle,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            onClick = {
+                                modalState = modalState.dismiss()
+                                if (chapter.id != photo.photoId) onOpenChapter(chapter.id)
+                            },
+                        )
+                        // 组卡片内部没有自动分隔线，行间需要自己补；末行不补，避免贴着卡片下沿
+                        if (chapter.id != chapters.last().id) Divider()
                     }
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                        items(chapters, key = { it.id }) { chapter ->
-                            Item(
-                                title = {
-                                    Text(
-                                        text = if (chapter.id == photo.photoId) {
-                                            chapter.title + "（当前话）"
-                                        } else {
-                                            chapter.title
-                                        },
-                                        kind = CouiTextKind.ItemTitle,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                                onClick = {
-                                    modalState = modalState.dismiss()
-                                    if (chapter.id != photo.photoId) onOpenChapter(chapter.id)
-                                },
-                            )
-                            // 组卡片内部没有自动分隔线，行间需要自己补；末行不补，避免贴着卡片下沿
-                            if (chapter.id != chapters.last().id) Divider()
-                        }
-                        item(key = "chapter-gap") { Spacer(modifier = Modifier.height(12.dp)) }
-                    }
+                    item(key = "chapter-gap") { Spacer(modifier = Modifier.height(12.dp)) }
                 }
             }
         }
 
-        // 评论：点回复或去登录时先收敛弹窗层级，反馈信息直接留在弹窗内展示
+        // 评论：直接承接 Dialog 玻璃材质，不再嵌套实底 Group 割裂质感
         Dialog(
             onDismissRequest = { modalState = modalState.dismiss() },
             visible = visibleModal == CouiReaderModal.COMMENTS,
@@ -1365,59 +1373,57 @@ private fun ReaderPages(
             title = "评论",
             confirmAction = CouiDialogAction(text = "关闭", onClick = { modalState = modalState.dismiss() }),
         ) {
-            Group {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    val page = comments
-                    when {
-                        commentsLoading -> ReaderDialogHint(text = "正在加载评论…")
+            Column(modifier = Modifier.fillMaxWidth()) {
+                val page = comments
+                when {
+                    commentsLoading -> ReaderDialogHint(text = "正在加载评论…")
 
-                        commentsExpired -> ReaderDialogHint(
-                            text = "登录已过期，点此登录",
-                            onClick = ::openLoginFromModal,
-                        )
+                    commentsExpired -> ReaderDialogHint(
+                        text = "登录已过期，点此登录",
+                        onClick = ::openLoginFromModal,
+                    )
 
-                        commentsFailed -> ReaderDialogHint(
-                            text = "评论加载失败，点此重试",
-                            onClick = ::loadComments,
-                        )
+                    commentsFailed -> ReaderDialogHint(
+                        text = "评论加载失败，点此重试",
+                        onClick = ::loadComments,
+                    )
 
-                        page == null || page.items.isEmpty() -> ReaderDialogHint(text = CouiStrings.EmptyComments)
+                    page == null || page.items.isEmpty() -> ReaderDialogHint(text = CouiStrings.EmptyComments)
 
-                        else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
-                            items(page.items, key = { it.id }) { item ->
-                                ReaderCommentRow(
-                                    item = item,
-                                    onReply = {
-                                        if (user == null) {
-                                            openLoginFromModal()
-                                        } else {
-                                            replyTarget = item
-                                            replyText = ""
-                                            replyNotice = null
-                                            modalState = modalState.enterReply()
-                                        }
-                                    },
-                                )
-                                if (item.id != page.items.last().id) Divider()
-                            }
+                    else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                        items(page.items, key = { it.id }) { item ->
+                            ReaderCommentRow(
+                                item = item,
+                                onReply = {
+                                    if (user == null) {
+                                        openLoginFromModal()
+                                    } else {
+                                        replyTarget = item
+                                        replyText = ""
+                                        replyNotice = null
+                                        modalState = modalState.enterReply()
+                                    }
+                                },
+                            )
+                            if (item.id != page.items.last().id) Divider()
                         }
                     }
-                    Divider()
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                    ) {
-                        ReaderCommentComposer(
-                            loggedIn = user != null,
-                            text = commentText,
-                            busy = commentBusy,
-                            notice = commentNotice,
-                            onTextChange = { commentText = couiClampCommentInput(it) },
-                            onLogin = ::openLoginFromModal,
-                            onSend = ::sendComment,
-                        )
-                    }
+                }
+                Divider()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    ReaderCommentComposer(
+                        loggedIn = user != null,
+                        text = commentText,
+                        busy = commentBusy,
+                        notice = commentNotice,
+                        onTextChange = { commentText = couiClampCommentInput(it) },
+                        onLogin = ::openLoginFromModal,
+                        onSend = ::sendComment,
+                    )
                 }
             }
         }
@@ -1451,26 +1457,24 @@ private fun ReaderPages(
                 },
             ),
         ) {
-            Group {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    ReaderCommentComposer(
-                        loggedIn = true,
-                        text = replyText,
-                        busy = replyBusy,
-                        notice = replyNotice,
-                        onTextChange = { replyText = couiClampCommentInput(it) },
-                        onLogin = {},
-                        onSend = { sendReply(replyText) },
-                    )
-                }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                ReaderCommentComposer(
+                    loggedIn = true,
+                    text = replyText,
+                    busy = replyBusy,
+                    notice = replyNotice,
+                    onTextChange = { replyText = couiClampCommentInput(it) },
+                    onLogin = {},
+                    onSend = { sendReply(replyText) },
+                )
             }
         }
 
-        // 追更引导：说明与静默勾选在卡片内，动作按钮交给弹窗自身槽位（竖向堆叠由库负责）
+        // 追更引导：直接承接 Dialog 玻璃材质，动作按钮交给弹窗自身槽位（竖向堆叠由库负责）
         Dialog(
             onDismissRequest = { closeTrackPrompt() },
             visible = visibleModal == CouiReaderModal.TRACK_PROMPT,
@@ -1483,30 +1487,28 @@ private fun ReaderPages(
             ),
             dismissAction = CouiDialogAction(text = "关闭", onClick = { closeTrackPrompt() }),
         ) {
-            Group {
-                Column(
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                CouiBodyText(
+                    text = "随时追踪最新连载漫画更新，不错过每一集精彩内容",
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(top = 6.dp)
+                        .couiPressable(minTouchTarget = CouiMinTouchTarget) {
+                            trackMuteChecked = !trackMuteChecked
+                        }
+                        .padding(vertical = 8.dp),
                 ) {
-                    CouiBodyText(
-                        text = "随时追踪最新连载漫画更新，不错过每一集精彩内容",
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp)
-                            .couiPressable(minTouchTarget = CouiMinTouchTarget) {
-                                trackMuteChecked = !trackMuteChecked
-                            }
-                            .padding(vertical = 8.dp),
-                    ) {
-                        // 库复选框只画框，点击语义与热区由这一行自己提供
-                        Checkbox(checked = trackMuteChecked)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(text = "3天不要显示", kind = CouiTextKind.ItemTitle)
-                    }
+                    // 库复选框只画框，点击语义与热区由这一行自己提供
+                    Checkbox(checked = trackMuteChecked)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(text = "3天不要显示", kind = CouiTextKind.ItemTitle)
                 }
             }
         }
@@ -1582,14 +1584,8 @@ internal val ReaderHudTopHeight = 56.dp
 internal const val ReaderHudBottomHeightDp = 64
 internal val ReaderHudBottomHeight = ReaderHudBottomHeightDp.dp
 
-/** HUD 形状：大圆角卡片，观感贴近库底栏，又不必依赖透镜的胶囊限定。 */
-internal val ReaderHudShape = CouiShape(radius = 28.dp, cornerWeight = 2f)
-
 /** 降级底栏的不透明度：太实会挡住正文，太虚又读不清栏内文字。 */
 private const val ReaderHudFallbackAlpha = 0.92f
-
-/** 评论输入框形状：比卡片更方，输入区不宜用大圆角。 */
-internal val ReaderCommentFieldShape = CouiShape(radius = 16.dp, cornerWeight = 3f)
 
 /** 创建带实色背景的 HUD 采样源：防止页边缘留白或加载态露出透明像素。 */
 @Composable
@@ -1646,9 +1642,40 @@ internal fun BindCouiReaderWindowEffects(
     }
 }
 
+/** 漫画与小说阅读器共用的顶部渐变模糊承托：覆盖状态栏到浮栏下缘，消除内容硬切。 */
+@Composable
+internal fun BoxScope.ReaderTopAppBarSurface(
+    visible: Boolean,
+    backdrop: CouiBackdrop,
+    content: @Composable () -> Unit,
+) {
+    if (!visible) return
+    val dark = CouiKitTheme.isDark
+    val background = CouiKitTheme.colorScheme.background
+    TopAppBarSurface(
+        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+        backdrop = backdrop,
+        fadeHeight = CouiTopAppBarDefaults.fadeHeight,
+        bottomExtension = CouiTopAppBarDefaults.bottomExtension,
+        gradientSpeed = 3f,
+        gradientColor = background.copy(alpha = if (dark) 0.55f else 0.78f),
+        dark = dark,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = ReaderHudBarVerticalMargin),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
+    }
+}
+
 /**
- * HUD 顶/底栏的统一外壳：API 34 起走库的浮动表面（透镜折射、投影与描边一次给全），
- * 更低版本拿不到那套材质，退化成投影加半透明卡片：容器色叠 0.92 不透明度，背后正文仍能透出来。
+ * HUD 顶/底栏的统一胶囊外壳：API 34 起走库的浮动表面（透镜折射、投影与描边一次给全），
+ * 更低版本拿不到那套材质，退化成投影加半透明胶囊：容器色叠 0.92 不透明度，背后正文仍能透出来。
  * 两条路径以 [height] 作为最小高度，字体放大或标题两行时可自然撑开而不裁剪。
  */
 @Composable
@@ -1656,6 +1683,7 @@ internal fun ReaderHudBar(
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
     height: Dp,
+    placement: CouiReaderHudPlacement = CouiReaderHudPlacement.BOTTOM,
     diagnosticName: String,
     content: @Composable () -> Unit,
 ) {
@@ -1664,6 +1692,7 @@ internal fun ReaderHudBar(
             backdrop = backdrop,
             modifier = modifier,
             height = height,
+            placement = placement,
             diagnosticName = diagnosticName,
             content = content,
         )
@@ -1674,14 +1703,14 @@ internal fun ReaderHudBar(
                 // 探针只在 CouiRenderDiagnostics 开启时生效，生产环境是空操作
                 .renderDiagnosticProbe(diagnosticName)
                 .dropShadow(
-                    shape = ReaderHudShape,
+                    shape = CouiCapsuleShape,
                     shadow = Shadow(
                         radius = 12.dp,
                         color = Color.Black,
                         alpha = if (CouiKitTheme.isDark) 0.5f else 0.16f,
                     ),
                 )
-                .clip(ReaderHudShape)
+                .clip(CouiCapsuleShape)
                 .background(CouiKitTheme.colorScheme.container.copy(alpha = ReaderHudFallbackAlpha))
                 // 低版本拿不到库材质，但凝光门槛更低：垫完底色就补光，与 34+ 的观感差距只剩折射
                 .couiSpotlightLight(SpotlightPreset.TranslucentLarge1, interactive = true),
@@ -1698,20 +1727,23 @@ private fun ReaderHudFloatingBar(
     backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
     height: Dp,
+    placement: CouiReaderHudPlacement,
     diagnosticName: String,
     content: @Composable () -> Unit,
 ) {
     val dark = CouiKitTheme.isDark
+    val contourGlowEnabled = LocalCouiContourGlowEnabled.current
     val density = LocalDensity.current
     val contentLayer = rememberGraphicsLayer()
-    // 一次只画一条栏，单主体渲染器就够；两次栏各自持有实例，互不共享坐标
+    // 一次只画一条栏，单主体渲染器就够；两处栏各自持有实例，互不共享坐标
     val renderer = remember { CouiFloatingRenderer.standalone() }
-    val material = remember(dark) { readerHudMaterial(dark) }
-    val shadow = remember(dark, density) { with(density) { readerHudShadow(dark) } }
+    val material = remember(dark, density) { with(density) { readerHudMaterial(dark) } }
+    val shadow = remember(placement, dark, contourGlowEnabled, density) {
+        with(density) { readerHudShadow(placement, dark, contourGlowEnabled) }
+    }
     var bounds by remember { mutableStateOf(IntSize.Zero) }
-    val cornerRadius = with(density) { ReaderHudShape.radius.toPx() }
     // 库的浮动材质本身不带凝光：光只能在 beforeContent 里补，那里是「材质之后、内容之前」，
-    // 直接 drawBehind 会被材质 patch 的 Src 混合抹掉
+    // 输入挂在外层并在 couiFloatingSurface 之前测量，外层不裁切阴影与前景合成区域
     val light = rememberCouiSpotlight(
         interactive = true,
         preset = SpotlightPreset.TranslucentLarge1,
@@ -1723,37 +1755,35 @@ private fun ReaderHudFloatingBar(
             .heightIn(min = height)
             .renderDiagnosticProbe(diagnosticName)
             .onSizeChanged { bounds = it }
+            .then(light.first)
             .couiFloatingSurface(
                 backdrop = backdrop,
                 renderer = renderer,
                 material = material,
                 shadow = shadow,
-                shape = ReaderHudShape,
+                shape = CouiCapsuleShape,
                 contentLayer = contentLayer,
-                contourGlowEnabled = LocalCouiContourGlowEnabled.current,
+                contourGlowEnabled = contourGlowEnabled,
+                foregroundComposition = true,
                 beforeContent = { path ->
                     clipPath(path) { light.second?.invoke(this) }
                 },
                 surface = {
                     CouiFloatingSurface(
                         bounds = Rect(0f, 0f, bounds.width.toFloat(), bounds.height.toFloat()),
-                        cornerWeight = ReaderHudShape.cornerWeight,
-                        // 库收的是像素半径，并且会自己夹到短边一半
-                        cornerRadius = cornerRadius,
+                        cornerWeight = 1f,
                     )
                 },
-            )
-            // 输入挂在承载材质与内容的同一节点上，采样的坐标才与绘制一致
-            .then(light.first)
-            .clip(ReaderHudShape),
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        // 内层负责把内容录进图层，浮动表面才有东西可以折射
+        // 内层负责把内容录进图层並按胶囊裁剪，浮动表面才有透明前景可以折射叠加
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = height)
-                .drawWithContent { contentLayer.record { this@drawWithContent.drawContent() } },
+                .drawWithContent { contentLayer.record { this@drawWithContent.drawContent() } }
+                .clip(CouiCapsuleShape),
             contentAlignment = Alignment.Center,
         ) {
             content()
@@ -1761,14 +1791,15 @@ private fun ReaderHudFloatingBar(
     }
 }
 
-/** 浮动表面的材质：深浅两套参数直接取自库底栏的配方，保证与首页底栏同质。 */
-private fun readerHudMaterial(dark: Boolean): CouiFloatingMaterial = if (dark) {
+/** 浮动表面的材质：深浅两套参数与 4dp 折射外扩取自库底栏，保证与首页底栏同质。 */
+private fun Density.readerHudMaterial(dark: Boolean): CouiFloatingMaterial = if (dark) {
     CouiFloatingMaterial(
         firstColor = Color(0x80666666),
         firstBlendMode = BlendMode.OVERLAY,
         secondColor = Color(0xB3262626),
         edgeAlpha = 0.8f,
         innerGlowAlpha = 0.03f,
+        extension = 4.dp.roundToPx(),
     )
 } else {
     CouiFloatingMaterial(
@@ -1777,20 +1808,38 @@ private fun readerHudMaterial(dark: Boolean): CouiFloatingMaterial = if (dark) {
         secondColor = Color(0x80F0F0F0),
         edgeAlpha = 0.25f,
         innerGlowAlpha = 0.1f,
+        extension = 4.dp.roundToPx(),
     )
 }
 
-/** 浮动表面的投影：光源从上方压下来，height/radius 用像素表述，取自库底栏同一组数值。 */
-private fun Density.readerHudShadow(dark: Boolean): CouiFloatingShadow = CouiFloatingShadow(
-    elevation = (350f * density).roundToInt().toFloat(),
-    color = if (dark) Color(0x78000000) else Color(0x28000000),
-    lightY = (-160f * density).roundToInt().toFloat(),
-    lightZ = (10000f * density).roundToInt().toFloat(),
-    lightRadius = (2000f * density).roundToInt().toFloat(),
-    causticColor = Color.White.copy(alpha = 0x42 / 255f),
-    layout = Rect(0f, 0f, 0f, (11.2f * density).toInt().toFloat()),
-    sdf = (20f * density).toInt().toFloat(),
-)
+/** 浮动表面的投影与焦散：按顶/底区分配置，顶栏关闭白色底晕，底栏复用 NavigationBar 胶囊焦散比例。 */
+private fun Density.readerHudShadow(
+    placement: CouiReaderHudPlacement,
+    dark: Boolean,
+    contourGlowEnabled: Boolean,
+): CouiFloatingShadow {
+    val spec = couiReaderHudShadowSpec(placement, dark, contourGlowEnabled)
+    fun pxSize(dp: Float): Float {
+        val px = dp * density
+        return (if (px >= 0f) px + 0.5f else px - 0.5f).toInt().toFloat()
+    }
+    fun pxOffset(dp: Float): Float = (dp * density).toInt().toFloat()
+    return CouiFloatingShadow(
+        elevation = pxSize(spec.elevationDp),
+        color = Color.Black.copy(alpha = spec.shadowAlpha),
+        lightY = pxSize(spec.lightYDp),
+        lightZ = if (spec.lightZDp == 0f) 0f else pxSize(spec.lightZDp),
+        lightRadius = pxSize(spec.lightRadiusDp),
+        causticColor = if (spec.causticAlpha > 0f) {
+            Color.White.copy(alpha = spec.causticAlpha)
+        } else {
+            Color.Transparent
+        },
+        layout = Rect(0f, 0f, 0f, pxOffset(spec.causticBottomDp)),
+        sdf = pxOffset(spec.causticSdfDp),
+        smoothCorner = spec.smoothCorner,
+    )
+}
 
 /** 顶栏的上一话/下一话：图标带极简文本标签以区分左侧返回键，无相邻章时置灰并保持 48dp 触区。 */
 @Composable
@@ -1859,11 +1908,12 @@ private fun ReaderPageJumpStepper(
     }
 }
 
-/** 底栏动作：图标 + 一行说明，支持禁用态与强调色选中态。 */
+/** 底栏动作：等分宽胶囊触区 + 选中态横向胶囊底衬。 */
 @Composable
 internal fun ReaderHudAction(
     icon: ImageVector,
     label: String,
+    modifier: Modifier = Modifier,
     active: Boolean = false,
     enabled: Boolean = true,
     onClick: () -> Unit,
@@ -1874,18 +1924,26 @@ internal fun ReaderHudAction(
         active -> scheme.accent
         else -> scheme.onSurface
     }
+    val containerColor = if (active && enabled) {
+        scheme.accent.copy(alpha = CouiSelectedContainerAlpha)
+    } else {
+        Color.Transparent
+    }
     Column(
-        modifier = Modifier
+        modifier = modifier
+            .heightIn(min = 52.dp)
             // 只在 HUD 面板内使用，光由面板统一给，项内不再叠第二层
             .couiPressable(
                 shape = CouiCapsuleShape,
+                backgroundColor = containerColor,
                 enabled = enabled,
                 spotlight = null,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 6.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(22.dp), tint = tint)
         Text(
@@ -1952,7 +2010,7 @@ internal fun ReaderCommentComposer(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(ReaderCommentFieldShape)
+            .clip(CouiCommentFieldShape)
             .background(scheme.container)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
@@ -2005,7 +2063,10 @@ internal fun ReaderCommentComposer(
 @Composable
 internal fun ReaderDialogHint(text: String, onClick: (() -> Unit)? = null) {
     Box(
-        modifier = Modifier.fillMaxWidth().height(96.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+            .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
         CouiBodyText(
@@ -2283,7 +2344,7 @@ private fun BoxScope.ReaderLoadFailedHint(onRetry: () -> Unit) {
     Column(
         modifier = Modifier
             .align(Alignment.Center)
-            .clip(ReaderCommentFieldShape)
+            .clip(CouiCommentFieldShape)
             .background(Color.Black.copy(alpha = 0.55f))
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

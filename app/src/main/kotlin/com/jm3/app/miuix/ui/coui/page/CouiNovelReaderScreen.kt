@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -48,7 +47,6 @@ import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.Divider
-import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
 import com.itos.coui.picker.WheelPicker
 import com.itos.coui.scroll.couiVerticalScroll
@@ -448,16 +446,17 @@ private fun CouiNovelReaderContent(
             }
         }
 
-        if (topHudVisible) {
+        ReaderTopAppBarSurface(
+            visible = topHudVisible,
+            backdrop = hudBackdrop,
+        ) {
             ReaderHudBar(
                 backdrop = hudBackdrop,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = ReaderHudBarVerticalMargin)
                     .fillMaxWidth()
                     .readableWidth(),
                 height = ReaderHudTopHeight,
+                placement = CouiReaderHudPlacement.TOP,
                 diagnosticName = "novelHud/top",
             ) {
                 Row(
@@ -514,33 +513,38 @@ private fun CouiNovelReaderContent(
                     .fillMaxWidth()
                     .readableWidth(),
                 height = ReaderHudBottomHeight,
+                placement = CouiReaderHudPlacement.BOTTOM,
                 diagnosticName = "novelHud/bottom",
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     ReaderHudAction(
                         icon = CouiIcons.Settings,
                         label = "字号",
+                        modifier = Modifier.weight(1f),
                         onClick = { modalState = modalState.open(CouiReaderModal.FONT_SIZE) },
                     )
                     ReaderHudAction(
                         icon = CouiIcons.Back,
                         label = "上一章",
+                        modifier = Modifier.weight(1f),
                         enabled = prevChapter != null,
                         onClick = { goTo(prevChapter) },
                     )
                     ReaderHudAction(
                         icon = CouiIcons.Forward,
                         label = "下一章",
+                        modifier = Modifier.weight(1f),
                         enabled = nextChapter != null,
                         onClick = { goTo(nextChapter) },
                     )
                     ReaderHudAction(
                         icon = CouiIcons.Comment,
                         label = "评论",
+                        modifier = Modifier.weight(1f),
                         onClick = {
                             commentsNotice = null
                             modalState = modalState.open(CouiReaderModal.COMMENTS)
@@ -549,6 +553,7 @@ private fun CouiNovelReaderContent(
                     ReaderHudAction(
                         icon = CouiIcons.Folder,
                         label = "收藏",
+                        modifier = Modifier.weight(1f),
                         active = favorited,
                         onClick = ::toggleFavorite,
                     )
@@ -581,45 +586,43 @@ private fun CouiNovelReaderContent(
         title = "字号",
         confirmAction = CouiDialogAction(text = "完成", onClick = { modalState = modalState.dismiss() }),
     ) {
-        Group {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = "当前字号 " + fontSize + "sp",
+                kind = CouiTextKind.ItemTitle,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // 字号是离散档位，滚轮比滑杆更容易一档一档停准；不环回，避免从最大档直接跳回最小档
+            WheelPicker(
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                value = fontSize,
+                onValueChange = { applyFontSize(it) },
+                valueRange = SettingsRepository.NOVEL_FONT_SIZE_MIN..
+                    SettingsRepository.NOVEL_FONT_SIZE_MAX,
+                label = "字号",
+                wrap = false,
+                verticalFading = true,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = "当前字号 " + fontSize + "sp",
-                    kind = CouiTextKind.ItemTitle,
-                    modifier = Modifier.fillMaxWidth(),
+                NovelFontStep(
+                    label = "A-",
+                    enabled = fontSize > SettingsRepository.NOVEL_FONT_SIZE_MIN,
+                    onClick = { applyFontSize(fontSize - 1) },
+                    modifier = Modifier.weight(1f),
                 )
-                // 字号是离散档位，滚轮比滑杆更容易一档一档停准；不环回，避免从最大档直接跳回最小档
-                WheelPicker(
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    value = fontSize,
-                    onValueChange = { applyFontSize(it) },
-                    valueRange = SettingsRepository.NOVEL_FONT_SIZE_MIN..
-                        SettingsRepository.NOVEL_FONT_SIZE_MAX,
-                    label = "字号",
-                    wrap = false,
-                    verticalFading = true,
+                NovelFontStep(
+                    label = "A+",
+                    enabled = fontSize < SettingsRepository.NOVEL_FONT_SIZE_MAX,
+                    onClick = { applyFontSize(fontSize + 1) },
+                    modifier = Modifier.weight(1f),
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    NovelFontStep(
-                        label = "A-",
-                        enabled = fontSize > SettingsRepository.NOVEL_FONT_SIZE_MIN,
-                        onClick = { applyFontSize(fontSize - 1) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    NovelFontStep(
-                        label = "A+",
-                        enabled = fontSize < SettingsRepository.NOVEL_FONT_SIZE_MAX,
-                        onClick = { applyFontSize(fontSize + 1) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
             }
         }
     }
@@ -631,34 +634,32 @@ private fun CouiNovelReaderContent(
         title = "评论",
         confirmAction = CouiDialogAction(text = "关闭", onClick = { modalState = modalState.dismiss() }),
     ) {
-        Group {
-            NovelCommentsPanel(
-                deps = deps,
-                novelId = novelId,
-                notice = commentsNotice,
-                refreshKey = commentsRefreshKey,
-                onNoticeChange = { commentsNotice = it },
-                onReply = { item ->
-                    if (user == null) {
-                        openLoginFromModal()
-                    } else {
-                        replyTarget = item
-                        replyDraft = ""
-                        replyNotice = null
-                        modalState = modalState.enterReply()
-                    }
-                },
-                onOpenLogin = ::openLoginFromModal,
-                onLoginExpired = { message ->
+        NovelCommentsPanel(
+            deps = deps,
+            novelId = novelId,
+            notice = commentsNotice,
+            refreshKey = commentsRefreshKey,
+            onNoticeChange = { commentsNotice = it },
+            onReply = { item ->
+                if (user == null) {
                     openLoginFromModal()
-                    scope.launch { snackbarHostState.showSnackbar(message) }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+                } else {
+                    replyTarget = item
+                    replyDraft = ""
+                    replyNotice = null
+                    modalState = modalState.enterReply()
+                }
+            },
+            onOpenLogin = ::openLoginFromModal,
+            onLoginExpired = { message ->
+                openLoginFromModal()
+                scope.launch { snackbarHostState.showSnackbar(message) }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 
-    // 回复弹窗与评论弹窗保持同级互斥，不在嵌套 Group 内再挂 Dialog
+    // 回复弹窗与评论弹窗保持同级互斥，直接承接 Dialog 玻璃材质
     val retainedReplyTarget = rememberRetainedTarget(replyTarget)
     Dialog(
         onDismissRequest = {
@@ -687,22 +688,20 @@ private fun CouiNovelReaderContent(
             },
         ),
     ) {
-        Group {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                ReaderCommentComposer(
-                    loggedIn = true,
-                    text = replyDraft,
-                    busy = replyBusy,
-                    notice = replyNotice,
-                    onTextChange = { replyDraft = couiClampCommentInput(it) },
-                    onLogin = {},
-                    onSend = ::submitReply,
-                )
-            }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            ReaderCommentComposer(
+                loggedIn = true,
+                text = replyDraft,
+                busy = replyBusy,
+                notice = replyNotice,
+                onTextChange = { replyDraft = couiClampCommentInput(it) },
+                onLogin = {},
+                onSend = ::submitReply,
+            )
         }
     }
 }
@@ -829,23 +828,19 @@ private fun NovelCommentsPanel(
 
     Column(modifier = modifier) {
         when {
-            loading -> CouiLoadingGroup(text = "正在加载评论…", modifier = Modifier.fillMaxWidth())
+            loading -> ReaderDialogHint(text = "正在加载评论…")
 
-            failure?.phase == ScreenLoadPhase.Expired -> CouiFeedLoginGroup(
-                message = failure?.message.orEmpty(),
-                onOpenLogin = onOpenLogin,
+            failure?.phase == ScreenLoadPhase.Expired -> ReaderDialogHint(
+                text = failure?.message.orEmpty() + "，点此登录",
+                onClick = onOpenLogin,
             )
 
-            failure != null -> CouiErrorGroup(
-                message = failure?.message.orEmpty(),
-                onRetry = { load(1, replace = true, showLoading = true) },
-                modifier = Modifier.fillMaxWidth(),
+            failure != null -> ReaderDialogHint(
+                text = failure?.message.orEmpty() + "，点此重试",
+                onClick = { load(1, replace = true, showLoading = true) },
             )
 
-            feed.items.isEmpty() -> CouiEmptyGroup(
-                text = CouiStrings.EmptyComments,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            feed.items.isEmpty() -> ReaderDialogHint(text = CouiStrings.EmptyComments)
 
             else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
                 items(feed.items, key = { it.id }) { item ->
