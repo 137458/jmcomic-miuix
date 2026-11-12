@@ -5,7 +5,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
@@ -42,22 +41,33 @@ class DownloadService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val presentation = present(currentTasks())
         if (presentation == null) {
-            // 竞态：startForegroundService 之后任务已清空/已完成，避免超时 ANR 直接退出。
-            policy.onServiceStopped()
-            stopSelf()
+            // 竞态：startForegroundService 之后任务已清空/已完成。
+            // Android 12+（minSdk 31）仍要求在 stopSelf 前先调用 startForeground，否则会抛出 ForegroundServiceDidNotStartInTimeException。
+            startForegroundSafely(DownloadNotifier.buildStopping(this))
+            synchronized(policyLock) {
+                policy.onServiceStopped()
+            }
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf(startId)
             return START_NOT_STICKY
         }
-        policy.onServiceForeground()
-        startForegroundSafely(DownloadNotifier.build(this, presentation))
-        // 新下载已经开跑，上一次超时留下的「已暂停」提示已经过期，撤掉避免误导。
-        DownloadNotifier.cancelPaused(this)
+        if (startForegroundSafely(DownloadNotifier.build(this, presentation))) {
+            synchronized(policyLock) {
+                policy.onServiceForeground()
+            }
+            // 新下载已经开跑，上一次超时留下的「已暂停」提示已经过期，撤掉避免误导。
+            DownloadNotifier.cancelPaused(this)
+        }
         // 进程被杀后不自动重建：任务由落库记录恢复，避免死循环拉起空服务。
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        policy.onServiceStopped()
-        flushJob?.cancel()
+        synchronized(policyLock) {
+            policy.onServiceStopped()
+            flushJob?.cancel()
+            flushJob = null
+        }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
@@ -85,25 +95,28 @@ class DownloadService : Service() {
         DownloadNotifier.cancel(this)
         // 前台通知会随退场一起消失：不留一条可见提示，用户只会看到通知无声消失、以为下载完成。
         DownloadNotifier.notifyPaused(this, getString(R.string.notification_download_paused_text))
-        policy.onServiceStopped()
+        synchronized(policyLock) {
+            policy.onServiceStopped()
+            flushJob?.cancel()
+            flushJob = null
+        }
         stopSelf()
     }
 
     /** targetSdk 34+ 未声明 FOREGROUND_SERVICE_DATA_SYNC 时会抛异常，失败也不让下载崩掉。 */
-    private fun startForegroundSafely(notification: Notification) {
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        } else {
-            0
-        }
-        runCatching {
+    private fun startForegroundSafely(notification: Notification): Boolean {
+        // minSdk 31（>= Q），可直接使用 FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        return runCatching {
             ServiceCompat.startForeground(this, DownloadNotifier.NOTIFICATION_ID, notification, type)
         }.onFailure { e ->
             // 服务已 started 却没进入前台，5 秒后系统会抛 RemoteServiceException，必须主动结束。
             Log.w(TAG, "startForeground 失败", e)
-            policy.onServiceStopped()
+            synchronized(policyLock) {
+                policy.onServiceStopped()
+            }
             stopSelf()
-        }
+        }.isSuccess
     }
 
     companion object {
@@ -117,10 +130,14 @@ class DownloadService : Service() {
         /** 同一批任务内的拉起重试窗口：策略的退避判定与这里的到点补评估共用同一个值。 */
         private const val START_RETRY_INTERVAL_MS = ForegroundPolicy.DEFAULT_START_RETRY_INTERVAL_MS
 
+        /** 前台策略与 flushJob 共享同一把锁，保证主线程生命周期回调与后台队列协程串行访问。 */
+        private val policyLock = Any()
+
         /** 前台服务的全部决策状态：进程内一份，随 Activity 重建而保持。 */
         private val policy = ForegroundPolicy(startRetryIntervalMs = START_RETRY_INTERVAL_MS)
 
         /** 节流窗口末尾的补发任务：保证进度条最终能停在真实值上。 */
+        @Volatile
         private var flushJob: Job? = null
 
         /**
@@ -137,6 +154,7 @@ class DownloadService : Service() {
                 retryIntervalMs = START_RETRY_INTERVAL_MS,
                 latestTasks = { currentTasks() },
                 perform = { action -> perform(app, action) },
+                lock = policyLock,
             )
             // 全应用只允许一处长期协程作用域：appScope 随进程存活，attach 的幂等由 attached 保证。
             Jm3Graph.appScope.launch {
@@ -147,18 +165,24 @@ class DownloadService : Service() {
         /** 拉起前台服务；被系统拒绝时返回 false，由 [ForegroundRunner] 排一次到点补评估。 */
         fun start(context: Context): Boolean {
             val intent = Intent(context, DownloadService::class.java).setAction(ACTION_START)
-            // minSdk 26：统一走 startForegroundService，由 onStartCommand 在 5s 内 startForeground。
+            // minSdk 31：统一走 startForegroundService，由 onStartCommand 在 5s 内 startForeground。
             return runCatching { context.startForegroundService(intent) }
                 .onFailure { e ->
                     // 后台启动被拒（ForegroundServiceStartNotAllowedException）时界面毫无反馈，至少留痕。
                     Log.w(TAG, "启动下载前台服务失败", e)
                     // 回滚活动数快照，让退避窗口结束后的补评估还能再次尝试拉起
-                    policy.onStartFailed()
+                    synchronized(policyLock) {
+                        policy.onStartFailed()
+                    }
                 }
                 .isSuccess
         }
 
         fun stop(context: Context) {
+            synchronized(policyLock) {
+                flushJob?.cancel()
+                flushJob = null
+            }
             runCatching { context.stopService(Intent(context, DownloadService::class.java)) }
         }
 
@@ -184,11 +208,16 @@ class DownloadService : Service() {
         }
 
         private fun scheduleFlush(app: Context, delayMs: Long) {
-            if (flushJob?.isActive == true) return
-            flushJob = Jm3Graph.appScope.launch {
-                delay(delayMs)
-                val due = policy.onFlushDue(currentTasks())
-                if (due is ForegroundAction.Publish) publish(app, due.tasks)
+            synchronized(policyLock) {
+                if (flushJob?.isActive == true) return
+                flushJob = Jm3Graph.appScope.launch {
+                    delay(delayMs)
+                    val due = synchronized(policyLock) {
+                        flushJob = null
+                        policy.onFlushDue(currentTasks())
+                    }
+                    if (due is ForegroundAction.Publish) publish(app, due.tasks)
+                }
             }
         }
 

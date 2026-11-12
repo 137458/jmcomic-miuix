@@ -3,16 +3,16 @@ package com.jm3.app.miuix.update
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import java.io.File
 
 /**
  * 应用内安装已下载的 APK。
  *
  * 取舍一：走 FileProvider 而不是 file:// Uri。Android 7.0 起直接传 file:// 会抛
- * FileUriExposedException，本应用 minSdk 26，必然要用 content:// 加临时读授权。
+ * FileUriExposedException，本应用 minSdk 31，必然要用 content:// 加临时读授权。
  *
  * 取舍二：先判断 canRequestPackageInstalls()，未授权时打开系统"安装未知应用"设置页并返回
  * [Result.PermissionRequired]，而不是静默失败。安装未知来源属于受限权限，只能由用户在
@@ -41,7 +41,7 @@ object ApkInstaller {
         data class Failed(val message: String) : Result
     }
 
-    /** 是否已获得安装未知应用的权限；该 API 自 API 26 提供，与 minSdk 一致，无需版本判断。 */
+    /** 是否已获得安装未知应用的权限；该 API 自 API 26 提供，低于当前 minSdk 31，无需版本判断。 */
     fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
 
     /**
@@ -56,7 +56,7 @@ object ApkInstaller {
         if (!canInstall(context)) {
             val intent = Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}"),
+                "package:${context.packageName}".toUri(),
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             return try {
                 context.startActivity(intent)

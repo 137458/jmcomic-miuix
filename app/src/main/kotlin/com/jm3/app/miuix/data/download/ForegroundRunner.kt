@@ -25,9 +25,8 @@ internal class ForegroundRunner(
     private val retryIntervalMs: Long,
     private val latestTasks: () -> Map<String, DownloadTask>,
     private val perform: (ForegroundAction) -> Boolean,
+    private val lock: Any = Any(),
 ) {
-
-    private val lock = Any()
 
     /** 未到点的补评估；null 表示没有排期。 */
     private var retryJob: Job? = null

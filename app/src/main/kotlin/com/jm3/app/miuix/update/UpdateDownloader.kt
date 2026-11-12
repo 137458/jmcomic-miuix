@@ -12,7 +12,8 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
+import java.net.URISyntaxException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.atomic.AtomicLong
@@ -97,7 +98,7 @@ class UpdateDownloader(
      * 「取消后立即重启」这类真实并发时序。
      */
     private val connectionFactory: (String) -> HttpURLConnection = { url ->
-        URL(url).openConnection() as HttpURLConnection
+        URI(url).toURL().openConnection() as HttpURLConnection
     },
 ) {
 
@@ -138,6 +139,12 @@ class UpdateDownloader(
     /** 当前下载任务；只在本对象的同步方法里读写 */
     private var job: Job? = null
 
+    /** 活跃下载代际正在使用的半成品文件名，防止过期任务的清理流程误删新任务文件。 */
+    private val activePartials = mutableSetOf<String>()
+
+    /** 串行化最终改名落盘，避免在持有对象监视器时阻塞主线程的 start/cancel/reset。 */
+    private val fileMoveLock = Any()
+
     /**
      * 开始下载 [asset]。
      *
@@ -148,6 +155,9 @@ class UpdateDownloader(
         if (_state.value is UpdateDownloadState.Downloading) return
         job?.cancel()
         val token = generation.incrementAndGet()
+        val targetName = safeFileName(asset.name)
+        val partialName = "$targetName.$token$PARTIAL_SUFFIX"
+        activePartials.add(partialName)
         // 先在调用线程切到 Downloading：界面立刻有反馈，连点也能命中上面的守卫；
         // 协程内部随后只在代际未变时写状态
         _state.value = UpdateDownloadState.Downloading(
@@ -155,7 +165,7 @@ class UpdateDownloader(
             total = asset.size.coerceAtLeast(0L),
             speedBytesPerSec = 0L,
         )
-        job = scope.launch { runDownload(asset, token) }
+        job = scope.launch { runDownload(asset, token, targetName, partialName) }
     }
 
     /** 取消下载并丢弃半成品，状态回到 [UpdateDownloadState.Idle]。 */
@@ -190,12 +200,17 @@ class UpdateDownloader(
         if (generation.get() == token) _state.value = next
     }
 
-    private suspend fun runDownload(asset: ReleaseAsset, token: Long) {
+    private suspend fun runDownload(
+        asset: ReleaseAsset,
+        token: Long,
+        targetName: String,
+        partialName: String,
+    ) {
         val directory = downloadDirectory
-        val target = File(directory, safeFileName(asset.name))
+        val target = File(directory, targetName)
         // 每次启动使用带代际的独立半成品：取消后立即重启时新旧任务各写各的文件，
         // 旧任务收尾只能删自己的半成品，绝不会删到新任务正在写或已写完的安装包。
-        val partial = File(directory, "${target.name}.$token$PARTIAL_SUFFIX")
+        val partial = File(directory, partialName)
         var connection: HttpURLConnection? = null
         try {
             // launch 到真正执行之间用户可能已经取消或重新开始，过期任务直接退出
@@ -203,8 +218,8 @@ class UpdateDownloader(
             if (!directory.exists() && !directory.mkdirs()) {
                 throw IOException("无法创建下载目录")
             }
-            // 历史进程遗留的半成品先清掉；本次任务的 partial 尚未创建，不会被误删
-            cleanupStalePartials(directory)
+            // 历史进程遗留的半成品先清掉；检查当前代际与活跃集合后再删除，绝不误删新任务文件
+            cleanupStalePartials(directory, token)
 
             val opened = openFollowingRedirects(asset.downloadUrl)
             connection = opened
@@ -243,11 +258,11 @@ class UpdateDownloader(
                 )
                 return
             }
-            // 校验通过才落成正式文件名；与 start/cancel 同锁，避免旧任务在新任务启动后改名覆盖
-            synchronized(this) {
+            // 校验通过才落成正式文件名：磁盘移动放到 fileMoveLock 串行，不占用 this 锁以免阻塞主线程操作
+            synchronized(fileMoveLock) {
                 if (generation.get() != token) return
                 Files.move(partial.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                _state.value = UpdateDownloadState.Done(target)
+                publish(token, UpdateDownloadState.Done(target))
             }
         } catch (cancelled: CancellationException) {
             // 代际已变的取消（cancel/reset 已写好状态）不回写，避免盖掉新任务
@@ -258,6 +273,9 @@ class UpdateDownloader(
             publish(token, UpdateDownloadState.Failed(failureCopy(error, "下载失败")))
         } finally {
             runCatching { partial.delete() }
+            synchronized(this) {
+                activePartials.remove(partialName)
+            }
             connection?.disconnect()
         }
     }
@@ -265,49 +283,78 @@ class UpdateDownloader(
     /**
      * 清掉历史进程遗留的半成品。
      *
-     * 本次任务的 partial 尚未创建，不会被误删；仍在写的旧任务即使文件被删，
-     * 也只会让它的改名失败，随后由它自己的 finally 收尾。
+     * 仅在代际未变且文件不在 [activePartials] 中时才删除，避免并发取消重启后旧协程误删新任务的半成品。
      */
-    private fun cleanupStalePartials(directory: File) {
+    private fun cleanupStalePartials(directory: File, token: Long) {
+        if (generation.get() != token) return
         directory.listFiles { file -> file.isFile && file.name.endsWith(PARTIAL_SUFFIX) }
-            ?.forEach { runCatching { it.delete() } }
+            ?.forEach { file ->
+                val canDelete = synchronized(this) {
+                    generation.get() == token && file.name !in activePartials
+                }
+                if (canDelete) runCatching { file.delete() }
+            }
     }
 
     /**
      * 打开下载连接，并手动跟随最多 [MAX_REDIRECTS] 次重定向。
      *
-     * instanceFollowRedirects 已经打开，但不同实现、跨协议（例如 GitHub 的 302 落到
-     * objects.githubusercontent.com）未必都自动跟随，所以这里再显式处理 3xx：
-     * 每次跳转都重新 openConnection，复用旧连接会带着上一个主机的 Host 头。
+     * 显式关闭自动重定向并在每一跳校验 HTTPS 协议，防止中间人通过 3xx 重定向降级到明文 HTTP。
      */
     private fun openFollowingRedirects(url: String): HttpURLConnection {
-        var currentUrl = url
+        var currentUrl = validateHttpsUrl(url)
         var hops = 0
         while (true) {
             val connection = connectionFactory(currentUrl).apply {
                 requestMethod = "GET"
-                instanceFollowRedirects = true
+                instanceFollowRedirects = false
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 setRequestProperty("User-Agent", USER_AGENT)
                 setRequestProperty("Accept", "application/octet-stream")
             }
-            val code = connection.responseCode
-            val location = connection.getHeaderField("Location")
-            if (code in 300..399 && !location.isNullOrBlank()) {
-                connection.disconnect()
-                if (hops >= MAX_REDIRECTS) throw IOException("重定向次数过多（HTTP $code）")
-                hops++
-                currentUrl = URL(URL(currentUrl), location).toString()
-                continue
+            var handoff = false
+            try {
+                val code = connection.responseCode
+                val location = connection.getHeaderField("Location")
+                if (code in 300..399 && !location.isNullOrBlank()) {
+                    if (hops >= MAX_REDIRECTS) throw IOException("重定向次数过多（HTTP $code）")
+                    hops++
+                    currentUrl = resolveHttpsRedirect(currentUrl, location)
+                    continue
+                }
+                if (code !in 200..299) {
+                    runCatching { connection.errorStream?.close() }
+                    throw IOException("HTTP $code")
+                }
+                handoff = true
+                return connection
+            } finally {
+                if (!handoff) connection.disconnect()
             }
-            if (code !in 200..299) {
-                runCatching { connection.errorStream?.close() }
-                connection.disconnect()
-                throw IOException("HTTP $code")
-            }
-            return connection
         }
+    }
+
+    private fun validateHttpsUrl(raw: String): String {
+        val uri = try {
+            URI(raw)
+        } catch (e: URISyntaxException) {
+            throw IOException("无效的下载地址", e)
+        }
+        val scheme = uri.scheme?.lowercase()
+        if (scheme != "https" || uri.host.isNullOrBlank()) {
+            throw IOException("仅支持 HTTPS 下载地址")
+        }
+        return uri.toString()
+    }
+
+    private fun resolveHttpsRedirect(baseUrl: String, location: String): String {
+        val resolved = try {
+            URI(baseUrl).resolve(location).toString()
+        } catch (e: IllegalArgumentException) {
+            throw IOException("无效的重定向地址", e)
+        }
+        return validateHttpsUrl(resolved)
     }
 
     /**

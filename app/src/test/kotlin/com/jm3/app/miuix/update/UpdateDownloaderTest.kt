@@ -181,6 +181,103 @@ class UpdateDownloaderTest {
         }
     }
 
+    @Test
+    fun `初始非HTTPS下载地址直接拒绝且不建连`() {
+        var opened = false
+        val downloader = UpdateDownloader(scope, dir) {
+            opened = true
+            FakeConnection(PAYLOAD.inputStream(), PAYLOAD.size.toLong())
+        }
+
+        downloader.start(asset().copy(downloadUrl = "http://example.com/jm3.apk"))
+
+        awaitState<UpdateDownloadState.Failed>(downloader)
+        awaitDownloadIdle()
+        assertEquals(false, opened, "非 HTTPS 初始地址不得发起连接")
+        assertNoPartials()
+    }
+
+    @Test
+    fun `重定向降级到HTTP时拒绝并断开旧连接`() {
+        val requestedUrls = mutableListOf<String>()
+        var firstDisconnected = false
+        val downloader = UpdateDownloader(scope, dir) { url ->
+            requestedUrls += url
+            object : HttpURLConnection(URL(url)) {
+                override fun connect() {}
+                override fun disconnect() {
+                    firstDisconnected = true
+                }
+                override fun usingProxy(): Boolean = false
+                override fun getResponseCode(): Int = 302
+                override fun getHeaderField(name: String?): String? =
+                    if (name.equals("Location", ignoreCase = true)) "http://evil.example.com/jm3.apk" else null
+                override fun getInputStream(): InputStream = PAYLOAD.inputStream()
+            }
+        }
+
+        downloader.start(asset())
+
+        awaitState<UpdateDownloadState.Failed>(downloader)
+        awaitDownloadIdle()
+        assertEquals(listOf("https://example.com/jm3.apk"), requestedUrls, "不得跟随降级 HTTP 重定向")
+        assertTrue(firstDisconnected, "拒绝重定向后必须断开原连接")
+        assertNoPartials()
+    }
+
+    @Test
+    fun `读取responseCode抛异常时必须断开连接`() {
+        var disconnected = false
+        val downloader = UpdateDownloader(scope, dir) { url ->
+            object : HttpURLConnection(URL(url)) {
+                override fun connect() {}
+                override fun disconnect() {
+                    disconnected = true
+                }
+                override fun usingProxy(): Boolean = false
+                override fun getResponseCode(): Int = throw IOException("socket reset")
+                override fun getInputStream(): InputStream = PAYLOAD.inputStream()
+            }
+        }
+
+        downloader.start(asset())
+
+        awaitState<UpdateDownloadState.Failed>(downloader)
+        awaitDownloadIdle()
+        assertTrue(disconnected, "responseCode 抛异常时也必须 disconnect")
+    }
+
+    @Test
+    fun `清理历史遗留半成品但不会误删新代际活跃半成品`() {
+        val stale = File(dir, "jm3.apk.999.part").apply { writeText("stale") }
+        val firstConnected = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        var calls = 0
+        val downloader = UpdateDownloader(scope, dir) {
+            calls++
+            if (calls == 1) {
+                firstConnected.countDown()
+                releaseFirst.await()
+                FakeConnection(PAYLOAD.inputStream(), PAYLOAD.size.toLong())
+            } else {
+                FakeConnection(PAYLOAD.inputStream(), PAYLOAD.size.toLong())
+            }
+        }
+
+        downloader.start(asset())
+        assertTrue(firstConnected.await(5, TimeUnit.SECONDS))
+        downloader.cancel()
+        downloader.start(asset())
+
+        val done = awaitState<UpdateDownloadState.Done>(downloader)
+        releaseFirst.countDown()
+        awaitDownloadIdle()
+
+        assertTrue(!stale.exists(), "历史遗留 .part 文件应被清理")
+        assertContentEquals(PAYLOAD, done.file.readBytes())
+        assertNoPartials()
+    }
+
     /**
      * 等到本测试作用域里的下载协程全部收尾。
      *

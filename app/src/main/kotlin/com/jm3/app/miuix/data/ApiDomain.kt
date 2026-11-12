@@ -4,14 +4,18 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import com.jm3.core.GatewayFactory
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.settings.Domains
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * 线路域：当前网关实例、自定义线路切换、线路池落盘。
@@ -20,7 +24,17 @@ import kotlinx.coroutines.sync.withLock
  * 组合内读取即可感知重组。会话迁移不在这里做——那需要 [com.jm3.core.session.AccountManager]，
  * 由调用方通过 [applyDomains] 的 onSwitched 传进来，线路域因此不认识账号。
  */
-class ApiDomain(context: Context, private val appScope: CoroutineScope) {
+class ApiDomain internal constructor(
+    context: Context,
+    private val appScope: CoroutineScope,
+    private val gatewayFactory: (List<String>, List<String>, (List<String>) -> Unit) -> Jm3Gateway,
+) {
+
+    constructor(context: Context, appScope: CoroutineScope) : this(
+        context = context,
+        appScope = appScope,
+        gatewayFactory = GatewayFactory::create,
+    )
 
     private val appContext: Context = context.applicationContext
 
@@ -35,7 +49,7 @@ class ApiDomain(context: Context, private val appScope: CoroutineScope) {
     private var cachedDomainPool: List<String> = emptyList()
 
     private val defaultGateway: Jm3Gateway by lazy {
-        GatewayFactory.create(emptyList(), cachedDomainPool, ::rememberDomainPool)
+        gatewayFactory(emptyList(), cachedDomainPool, ::rememberDomainPool)
     }
 
     /** 当前生效网关：线路覆盖优先，否则库默认解析。 */
@@ -46,36 +60,39 @@ class ApiDomain(context: Context, private val appScope: CoroutineScope) {
     @Volatile
     private var appliedDomains: List<String> = emptyList()
 
-    /** 线路切换串行化：启动恢复与设置页保存可能并发调用，重建网关不能交叉执行。 */
+    /** 线路切换串行化：网关重建、快照更新、会话迁移与旧网关关闭整体串行，防止并发切换提前关掉仍在使用的网关。 */
     private val domainSwitchLock = Mutex()
 
     /**
-     * 应用自定义 API 线路：重建网关，随后由调用方把已持久化会话迁移过去。
+     * 应用自定义 API 线路：在 IO 线程重建网关并安全提交快照，随后串行执行会话迁移并释放旧网关。
      *
-     * @param onSwitched 网关已换成功后的会话迁移动作（走网络与写盘，必须在锁外执行）。
+     * @param onSwitched 网关已换成功后的会话迁移动作。
      */
     suspend fun applyDomains(apiDomains: List<String>, onSwitched: suspend () -> Unit) {
-        var previous: Jm3Gateway? = null
-        val switched = domainSwitchLock.withLock {
+        domainSwitchLock.withLock {
             val requested = Domains.normalize(apiDomains)
             // 启动时默认就是空表且未切过线路：直接沿用 defaultGateway，不再多建一个网关。
-            if (requested == appliedDomains) return@withLock false
-            // 旧网关的 HTTP 客户端持有连接池，切线路后不再可达：迁移完会话即主动释放。
-            previous = gatewayOverride
+            if (requested == appliedDomains) return@withLock
+            val previous = gatewayOverride
+            val next = if (requested.isEmpty()) {
+                null
+            } else {
+                withContext(Dispatchers.IO) {
+                    gatewayFactory(requested, cachedDomainPool, ::rememberDomainPool)
+                }
+            }
             appliedDomains = requested
-            gatewayOverride =
-                if (requested.isEmpty()) null
-                else GatewayFactory.create(requested, cachedDomainPool, ::rememberDomainPool)
-            true
-        }
-        if (!switched) return
-        // 会话注入要走网络与写盘，放到锁外：锁只保护网关实例本身的重建，
-        // 否则一次线路切换会把并发的其它切换全堵在网络超时上。
-        // 旧网关必须在迁移失败时也释放，否则连接池随每次失败的切换泄漏
-        try {
-            onSwitched()
-        } finally {
-            previous?.let { old -> runCatching { old.close() } }
+            Snapshot.withMutableSnapshot {
+                gatewayOverride = next
+            }
+            // 旧网关在迁移完成后再于 IO 线程释放（异常/取消路径同样释放），避免未迁移完就被关闭或阻塞主线程
+            try {
+                onSwitched()
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    previous?.let { old -> runCatching { old.close() } }
+                }
+            }
         }
     }
 

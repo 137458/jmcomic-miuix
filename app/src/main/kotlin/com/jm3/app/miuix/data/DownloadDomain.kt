@@ -5,6 +5,7 @@ import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.data.download.FileDownloadStore
 import com.jm3.app.miuix.data.download.GatewayPageFetcher
 import com.jm3.app.miuix.data.download.GatewayTaskResolver
+import com.jm3.app.miuix.data.download.QueueGuardedDownloadStore
 import com.jm3.core.download.DownloadLedger
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadStore
@@ -32,12 +33,18 @@ class DownloadDomain(
     private val pageSource by lazy { GatewayPageFetcher { api.gateway } }
 
     val manager: DownloadManager by lazy {
+        lateinit var queue: DownloadQueue
+        val queueStore = QueueGuardedDownloadStore(
+            delegate = files,
+            isActiveInQueue = { photoId -> photoId in queue.updates.value },
+        )
+        queue = DownloadQueue(
+            fetcher = pageSource,
+            store = queueStore,
+            resolver = GatewayTaskResolver { api.gateway },
+        )
         DownloadManager(
-            queue = DownloadQueue(
-                fetcher = pageSource,
-                store = files,
-                resolver = GatewayTaskResolver { api.gateway },
-            ),
+            queue = queue,
             fileStore = files,
             ledger = DownloadLedger(store = library.ledgerStore, pagesJsonOf = pageSource::pagesJsonOrNull),
             appScope = appScope,

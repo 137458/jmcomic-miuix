@@ -1,6 +1,7 @@
 package com.jm3.app.miuix
 
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.compose.foundation.layout.Box
@@ -131,6 +132,17 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 
 /**
+ * 进程级入口：在任何 Activity、Service 或恢复组件创建之前完成 [Jm3Graph] 装配，
+ * 避免后台拉起服务或系统恢复进程时触发未初始化异常。
+ */
+class Jm3Application : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        Jm3Graph.init(this)
+    }
+}
+
+/**
  * 应用组合根：只做装配与进程级作用域，业务依赖按域收在 holder 里。
  *
  * 深化之前这里是 14 个成员各写一遍构造的上帝对象：改一条依赖要在大文件里找对位置，
@@ -169,6 +181,8 @@ object Jm3Graph {
     /** 会话级列表缓存：首页发现流/搜索结果与浏览页结果跨路由保存，避免回来时列表被清空、滚动位置落不回去。 */
     internal val sessionCache: SessionCache by lazy { SessionCache() }
 
+    private val initLock = Any()
+
     @Volatile
     private var initialized = false
 
@@ -176,24 +190,28 @@ object Jm3Graph {
      * 装配顺序即启动顺序：线路池先落进 [ApiDomain]（网关构造时读它），
      * 会话域拿设置存储当凭据密文库，下载域拿线路域当页源、拿本地库当台账。
      *
-     * 幂等：Activity 重建会再调一次，重复装配会换掉正在被 collect 的实例。
+     * 幂等且线程安全：六个域全部装配完成后才将 [initialized] 置为 true，
+     * 防止并发初始化期间其它线程读取到尚未赋值的域。
      */
     fun init(context: Context) {
         if (initialized) return
-        initialized = true
-        val app = context.applicationContext
-        // :core 不依赖 Android，事实日志出口只能由这里接上平台日志；没接时 :core 侧静默丢弃。
-        Jm3Log.sink = { tag, message, error ->
-            if (error == null) Log.w(tag, message) else Log.w(tag, message, error)
+        synchronized(initLock) {
+            if (initialized) return
+            val app = context.applicationContext
+            // :core 不依赖 Android，事实日志出口只能由这里接上平台日志；没接时 :core 侧静默丢弃。
+            Jm3Log.sink = { tag, message, error ->
+                if (error == null) Log.w(tag, message) else Log.w(tag, message, error)
+            }
+            api = ApiDomain(app, appScope)
+            // 网关装配是同步的且早于启动协程，线路池必须在这里就读出来（纯文本，一次几十字节）。
+            api.warmUp()
+            preferences = SettingsDomain(app)
+            session = SessionDomain(app, preferences.store, api)
+            library = LibraryDomain(app)
+            downloads = DownloadDomain(app, api, library, appScope)
+            updates = UpdateDomain(app, appScope)
+            initialized = true
         }
-        api = ApiDomain(app, appScope)
-        // 网关装配是同步的且早于启动协程，线路池必须在这里就读出来（纯文本，一次几十字节）。
-        api.warmUp()
-        preferences = SettingsDomain(app)
-        session = SessionDomain(app, preferences.store, api)
-        library = LibraryDomain(app)
-        downloads = DownloadDomain(app, api, library, appScope)
-        updates = UpdateDomain(app, appScope)
     }
 
     // ---- 迁移期转接：屏幕/服务还按旧名字读，迁到 holder 后整块删除（task-8 / task-9）。----
@@ -522,31 +540,31 @@ fun Jm3App() {
         // 设置读盘失败也要往下走：会话恢复是登录态的起点，不能被主题或线路拖住。
         // 五句全是挂起调用，用 runCatchingSuspending：取消原样抛出，失败留一条事实日志。
         runCatchingSuspending {
-            themeModeName = Jm3Graph.settings.themeMode().name
-            dynamicColor = Jm3Graph.settings.dynamicColor()
+            themeModeName = deps.settings.themeMode().name
+            dynamicColor = deps.settings.dynamicColor()
             // 皮肤：盘上是 null 表示用户从未显式选择，保留默认且不回写键。
-            Jm3Graph.preferences.repository.uiSkinOrNull()?.let { uiSkinName = it.name }
+            deps.settings.uiSkinOrNull()?.let { uiSkinName = it.name }
             // 分页模式：用户在本进程内已显式改过就保留内存值，否则用盘上值。
             // 读盘发生在组合之后，盘上的旧值不该盖掉用户刚选的那个。
-            Jm3Graph.preferences.applyStartupPaginationMode(
+            deps.preferences.applyStartupPaginationMode(
                 PaginationModePolicy.resolveStartupPaginationMode(
-                    persisted = Jm3Graph.preferences.repository.paginationMode(),
-                    current = Jm3Graph.preferences.paginationMode,
-                    userModified = Jm3Graph.preferences.paginationModeUserModified,
+                    persisted = deps.settings.paginationMode(),
+                    current = deps.preferences.paginationMode,
+                    userModified = deps.preferences.paginationModeUserModified,
                 )
             )
             // 底栏尺寸/形态：盘上是 null 表示用户从未显式设置，交给窗口断点在组合期决定。
-            Jm3Graph.preferences.applyStartupBottomBarSize(Jm3Graph.preferences.repository.bottomBarSizeOrNull())
-            Jm3Graph.preferences.applyStartupBottomBarForm(Jm3Graph.preferences.repository.bottomBarFormOrNull())
+            deps.preferences.applyStartupBottomBarSize(deps.settings.bottomBarSizeOrNull())
+            deps.preferences.applyStartupBottomBarForm(deps.settings.bottomBarFormOrNull())
             // 宽屏导航：null 表示未显式设置，默认底栏在组合期解析。
-            Jm3Graph.preferences.applyStartupWideScreenNavigation(
-                Jm3Graph.preferences.repository.wideScreenNavigationOrNull(),
+            deps.preferences.applyStartupWideScreenNavigation(
+                deps.settings.wideScreenNavigationOrNull(),
             )
-            Jm3Graph.applyDomains(Jm3Graph.settings.apiDomains())
+            deps.applyDomains(deps.settings.apiDomains())
         }.onFailure { failure ->
             Jm3Log.warn("Jm3App", "启动读盘失败（" + failure.javaClass.name + "），改用默认设置")
         }
-        Jm3Graph.account.restore()
+        deps.account.restore()
     }
 
     // 窗口宽高变化（折叠展开、分屏、旋转）会重建这份布局参数，各页随之重新判定列数与分栏
@@ -597,7 +615,7 @@ fun Jm3App() {
                                 hyperOs = {
                                     MainScreen(
                                         deps = deps,
-                                        unreadBadge = Jm3Graph.session.unread,
+                                        unreadBadge = deps.session.unread,
                                         snackbarHostState = snackbarHostState,
                                         onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                                         onOpenLogin = { backStack.add(Route.Login) },
@@ -619,7 +637,7 @@ fun Jm3App() {
                                 colorOs = {
                                     CouiMainScreen(
                                         deps = deps,
-                                        unreadBadge = Jm3Graph.session.unread,
+                                        unreadBadge = deps.session.unread,
                                         snackbarHostState = snackbarHostState,
                                         onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                                         onOpenLogin = { backStack.add(Route.Login) },
@@ -644,7 +662,7 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
-                            LoginScreen(account = Jm3Graph.account, onBack = { backStack.removeLastOrNull() })
+                            LoginScreen(account = deps.account, onBack = { backStack.removeLastOrNull() })
                         }
                         entry<Route.Favorites>(
                             transition = subPageTransition,
@@ -723,15 +741,15 @@ fun Jm3App() {
                             val openUpdate: () -> Unit = { backStack.add(Route.Update) }
                             val changeThemeMode: (ThemeMode) -> Unit = { mode ->
                                 themeModeName = mode.name
-                                scope.launch { Jm3Graph.settings.setThemeMode(mode) }
+                                scope.launch { deps.settings.setThemeMode(mode) }
                             }
                             val changeDynamicColor: (Boolean) -> Unit = { enabled ->
                                 dynamicColor = enabled
-                                scope.launch { Jm3Graph.settings.setDynamicColor(enabled) }
+                                scope.launch { deps.settings.setDynamicColor(enabled) }
                             }
                             val changeSkin: (UiSkin) -> Unit = { nextSkin ->
                                 uiSkinName = nextSkin.name
-                                scope.launch { Jm3Graph.preferences.repository.setUiSkin(nextSkin) }
+                                scope.launch { deps.settings.setUiSkin(nextSkin) }
                             }
                             SkinRoute(
                                 uiSkin = uiSkin,
@@ -824,7 +842,7 @@ fun Jm3App() {
                                         onBack = { backStack.removeLastOrNull() },
                                         onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                                         snackbarHostState = snackbarHostState,
-                                        unreadBadge = Jm3Graph.session.unread,
+                                        unreadBadge = deps.session.unread,
                                         onOpenLogin = { backStack.add(Route.Login) },
                                     )
                                 },
@@ -833,7 +851,7 @@ fun Jm3App() {
                                         deps = deps,
                                         onBack = { backStack.removeLastOrNull() },
                                         snackbarHostState = snackbarHostState,
-                                        unreadBadge = Jm3Graph.session.unread,
+                                        unreadBadge = deps.session.unread,
                                         onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
                                         onOpenLogin = { backStack.add(Route.Login) },
                                     )
@@ -985,13 +1003,13 @@ fun Jm3App() {
                                         onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
                                         onOpenLogin = { backStack.add(Route.Login) },
                                         snackbarHostState = snackbarHostState,
-                                        gateway = Jm3Graph.api.gateway,
-                                        authCall = Jm3Graph.session.authCall,
-                                        history = Jm3Graph.library.history,
-                                        downloadManager = Jm3Graph.downloads.manager,
-                                        downloadFiles = Jm3Graph.downloads.files,
-                                        account = Jm3Graph.session.account,
-                                        sessionCache = Jm3Graph.sessionCache,
+                                        gateway = deps.gateway,
+                                        authCall = deps.authCall,
+                                        history = deps.history,
+                                        downloadManager = deps.downloadManager,
+                                        downloadFiles = deps.downloadFiles,
+                                        account = deps.account,
+                                        sessionCache = deps.sessionCache,
                                     )
                                 },
                                 colorOs = {
@@ -1007,13 +1025,13 @@ fun Jm3App() {
                                         onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
                                         onOpenLogin = { backStack.add(Route.Login) },
                                         snackbarHostState = snackbarHostState,
-                                        gateway = Jm3Graph.api.gateway,
-                                        authCall = Jm3Graph.session.authCall,
-                                        history = Jm3Graph.library.history,
-                                        downloadManager = Jm3Graph.downloads.manager,
-                                        downloadFiles = Jm3Graph.downloads.files,
-                                        account = Jm3Graph.session.account,
-                                        sessionCache = Jm3Graph.sessionCache,
+                                        gateway = deps.gateway,
+                                        authCall = deps.authCall,
+                                        history = deps.history,
+                                        downloadManager = deps.downloadManager,
+                                        downloadFiles = deps.downloadFiles,
+                                        account = deps.account,
+                                        sessionCache = deps.sessionCache,
                                     )
                                 },
                             )
@@ -1029,7 +1047,7 @@ fun Jm3App() {
                                         deps = deps,
                                         photoId = route.photoId,
                                         startPage = route.startPage,
-                                        settings = Jm3Graph.preferences.repository,
+                                        settings = deps.settings,
                                         onBack = { backStack.removeLastOrNull() },
                                         onOpenChapter = { nextPageId ->
                                             // 同层替换：返回键回到详情页，而不是逐章回退
@@ -1044,7 +1062,7 @@ fun Jm3App() {
                                         deps = deps,
                                         photoId = route.photoId,
                                         startPage = route.startPage,
-                                        settings = Jm3Graph.preferences.repository,
+                                        settings = deps.settings,
                                         onBack = { backStack.removeLastOrNull() },
                                         onOpenChapter = { nextPageId ->
                                             // 同层替换：返回键回到详情页，而不是逐章回退

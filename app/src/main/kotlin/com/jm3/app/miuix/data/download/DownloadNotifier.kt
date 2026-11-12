@@ -130,6 +130,26 @@ internal object DownloadNotifier {
         }
     }
 
+    /**
+     * 极简退场通知：当 startForegroundService 触发后队列已空时，Android 12+ 仍要求先调用
+     * startForeground 再 stopSelf，避免抛出 ForegroundServiceDidNotStartInTimeException。
+     */
+    fun buildStopping(context: Context): Notification {
+        ensureChannel(context)
+        return NotificationCompat.Builder(context, CHANNEL_DOWNLOADS)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(context.getString(R.string.notification_download_title))
+            .setOngoing(false)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .build()
+    }
+
     /** 选型 -> 字符串资源。两条渲染分支共用这一份文案。 */
     private fun content(context: Context, presentation: DownloadPresentation): NotificationContent {
         val title = when (val spec = presentation.title) {

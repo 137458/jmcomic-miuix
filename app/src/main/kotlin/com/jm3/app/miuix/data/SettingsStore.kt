@@ -1,8 +1,11 @@
 package com.jm3.app.miuix.data
 
 import android.content.Context
+import android.util.Log
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -12,7 +15,13 @@ import com.jm3.core.settings.SettingsKeyStore
 import com.jm3.core.settings.SettingsRepository
 import kotlinx.coroutines.flow.first
 
-private val Context.settingsDataStore by preferencesDataStore(name = "jm3_settings")
+private val Context.settingsDataStore by preferencesDataStore(
+    name = "jm3_settings",
+    corruptionHandler = ReplaceFileCorruptionHandler {
+        Log.w("SettingsStore", "设置 DataStore 损坏，已重置为空配置", it)
+        emptyPreferences()
+    },
+)
 
 /** 凭据密文与设置同库：一次 write 就是一次 DataStore 事务，不会像 apply() 那样丢写。 */
 private const val CREDENTIALS_BLOB = "credentials_blob"

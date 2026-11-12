@@ -201,4 +201,37 @@ class FileDownloadStoreTest {
 
         assertEquals(emptyList<Int>(), store.files("never-downloaded"))
     }
+
+    @Test
+    fun `非法photoId拒绝路径穿越与根目录误删`() {
+        val store = store()
+        val sibling = File(root.parentFile, "${root.name}-sibling").apply { mkdirs() }
+        val siblingKeep = File(sibling, "keep.txt").apply { writeText("keep") }
+        val validFile = store.also { it.write("valid-1", 1, byteArrayOf(42)) }
+
+        try {
+            val invalidIds = listOf("", "   ", ".", "..", "../${sibling.name}", "a/b", "a\\b", "/abs", "a\u0000b")
+            for (badId in invalidIds) {
+                assertFailsWith<IllegalArgumentException>("exists 应拒绝非法 photoId: [$badId]") {
+                    validFile.exists(badId, 1)
+                }
+                assertFailsWith<IllegalArgumentException>("write 应拒绝非法 photoId: [$badId]") {
+                    validFile.write(badId, 1, byteArrayOf(1))
+                }
+                assertFailsWith<IllegalArgumentException>("read 应拒绝非法 photoId: [$badId]") {
+                    validFile.read(badId, 1)
+                }
+                assertFailsWith<IllegalArgumentException>("delete 应拒绝非法 photoId: [$badId]") {
+                    validFile.delete(badId)
+                }
+                assertFailsWith<IllegalArgumentException>("files 应拒绝非法 photoId: [$badId]") {
+                    validFile.files(badId)
+                }
+            }
+            assertTrue(siblingKeep.isFile, "同级目录文件不得受路径穿越影响")
+            assertContentEquals(byteArrayOf(42), store.read("valid-1", 1))
+        } finally {
+            sibling.deleteRecursively()
+        }
+    }
 }

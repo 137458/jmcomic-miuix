@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.jm3.app.miuix.data.history.HistoryDb
 import com.jm3.app.miuix.data.history.MIGRATION_1_2
+import com.jm3.app.miuix.data.history.MIGRATION_2_3
 import com.jm3.app.miuix.data.history.RoomDownloadLedgerStore
 import com.jm3.app.miuix.data.history.RoomHistoryRepository
 import com.jm3.core.download.DownloadLedgerStore
@@ -21,7 +22,7 @@ class LibraryDomain(context: Context) {
     /** 历史与下载共用一个 Room 库（jm3.db），v2 起含 downloads 表。 */
     private val db: HistoryDb by lazy {
         Room.databaseBuilder(appContext, HistoryDb::class.java, "jm3.db")
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 

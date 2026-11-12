@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.jm3.app.miuix.data.download.DownloadService
 import com.jm3.app.miuix.ui.ReaderVolumeKeys
+import com.jm3.core.runCatchingSuspending
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -48,12 +50,21 @@ class MainActivity : ComponentActivity() {
         if (granted) return
         // lifecycleScope 默认在主线程派发：读标记是挂起调用不阻塞界面，弹窗 launch 也必须在主线程。
         lifecycleScope.launch {
-            if (Jm3Graph.preferences.repository.notificationPermissionAsked()) return@launch
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            // 先弹窗再写标记：弹窗期间进程被杀时标记不落地，下次进入还会询问；
-            // 反之先写标记会让用户永远失去补授权的一次引导。
-            Jm3Graph.preferences.repository.markNotificationPermissionAsked()
+            runCatchingSuspending {
+                if (!Jm3Graph.preferences.repository.notificationPermissionAsked()) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    // 先弹窗再写标记：弹窗期间进程被杀时标记不落地，下次进入还会询问；
+                    // 反之先写标记会让用户永远失去补授权的一次引导。
+                    Jm3Graph.preferences.repository.markNotificationPermissionAsked()
+                }
+            }.onFailure { failure ->
+                Log.w(TAG, "读写通知权限引导标记失败", failure)
+            }
         }
+    }
+
+    private companion object {
+        const val TAG = "MainActivity"
     }
 
     /**

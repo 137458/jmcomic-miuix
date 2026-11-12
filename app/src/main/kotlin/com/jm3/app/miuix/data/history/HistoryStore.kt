@@ -3,6 +3,7 @@ package com.jm3.app.miuix.data.history
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
@@ -19,7 +20,13 @@ import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.history.HistoryRepository
 
-@Entity(tableName = "history")
+@Entity(
+    tableName = "history",
+    indices = [
+        Index(value = ["albumId"]),
+        Index(value = ["updatedAt"]),
+    ],
+)
 data class HistoryEntity(
     @PrimaryKey val photoId: String,
     val albumId: String,
@@ -54,7 +61,12 @@ interface HistoryDao {
 }
 
 /** 本地书架记录；pagesJson 缓存已完成章节的页列表，供离线阅读。 */
-@Entity(tableName = "downloads")
+@Entity(
+    tableName = "downloads",
+    indices = [
+        Index(value = ["updatedAt"]),
+    ],
+)
 data class DownloadEntity(
     @PrimaryKey val photoId: String,
     val albumId: String,
@@ -124,7 +136,16 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
-@Database(entities = [HistoryEntity::class, DownloadEntity::class], version = 2, exportSchema = false)
+/** v3：为 history(albumId/updatedAt) 与 downloads(updatedAt) 补建索引；禁止破坏性迁移。 */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS [index_history_albumId] ON [history] ([albumId])")
+        db.execSQL("CREATE INDEX IF NOT EXISTS [index_history_updatedAt] ON [history] ([updatedAt])")
+        db.execSQL("CREATE INDEX IF NOT EXISTS [index_downloads_updatedAt] ON [downloads] ([updatedAt])")
+    }
+}
+
+@Database(entities = [HistoryEntity::class, DownloadEntity::class], version = 3, exportSchema = false)
 abstract class HistoryDb : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 

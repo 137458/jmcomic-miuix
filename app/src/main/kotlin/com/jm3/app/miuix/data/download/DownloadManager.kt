@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -28,15 +30,24 @@ class DownloadManager(
 
     private val started = AtomicBoolean(false)
 
-    /** 幂等启动：中断记录恢复 + worker 池 + 台账订阅。 */
+    /** 串行化台账恢复/记录写入与删除动作，防止已删除条目被在途写入复活。 */
+    private val ledgerLock = Mutex()
+
+    /** 幂等启动：等待中断记录恢复完成后再启动 worker 池与台账订阅，避免新入队任务被覆盖为 PAUSED。 */
     fun ensureStarted() {
         if (!started.compareAndSet(false, true)) return
         appScope.launch {
             // 恢复中断记录只是台账修复，失败也必须启动 worker；否则整条下载链路永久停摆
-            runCatchingSuspending { ledger.recoverInterruptedRecords() }
+            ledgerLock.withLock {
+                runCatchingSuspending { ledger.recoverInterruptedRecords() }
+            }
             queue.start(appScope)
+            queue.updates.collect { tasks ->
+                ledgerLock.withLock {
+                    runCatchingSuspending { ledger.record(tasks.values) }
+                }
+            }
         }
-        ledger.start(appScope, queue.updates)
     }
 
     /**
@@ -76,24 +87,34 @@ class DownloadManager(
     /**
      * 删除：取消任务 + 清文件 + 清记录。
      *
-     * 递归删章节目录是阻塞 IO，必须切到 IO 线程，不能拖住点击所在的主线程。
+     * 递归删章节目录是阻塞 IO，必须切到 IO 线程，不能拖住点击所在的主线程；
+     * 与台账写入共用 [ledgerLock]，避免在途 record() 在删除之后将记录写回数据库。
      */
     suspend fun remove(photoId: String) {
         queue.cancel(photoId)
-        withContext(Dispatchers.IO) {
-            fileStore.delete(photoId)
-            ledger.delete(photoId)
+        ledgerLock.withLock {
+            queue.cancel(photoId)
+            withContext(Dispatchers.IO) {
+                fileStore.delete(photoId)
+                ledger.delete(photoId)
+            }
         }
     }
 
-    /** 清空全部下载：取消在途任务 + 删文件 + 删记录（文件与记录双清）。 */
+    /** 清空全部下载：同时覆盖内存队列与已落库台账，确保尚未落盘的任务也会被取消与清理。 */
     suspend fun clearAll() {
-        val all = ledger.all()
-        all.forEach { queue.cancel(it.photoId) }
-        withContext(Dispatchers.IO) {
-            all.forEach { record ->
-                fileStore.delete(record.photoId)
-                ledger.delete(record.photoId)
+        val memoryIds = queue.updates.value.keys.toList()
+        memoryIds.forEach { queue.cancel(it) }
+        ledgerLock.withLock {
+            val currentMemoryIds = queue.updates.value.keys.toList()
+            val persistedIds = ledger.all().map { it.photoId }
+            val allIds = (memoryIds + currentMemoryIds + persistedIds).distinct()
+            allIds.forEach { queue.cancel(it) }
+            withContext(Dispatchers.IO) {
+                allIds.forEach { photoId ->
+                    fileStore.delete(photoId)
+                    ledger.delete(photoId)
+                }
             }
         }
     }
@@ -117,4 +138,19 @@ class DownloadManager(
 
 /** 空标题兜底文案：:core 层无 Context，取不到 string 资源，只能在此固定。 */
 private const val UNTITLED_CHAPTER_TITLE = "未命名章节"
+
+/**
+ * 队列专用存储包装：worker 从网络取回页字节后，若任务已被取消/移除，阻止其再向磁盘写入残留文件。
+ */
+internal class QueueGuardedDownloadStore(
+    private val delegate: DownloadStore,
+    private val isActiveInQueue: (photoId: String) -> Boolean,
+) : DownloadStore by delegate {
+    override fun write(photoId: String, index: Int, bytes: ByteArray) {
+        if (!isActiveInQueue(photoId)) return
+        delegate.write(photoId, index, bytes)
+        // 写完后再检查一次：若写盘期间任务刚好被 cancel，清掉刚落盘的孤儿目录
+        if (!isActiveInQueue(photoId)) delegate.delete(photoId)
+    }
+}
 
