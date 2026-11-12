@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.skin.LocalSkin
@@ -170,6 +171,7 @@ fun ProfileScreen(
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.editUserProfile(uid, fields.toMap()) }
             saving = false
+            if (user?.uid != uid) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     applyProfile(outcome.value, resetDrafts = true)
@@ -180,7 +182,7 @@ fun ProfileScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "保存失败").message.orEmpty(),
                 )
 
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("保存失败：" + outcome.messageOr("请稍后重试"))
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("保存失败：" + failureCopy(outcome, "请稍后重试"))
             }
         }
     }

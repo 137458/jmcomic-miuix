@@ -150,7 +150,7 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
     }
 
     fun installApk(file: File) {
-        when (val result = ApkInstaller.install(context, file)) {
+        when (val result = deps.updates.install(file)) {
             is ApkInstaller.Result.Launched -> Unit
             is ApkInstaller.Result.PermissionRequired ->
                 scope.launch { snackbarHostState.showSnackbar("请先允许本应用安装未知来源应用") }

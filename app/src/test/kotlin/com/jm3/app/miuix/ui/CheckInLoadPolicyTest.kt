@@ -19,6 +19,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 class CheckInLoadPolicyTest {
@@ -232,7 +234,7 @@ class CheckInLoadPolicyTest {
         assertTrue(result.markToday)
         assertEquals("签到成功", result.message)
         assertTrue(result.status?.isSignedOn(todayDay) == true)
-        assertEquals(10, result.status?.signedDays)
+        assertEquals(10, result.status.signedDays)
     }
 
     @Test
@@ -262,9 +264,9 @@ class CheckInLoadPolicyTest {
         assertEquals("签到已提交，日历稍后更新", result.message)
         assertTrue(result.markToday)
         assertTrue(result.status?.isSignedOn(todayDay) == true)
-        assertEquals(10, result.status?.signedDays)
+        assertEquals(10, result.status.signedDays)
         // 日历里已有当天条目时只改标记，不重复追加
-        assertEquals(1, result.status?.days?.size)
+        assertEquals(1, result.status.days.size)
         // 原始回读对象不被就地改写
         assertFalse(cachedRefreshed.isSignedOn(todayDay))
     }
@@ -282,7 +284,7 @@ class CheckInLoadPolicyTest {
         val days = result.status?.days ?: error("乐观补签必须给出状态")
         assertEquals(listOf(14, 15), days.map { it.dayOfMonth })
         assertEquals(CheckInDay(dayOfMonth = todayDay, signed = true, bonus = false), days.last())
-        assertEquals(10, result.status?.signedDays)
+        assertEquals(10, result.status.signedDays)
     }
 
     @Test
@@ -526,6 +528,85 @@ class CheckInLoadPolicyTest {
         }
         assertTrue(failed is SessionOutcome.Failed)
         assertEquals(1, expiredCalls)
+    }
+
+    @Test
+    fun `旧 load 迟到响应不能覆盖新 load 的状态`() = runBlocking {
+        val settings = InMemorySettingsRepository()
+        val sessionCache = SessionCache()
+        val today = LocalDate.of(2026, 11, 15)
+        val firstGate = CompletableDeferred<Unit>()
+        val firstResponse = CompletableDeferred<SessionOutcome<DailyCheckInStatus>>()
+        var calls = 0
+        val coordinator = CheckInCoordinator(
+            settings = settings,
+            sessionCache = sessionCache,
+            initialUid = "1001",
+            today = { today },
+            sleep = {},
+            awaitReady = { true },
+            fetchStatus = {
+                calls++
+                if (calls == 1) {
+                    firstGate.complete(Unit)
+                    firstResponse.await()
+                } else {
+                    SessionOutcome.Ok(checkInStatus(signedDays = 12))
+                }
+            },
+            submitCheckIn = { _, _ -> SessionOutcome.Ok(Unit) },
+            showMessage = {},
+        )
+
+        val firstJob = launch { coordinator.load() }
+        firstGate.await()
+        coordinator.load()
+        assertEquals(12, coordinator.state.status?.signedDays)
+
+        firstResponse.complete(SessionOutcome.Ok(checkInStatus(signedDays = 2)))
+        firstJob.join()
+
+        assertEquals(12, coordinator.state.status?.signedDays)
+        assertNull(coordinator.state.error)
+    }
+
+    @Test
+    fun `syncAccount 与后续 load 并发时旧请求不得覆盖新状态`() = runBlocking {
+        val settings = InMemorySettingsRepository()
+        val sessionCache = SessionCache()
+        val today = LocalDate.of(2026, 11, 15)
+        val firstGate = CompletableDeferred<Unit>()
+        val firstResponse = CompletableDeferred<SessionOutcome<DailyCheckInStatus>>()
+        var calls = 0
+        val coordinator = CheckInCoordinator(
+            settings = settings,
+            sessionCache = sessionCache,
+            today = { today },
+            sleep = {},
+            awaitReady = { true },
+            fetchStatus = {
+                calls++
+                if (calls == 1) {
+                    firstGate.complete(Unit)
+                    firstResponse.await()
+                } else {
+                    SessionOutcome.Ok(checkInStatus(signedDays = 15))
+                }
+            },
+            submitCheckIn = { _, _ -> SessionOutcome.Ok(Unit) },
+            showMessage = {},
+        )
+
+        val syncJob = launch { coordinator.syncAccount("1001") }
+        firstGate.await()
+        coordinator.load()
+        assertEquals(15, coordinator.state.status?.signedDays)
+
+        firstResponse.complete(SessionOutcome.Ok(checkInStatus(signedDays = 3)))
+        syncJob.join()
+
+        assertEquals(15, coordinator.state.status?.signedDays)
+        assertFalse(coordinator.state.loading)
     }
 
     /** 构造签到状态：日历缺省为「昨天已签」，便于区分「当天缺条目」与「当天未签」。 */

@@ -147,7 +147,7 @@ fun TasksScreen(
             val failure = when (outcome) {
                 is SessionOutcome.Ok -> outcome.value
                 SessionOutcome.Expired -> "登录已失效，请重新登录"
-                is SessionOutcome.Failed -> failureCopy(outcome.cause, "请稍后重试")
+                is SessionOutcome.Failed -> failureCopy(outcome, "请稍后重试")
             }
             if (outcome is SessionOutcome.Ok && failure == null) {
                 if (type == TaskType.TITLE) {
@@ -188,9 +188,9 @@ fun TasksScreen(
         val token = (requestTokens[targetTypeIdx] ?: 0) + 1
         requestTokens[targetTypeIdx] = token
         // 请求发出时定住筛选条件：响应回来时筛选可能已经切走
-        val requestType = types[targetTypeIdx]
+        val requestType = types.getOrNull(targetTypeIdx) ?: return
         val requestFilterIdx = clampedFilterIndex
-        val requestFilter = filters[requestFilterIdx]
+        val requestFilter = filters.getOrNull(requestFilterIdx) ?: return
         scope.launch {
             val outcome = deps.authCall.call {
                 // 勋章图与 API 同域；封面域名未就绪时退回当前 API 域名，仍为空才不展示图片
@@ -238,8 +238,10 @@ fun TasksScreen(
                     tabs = types.map { it.label },
                     selectedTabIndex = clampedTypeIndex,
                     onTabSelected = {
-                        selectionHaptic()
-                        typeIndex = it
+                        if (types.getOrNull(it) != null) {
+                            selectionHaptic()
+                            typeIndex = it
+                        }
                     },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 )
@@ -247,8 +249,10 @@ fun TasksScreen(
                     tabs = filters.map { it.label },
                     selectedTabIndex = clampedFilterIndex,
                     onTabSelected = {
-                        selectionHaptic()
-                        filterIndex = it
+                        if (filters.getOrNull(it) != null) {
+                            selectionHaptic()
+                            filterIndex = it
+                        }
                     },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 )
@@ -260,7 +264,7 @@ fun TasksScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
         ) { pageIdx ->
-            val pageType = types[pageIdx]
+            val pageType = types.getOrNull(pageIdx) ?: return@HorizontalPager
             val pageState = states[pageIdx] ?: TasksUiState.Loading
             Column(modifier = Modifier.fillMaxSize().readableWidth()) {
                 when (pageState) {

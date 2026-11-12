@@ -235,7 +235,7 @@ internal fun InlineCodeText(
         onTextLayout = { textLayout = it },
         modifier = modifier.drawBehind {
             val layout = textLayout ?: return@drawBehind
-            if (display.codeRanges.isEmpty()) return@drawBehind
+            if (display.text.isEmpty() || display.codeRanges.isEmpty()) return@drawBehind
             val cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
             val hPad = 1.dp.toPx()
             val vPad = 1.5.dp.toPx()

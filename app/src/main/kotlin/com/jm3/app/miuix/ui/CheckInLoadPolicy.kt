@@ -18,6 +18,7 @@ import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.CheckInSettings
 import java.time.LocalDate
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -253,6 +254,7 @@ internal class CheckInCoordinator(
     private val onStateChanged: (CheckInViewState) -> Unit = {},
 ) {
     private var activeUid: String? = initialUid
+    private var loadToken: Long = 0L
 
     var state: CheckInViewState = seedInitialState(initialUid)
         private set
@@ -271,6 +273,7 @@ internal class CheckInCoordinator(
     }
 
     suspend fun syncAccount(uid: String?) {
+        val token = ++loadToken
         activeUid = uid
         if (uid == null) {
             // 清会话也会把 user 置空，此时不能顺手抹掉失效提示，否则用户看不到「为什么突然要重新登录」
@@ -280,7 +283,7 @@ internal class CheckInCoordinator(
         val now = today()
         val cached = sessionCache.checkInForToday(uid, now)
         val persisted = parseRecordedCheckInDate(settings.lastCheckInDate(uid))?.takeIf { it == now }
-        if (activeUid != uid) return
+        if (token != loadToken || activeUid != uid) return
         val knownCheckedIn = persisted ?: cached?.checkedInOn?.takeIf { it == now }
         val seededStatus = cached?.status?.let { s ->
             if (knownCheckedIn == now) reconcileLoadedCheckInStatus(s, now, now).status else s
@@ -296,19 +299,21 @@ internal class CheckInCoordinator(
 
     suspend fun load() {
         val uid = activeUid ?: return
+        val token = ++loadToken
         update { it.copy(loading = it.status == null, error = null) }
         awaitReady()
-        if (activeUid != uid) return
+        if (token != loadToken || activeUid != uid) return
         val outcome = retryCheckInLoad(
             attempt = { fetchStatus(uid) },
             sleep = sleep,
         )
-        if (activeUid != uid) return
+        if (token != loadToken || activeUid != uid) return
         update { it.copy(loading = false) }
         when (outcome) {
             is SessionOutcome.Ok -> {
                 val now = today()
                 val persisted = parseRecordedCheckInDate(settings.lastCheckInDate(uid))?.takeIf { it == now }
+                if (token != loadToken || activeUid != uid) return
                 val knownCheckedIn = persisted ?: state.checkedInOn?.takeIf { it == now }
                 val resolved = reconcileLoadedCheckInStatus(
                     loaded = outcome.value,
@@ -443,6 +448,8 @@ internal class MineCheckInHolder(
     var viewState by mutableStateOf(CheckInViewState())
         private set
 
+    private var loadJob: Job? = null
+
     private val coordinator = CheckInCoordinator(
         settings = deps.preferences.repository,
         sessionCache = deps.sessionCache,
@@ -465,6 +472,8 @@ internal class MineCheckInHolder(
     )
 
     suspend fun syncAccount(uid: String?) {
+        loadJob?.cancel()
+        loadJob = null
         coordinator.syncAccount(uid)
     }
 
@@ -480,7 +489,8 @@ internal class MineCheckInHolder(
     }
 
     fun reload() {
-        scope.launch { coordinator.load() }
+        loadJob?.cancel()
+        loadJob = scope.launch { coordinator.load() }
     }
 
     fun checkIn(status: DailyCheckInStatus) {
@@ -498,8 +508,8 @@ internal fun rememberMineCheckInHolder(
     val holder = remember(deps, snackbarHostState, scope) {
         MineCheckInHolder(deps = deps, snackbarHostState = snackbarHostState, scope = scope)
     }
-    holder.seedIfPresent(uid)
     LaunchedEffect(holder, uid) {
+        holder.seedIfPresent(uid)
         holder.syncAccount(uid)
     }
     return holder

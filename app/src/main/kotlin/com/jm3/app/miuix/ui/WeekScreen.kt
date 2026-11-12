@@ -62,6 +62,7 @@ fun WeekScreen(
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     // 快速切期时旧响应不能覆盖当前期的结果
     var detailToken by remember { mutableIntStateOf(0) }
+    var periodsToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
     fun loadDetail(period: WeeklyPeriod, showLoading: Boolean = true) {
@@ -83,13 +84,15 @@ fun WeekScreen(
     }
 
     // 期数列表只在进入页面/下拉刷新时取一次；切期只重取当期，避免每次切期都请求列表
-    fun loadPeriods() {
-        periodsLoading = true
+    fun loadPeriods(showLoading: Boolean = true) {
+        periodsToken++
+        val current = periodsToken
+        if (showLoading) periodsLoading = true
         periodsFailure = null
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.weeklyPicks() }
+            if (current != periodsToken) return@launch
             periodsLoading = false
-            refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val picks = outcome.value
@@ -98,15 +101,30 @@ fun WeekScreen(
                     selected = index
                     val period = periods.getOrNull(index)
                     if (period == null) {
+                        refreshing = false
                         detail = null
                     } else {
                         loadDetail(period, showLoading = detail == null)
                     }
                 }
 
-                SessionOutcome.Expired -> periodsFailure = planLoad(outcome, hasContent = false, failureMessage = "")
+                SessionOutcome.Expired -> {
+                    refreshing = false
+                    if (periods.isEmpty()) {
+                        periodsFailure = planLoad(outcome, hasContent = false, failureMessage = "")
+                    } else if (detail == null) {
+                        detailFailure = planLoad(outcome, hasContent = false, failureMessage = "")
+                    }
+                }
 
-                is SessionOutcome.Failed -> periodsFailure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
+                is SessionOutcome.Failed -> {
+                    refreshing = false
+                    if (periods.isEmpty()) {
+                        periodsFailure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
+                    } else if (detail == null) {
+                        detailFailure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
+                    }
+                }
             }
         }
     }
@@ -184,7 +202,7 @@ fun WeekScreen(
                     isRefreshing = refreshing,
                     onRefresh = {
                         refreshing = true
-                        loadDetail(periods[selected.coerceIn(0, periods.lastIndex)], showLoading = false)
+                        loadPeriods(showLoading = false)
                     },
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),

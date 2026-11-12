@@ -25,11 +25,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.app.miuix.ui.skin.LocalSkin
+import com.jm3.core.Jm3Log
 import com.jm3.core.reader.ReaderSpreadPolicy
+import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
@@ -38,6 +41,7 @@ import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
 import com.jm3.core.settings.WideScreenNavigation
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -98,6 +102,7 @@ fun SettingsScreen(
 
     // 破坏性操作二次确认弹窗目标（"history" / "downloads"），由用户确认或取消后关闭。
     var confirmClear by remember { mutableStateOf<String?>(null) }
+    var clearing by remember { mutableStateOf(false) }
     var showDisclaimer by rememberSaveable { mutableStateOf(false) }
 
     // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
@@ -141,12 +146,22 @@ fun SettingsScreen(
         }.getOrDefault(0L)
     }
 
+    // 偏好写盘不挂载至 rememberCoroutineScope：用户点选设置后可能立即返回上一页，
+    // 若随页面销毁取消协程会导致内存状态已改而 DataStore 落盘半途中断，故统一挂在进程作用域 deps.appScope。
+    fun persistPreference(label: String, write: suspend () -> Unit) {
+        deps.appScope.launch {
+            runCatchingSuspending { write() }.onFailure { error ->
+                Jm3Log.warn("Settings", "保存设置「$label」失败：${error.javaClass.simpleName}", error)
+            }
+        }
+    }
+
     fun applyPaginationMode(mode: PaginationMode) {
         if (mode == deps.preferences.paginationMode) return
         deps.preferences.paginationMode = mode
         // 列表页此时已被设置路由移出组合；作废旧模式的缓存，回来时才会按新语义从第 1 页加载。
         deps.sessionCache.forgetPages()
-        scope.launch { deps.preferences.repository.setPaginationMode(mode) }
+        persistPreference("分页模式") { deps.preferences.repository.setPaginationMode(mode) }
     }
 
     fun applyBottomBarSize(size: BottomBarSize) {
@@ -154,7 +169,7 @@ fun SettingsScreen(
         val target = if (size == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else null
         if (target == deps.preferences.bottomBarSize) return
         deps.preferences.bottomBarSize = target
-        scope.launch {
+        persistPreference("底栏尺寸") {
             if (target == null) deps.preferences.repository.clearBottomBarSize()
             else deps.preferences.repository.setBottomBarSize(target)
         }
@@ -163,13 +178,13 @@ fun SettingsScreen(
     fun applyBottomBarForm(form: BottomBarForm) {
         if (form == deps.preferences.bottomBarForm) return
         deps.preferences.bottomBarForm = form
-        scope.launch { deps.preferences.repository.setBottomBarForm(form) }
+        persistPreference("底栏形态") { deps.preferences.repository.setBottomBarForm(form) }
     }
 
     fun applyWideScreenNavigation(navigation: WideScreenNavigation) {
         if (navigation == deps.preferences.wideScreenNavigation) return
         deps.preferences.wideScreenNavigation = navigation
-        scope.launch { deps.preferences.repository.setWideScreenNavigation(navigation) }
+        persistPreference("宽屏导航") { deps.preferences.repository.setWideScreenNavigation(navigation) }
     }
 
     // 连点计数在窗口内归零，避免误触累计
@@ -440,18 +455,31 @@ fun SettingsScreen(
                     onClick = {
                         if (applying.value) return@BasicComponent
                         applying.value = true
+                        val rawDomains = domainsInput.value.split("\n")
                         scope.launch {
-                            // 写入即归一（去协议头/路径/空白项并去重），读回的就是真正生效的线路表。
-                            deps.settings.setApiDomains(domainsInput.value.split("\n"))
-                            val applied = deps.settings.apiDomains()
-                            deps.applyDomains(applied)
-                            activeDomains.value = applied.joinToString("、")
+                            // 线路落盘与网关重建不挂载至 rememberCoroutineScope：用户在应用中途离开设置页时，
+                            // 页面作用域取消会造成配置半落盘或网关状态未同步，故改挂进程作用域 deps.appScope。
+                            val result = deps.appScope.async {
+                                runCatchingSuspending {
+                                    // 写入即归一（去协议头/路径/空白项并去重），读回的就是真正生效的线路表。
+                                    deps.settings.setApiDomains(rawDomains)
+                                    val applied = deps.settings.apiDomains()
+                                    deps.applyDomains(applied)
+                                    applied
+                                }
+                            }.await()
                             applying.value = false
-                            // 网关已重建，诊断数据属于旧实例，重新读取。
-                            loadDomainsDiagnostics()
-                            snackbarHostState.showSnackbar(
-                                if (applied.isEmpty()) "已恢复默认线路" else "已应用 ${applied.size} 个线路域名",
-                            )
+                            result.onSuccess { applied ->
+                                activeDomains.value = applied.joinToString("、")
+                                domainsInput.value = applied.joinToString("\n")
+                                // 网关已重建，诊断数据属于旧实例，重新读取。
+                                loadDomainsDiagnostics()
+                                snackbarHostState.showSnackbar(
+                                    if (applied.isEmpty()) "已恢复默认线路" else "已应用 ${applied.size} 个线路域名",
+                                )
+                            }.onFailure { error ->
+                                snackbarHostState.showSnackbar("线路应用失败：" + failureCopy(error, "请稍后重试"))
+                            }
                         }
                     },
                 )
@@ -554,23 +582,37 @@ fun SettingsScreen(
             } else {
                 "将删除全部下载任务并清除已下载文件，此操作不可撤销。"
             },
-            onDismissRequest = { confirmClear = null },
+            onDismissRequest = { if (!clearing) confirmClear = null },
         ) {
             // 按钮横排、取消在左、主操作在右；内边距已由弹窗内置的 insideMargin 提供
             DialogActionRow(
-                primaryText = "确认清空",
+                primaryText = if (clearing) "清空中…" else "确认清空",
+                primaryEnabled = !clearing,
                 destructive = true,
-                onSecondary = { confirmClear = null },
+                onSecondary = { if (!clearing) confirmClear = null },
                 onPrimary = {
-                    val target = confirmClear
-                    confirmClear = null
+                    val target = confirmClear ?: return@DialogActionRow
+                    if (clearing) return@DialogActionRow
+                    clearing = true
                     scope.launch {
-                        when (target) {
-                            "history" -> deps.history.clear()
-                            "downloads" -> deps.downloadManager.clearAll()
-                        }
+                        // 清库与删文件不挂载至 rememberCoroutineScope：用户确认清空后若立刻返回，
+                        // 页面作用域取消会导致数据库与磁盘文件清理半途中断，故改挂进程作用域 deps.appScope。
+                        val result = deps.appScope.async {
+                            runCatchingSuspending {
+                                when (target) {
+                                    "history" -> deps.history.clear()
+                                    "downloads" -> deps.downloadManager.clearAll()
+                                }
+                            }
+                        }.await()
+                        clearing = false
+                        confirmClear = null
                         snackbarHostState.showSnackbar(
-                            if (target == "history") "已清空阅读历史" else "已清空下载",
+                            if (result.isSuccess) {
+                                if (target == "history") "已清空阅读历史" else "已清空下载"
+                            } else {
+                                "清空失败：" + failureCopy(result.exceptionOrNull(), "请稍后重试")
+                            },
                         )
                     }
                 },

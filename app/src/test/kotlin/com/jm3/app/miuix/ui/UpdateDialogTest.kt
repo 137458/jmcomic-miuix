@@ -1,9 +1,13 @@
 package com.jm3.app.miuix.ui
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.LinkAnnotation
 import com.jm3.app.miuix.update.UpdateDownloadState
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * 更新弹窗主按钮的文案契约。
@@ -89,5 +93,48 @@ class UpdateDialogTest {
             "前往 Releases 页面",
             updateDialogPrimaryText(hasApk = false, downloadState = downloading(87, 100)),
         )
+    }
+
+    @Test
+    fun `parseInlineNotes ignores non-http markdown links`() {
+        val samples = listOf(
+            "[点我](javascript:alert(1))",
+            "[本地](file:///sdcard/evil.apk)",
+            "[跳转](intent://scan/#Intent;end)",
+            "[邮箱](mailto:test@example.com)",
+        )
+        for (sample in samples) {
+            val result = parseInlineNotes(
+                text = sample,
+                codeColor = Color(0xFF123456),
+                linkColor = Color(0xFF3366FF),
+                codeBackground = Color(0xFFEEEEEE),
+            )
+            assertTrue(result.getLinkAnnotations(0, result.length).isEmpty(), "Should not linkify: $sample")
+            assertEquals(sample, result.text)
+        }
+    }
+
+    @Test
+    fun `parseInlineNotes keeps http and https markdown links`() {
+        val https = parseInlineNotes(
+            text = "见 [官网](https://example.com/a)",
+            codeColor = Color(0xFF123456),
+            linkColor = Color(0xFF3366FF),
+            codeBackground = Color(0xFFEEEEEE),
+        )
+        assertEquals("见 官网", https.text)
+        val httpsLink = assertIs<LinkAnnotation.Url>(https.getLinkAnnotations(0, https.length).single().item)
+        assertEquals("https://example.com/a", httpsLink.url)
+
+        val http = parseInlineNotes(
+            text = "见 [镜像](http://mirror.example.com/b)",
+            codeColor = Color(0xFF123456),
+            linkColor = Color(0xFF3366FF),
+            codeBackground = Color(0xFFEEEEEE),
+        )
+        assertEquals("见 镜像", http.text)
+        val httpLink = assertIs<LinkAnnotation.Url>(http.getLinkAnnotations(0, http.length).single().item)
+        assertEquals("http://mirror.example.com/b", httpLink.url)
     }
 }

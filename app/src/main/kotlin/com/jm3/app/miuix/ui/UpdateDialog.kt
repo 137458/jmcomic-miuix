@@ -295,21 +295,23 @@ internal fun parseInlineNotes(
             if (closingBracket > index + 1 && closingParen > closingBracket + 2) {
                 val label = text.substring(index + 1, closingBracket)
                 val url = text.substring(closingBracket + 2, closingParen)
-                builder.withLink(
-                    LinkAnnotation.Url(
-                        url = url,
-                        styles = TextLinkStyles(
-                            style = SpanStyle(
-                                color = linkColor,
-                                textDecoration = TextDecoration.Underline,
+                if (looksLikeHttpUrl(url)) {
+                    builder.withLink(
+                        LinkAnnotation.Url(
+                            url = url,
+                            styles = TextLinkStyles(
+                                style = SpanStyle(
+                                    color = linkColor,
+                                    textDecoration = TextDecoration.Underline,
+                                ),
                             ),
                         ),
-                    ),
-                ) {
-                    append(label)
+                    ) {
+                        append(label)
+                    }
+                    index = closingParen + 1
+                    continue
                 }
-                index = closingParen + 1
-                continue
             }
         }
         if (text.startsWith(BoldMark, index)) {
