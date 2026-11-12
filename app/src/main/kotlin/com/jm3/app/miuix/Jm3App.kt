@@ -222,59 +222,6 @@ object Jm3Graph {
         }
     }
 
-    // ---- 迁移期转接：屏幕/服务还按旧名字读，迁到 holder 后整块删除（task-8 / task-9）。----
-
-    /** 转接：[ApiDomain.gateway]。 */
-    @Deprecated("改用 api.gateway")
-    val gateway: Jm3Gateway
-        get() = api.gateway
-
-    /** 转接：[SettingsDomain.repository]。 */
-    @Deprecated("改用 preferences.repository")
-    val settings: SettingsRepository
-        get() = preferences.repository
-
-    /** 转接：[SessionDomain.account]。 */
-    @Deprecated("改用 session.account")
-    val account: AccountManager
-        get() = session.account
-
-    /** 转接：[SessionDomain.authCall]。 */
-    @Deprecated("改用 session.authCall")
-    val authCall: AuthCall
-        get() = session.authCall
-
-    /** 转接：[SettingsDomain.paginationMode]。 */
-    @Deprecated("改用 preferences.paginationMode")
-    var paginationMode: PaginationMode
-        get() = preferences.paginationMode
-        set(value) {
-            preferences.paginationMode = value
-        }
-
-    /** 转接：[LibraryDomain.history]。 */
-    @Deprecated("改用 library.history")
-    val history: HistoryRepository
-        get() = library.history
-
-    /** 转接：[DownloadDomain.files]。 */
-    @Deprecated("改用 downloads.files")
-    val downloadFiles: DownloadStore
-        get() = downloads.files
-
-    /** 转接：[DownloadDomain.manager]。 */
-    @Deprecated("改用 downloads.manager")
-    val downloadManager: DownloadManager
-        get() = downloads.manager
-
-    /** 转接：[UpdateDomain.downloader]。 */
-    @Deprecated("改用 updates.downloader")
-    val updateDownloader: UpdateDownloader
-        get() = updates.downloader
-
-    /** 转接：[SessionDomain.applyDomains]。 */
-    @Deprecated("改用 session.applyDomains")
-    suspend fun applyDomains(apiDomains: List<String>) = session.applyDomains(apiDomains)
 
 }
 
