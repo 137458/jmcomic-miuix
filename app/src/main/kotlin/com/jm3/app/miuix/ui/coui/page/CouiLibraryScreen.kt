@@ -81,6 +81,7 @@ import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorMeta
 import com.jm3.core.model.CreatorPage
@@ -110,13 +111,11 @@ private enum class CouiLibraryPicker { Languages, Sources }
  * 旧页的下拉刷新在 COUI 没有对应件，改为右下角 FAB 刷新（与小说列表同一口径）。
  */
 @Composable
-fun CouiLibraryScreen(
+internal fun CouiLibraryScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenCreator: (String) -> Unit,
-    onOpenWork: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     CouiTheme {
         val scope = rememberCoroutineScope()
@@ -287,7 +286,7 @@ fun CouiLibraryScreen(
                                     expired = pageState.sessionExpired,
                                     // 失败时 feed 还停在上一次成功的页码，重试就打这一页
                                     onRetry = { pageLoader.goToPage(pageFeed.page.coerceAtLeast(1)) },
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenLogin = nav::login,
                                     modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                                 )
                             }
@@ -364,7 +363,7 @@ fun CouiLibraryScreen(
                                                 CouiWorkGridCard(
                                                     title = creator.name.ifBlank { creator.id },
                                                     coverUrl = creator.avatarUrl ?: creator.backgroundUrl,
-                                                    onClick = { onOpenCreator(creator.id) },
+                                                    onClick = { nav.creator(creator.id) },
                                                     coverContentDescription = creator.name,
                                                     subtitle = creator.updateText?.takeIf { it.isNotBlank() }?.let {
                                                         "更新于 " + it
@@ -381,7 +380,7 @@ fun CouiLibraryScreen(
                                                 CouiWorkGridCard(
                                                     title = work.title.ifBlank { "无题" },
                                                     coverUrl = work.coverUrl,
-                                                    onClick = { onOpenWork(work.id) },
+                                                    onClick = { nav.creatorWork(work.id) },
                                                     coverContentDescription = work.title,
                                                     subtitle = work.authorName?.takeIf { it.isNotBlank() },
                                                     category = work.platform?.takeIf { it.isNotBlank() },

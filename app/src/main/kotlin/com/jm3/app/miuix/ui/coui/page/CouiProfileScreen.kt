@@ -92,6 +92,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.model.UserProfile
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
@@ -133,18 +134,18 @@ private sealed interface ProfileUiState {
 }
 
 /**
- * COUI 个人资料页：顶部头图卡 + 四组资料行，签名与原页面一致。
+ * COUI 个人资料页：顶部头图卡 + 四组资料行。
  *
  * 资料只从 [ScreenDeps.account] 与网关读写；未登录时不发请求，直接落到「请先登录」态，
- * 并把重新登录的入口交给调用方（[onOpenLogin]）。枚举字段走库的锚点气泡菜单，
+ * 并把重新登录的入口经 [nav] 交给路由。枚举字段走库的锚点气泡菜单，
  * 自由文本走自绘单行/多行输入行（库没有输入框组件）。
  */
 @Composable
-fun CouiProfileScreen(
+internal fun CouiProfileScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     val user by deps.account.user.collectAsState()
     var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
@@ -276,7 +277,7 @@ fun CouiProfileScreen(
                             CouiFeedLoginGroup(
                                 title = "登录已过期",
                                 message = current.message,
-                                onOpenLogin = onOpenLogin,
+                                onOpenLogin = nav::login,
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                         } else {

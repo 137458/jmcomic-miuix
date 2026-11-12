@@ -25,6 +25,7 @@ import com.jm3.app.miuix.data.download.contentDescriptionRes
 import com.jm3.app.miuix.data.download.textRes
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.CoverLocator
 import com.jm3.core.download.DownloadAction
@@ -49,10 +50,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 本地书架：下载进度、暂停/继续/重试、删除与离线阅读入口。 */
 @Composable
-fun ShelfScreen(
+internal fun ShelfScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenReader: (String) -> Unit,
+    nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
     var records by remember { mutableStateOf<List<DownloadRecord>>(emptyList()) }
@@ -132,14 +133,14 @@ fun ShelfScreen(
                             null
                         },
                         onClick = {
-                            if (row.action == DownloadAction.Open) onOpenReader(record.photoId)
+                            if (row.action == DownloadAction.Open) nav.reader(record.photoId)
                         },
                         endActions = {
                             // 状态主操作与删除收敛为图标按钮，避免双 TextButton 挤压标题区
                             val actionLabel = stringResource(row.action.contentDescriptionRes())
                             when (row.action) {
                                 DownloadAction.Open -> IconButton(
-                                    onClick = { onOpenReader(record.photoId) },
+                                    onClick = { nav.reader(record.photoId) },
                                 ) {
                                     Icon(MiuixIcons.Play, contentDescription = actionLabel)
                                 }

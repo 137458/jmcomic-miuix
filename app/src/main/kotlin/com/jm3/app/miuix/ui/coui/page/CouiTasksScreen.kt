@@ -67,6 +67,7 @@ import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.CoverLocator
 import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskType
@@ -94,7 +95,7 @@ internal fun CouiTasksScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     val scope = rememberCoroutineScope()
     val haptic = rememberSelectionHaptic()
@@ -166,7 +167,7 @@ internal fun CouiTasksScreen(
     fun claim(targetType: TaskType, item: TaskItem) {
         val uid = user?.uid
         if (uid.isNullOrBlank()) {
-            onOpenLogin()
+            nav.login()
             return
         }
         if (claimingId != null) return
@@ -278,7 +279,7 @@ internal fun CouiTasksScreen(
                                     message = pageUiState.message,
                                     expired = pageUiState.sessionExpired,
                                     onRetry = loaders[pageIdx]::loadFirstPage,
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenLogin = nav::login,
                                     modifier = Modifier.padding(top = 8.dp),
                                 )
                             }

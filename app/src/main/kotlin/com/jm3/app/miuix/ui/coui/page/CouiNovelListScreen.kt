@@ -78,6 +78,7 @@ import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.model.NovelMeta
 import com.jm3.core.model.NovelOrder
 import com.jm3.core.session.SessionOutcome
@@ -92,11 +93,10 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
  * 网关按页返回 NovelPage 且旧页只取第 1 页，所以页脚固定为「已经到底了」，刷新走右下角 FAB。
  */
 @Composable
-fun CouiNovelListScreen(
+internal fun CouiNovelListScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenNovel: (String) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     CouiTheme {
@@ -221,7 +221,7 @@ fun CouiNovelListScreen(
                     snackbarHostState.showSnackbar("点赞成功")
                 } else {
                     snackbarHostState.showSnackbar(notice.message)
-                    if (notice.openLogin) onOpenLogin()
+                    if (notice.openLogin) nav.login()
                 }
             }
         }
@@ -229,7 +229,7 @@ fun CouiNovelListScreen(
         /** 收藏：未登录先引导登录，成功后本地回显收藏态。 */
         fun favorite(item: NovelMeta) {
             if (user == null) {
-                onOpenLogin()
+                nav.login()
                 return
             }
             if (busyId != null) return
@@ -243,7 +243,7 @@ fun CouiNovelListScreen(
                     snackbarHostState.showSnackbar(if (item.favorite) "已取消收藏" else "已加入收藏")
                 } else {
                     snackbarHostState.showSnackbar(notice.message)
-                    if (notice.openLogin) onOpenLogin()
+                    if (notice.openLogin) nav.login()
                 }
             }
         }
@@ -324,7 +324,7 @@ fun CouiNovelListScreen(
                                     message = pageFailure.message,
                                     expired = pageFailure.sessionExpired,
                                     onRetry = { load(pageIdx, appliedQuery, showLoading = true) },
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenLogin = nav::login,
                                     modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                                 )
                             }
@@ -357,7 +357,7 @@ fun CouiNovelListScreen(
                                                 item = item,
                                                 dateFormat = dateFormat,
                                                 busy = busyId == item.id,
-                                                onClick = { onOpenNovel(item.id) },
+                                                onClick = { nav.novelDetail(item.id) },
                                                 onLike = { like(item) },
                                                 onFavorite = { favorite(item) },
                                                 accent = scheme.accent,

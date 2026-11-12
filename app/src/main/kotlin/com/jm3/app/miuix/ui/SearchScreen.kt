@@ -25,6 +25,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
@@ -64,13 +65,12 @@ internal fun searchStateOf(outcome: SessionOutcome<SearchPage>, failureMessage: 
 
 /** 独立搜索结果页：标签/作者/作品/人物点击与外部入口共用，支持排序与分页。 */
 @Composable
-fun SearchScreen(
+internal fun SearchScreen(
     deps: ScreenDeps,
     query: String,
     scope: SearchScope,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     var state by remember(query, scope) { mutableStateOf<SearchUiState>(SearchUiState.Loading) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
@@ -227,7 +227,7 @@ fun SearchScreen(
                             message = s.message,
                             expired = s.sessionExpired,
                             onRetry = { loadFirstPage() },
-                            onOpenLogin = onOpenLogin,
+                            onOpenLogin = nav::login,
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                         )
                     }
@@ -235,14 +235,14 @@ fun SearchScreen(
                         pagedSearchResultItems(
                             feed = s.feed,
                             onPageChange = ::jumpToPage,
-                            onOpenAlbum = onOpenAlbum,
+                            onOpenAlbum = nav::album,
                             columns = feedColumns,
                         )
                     } else {
                         searchResultItems(
                             feed = s.feed,
                             onLoadMore = ::loadMore,
-                            onOpenAlbum = onOpenAlbum,
+                            onOpenAlbum = nav::album,
                             columns = feedColumns,
                         )
                     }

@@ -85,6 +85,7 @@ import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.SearchPage
@@ -107,11 +108,10 @@ private val COUI_FAVORITE_TABS = listOf("收藏夹", "标签收藏")
  * 「移动到收藏夹」从行尾图标改成卡片正文里的文字键（COUI 图标集没有移动图标）。
  */
 @Composable
-fun CouiFavoritesScreen(
+internal fun CouiFavoritesScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     CouiTheme {
         val user by deps.account.user.collectAsState()
@@ -221,7 +221,7 @@ fun CouiFavoritesScreen(
                     // 账号态操作失效：提示一次并直接给登录入口，不让用户对着按钮重试
                     SessionOutcome.Expired -> {
                         snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        onOpenLogin()
+                        nav.login()
                     }
 
                     is SessionOutcome.Failed -> folderError = "操作失败，请稍后重试"
@@ -258,7 +258,7 @@ fun CouiFavoritesScreen(
 
                     SessionOutcome.Expired -> {
                         snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        onOpenLogin()
+                        nav.login()
                     }
 
                     is SessionOutcome.Failed -> moveError = "移动失败，请稍后重试"
@@ -311,7 +311,7 @@ fun CouiFavoritesScreen(
 
                     SessionOutcome.Expired -> {
                         snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        onOpenLogin()
+                        nav.login()
                     }
 
                     is SessionOutcome.Failed -> tagError = "添加标签失败，请稍后重试"
@@ -336,7 +336,7 @@ fun CouiFavoritesScreen(
 
                     SessionOutcome.Expired -> {
                         snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        onOpenLogin()
+                        nav.login()
                     }
 
                     is SessionOutcome.Failed -> tagError = "删除标签失败，请稍后重试"
@@ -443,7 +443,7 @@ fun CouiFavoritesScreen(
                                     message = currentState.message,
                                     expired = currentState.sessionExpired,
                                     onRetry = loader::loadFirstPage,
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenLogin = nav::login,
                                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                                 )
                             }
@@ -499,7 +499,7 @@ fun CouiFavoritesScreen(
                                         ) {
                                             CouiFavoritesAlbumCard(
                                                 result = result,
-                                                onClick = { onOpenAlbum(result.id) },
+                                                onClick = { nav.album(result.id) },
                                                 onMove = {
                                                     moveError = null
                                                     moveTarget = result
@@ -551,7 +551,7 @@ fun CouiFavoritesScreen(
                                 CouiFeedLoginGroup(
                                     message = "登录后查看标签收藏",
                                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenLogin = nav::login,
                                 )
                             }
 

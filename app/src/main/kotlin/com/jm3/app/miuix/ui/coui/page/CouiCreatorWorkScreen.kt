@@ -78,6 +78,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.CreatorRelatedWork
 import com.jm3.core.model.CreatorWork
@@ -105,16 +106,15 @@ internal fun CouiCreatorWorkScreen(
     deps: ScreenDeps,
     workId: String,
     onBack: () -> Unit,
-    onOpenWork: (String) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
 ) {
     CouiTheme {
         CouiCreatorWorkBody(
             deps = deps,
             workId = workId,
             onBack = onBack,
-            onOpenWork = onOpenWork,
-            onOpenLogin = onOpenLogin,
+            onOpenWork = nav::creatorWork,
+            onOpenLogin = nav::login,
         )
     }
 }

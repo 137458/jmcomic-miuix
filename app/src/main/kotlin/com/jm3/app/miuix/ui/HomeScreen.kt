@@ -50,6 +50,7 @@ import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.albumCodeOf
 import com.jm3.core.appendedBy
@@ -94,11 +95,9 @@ private const val HOT_TAG_COLLAPSED = 8
 
 /** 首页：固定搜索栏 + 发现流（连载更新/热门标签/随便看看/最新上架）或搜索结果。 */
 @Composable
-fun HomeScreen(
+internal fun HomeScreen(
     deps: ScreenDeps,
-    onOpenAlbum: (String) -> Unit,
-    onOpenWeek: () -> Unit,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -223,7 +222,7 @@ fun HomeScreen(
     /** 跳转作品前先收掉搜索入口：焦点不能跟着新页面进栈，否则回来/刷新时键盘会再次弹出。 */
     fun openAlbum(albumId: String) {
         dismissSearchInput()
-        onOpenAlbum(albumId)
+        nav.album(albumId)
     }
 
     fun submitSearch() {
@@ -410,7 +409,7 @@ fun HomeScreen(
                     actions = {
                         CollapsibleSearchAction(state = searchCollapse)
                         TooltipBox(text = "每周必看") {
-                            IconButton(onClick = onOpenWeek) {
+                            IconButton(onClick = nav::week) {
                                 Icon(imageVector = MiuixIcons.Weeks, contentDescription = "每周必看")
                             }
                         }
@@ -568,7 +567,7 @@ fun HomeScreen(
                                 message = s.message,
                                 expired = s.sessionExpired,
                                 onRetry = { runSearch(activeQuery, searchByTag, order) },
-                                onOpenLogin = onOpenLogin,
+                                onOpenLogin = nav::login,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
@@ -670,7 +669,7 @@ fun HomeScreen(
                                 message = s.message,
                                 expired = s.sessionExpired,
                                 onRetry = { refresh() },
-                                onOpenLogin = onOpenLogin,
+                                onOpenLogin = nav::login,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }

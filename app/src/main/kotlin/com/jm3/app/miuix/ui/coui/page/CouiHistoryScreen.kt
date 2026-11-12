@@ -64,6 +64,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.formatEpochMillis
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
@@ -116,11 +117,10 @@ internal fun List<HistoryEntry>.couiGroupByAlbum(): List<CouiAlbumHistory> {
  * 栅格触底不用预取组件（COUI 预取只支持 LazyListState），改为页脚项进入组合即取下一页。
  */
 @Composable
-fun CouiHistoryScreen(
+internal fun CouiHistoryScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenReader: (String) -> Unit,
+    nav: AppRoutes,
 ) {
     CouiTheme {
         val repository = deps.history
@@ -313,8 +313,8 @@ fun CouiHistoryScreen(
                                         CouiHistoryCard(
                                             album = album,
                                             subtitle = couiHistorySubtitle(album, dateFormat),
-                                            onResume = { onOpenReader(album.latest.photoId) },
-                                            onOpenDetail = { onOpenAlbum(album.albumId) },
+                                            onResume = { nav.reader(album.latest.photoId) },
+                                            onOpenDetail = { nav.album(album.albumId) },
                                             onDelete = { removeAlbum(album.albumId) },
                                         )
                                     }

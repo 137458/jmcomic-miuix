@@ -100,6 +100,7 @@ import com.jm3.app.miuix.ui.glass.GlassRole
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.glassSurface
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -214,14 +215,13 @@ internal fun readerLoadFailure(outcome: SessionOutcome<*>): ReaderUiState.Failed
 }
 
 @Composable
-fun ReaderScreen(
+internal fun ReaderScreen(
     deps: ScreenDeps,
     photoId: String,
     startPage: Int? = null,
     settings: ReaderSettings,
     onBack: () -> Unit,
-    onOpenChapter: (String) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     var state by remember(photoId) { mutableStateOf<ReaderUiState>(ReaderUiState.Loading) }
@@ -304,7 +304,7 @@ fun ReaderScreen(
         ) { innerPadding ->
             // 失效不给重试：重试必然再吃一次 401，只能去登录
             if (s.sessionExpired) {
-                LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
+                LoginExpiredScreen(onOpenLogin = nav::login, modifier = Modifier.padding(innerPadding))
             } else {
                 ErrorScreen(
                     message = s.message,
@@ -338,8 +338,8 @@ fun ReaderScreen(
                 likedInit = s.liked,
                 settings = settings,
                 onBack = onBack,
-                onOpenChapter = onOpenChapter,
-                onOpenLogin = onOpenLogin,
+                onOpenChapter = nav::nextChapter,
+                onOpenLogin = nav::login,
                 snackbarHostState = snackbarHostState,
             )
         }

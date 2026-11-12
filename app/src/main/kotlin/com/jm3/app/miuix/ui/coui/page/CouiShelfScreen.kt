@@ -55,6 +55,7 @@ import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.CoverLocator
 import com.jm3.core.download.DownloadAction
 import com.jm3.core.download.DownloadRecord
@@ -71,10 +72,10 @@ import top.yukonga.miuix.kmp.basic.Icon
  * 主操作按 presentRow 的判定收敛为整卡点击（打开 / 暂停 / 续传 / 重试）。
  */
 @Composable
-fun CouiShelfScreen(
+internal fun CouiShelfScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenReader: (String) -> Unit,
+    nav: AppRoutes,
 ) {
     CouiTheme {
         val scope = rememberCoroutineScope()
@@ -105,7 +106,7 @@ fun CouiShelfScreen(
 
         fun performPrimaryAction(record: DownloadRecord, row: DownloadRow) {
             when (row.action) {
-                DownloadAction.Open -> onOpenReader(record.photoId)
+                DownloadAction.Open -> nav.reader(record.photoId)
                 DownloadAction.Pause -> deps.downloadManager.pause(record.photoId)
                 DownloadAction.Resume, DownloadAction.Retry -> deps.downloadManager.resumeRecord(record)
             }

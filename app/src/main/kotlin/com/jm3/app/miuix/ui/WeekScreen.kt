@@ -24,6 +24,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicksDetail
@@ -43,11 +44,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 不支持类型与页码参数，因此这里只做期数切换，不伪造类型筛选。
  */
 @Composable
-fun WeekScreen(
+internal fun WeekScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
     var periods by remember { mutableStateOf<List<WeeklyPeriod>>(emptyList()) }
@@ -181,7 +181,7 @@ fun WeekScreen(
                 val failure = periodsFailure
                 if (failure?.phase == ScreenLoadPhase.Expired) {
                     LoginExpiredScreen(
-                        onOpenLogin = onOpenLogin,
+                        onOpenLogin = nav::login,
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
@@ -226,7 +226,7 @@ fun WeekScreen(
                                 val failure = detailFailure
                                 if (failure?.phase == ScreenLoadPhase.Expired) {
                                     LoginExpiredScreen(
-                                        onOpenLogin = onOpenLogin,
+                                        onOpenLogin = nav::login,
                                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                                     )
                                 } else {
@@ -247,7 +247,7 @@ fun WeekScreen(
                                 // 期数详情只有一页：不伪造页码，交给 PagedFeed 的空页，页脚自然不显示
                                 feed = PagedFeed(items = loaded.items),
                                 onLoadMore = {},
-                                onOpenAlbum = onOpenAlbum,
+                                onOpenAlbum = nav::album,
                                 columns = feedColumns,
                             )
                         }

@@ -50,6 +50,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.CoverLocator
@@ -85,11 +86,11 @@ private const val TASK_STATE_UNDONE = "未达成"
 
 /** 成就/任务：称号与勋章两个维度，支持「我的/全部」筛选。 */
 @Composable
-fun TasksScreen(
+internal fun TasksScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     val types = TaskType.entries
     val filters = TaskFilter.entries
@@ -126,7 +127,7 @@ fun TasksScreen(
     fun claim(type: TaskType, item: TaskItem) {
         val uid = user?.uid
         if (uid.isNullOrBlank()) {
-            onOpenLogin()
+            nav.login()
             return
         }
         if (claimingId != null) return
@@ -249,7 +250,7 @@ fun TasksScreen(
                     ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                     is ListLoadState.Failed -> if (state.sessionExpired) {
                         LoginExpiredScreen(
-                            onOpenLogin = onOpenLogin,
+                            onOpenLogin = nav::login,
                             modifier = Modifier.padding(innerPadding),
                         )
                     } else {

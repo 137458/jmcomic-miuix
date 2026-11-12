@@ -81,6 +81,7 @@ import com.jm3.app.miuix.ui.novelActionNotice
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.appendedBy
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.NovelChapter
@@ -101,12 +102,12 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
  * 点击正文可切换上下 HUD 显隐；评论与回复弹窗完全平级互斥，切换章节自动回到章首。
  */
 @Composable
-fun CouiNovelReaderScreen(
+internal fun CouiNovelReaderScreen(
     deps: ScreenDeps,
     novelId: String,
     initialChapterId: String,
     onBack: () -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     CouiTheme {
@@ -115,7 +116,7 @@ fun CouiNovelReaderScreen(
             novelId = novelId,
             initialChapterId = initialChapterId,
             onBack = onBack,
-            onOpenLogin = onOpenLogin,
+            onOpenLogin = nav::login,
             snackbarHostState = snackbarHostState,
         )
     }

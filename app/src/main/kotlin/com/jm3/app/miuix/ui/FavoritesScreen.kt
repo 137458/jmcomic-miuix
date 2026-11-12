@@ -41,6 +41,7 @@ import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toSlice
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -67,11 +68,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 收藏页：收藏夹（作品）与标签收藏两个分段。 */
 @Composable
-fun FavoritesScreen(
+internal fun FavoritesScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
@@ -215,7 +215,7 @@ fun FavoritesScreen(
                 // 账号态操作失效：提示一次并直接给登录入口，不让用户对着按钮重试
                 SessionOutcome.Expired -> {
                     snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                    onOpenLogin()
+                    nav.login()
                 }
 
                 is SessionOutcome.Failed -> folderError = failureCopy(outcome, "操作失败")
@@ -253,7 +253,7 @@ fun FavoritesScreen(
 
                 SessionOutcome.Expired -> {
                     snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                    onOpenLogin()
+                    nav.login()
                 }
 
                 is SessionOutcome.Failed -> moveError = failureCopy(outcome, "移动失败")
@@ -288,7 +288,7 @@ fun FavoritesScreen(
 
                 SessionOutcome.Expired -> {
                     snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                    onOpenLogin()
+                    nav.login()
                 }
 
                 is SessionOutcome.Failed -> tagError = failureCopy(outcome, "添加标签失败")
@@ -313,7 +313,7 @@ fun FavoritesScreen(
 
                 SessionOutcome.Expired -> {
                     snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                    onOpenLogin()
+                    nav.login()
                 }
 
                 is SessionOutcome.Failed -> tagError = failureCopy(outcome, "删除标签失败")
@@ -414,7 +414,7 @@ fun FavoritesScreen(
                 ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 is ListLoadState.Failed -> if (state.sessionExpired) {
                     LoginExpiredScreen(
-                        onOpenLogin = onOpenLogin,
+                        onOpenLogin = nav::login,
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
@@ -499,7 +499,7 @@ fun FavoritesScreen(
                             WorkRowCard(
                                 coverUrl = result.coverUrl,
                                 title = result.title,
-                                onClick = { onOpenAlbum(result.id) },
+                                onClick = { nav.album(result.id) },
                                 albumId = result.id,
                                 subtitle = result.authors.authorNames(),
                                 category = result.category,
@@ -554,7 +554,7 @@ fun FavoritesScreen(
                 )
                 tagsState is ListLoadState.Failed -> if (tagsState.sessionExpired) {
                     LoginExpiredScreen(
-                        onOpenLogin = onOpenLogin,
+                        onOpenLogin = nav::login,
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {

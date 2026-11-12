@@ -87,6 +87,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
@@ -142,18 +143,17 @@ internal fun CouiCreatorScreen(
     deps: ScreenDeps,
     creatorId: String,
     onBack: () -> Unit,
-    onOpenWork: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit,
 ) {
     CouiTheme {
         CouiCreatorBody(
             deps = deps,
             creatorId = creatorId,
             onBack = onBack,
-            onOpenWork = onOpenWork,
+            onOpenWork = nav::creatorWork,
             snackbarHostState = snackbarHostState,
-            onOpenLogin = onOpenLogin,
+            onOpenLogin = nav::login,
         )
     }
 }

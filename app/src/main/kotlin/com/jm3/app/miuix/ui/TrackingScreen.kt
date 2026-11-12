@@ -28,6 +28,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.core.model.TrackingItem
 import com.jm3.core.model.TrackingPage
@@ -60,12 +61,11 @@ import java.time.format.DateTimeFormatter
  * 3. 翻页成功后回到列表顶部：loader 不暴露成功回调，用目标页与当前页对齐触发一次。
  */
 @Composable
-fun TrackingScreen(
+internal fun TrackingScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
@@ -166,7 +166,7 @@ fun TrackingScreen(
             ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
             is ListLoadState.Failed -> if (s.sessionExpired) {
                 LoginExpiredScreen(
-                    onOpenLogin = onOpenLogin,
+                    onOpenLogin = nav::login,
                     modifier = Modifier.padding(innerPadding),
                 )
             } else {
@@ -211,7 +211,7 @@ fun TrackingScreen(
                             WorkRowCard(
                                 coverUrl = item.coverUrl,
                                 title = item.name,
-                                onClick = { onOpenAlbum(item.id) },
+                                onClick = { nav.album(item.id) },
                                 albumId = item.id,
                                 subtitle = item.updateAt?.toReadableTime(dateFormat),
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),

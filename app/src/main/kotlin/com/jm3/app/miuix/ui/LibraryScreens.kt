@@ -57,6 +57,7 @@ import com.jm3.app.miuix.ui.glass.layerBackdropSource
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.CreatorAuthorWorks
 import com.jm3.core.model.CreatorFilters
@@ -100,13 +101,11 @@ private val LIBRARY_TABS = listOf("创作者", "作品")
 
 /** 书库首页：创作者/作品双 Tab + 关键词搜索 + 语言/来源筛选 + 两种分页模式。 */
 @Composable
-fun LibraryScreen(
+internal fun LibraryScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenCreator: (String) -> Unit,
-    onOpenWork: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
@@ -394,7 +393,7 @@ fun LibraryScreen(
                 pageFailure != null -> {
                     if (pageFailure.phase == ScreenLoadPhase.Expired) {
                         LoginExpiredScreen(
-                            onOpenLogin = onOpenLogin,
+                            onOpenLogin = nav::login,
                             modifier = Modifier.padding(innerPadding),
                         )
                     } else {
@@ -435,7 +434,7 @@ fun LibraryScreen(
                     ) {
                         if (page == 0) {
                             items(creatorFeed.items, key = { it.id }) { creator ->
-                                CreatorRow(creator = creator, onClick = { onOpenCreator(creator.id) })
+                                CreatorRow(creator = creator, onClick = { nav.creator(creator.id) })
                             }
                         } else {
                             items(
@@ -455,9 +454,9 @@ fun LibraryScreen(
                                             authorName = work.authorName,
                                             workDate = work.workDate,
                                             modifier = Modifier.weight(1f),
-                                            onClick = { onOpenWork(work.id) },
+                                            onClick = { nav.creatorWork(work.id) },
                                             onOpenAuthor = work.authorId?.let { id ->
-                                                { onOpenCreator(id) }
+                                                { nav.creator(id) }
                                             },
                                         )
                                     }
@@ -491,14 +490,12 @@ fun LibraryScreen(
 
 /** 作者主页：背景/头像/赞助入口 + 语言来源筛选 + 作品网格。 */
 @Composable
-fun CreatorWorksScreen(
+internal fun CreatorWorksScreen(
     deps: ScreenDeps,
     creatorId: String,
     onBack: () -> Unit,
-    onOpenCreator: (String) -> Unit,
-    onOpenWork: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     var data by remember { mutableStateOf<CreatorAuthorWorks?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -587,7 +584,7 @@ fun CreatorWorksScreen(
                 val planned = failure
                 if (planned?.phase == ScreenLoadPhase.Expired) {
                     LoginExpiredScreen(
-                        onOpenLogin = onOpenLogin,
+                        onOpenLogin = nav::login,
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
@@ -683,7 +680,7 @@ fun CreatorWorksScreen(
                                         authorName = null,
                                         workDate = work.workDate,
                                         modifier = Modifier.weight(1f),
-                                        onClick = { onOpenWork(work.id) },
+                                        onClick = { nav.creatorWork(work.id) },
                                         onOpenAuthor = null,
                                     )
                                 }
@@ -701,13 +698,12 @@ fun CreatorWorksScreen(
 
 /** 作品详情：描述 + 整页图片 + 底部「相关作品」悬浮入口。 */
 @Composable
-fun CreatorWorkDetailScreen(
+internal fun CreatorWorkDetailScreen(
     deps: ScreenDeps,
     workId: String,
     onBack: () -> Unit,
-    onOpenWork: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
     var work by remember { mutableStateOf<CreatorWork?>(null) }
@@ -772,7 +768,7 @@ fun CreatorWorkDetailScreen(
                 val planned = failure
                 if (planned?.phase == ScreenLoadPhase.Expired) {
                     LoginExpiredScreen(
-                        onOpenLogin = onOpenLogin,
+                        onOpenLogin = nav::login,
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
@@ -868,7 +864,7 @@ fun CreatorWorkDetailScreen(
                             work = item,
                             onClick = {
                                 relatedOpen = false
-                                onOpenWork(item.id)
+                                nav.creatorWork(item.id)
                             },
                         )
                     }

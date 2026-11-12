@@ -110,6 +110,7 @@ import com.jm3.app.miuix.ui.novelGroupTitle
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.shouldShowChapterGroupToggle
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
@@ -198,10 +199,7 @@ internal fun CouiNovelDetailScreen(
     deps: ScreenDeps,
     novelId: String,
     onBack: () -> Unit,
-    onOpenNovel: (String) -> Unit,
-    onOpenReader: (novelId: String, chapterId: String) -> Unit,
-    onOpenSearch: (query: String, scope: SearchScope) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     CouiTheme {
@@ -209,10 +207,10 @@ internal fun CouiNovelDetailScreen(
             deps = deps,
             novelId = novelId,
             onBack = onBack,
-            onOpenNovel = onOpenNovel,
-            onOpenReader = onOpenReader,
-            onOpenSearch = onOpenSearch,
-            onOpenLogin = onOpenLogin,
+            onOpenNovel = nav::novelDetail,
+            onOpenReader = nav::novelReader,
+            onOpenSearch = nav::search,
+            onOpenLogin = nav::login,
             snackbarHostState = snackbarHostState,
         )
     }

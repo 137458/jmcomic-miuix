@@ -51,6 +51,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseCategory
@@ -89,11 +90,10 @@ enum class BrowseMode(val title: String) {
 }
 
 @Composable
-fun BrowseScreen(
+internal fun BrowseScreen(
     deps: ScreenDeps,
     mode: BrowseMode,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
     var categoryValue by rememberSaveable { mutableStateOf(BrowseCategory.ALL.apiValue) }
@@ -390,8 +390,8 @@ fun BrowseScreen(
                     deps = deps,
                     keyword = currentTag,
                     order = order,
-                    onOpenAlbum = onOpenAlbum,
-                    onOpenLogin = onOpenLogin,
+                    onOpenAlbum = nav::album,
+                    onOpenLogin = nav::login,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 )
@@ -410,9 +410,9 @@ fun BrowseScreen(
                         contentPadding = innerPadding,
                         refreshing = refreshing,
                         onRetry = ::refresh,
-                        onOpenLogin = onOpenLogin,
+                        onOpenLogin = nav::login,
                         onLoadMore = ::loadMore,
-                        onOpenAlbum = onOpenAlbum,
+                        onOpenAlbum = nav::album,
                         clickPaging = clickPaging,
                         onPageChange = ::jumpToPage,
                     )
@@ -503,14 +503,14 @@ fun BrowseScreen(
                                     message = s.message,
                                     expired = s.sessionExpired,
                                     onRetry = ::refresh,
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenLogin = nav::login,
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 )
                             }
                             is ListState.Loaded -> searchResultItems(
                                 feed = s.feed,
                                 onLoadMore = ::loadMore,
-                                onOpenAlbum = onOpenAlbum,
+                                onOpenAlbum = nav::album,
                                 clickPaging = clickPaging,
                                 onPageChange = ::jumpToPage,
                                 columns = feedColumns,
@@ -554,7 +554,7 @@ fun BrowseScreen(
                             title = result.title,
                             onClick = {
                                 showWeeklySheet = false
-                                onOpenAlbum(result.id)
+                                nav.album(result.id)
                             },
                             albumId = result.id,
                             subtitle = result.authors.authorNames(),
@@ -573,7 +573,7 @@ fun BrowseScreen(
                                 onOpenLogin = {
                                     showWeeklySheet = false
                                     weeklyFailure = null
-                                    onOpenLogin()
+                                    nav.login()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -605,7 +605,7 @@ fun BrowseScreen(
                         onRetry = ::loadWeekly,
                         onOpenLogin = {
                             showWeeklySheet = false
-                            onOpenLogin()
+                            nav.login()
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )

@@ -27,6 +27,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.UserProfile
 import com.jm3.core.session.SessionOutcome
@@ -78,11 +79,11 @@ private sealed interface ProfileUiState {
 
 /** 个人资料：只读账号信息 + 全量可编辑字段，保存后以服务端返回为准。 */
 @Composable
-fun ProfileScreen(
+internal fun ProfileScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
@@ -214,7 +215,7 @@ fun ProfileScreen(
             ProfileUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
             is ProfileUiState.Failed -> if (s.sessionExpired) {
                 LoginExpiredScreen(
-                    onOpenLogin = onOpenLogin,
+                    onOpenLogin = nav::login,
                     modifier = Modifier.padding(innerPadding),
                 )
             } else {

@@ -595,21 +595,6 @@ fun Jm3App() {
                         ),
                     ) {
                         entry<Route.Main> {
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openLogin: () -> Unit = nav::login
-                            val openFavorites: () -> Unit = nav::favorites
-                            val openHistory: () -> Unit = nav::history
-                            val openShelf: () -> Unit = nav::shelf
-                            val openSettings: () -> Unit = nav::settings
-                            val openWeek: () -> Unit = nav::week
-                            val openNotifications: () -> Unit = nav::notifications
-                            val openTracking: () -> Unit = nav::tracking
-                            val openProfile: () -> Unit = nav::profile
-                            val openTasks: () -> Unit = nav::tasks
-                            val openWatchHistory: () -> Unit = nav::watchHistory
-                            val openForum: () -> Unit = nav::forum
-                            val openNovel: () -> Unit = nav::novelList
-                            val openLibrary: () -> Unit = nav::library
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -617,21 +602,7 @@ fun Jm3App() {
                                         deps = deps,
                                         unreadBadge = deps.unread,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
-                                        onOpenFavorites = openFavorites,
-                                        onOpenHistory = openHistory,
-                                        onOpenShelf = openShelf,
-                                        onOpenSettings = openSettings,
-                                        onOpenWeek = openWeek,
-                                        onOpenNotifications = openNotifications,
-                                        onOpenTracking = openTracking,
-                                        onOpenProfile = openProfile,
-                                        onOpenTasks = openTasks,
-                                        onOpenWatchHistory = openWatchHistory,
-                                        onOpenForum = openForum,
-                                        onOpenNovel = openNovel,
-                                        onOpenLibrary = openLibrary,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -639,21 +610,7 @@ fun Jm3App() {
                                         deps = deps,
                                         unreadBadge = deps.unread,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
-                                        onOpenFavorites = openFavorites,
-                                        onOpenHistory = openHistory,
-                                        onOpenShelf = openShelf,
-                                        onOpenSettings = openSettings,
-                                        onOpenWeek = openWeek,
-                                        onOpenNotifications = openNotifications,
-                                        onOpenTracking = openTracking,
-                                        onOpenProfile = openProfile,
-                                        onOpenTasks = openTasks,
-                                        onOpenWatchHistory = openWatchHistory,
-                                        onOpenForum = openForum,
-                                        onOpenNovel = openNovel,
-                                        onOpenLibrary = openLibrary,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -674,24 +631,20 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     FavoritesScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
                                     CouiFavoritesScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -701,24 +654,20 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openReader: (String) -> Unit = nav::reader
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     HistoryScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenReader = openReader,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
                                     CouiHistoryScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenReader = openReader,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -728,14 +677,13 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openReader: (String) -> Unit = nav::reader
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
-                                    ShelfScreen(deps = deps, onBack = back, onOpenReader = openReader)
+                                    ShelfScreen(deps = deps, onBack = back, nav = nav)
                                 },
                                 colorOs = {
-                                    CouiShelfScreen(deps = deps, onBack = back, onOpenReader = openReader)
+                                    CouiShelfScreen(deps = deps, onBack = back, nav = nav)
                                 },
                             )
                         }
@@ -743,7 +691,6 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
-                            val openUpdate: () -> Unit = nav::update
                             val changeThemeMode: (ThemeMode) -> Unit = { mode ->
                                 themeModeName = mode.name
                                 scope.launch { deps.settings.setThemeMode(mode) }
@@ -770,8 +717,8 @@ fun Jm3App() {
                                         uiSkin = uiSkin,
                                         onUiSkinChange = changeSkin,
                                         onBack = back,
-                                        onOpenUpdate = openUpdate,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -785,8 +732,8 @@ fun Jm3App() {
                                         uiSkin = uiSkin,
                                         onUiSkinChange = changeSkin,
                                         onBack = back,
-                                        onOpenUpdate = openUpdate,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -811,24 +758,20 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     WeekScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
                                     CouiWeekScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -838,18 +781,15 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     NotificationsScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
                                         unreadBadge = deps.unread,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -858,8 +798,7 @@ fun Jm3App() {
                                         onBack = back,
                                         snackbarHostState = snackbarHostState,
                                         unreadBadge = deps.unread,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -869,26 +808,22 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     TrackingScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
                                     CouiTrackingScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -898,7 +833,6 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -906,7 +840,7 @@ fun Jm3App() {
                                         deps = deps,
                                         onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -914,7 +848,7 @@ fun Jm3App() {
                                         deps = deps,
                                         onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -924,7 +858,6 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -932,7 +865,7 @@ fun Jm3App() {
                                         deps = deps,
                                         onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -940,7 +873,7 @@ fun Jm3App() {
                                         deps = deps,
                                         onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -950,26 +883,23 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     WatchHistoryScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
                                     CouiWatchHistoryScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
+                                        onOpenAlbum = nav::album,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        onOpenLogin = nav::login,
                                     )
                                 },
                             )
@@ -979,26 +909,22 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openLogin: () -> Unit = nav::login
-                            val openAlbum: (String) -> Unit = nav::album
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     ForumScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenAlbum = openAlbum,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
                                     CouiForumScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenAlbum = openAlbum,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1007,10 +933,6 @@ fun Jm3App() {
                             transition = albumDetailTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
-                            val openReader: (String, Int?) -> Unit = nav::readerAt
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openSearch: (String, SearchScope) -> Unit = nav::search
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1019,10 +941,6 @@ fun Jm3App() {
                                         initialTitle = route.initialTitle,
                                         initialCoverUrl = route.initialCoverUrl,
                                         onBack = popBack,
-                                        onOpenReader = openReader,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenSearch = openSearch,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                         gateway = deps.gateway,
                                         authCall = deps.authCall,
@@ -1031,6 +949,7 @@ fun Jm3App() {
                                         downloadFiles = deps.downloadFiles,
                                         account = deps.account,
                                         sessionCache = deps.sessionCache,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -1039,10 +958,6 @@ fun Jm3App() {
                                         initialTitle = route.initialTitle,
                                         initialCoverUrl = route.initialCoverUrl,
                                         onBack = popBack,
-                                        onOpenReader = openReader,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenSearch = openSearch,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                         gateway = deps.gateway,
                                         authCall = deps.authCall,
@@ -1051,6 +966,7 @@ fun Jm3App() {
                                         downloadFiles = deps.downloadFiles,
                                         account = deps.account,
                                         sessionCache = deps.sessionCache,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1060,8 +976,6 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openChapter: (String) -> Unit = nav::nextChapter
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1071,9 +985,8 @@ fun Jm3App() {
                                         startPage = route.startPage,
                                         settings = deps.settings,
                                         onBack = back,
-                                        onOpenChapter = openChapter,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -1083,9 +996,8 @@ fun Jm3App() {
                                         startPage = route.startPage,
                                         settings = deps.settings,
                                         onBack = back,
-                                        onOpenChapter = openChapter,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1095,26 +1007,22 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openNovel: (String) -> Unit = nav::novelDetail
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     NovelListScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenNovel = openNovel,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
                                     CouiNovelListScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenNovel = openNovel,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1124,10 +1032,6 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openNovel: (String) -> Unit = nav::novelDetail
-                            val openReader: (String, String) -> Unit = nav::novelReader
-                            val openSearch: (String, SearchScope) -> Unit = nav::search
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1135,11 +1039,8 @@ fun Jm3App() {
                                         deps = deps,
                                         novelId = route.novelId,
                                         onBack = back,
-                                        onOpenNovel = openNovel,
-                                        onOpenReader = openReader,
-                                        onOpenSearch = openSearch,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -1147,11 +1048,8 @@ fun Jm3App() {
                                         deps = deps,
                                         novelId = route.novelId,
                                         onBack = back,
-                                        onOpenNovel = openNovel,
-                                        onOpenReader = openReader,
-                                        onOpenSearch = openSearch,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1161,7 +1059,6 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1170,8 +1067,8 @@ fun Jm3App() {
                                         novelId = route.novelId,
                                         initialChapterId = route.chapterId,
                                         onBack = back,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -1180,8 +1077,8 @@ fun Jm3App() {
                                         novelId = route.novelId,
                                         initialChapterId = route.chapterId,
                                         onBack = back,
-                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1191,29 +1088,22 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openCreator: (String) -> Unit = nav::creator
-                            val openWork: (String) -> Unit = nav::creatorWork
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     LibraryScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenCreator = openCreator,
-                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
                                     CouiLibraryScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenCreator = openCreator,
-                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1223,8 +1113,6 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openWork: (String) -> Unit = nav::creatorWork
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1232,10 +1120,8 @@ fun Jm3App() {
                                         deps = deps,
                                         creatorId = route.creatorId,
                                         onBack = back,
-                                        onOpenCreator = nav::creator,
-                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -1243,9 +1129,8 @@ fun Jm3App() {
                                         deps = deps,
                                         creatorId = route.creatorId,
                                         onBack = back,
-                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1255,8 +1140,6 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openWork: (String) -> Unit = nav::creatorWork
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1264,9 +1147,8 @@ fun Jm3App() {
                                         deps = deps,
                                         workId = route.workId,
                                         onBack = back,
-                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -1274,8 +1156,7 @@ fun Jm3App() {
                                         deps = deps,
                                         workId = route.workId,
                                         onBack = back,
-                                        onOpenWork = openWork,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )
@@ -1285,8 +1166,6 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = nav::album
-                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1295,8 +1174,7 @@ fun Jm3App() {
                                         query = route.query,
                                         scope = route.scope,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                                 colorOs = {
@@ -1305,8 +1183,7 @@ fun Jm3App() {
                                         query = route.query,
                                         scope = route.scope,
                                         onBack = back,
-                                        onOpenAlbum = openAlbum,
-                                        onOpenLogin = openLogin,
+                                        nav = nav,
                                     )
                                 },
                             )

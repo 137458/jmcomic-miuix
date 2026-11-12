@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
@@ -77,11 +78,10 @@ private fun List<HistoryEntry>.groupByAlbum(): List<AlbumHistory> {
 }
 
 @Composable
-fun HistoryScreen(
+internal fun HistoryScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenReader: (String) -> Unit,
+    nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
     val repository = deps.history
@@ -296,8 +296,8 @@ fun HistoryScreen(
                             AlbumHistoryCard(
                                 album = album,
                                 dateFormat = dateFormat,
-                                onResume = { onOpenReader(album.latest.photoId) },
-                                onOpenDetail = { onOpenAlbum(album.albumId) },
+                                onResume = { nav.reader(album.latest.photoId) },
+                                onOpenDetail = { nav.album(album.albumId) },
                                 onDelete = { removeAlbum(album.albumId) },
                             )
                         }

@@ -68,6 +68,7 @@ import com.jm3.app.miuix.ui.rememberDateFormatter
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.model.TrackingItem
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.hasMoreByLoaded
@@ -89,9 +90,8 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 internal fun CouiTrackingScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val user by deps.account.user.collectAsState()
@@ -250,7 +250,7 @@ internal fun CouiTrackingScreen(
                                 message = current.message,
                                 expired = current.sessionExpired,
                                 onRetry = loader::loadFirstPage,
-                                onOpenLogin = onOpenLogin,
+                                onOpenLogin = nav::login,
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                         }
@@ -281,7 +281,7 @@ internal fun CouiTrackingScreen(
                                     CouiWorkRowCard(
                                         coverUrl = item.coverUrl,
                                         title = item.name,
-                                        onClick = { onOpenAlbum(item.id) },
+                                        onClick = { nav.album(item.id) },
                                         albumId = item.id,
                                         subtitle = item.updateAt.toReadableUpdateTime(dateFormat),
                                         trailing = {

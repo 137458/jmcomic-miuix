@@ -71,6 +71,7 @@ import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
@@ -99,8 +100,7 @@ internal fun CouiSearchScreen(
     query: String,
     scope: SearchScope,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     CouiTheme {
         CouiSearchBody(
@@ -108,8 +108,8 @@ internal fun CouiSearchScreen(
             query = query,
             scope = scope,
             onBack = onBack,
-            onOpenAlbum = onOpenAlbum,
-            onOpenLogin = onOpenLogin,
+            onOpenAlbum = nav::album,
+            onOpenLogin = nav::login,
         )
     }
 }

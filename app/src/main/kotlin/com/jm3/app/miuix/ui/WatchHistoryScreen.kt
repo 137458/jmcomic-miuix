@@ -25,6 +25,7 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
@@ -51,12 +52,11 @@ private const val WATCH_PAGE_SIZE = 20
 
 /** 服务端观看记录：与本地历史不同，这里记录的是账号云端足迹，支持逐条删除。 */
 @Composable
-fun WatchHistoryScreen(
+internal fun WatchHistoryScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     val mode = deps.paging.paginationMode
     val user by deps.account.user.collectAsState()
@@ -97,7 +97,7 @@ fun WatchHistoryScreen(
                 // 删除是账号态操作：失效时提示一次并直接给登录入口，不让用户对着按钮重试
                 SessionOutcome.Expired -> {
                     snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                    onOpenLogin()
+                    nav.login()
                 }
 
                 is SessionOutcome.Failed -> {
@@ -136,7 +136,7 @@ fun WatchHistoryScreen(
             ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
             is ListLoadState.Failed -> if (s.sessionExpired) {
                 LoginExpiredScreen(
-                    onOpenLogin = onOpenLogin,
+                    onOpenLogin = nav::login,
                     modifier = Modifier.padding(innerPadding),
                 )
             } else {
@@ -180,7 +180,7 @@ fun WatchHistoryScreen(
                             WorkRowCard(
                                 coverUrl = item.coverUrl,
                                 title = item.title,
-                                onClick = { onOpenAlbum(item.id) },
+                                onClick = { nav.album(item.id) },
                                 albumId = item.id,
                                 subtitle = item.authors.authorNames(),
                                 category = item.category,

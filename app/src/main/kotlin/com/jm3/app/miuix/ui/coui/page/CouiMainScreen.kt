@@ -45,6 +45,7 @@ import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.railAwareWideLayout
 import com.jm3.app.miuix.ui.rememberWindowDpSize
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.settings.UiSkin
 import com.jm3.core.session.UnreadBadge
@@ -80,25 +81,11 @@ internal fun couiBottomBarClearance(useRail: Boolean, tokens: GlassBottomBarToke
  * 页签状态、滚动位置与搜索态全部留在各自页面内，切页只做淡入淡出，返回时不重建。
  */
 @Composable
-fun CouiMainScreen(
+internal fun CouiMainScreen(
     deps: ScreenDeps,
     unreadBadge: UnreadBadge,
     snackbarHostState: SnackbarHostState,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit,
-    onOpenFavorites: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenShelf: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenWeek: () -> Unit,
-    onOpenNotifications: () -> Unit,
-    onOpenTracking: () -> Unit,
-    onOpenProfile: () -> Unit,
-    onOpenTasks: () -> Unit,
-    onOpenWatchHistory: () -> Unit,
-    onOpenForum: () -> Unit,
-    onOpenNovel: () -> Unit,
-    onOpenLibrary: () -> Unit,
+    nav: AppRoutes,
 ) {
     CouiTheme {
         var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -191,40 +178,40 @@ fun CouiMainScreen(
                             when (currentTab) {
                                 0 -> CouiHomeScreen(
                                     deps = deps,
-                                    onOpenAlbum = onOpenAlbum,
-                                    onOpenWeek = onOpenWeek,
+                                    onOpenAlbum = nav::album,
+                                    onOpenWeek = nav::week,
                                     onOpenRanking = { tab = CouiMainTab.RANK.ordinal },
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenLogin = nav::login,
                                 )
                                 1 -> CouiBrowseScreen(
                                     deps = deps,
                                     mode = BrowseMode.CATEGORY,
-                                    onOpenAlbum = onOpenAlbum,
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenAlbum = nav::album,
+                                    onOpenLogin = nav::login,
                                 )
                                 2 -> CouiBrowseScreen(
                                     deps = deps,
                                     mode = BrowseMode.RANK,
-                                    onOpenAlbum = onOpenAlbum,
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenAlbum = nav::album,
+                                    onOpenLogin = nav::login,
                                 )
                                 else -> CouiMineScreen(
                                     deps = deps,
                                     unreadBadge = unreadBadge,
                                     snackbarHostState = snackbarHostState,
-                                    onOpenLogin = onOpenLogin,
-                                    onOpenFavorites = onOpenFavorites,
-                                    onOpenHistory = onOpenHistory,
-                                    onOpenShelf = onOpenShelf,
-                                    onOpenSettings = onOpenSettings,
-                                    onOpenNotifications = onOpenNotifications,
-                                    onOpenTracking = onOpenTracking,
-                                    onOpenProfile = onOpenProfile,
-                                    onOpenTasks = onOpenTasks,
-                                    onOpenWatchHistory = onOpenWatchHistory,
-                                    onOpenForum = onOpenForum,
-                                    onOpenNovel = onOpenNovel,
-                                    onOpenLibrary = onOpenLibrary,
+                                    onOpenLogin = nav::login,
+                                    onOpenFavorites = nav::favorites,
+                                    onOpenHistory = nav::history,
+                                    onOpenShelf = nav::shelf,
+                                    onOpenSettings = nav::settings,
+                                    onOpenNotifications = nav::notifications,
+                                    onOpenTracking = nav::tracking,
+                                    onOpenProfile = nav::profile,
+                                    onOpenTasks = nav::tasks,
+                                    onOpenWatchHistory = nav::watchHistory,
+                                    onOpenForum = nav::forum,
+                                    onOpenNovel = nav::novelList,
+                                    onOpenLibrary = nav::library,
                                 )
                             }
                         }

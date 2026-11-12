@@ -65,6 +65,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.ui.skin.SkinShapes
 import com.jm3.core.AlbumPreviewPlan
@@ -138,10 +139,7 @@ internal fun AlbumDetailScreen(
     initialTitle: String? = null,
     initialCoverUrl: String? = null,
     onBack: () -> Unit,
-    onOpenReader: (photoId: String, startPage: Int?) -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenSearch: (query: String, scope: SearchScope) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
     gateway: Jm3Gateway,
     authCall: AuthCall,
@@ -169,7 +167,7 @@ internal fun AlbumDetailScreen(
             history = history,
             scope = scope,
             showMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
-            onOpenLogin = onOpenLogin,
+            onOpenLogin = nav::login,
             engagement = sessionCache.engagement,
         ).apply { restoreUiSnapshot(uiSnapshot) }
     }
@@ -286,11 +284,11 @@ internal fun AlbumDetailScreen(
                 likeBusy = uiState.likeBusy,
                 tracking = uiState.tracking,
                 trackingBusy = uiState.trackingBusy,
-                onRead = { photoId -> onOpenReader(photoId, null) },
-                onFavorite = { stateHolder.onFavoriteClick(user != null, onOpenLogin) },
-                onLike = { stateHolder.like(user != null, onOpenLogin) },
-                onTrack = { stateHolder.toggleTracking(user != null, onOpenLogin) },
-                onOpenSearch = onOpenSearch,
+                onRead = { photoId -> nav.readerAt(photoId, null) },
+                onFavorite = { stateHolder.onFavoriteClick(user != null, nav::login) },
+                onLike = { stateHolder.like(user != null, nav::login) },
+                onTrack = { stateHolder.toggleTracking(user != null, nav::login) },
+                onOpenSearch = nav::search,
                 onDownloadAll = if (loadedDetail == null || loadedDetail.chapters.isEmpty()) {
                     null
                 } else {
@@ -309,7 +307,7 @@ internal fun AlbumDetailScreen(
                 AlbumPreviewRow(
                     plan = plan,
                     imageLoader = previewImageLoader,
-                    onOpenPage = { page -> onOpenReader(plan.chapterId, page) },
+                    onOpenPage = { page -> nav.readerAt(plan.chapterId, page) },
                 )
             }
         }
@@ -341,7 +339,7 @@ internal fun AlbumDetailScreen(
                         selectionHaptic()
                         stateHolder.toggleGroup(group.id)
                     },
-                    onRead = { photoId -> onOpenReader(photoId, null) },
+                    onRead = { photoId -> nav.readerAt(photoId, null) },
                     onDownload = { chapter, title ->
                         downloadChapter(chapter, detail.id, title)
                     },
@@ -371,10 +369,10 @@ internal fun AlbumDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(validTags, key = { it }) { tag ->
-                        MinTouchTarget(onClick = { onOpenSearch(tag, SearchScope.TAG) }) {
+                        MinTouchTarget(onClick = { nav.search(tag, SearchScope.TAG) }) {
                             TextButton(
                                 text = tag,
-                                onClick = { onOpenSearch(tag, SearchScope.TAG) },
+                                onClick = { nav.search(tag, SearchScope.TAG) },
                                 minWidth = 0.dp,
                                 minHeight = 32.dp,
                             )
@@ -388,7 +386,7 @@ internal fun AlbumDetailScreen(
                 albumId = albumId,
                 detail = detail,
                 onCopy = { label, value -> copyText(label, value) },
-                onOpenSearch = onOpenSearch,
+                onOpenSearch = nav::search,
             )
         }
     }
@@ -402,7 +400,7 @@ internal fun AlbumDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(detail.related, key = { it.id }) { related ->
-                        RelatedAlbumCard(related = related, onClick = { onOpenAlbum(related.id) })
+                        RelatedAlbumCard(related = related, onClick = { nav.album(related.id) })
                     }
                 }
             }
@@ -419,7 +417,7 @@ internal fun AlbumDetailScreen(
                 text = draft,
                 busy = uiState.commentBusy,
                 onTextChange = stateHolder::setCommentText,
-                onLogin = onOpenLogin,
+                onLogin = nav::login,
                 onSend = stateHolder::postComment,
             )
         }
@@ -435,7 +433,7 @@ internal fun AlbumDetailScreen(
             is CommentsUiState.Failed -> item(key = "comments-failed") {
                 if (cs.sessionExpired) {
                     LoginExpiredScreen(
-                        onOpenLogin = onOpenLogin,
+                        onOpenLogin = nav::login,
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                     )
                 } else {
@@ -463,7 +461,7 @@ internal fun AlbumDetailScreen(
                                 CommentRow(
                                     item = comment,
                                     onReply = {
-                                        if (user == null) onOpenLogin() else stateHolder.setReplyTarget(comment)
+                                        if (user == null) nav.login() else stateHolder.setReplyTarget(comment)
                                     },
                                 )
                             }
@@ -610,7 +608,7 @@ internal fun AlbumDetailScreen(
                                     // 失效不给重试：重试必然再吃一次 401，只能去登录
                                     if (s.sessionExpired) {
                                         LoginExpiredScreen(
-                                            onOpenLogin = onOpenLogin,
+                                            onOpenLogin = nav::login,
                                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                                         )
                                     } else {

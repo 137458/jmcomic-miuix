@@ -28,6 +28,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.session.UnreadBadge
@@ -51,23 +52,11 @@ import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun MineScreen(
+internal fun MineScreen(
     deps: ScreenDeps,
     unreadBadge: UnreadBadge,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit,
-    onOpenFavorites: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenShelf: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenNotifications: () -> Unit,
-    onOpenTracking: () -> Unit,
-    onOpenProfile: () -> Unit,
-    onOpenTasks: () -> Unit,
-    onOpenWatchHistory: () -> Unit,
-    onOpenForum: () -> Unit,
-    onOpenNovel: () -> Unit,
-    onOpenLibrary: () -> Unit,
+    nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
@@ -95,13 +84,13 @@ fun MineScreen(
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 val u = user
                 if (u == null) {
-                    BasicComponent(title = "未登录", summary = "点击登录账号", onClick = onOpenLogin)
+                    BasicComponent(title = "未登录", summary = "点击登录账号", onClick = nav::login)
                 } else {
                     BasicComponent(
                         title = u.username,
                         summary = "Lv.${u.level} ${u.levelName ?: ""} · 经验 ${u.currentExp}/${u.nextLevelExp} · 硬币 ${u.coin}",
                     )
-                    ArrowPreference(title = "个人资料", onClick = onOpenProfile)
+                    ArrowPreference(title = "个人资料", onClick = nav::profile)
                     ArrowPreference(
                         title = "退出登录",
                         onClick = { confirmLogout = true },
@@ -123,7 +112,7 @@ fun MineScreen(
                             )
                             TextButton(
                                 text = "去登录",
-                                onClick = onOpenLogin,
+                                onClick = nav::login,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                             )
                         }
@@ -226,22 +215,22 @@ fun MineScreen(
             }
             SmallTitle(text = "我的内容")
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
-                ArrowPreference(title = "我的收藏", onClick = onOpenFavorites)
-                ArrowPreference(title = "阅读历史", onClick = onOpenHistory)
+                ArrowPreference(title = "我的收藏", onClick = nav::favorites)
+                ArrowPreference(title = "阅读历史", onClick = nav::history)
                 ArrowPreference(
                     title = "小说",
                     summary = "连载小说阅读",
-                    onClick = onOpenNovel,
+                    onClick = nav::novelList,
                 )
                 ArrowPreference(
                     title = "禁漫书库",
                     summary = "创作者与作品",
-                    onClick = onOpenLibrary,
+                    onClick = nav::library,
                 )
                 // 下载队列在途时行尾显示圆点，无需进书架页确认
                 ArrowPreference(
                     title = "本地书架",
-                    onClick = onOpenShelf,
+                    onClick = nav::shelf,
                     endActions = {
                         if (activeDownloads > 0) Badge()
                     },
@@ -249,20 +238,20 @@ fun MineScreen(
                 ArrowPreference(
                     title = "信箱",
                     summary = if (unread > 0) "$unread 条未读通知" else null,
-                    onClick = { if (user == null) onOpenLogin() else onOpenNotifications() },
+                    onClick = { if (user == null) nav.login() else nav.notifications() },
                     endActions = {
                         if (unread > 0) Badge { Text(text = if (unread > 99) "99+" else unread.toString()) }
                     },
                 )
                 ArrowPreference(
                     title = "连载追踪",
-                    onClick = { if (user == null) onOpenLogin() else onOpenTracking() },
+                    onClick = { if (user == null) nav.login() else nav.tracking() },
                 )
                 // 论坛为公开内容，未登录也可浏览；发帖/回复时才引导登录
                 ArrowPreference(
                     title = "社区论坛",
                     summary = "全部讨论 · 漫画评论 · 闲聊",
-                    onClick = onOpenForum,
+                    onClick = nav::forum,
                 )
             }
             SmallTitle(text = "成就与服务")
@@ -270,14 +259,14 @@ fun MineScreen(
                 ArrowPreference(
                     title = "成就任务",
                     summary = "称号与勋章",
-                    onClick = { if (user == null) onOpenLogin() else onOpenTasks() },
+                    onClick = { if (user == null) nav.login() else nav.tasks() },
                 )
                 ArrowPreference(
                     title = "云端观看记录",
                     summary = "账号同步的阅读足迹",
-                    onClick = { if (user == null) onOpenLogin() else onOpenWatchHistory() },
+                    onClick = { if (user == null) nav.login() else nav.watchHistory() },
                 )
-                ArrowPreference(title = "设置", onClick = onOpenSettings)
+                ArrowPreference(title = "设置", onClick = nav::settings)
             }
             // 底部净空由 GlassScaffold 统一给出（导航条 inset + 呼吸空间）
             Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding()))

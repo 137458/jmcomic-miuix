@@ -76,6 +76,7 @@ import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.NOTIFICATION_TYPE_FOLLOW
 import com.jm3.core.model.NotificationBody
 import com.jm3.core.model.NotificationItem
@@ -114,8 +115,7 @@ internal fun CouiNotificationsScreen(
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
     unreadBadge: UnreadBadge,
-    onOpenAlbum: (albumId: String) -> Unit = {},
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
 ) {
     val scope = rememberCoroutineScope()
     val user by deps.account.user.collectAsState()
@@ -279,7 +279,7 @@ internal fun CouiNotificationsScreen(
                                 )
                             }
                             sessionExpired -> item(key = "notif-expired") {
-                                CouiFeedLoginGroup(message = error.orEmpty(), onOpenLogin = onOpenLogin)
+                                CouiFeedLoginGroup(message = error.orEmpty(), onOpenLogin = nav::login)
                             }
                             error != null -> item(key = "notif-error") {
                                 CouiErrorGroup(
@@ -338,7 +338,7 @@ internal fun CouiNotificationsScreen(
                                                 }
                                             },
                                             onToggleRead = { toggleRead(item) },
-                                            onOpenAlbum = onOpenAlbum,
+                                            onOpenAlbum = nav::album,
                                         )
                                     }
                                 }

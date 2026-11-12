@@ -175,6 +175,7 @@ import com.jm3.app.miuix.ui.readerPageFrame
 import com.jm3.app.miuix.ui.readerScreenDecodeSize
 import com.jm3.app.miuix.ui.readerSpreadPageDecodeSize
 import com.jm3.app.miuix.ui.rememberReaderImageLoader
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry
@@ -251,14 +252,13 @@ private fun readerLoadFailure(outcome: SessionOutcome<*>): ReaderUiState.Failed?
 }
 
 @Composable
-fun CouiReaderScreen(
+internal fun CouiReaderScreen(
     deps: ScreenDeps,
     photoId: String,
     startPage: Int? = null,
     settings: ReaderSettings,
     onBack: () -> Unit,
-    onOpenChapter: (String) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     var state by remember(photoId) { mutableStateOf<ReaderUiState>(ReaderUiState.Loading) }
@@ -338,7 +338,7 @@ fun CouiReaderScreen(
         is ReaderUiState.Failed -> ReaderStateScreen(title = "阅读", onBack = onBack) {
             // 失效不给重试：重试必然再吃一次 401，只能去登录
             if (s.sessionExpired) {
-                CouiFeedLoginGroup(message = s.message, onOpenLogin = onOpenLogin)
+                CouiFeedLoginGroup(message = s.message, onOpenLogin = nav::login)
             } else {
                 CouiErrorGroup(
                     message = s.message,
@@ -373,8 +373,8 @@ fun CouiReaderScreen(
                     likedInit = s.liked,
                     settings = settings,
                     onBack = onBack,
-                    onOpenChapter = onOpenChapter,
-                    onOpenLogin = onOpenLogin,
+                    onOpenChapter = nav::nextChapter,
+                    onOpenLogin = nav::login,
                     snackbarHostState = snackbarHostState,
                 )
             }

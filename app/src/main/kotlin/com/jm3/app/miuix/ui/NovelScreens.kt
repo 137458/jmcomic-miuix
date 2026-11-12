@@ -56,6 +56,7 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
 import com.jm3.core.model.CommentItem
@@ -161,11 +162,10 @@ private data class NovelPageState(
 
 /** 小说列表页：排序 + 关键词搜索 + 点赞/收藏。 */
 @Composable
-fun NovelListScreen(
+internal fun NovelListScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenNovel: (String) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     // 会话闸门只经 deps 取：路由层不再重复传第二份。
@@ -288,7 +288,7 @@ fun NovelListScreen(
                 snackbarHostState.showSnackbar("点赞成功")
             } else {
                 snackbarHostState.showSnackbar(notice.message)
-                if (notice.openLogin) onOpenLogin()
+                if (notice.openLogin) nav.login()
             }
         }
     }
@@ -296,7 +296,7 @@ fun NovelListScreen(
     /** 收藏：未登录先引导登录，成功后本地回显收藏态。 */
     fun favorite(item: NovelMeta) {
         if (user == null) {
-            onOpenLogin()
+            nav.login()
             return
         }
         if (busyId != null) return
@@ -310,7 +310,7 @@ fun NovelListScreen(
                 snackbarHostState.showSnackbar(if (item.favorite) "已取消收藏" else "已加入收藏")
             } else {
                 snackbarHostState.showSnackbar(notice.message)
-                if (notice.openLogin) onOpenLogin()
+                if (notice.openLogin) nav.login()
             }
         }
     }
@@ -381,7 +381,7 @@ fun NovelListScreen(
             when {
                 pageState.loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 pageFailure?.phase == ScreenLoadPhase.Expired -> LoginExpiredScreen(
-                    onOpenLogin = onOpenLogin,
+                    onOpenLogin = nav::login,
                     modifier = Modifier.padding(innerPadding),
                 )
                 pageFailure != null -> ErrorScreen(
@@ -419,7 +419,7 @@ fun NovelListScreen(
                                     item = item,
                                     dateFormat = dateFormat,
                                     busy = busyId == item.id,
-                                    onClick = { onOpenNovel(item.id) },
+                                    onClick = { nav.novelDetail(item.id) },
                                     onLike = { like(item) },
                                     onFavorite = { favorite(item) },
                                 )
@@ -530,14 +530,11 @@ private fun NovelRowAction(
 
 /** 小说详情：头部信息 + 目录/相关/评论三档 + 阅读入口。 */
 @Composable
-fun NovelDetailScreen(
+internal fun NovelDetailScreen(
     deps: ScreenDeps,
     novelId: String,
     onBack: () -> Unit,
-    onOpenNovel: (String) -> Unit,
-    onOpenReader: (String, String) -> Unit,
-    onOpenSearch: (String, SearchScope) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     val authCall = deps.authCall
@@ -586,7 +583,7 @@ fun NovelDetailScreen(
             }
             return
         }
-        onOpenReader(novelId, chapter.ncid)
+        nav.novelReader(novelId, chapter.ncid)
     }
 
     /** 继续阅读：优先上次章节，其次第一章。 */
@@ -616,14 +613,14 @@ fun NovelDetailScreen(
                 snackbarHostState.showSnackbar("点赞成功")
             } else {
                 snackbarHostState.showSnackbar(notice.message)
-                if (notice.openLogin) onOpenLogin()
+                if (notice.openLogin) nav.login()
             }
         }
     }
 
     fun toggleFavorite(current: NovelDetail) {
         if (user == null) {
-            onOpenLogin()
+            nav.login()
             return
         }
         if (actionBusy) return
@@ -637,7 +634,7 @@ fun NovelDetailScreen(
                 snackbarHostState.showSnackbar(if (current.favorite) "已取消收藏" else "已加入收藏")
             } else {
                 snackbarHostState.showSnackbar(notice.message)
-                if (notice.openLogin) onOpenLogin()
+                if (notice.openLogin) nav.login()
             }
         }
     }
@@ -667,7 +664,7 @@ fun NovelDetailScreen(
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
             failure?.phase == ScreenLoadPhase.Expired -> LoginExpiredScreen(
-                onOpenLogin = onOpenLogin,
+                onOpenLogin = nav::login,
                 modifier = Modifier.padding(innerPadding),
             )
             failure != null -> ErrorScreen(
@@ -698,7 +695,7 @@ fun NovelDetailScreen(
                                 savedChapter = savedChapter,
                                 descriptionExpanded = descriptionExpanded,
                                 onToggleDescription = { descriptionExpanded = !descriptionExpanded },
-                                onTagClick = { tag -> onOpenSearch(tag, SearchScope.TAG) },
+                                onTagClick = { tag -> nav.search(tag, SearchScope.TAG) },
                                 onStartReading = { startReading(current) },
                                 onToggleLike = { toggleLike(current) },
                                 onToggleFavorite = { toggleFavorite(current) },
@@ -764,7 +761,7 @@ fun NovelDetailScreen(
                                             item = related,
                                             dateFormat = dateFormat,
                                             busy = false,
-                                            onClick = { onOpenNovel(related.id) },
+                                            onClick = { nav.novelDetail(related.id) },
                                             onLike = {},
                                             onFavorite = {},
                                             showActions = false,
@@ -776,7 +773,7 @@ fun NovelDetailScreen(
                                 NovelCommentsPanel(
                                     deps = deps,
                                     novelId = novelId,
-                                    onOpenLogin = onOpenLogin,
+                                    onOpenLogin = nav::login,
                                     snackbarHostState = snackbarHostState,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 )
@@ -960,12 +957,12 @@ private fun NovelChapterGroupCard(
 
 /** 小说阅读页：正文 + 字号 + 繁简 + 章节切换 + 评论/收藏。 */
 @Composable
-fun NovelReaderScreen(
+internal fun NovelReaderScreen(
     deps: ScreenDeps,
     novelId: String,
     initialChapterId: String,
     onBack: () -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     val authCall = deps.authCall
@@ -1079,7 +1076,7 @@ fun NovelReaderScreen(
 
     fun toggleFavorite() {
         if (user == null) {
-            onOpenLogin()
+            nav.login()
             return
         }
         if (favoriteGate.busy) return
@@ -1092,7 +1089,7 @@ fun NovelReaderScreen(
                     snackbarHostState.showSnackbar(if (favorited) "已加入收藏" else "已取消收藏")
                 } else {
                     snackbarHostState.showSnackbar(notice.message)
-                    if (notice.openLogin) onOpenLogin()
+                    if (notice.openLogin) nav.login()
                 }
             }
         }
@@ -1138,7 +1135,7 @@ fun NovelReaderScreen(
         when {
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
             failure?.phase == ScreenLoadPhase.Expired -> LoginExpiredScreen(
-                onOpenLogin = onOpenLogin,
+                onOpenLogin = nav::login,
                 modifier = Modifier.padding(innerPadding),
             )
             failure != null -> ErrorScreen(
@@ -1248,7 +1245,7 @@ fun NovelReaderScreen(
                 NovelCommentsPanel(
                     deps = deps,
                     novelId = novelId,
-                    onOpenLogin = onOpenLogin,
+                    onOpenLogin = nav::login,
                     snackbarHostState = snackbarHostState,
                     modifier = Modifier.fillMaxWidth(),
                 )

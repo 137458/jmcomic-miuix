@@ -43,6 +43,7 @@ import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
@@ -84,25 +85,11 @@ private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
 }
 
 @Composable
-fun MainScreen(
+internal fun MainScreen(
     deps: ScreenDeps,
     unreadBadge: UnreadBadge,
     snackbarHostState: SnackbarHostState,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit,
-    onOpenFavorites: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenShelf: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenWeek: () -> Unit,
-    onOpenNotifications: () -> Unit,
-    onOpenTracking: () -> Unit,
-    onOpenProfile: () -> Unit,
-    onOpenTasks: () -> Unit,
-    onOpenWatchHistory: () -> Unit,
-    onOpenForum: () -> Unit,
-    onOpenNovel: () -> Unit,
-    onOpenLibrary: () -> Unit,
+    nav: AppRoutes,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     // 启动即恢复下载队列（中断任务收敛为暂停态），底栏角标才能反映在途任务
@@ -255,39 +242,23 @@ fun MainScreen(
                                         when (currentTab) {
                                             0 -> HomeScreen(
                                                 deps = deps,
-                                                onOpenAlbum = onOpenAlbum,
-                                                onOpenWeek = onOpenWeek,
-                                                onOpenLogin = onOpenLogin,
+                                                nav = nav,
                                             )
                                             1 -> BrowseScreen(
                                                 deps = deps,
                                                 mode = BrowseMode.CATEGORY,
-                                                onOpenAlbum = onOpenAlbum,
-                                                onOpenLogin = onOpenLogin,
+                                                nav = nav,
                                             )
                                             2 -> BrowseScreen(
                                                 deps = deps,
                                                 mode = BrowseMode.RANK,
-                                                onOpenAlbum = onOpenAlbum,
-                                                onOpenLogin = onOpenLogin,
+                                                nav = nav,
                                             )
                                             else -> MineScreen(
                                                 deps = deps,
                                                 unreadBadge = unreadBadge,
                                                 snackbarHostState = snackbarHostState,
-                                                onOpenLogin = onOpenLogin,
-                                                onOpenFavorites = onOpenFavorites,
-                                                onOpenHistory = onOpenHistory,
-                                                onOpenShelf = onOpenShelf,
-                                                onOpenSettings = onOpenSettings,
-                                                onOpenNotifications = onOpenNotifications,
-                                                onOpenTracking = onOpenTracking,
-                                                onOpenProfile = onOpenProfile,
-                                                onOpenTasks = onOpenTasks,
-                                                onOpenWatchHistory = onOpenWatchHistory,
-                                                onOpenForum = onOpenForum,
-                                                onOpenNovel = onOpenNovel,
-                                                onOpenLibrary = onOpenLibrary,
+                                                nav = nav,
                                             )
                                         }
                                     }

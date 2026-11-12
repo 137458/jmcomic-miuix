@@ -92,6 +92,7 @@ import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.appendedBy
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
@@ -132,9 +133,8 @@ private const val FORUM_MAX_INDENT_DEPTH = 2
 internal fun CouiForumScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenAlbum: (albumId: String) -> Unit = {},
 ) {
     val user by deps.account.user.collectAsState()
     val pageMode = deps.paging.paginationMode
@@ -227,7 +227,7 @@ internal fun CouiForumScreen(
     /** 回复楼层：闲聊帖缺少作品归属，无法定位接口实体，直接给出提示。 */
     fun startReply(target: CommentItem) {
         when {
-            user == null -> onOpenLogin()
+            user == null -> nav.login()
             target.albumId == null -> scope.launch {
                 snackbarHostState.showSnackbar("该楼层没有作品归属，暂不支持回复")
             }
@@ -287,7 +287,7 @@ internal fun CouiForumScreen(
 
     /** 发帖入口的登录门禁：顶栏按钮与空态按钮共用同一判定。 */
     fun openCompose() {
-        if (user == null) onOpenLogin() else composing = true
+        if (user == null) nav.login() else composing = true
     }
 
     // 切档或换分页模式（loader 重建）时：没加载过的档位走首屏加载，已加载过的静默刷新
@@ -403,7 +403,7 @@ internal fun CouiForumScreen(
                                         pageLoader.goToPage(pageFailedAt)
                                     }
                                 },
-                                onOpenLogin = onOpenLogin,
+                                onOpenLogin = nav::login,
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                         }
@@ -455,7 +455,7 @@ internal fun CouiForumScreen(
                                         CouiForumTopic(
                                             item = item,
                                             onReply = { startReply(it) },
-                                            onOpenAlbum = onOpenAlbum,
+                                            onOpenAlbum = nav::album,
                                         )
                                     }
                                 }

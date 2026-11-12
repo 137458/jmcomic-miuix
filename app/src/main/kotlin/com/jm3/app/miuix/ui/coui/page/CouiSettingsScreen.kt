@@ -87,6 +87,7 @@ import com.jm3.app.miuix.ui.readerBrightnessSliderValue
 import com.jm3.app.miuix.ui.rememberReaderSettingsState
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.resolvePaginationSelection
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.settingsSummary
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.reader.ReaderSpreadPolicy
@@ -128,7 +129,7 @@ private const val CLEAR_CONFIRM_TIMEOUT_MS = 5000L
  * 本页是独立路由，不在主框架内，所以自己持有一套 CouiTheme 与 Scaffold。
  */
 @Composable
-fun CouiSettingsScreen(
+internal fun CouiSettingsScreen(
     deps: ScreenDeps,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
@@ -138,7 +139,7 @@ fun CouiSettingsScreen(
     uiSkin: UiSkin,
     onUiSkinChange: (UiSkin) -> Unit,
     onBack: () -> Unit,
-    onOpenUpdate: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     CouiTheme {
@@ -594,7 +595,7 @@ fun CouiSettingsScreen(
                         Item(
                             title = { SettingsRowTitle("检查更新") },
                             summary = { SettingsRowSummary("查看远端最新版本，支持应用内下载与安装") },
-                            onClick = onOpenUpdate,
+                            onClick = nav::update,
                         )
                         Divider()
                         Item(

@@ -29,6 +29,7 @@ import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.Jm3Log
 import com.jm3.core.reader.ReaderSpreadPolicy
@@ -69,7 +70,7 @@ private const val DIAGNOSTIC_TAP_WINDOW_MS = 2000L
 
 /** 设置中心：主题/线路/数据管理/关于。内容一屏内可读，关于作为分区而非独立页。 */
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(
     deps: ScreenDeps,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
@@ -79,7 +80,7 @@ fun SettingsScreen(
     uiSkin: UiSkin,
     onUiSkinChange: (UiSkin) -> Unit,
     onBack: () -> Unit,
-    onOpenUpdate: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
     val context = LocalContext.current
@@ -485,7 +486,7 @@ fun SettingsScreen(
                 ArrowPreference(
                     title = "检查更新",
                     summary = "查看远端最新版本，支持应用内下载与安装",
-                    onClick = onOpenUpdate,
+                    onClick = nav::update,
                 )
                 BasicComponent(
                     title = "开源组件",

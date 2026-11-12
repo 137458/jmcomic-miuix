@@ -71,6 +71,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.WeeklyPeriod
 import com.jm3.core.model.WeeklyPicksDetail
@@ -97,8 +98,7 @@ private val WeekRailDotRadius = 4.dp
 internal fun CouiWeekScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenLogin: () -> Unit = {},
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val scope = rememberCoroutineScope()
@@ -254,7 +254,7 @@ internal fun CouiWeekScreen(
                         )
                     }
                     periodsExpired -> item(key = "week-expired") {
-                        CouiFeedLoginGroup(message = periodsFailure.orEmpty(), onOpenLogin = onOpenLogin)
+                        CouiFeedLoginGroup(message = periodsFailure.orEmpty(), onOpenLogin = nav::login)
                     }
                     periodsFailure != null -> item(key = "week-failed") {
                         CouiErrorGroup(
@@ -279,7 +279,7 @@ internal fun CouiWeekScreen(
                         )
                     }
                     detailExpired -> item(key = "week-detail-expired") {
-                        CouiFeedLoginGroup(message = detailFailure.orEmpty(), onOpenLogin = onOpenLogin)
+                        CouiFeedLoginGroup(message = detailFailure.orEmpty(), onOpenLogin = nav::login)
                     }
                     detailFailure != null -> item(key = "week-detail-failed") {
                         CouiErrorGroup(
@@ -305,7 +305,7 @@ internal fun CouiWeekScreen(
                                     isLast = index == items.lastIndex,
                                     railColor = scheme.outlineVariant,
                                     dotColor = scheme.accent,
-                                    onClick = { onOpenAlbum(item.id) },
+                                    onClick = { nav.album(item.id) },
                                 )
                             }
                             item(key = "week-tail") { Spacer(modifier = Modifier.size(CouiPageDefaults.groupSpacing)) }

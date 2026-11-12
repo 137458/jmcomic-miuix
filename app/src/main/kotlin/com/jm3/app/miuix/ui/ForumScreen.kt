@@ -40,6 +40,7 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.ForumScope
@@ -81,12 +82,11 @@ internal fun shouldShowForumPager(feed: PagedFeed<*>): Boolean =
  * 分页总数由接口 total 推算（原版 pageLimit = ceil(total / 10)），不再以单页条数猜是否有下一页。
  */
 @Composable
-fun ForumScreen(
+internal fun ForumScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenAlbum: (albumId: String) -> Unit = {},
 ) {
     val user by deps.account.user.collectAsState()
     val pageMode = deps.paging.paginationMode
@@ -178,7 +178,7 @@ fun ForumScreen(
     /** 回复楼层：闲聊帖缺少作品归属，无法定位接口实体，直接给出提示。 */
     fun startReply(target: CommentItem) {
         when {
-            user == null -> onOpenLogin()
+            user == null -> nav.login()
             target.albumId == null -> scope.launch {
                 snackbarHostState.showSnackbar("该楼层没有作品归属，暂不支持回复")
             }
@@ -237,7 +237,7 @@ fun ForumScreen(
 
     /** 发帖入口的登录门禁：顶栏按钮与空态按钮共用同一判定。 */
     fun openCompose() {
-        if (user == null) onOpenLogin() else composing = true
+        if (user == null) nav.login() else composing = true
     }
 
     // 切换档位或分页模式时按新语义重载第一页：分页模式进 loader 的 remember key，换模式即重建
@@ -299,7 +299,7 @@ fun ForumScreen(
             when (val state = snapshot.state) {
                 ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 is ListLoadState.Failed -> if (state.sessionExpired) {
-                    LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
+                    LoginExpiredScreen(onOpenLogin = nav::login, modifier = Modifier.padding(innerPadding))
                 } else {
                     ErrorScreen(
                         message = state.message,
@@ -368,7 +368,7 @@ fun ForumScreen(
                                     ForumTopicCard(
                                         item = item,
                                         onReply = ::startReply,
-                                        onOpenAlbum = onOpenAlbum,
+                                        onOpenAlbum = nav::album,
                                     )
                                 }
                                 item(key = "footer") {

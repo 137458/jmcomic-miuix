@@ -34,6 +34,7 @@ import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.NOTIFICATION_TYPE_FOLLOW
 import com.jm3.core.model.NotificationBody
@@ -63,14 +64,13 @@ private const val NOTIFICATION_PREVIEW_UPDATES = 2
 
 /** 信箱：通知列表、按类型筛选、标记已读/未读；底栏未读数随列表状态同步。 */
 @Composable
-fun NotificationsScreen(
+internal fun NotificationsScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
     // 未读角标的唯一真源：与 MainScreen 注入同一个实例，避免这里写一份、底栏读另一份
     unreadBadge: UnreadBadge,
-    onOpenAlbum: (albumId: String) -> Unit = {},
-    onOpenLogin: () -> Unit = {},
 ) {
     val user by deps.account.user.collectAsState()
     var page by remember { mutableStateOf<NotificationPage?>(null) }
@@ -235,7 +235,7 @@ fun NotificationsScreen(
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         when {
-            sessionExpired -> LoginExpiredScreen(onOpenLogin = onOpenLogin, modifier = Modifier.padding(innerPadding))
+            sessionExpired -> LoginExpiredScreen(onOpenLogin = nav::login, modifier = Modifier.padding(innerPadding))
             error != null -> ErrorScreen(
                 message = error.orEmpty(),
                 onRetry = { load() },
@@ -290,7 +290,7 @@ fun NotificationsScreen(
                                     }
                                 },
                                 onToggleRead = { toggleRead(item) },
-                                onOpenAlbum = onOpenAlbum,
+                                onOpenAlbum = nav::album,
                             )
                         }
                     }

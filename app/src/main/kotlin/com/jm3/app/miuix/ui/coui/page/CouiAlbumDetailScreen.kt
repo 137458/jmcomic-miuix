@@ -145,6 +145,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberReaderImageLoader
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.AlbumPreviewPlan
 import com.jm3.core.ChapterLabels
@@ -195,10 +196,7 @@ internal fun CouiAlbumDetailScreen(
     initialTitle: String? = null,
     initialCoverUrl: String? = null,
     onBack: () -> Unit,
-    onOpenReader: (photoId: String, startPage: Int?) -> Unit,
-    onOpenAlbum: (String) -> Unit,
-    onOpenSearch: (query: String, scope: SearchScope) -> Unit,
-    onOpenLogin: () -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
     gateway: Jm3Gateway,
     authCall: AuthCall,
@@ -214,10 +212,10 @@ internal fun CouiAlbumDetailScreen(
             initialTitle = initialTitle,
             initialCoverUrl = initialCoverUrl,
             onBack = onBack,
-            onOpenReader = onOpenReader,
-            onOpenAlbum = onOpenAlbum,
-            onOpenSearch = onOpenSearch,
-            onOpenLogin = onOpenLogin,
+            onOpenReader = nav::readerAt,
+            onOpenAlbum = nav::album,
+            onOpenSearch = nav::search,
+            onOpenLogin = nav::login,
             snackbarHostState = snackbarHostState,
             gateway = gateway,
             authCall = authCall,
