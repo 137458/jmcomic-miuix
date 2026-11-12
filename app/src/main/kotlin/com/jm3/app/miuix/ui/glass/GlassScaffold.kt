@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.alignToReadableContent
+import com.jm3.app.miuix.ui.effect.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -45,7 +46,6 @@ import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.ProgressiveBlur
-import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -128,16 +128,14 @@ fun GlassScaffold(
 ) {
     val backdrop = rememberBlurBackdrop()
     val glassStyle = LocalGlassStyle.current
-    // 顶栏的磨砂由渐进模糊承担，这里只向角色表要「这一档要不要采样」与实色兜底不透明度。
-    val topBarGlass = resolveGlassSurface(
-        role = GlassRole.TopAppBar,
-        tier = resolveGlassTier(
+    // 顶栏形态只解析一次：模糊层、实色兜底与两层不透明度都从这份计划取，绘制路径不再回查角色表。
+    val topBarGlass = remember(backdrop, glassStyle) {
+        resolveTopBarGlass(
             hasBackdrop = backdrop != null,
             shaderSupported = isRuntimeShaderSupported(),
             style = glassStyle,
-        ),
-        style = glassStyle,
-    )
+        )
+    }
     // 能画出玻璃才有模糊层；顺带把采样源收窄成非空，供模糊层直接用。
     val blurBackdrop = backdrop?.takeIf { topBarGlass.drawsBackdrop }
     val containerColor = MiuixTheme.colorScheme.surface
@@ -212,7 +210,7 @@ fun GlassScaffold(
                                 } else {
                                     // 不支持 RuntimeShader 时退化为实色，避免顶栏内容叠在正文上；
                                     // 不透明度取自 TopAppBar 角色表，页面不再各自决定。
-                                    Modifier.background(containerColor.copy(alpha = topBarGlass.scrimAlpha))
+                                    Modifier.background(containerColor.copy(alpha = topBarGlass.scrimColorAlpha))
                                 },
                             ),
                     ) {
@@ -222,7 +220,7 @@ fun GlassScaffold(
                             Box(
                                 modifier = Modifier
                                     .matchParentSize()
-                                    .topBarProgressiveBlur(blurBackdrop)
+                                    .topBarProgressiveBlur(blurBackdrop, topBarGlass.blurTintAlpha)
                                     .topBarBlurFadeIn(scrollBehavior.state),
                             )
                         }
@@ -329,14 +327,18 @@ fun GlassSmallTopAppBar(
 
 /**
  * 顶栏渐变模糊：标题区满额模糊，沿 Y 轴向下连续衰减，并在模糊层下沿精确归零，
- * 与正文之间是无缝过渡（既无硬切边，也无描边高光）。底色以低透明度 surface 混入保证标题可读。
+ * 与正文之间是无缝过渡（既无硬切边，也无描边高光）。底色以低透明度 surface 混入保证标题可读，
+ * 不透明度由 [TopBarGlass.blurTintAlpha] 传入，这里不再持有字面量。
  * 配方与官方 BlurredBar 一致：ProgressiveBlur.Top + curve 2.2 + 10dp 半径。
  */
 @Composable
-private fun Modifier.topBarProgressiveBlur(backdrop: LayerBackdrop): Modifier {
+private fun Modifier.topBarProgressiveBlur(
+    backdrop: LayerBackdrop,
+    tintAlpha: Float,
+): Modifier {
     val blurColors = BlurDefaults.blurColors(
         blendColors = listOf(
-            BlendColorEntry(color = MiuixTheme.colorScheme.surface.copy(alpha = 0.3f)),
+            BlendColorEntry(color = MiuixTheme.colorScheme.surface.copy(alpha = tintAlpha)),
         ),
     )
     return progressiveTextureBlur(

@@ -4,8 +4,8 @@ package com.jm3.app.miuix.ui.glass
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.jm3.app.miuix.ui.effect.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
