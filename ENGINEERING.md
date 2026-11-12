@@ -70,10 +70,10 @@
 2. 模块方向单向：`:app` 依赖 `:core`（app/build.gradle.kts:81），反之不可。:core 保持纯 JVM（JVM 17，core/build.gradle.kts:6-15），:app 用 Java 21（app/build.gradle.kts:64-66、:72）。不要因为 :app 用了 21 就把 :core 提上去。
 3. SDK 坐标固定：`compileSdkVersion("android-37.0")`、minSdk 31、targetSdk 36（app/build.gradle.kts:21、:26、:27）。compileSdk 与 minSdk 的下限都被依赖 AAR 的元数据强制（同文件 :21 注释；COUI-Kit 0.0.1-alpha9 的 `aar-metadata.properties` 要求 minCompileSdk=37、minAndroidGradlePluginVersion=9.1.0，其 AndroidManifest 声明 `minSdkVersion=31`），改动前先确认依赖矩阵。minSdk 26→31 是 2026-11 引入 COUI-Kit 时的既定取舍：Android 12 以下不再安装，回退需先移除该依赖。
 4. release 必须开 R8 与资源压缩：`isMinifyEnabled`/`isShrinkResources` + `proguardFiles`（app/build.gradle.kts:44-46，规则文件 app/proguard-rules.pro）。现有规则：keep `io.github.jukomu.jmcomic.**`（proguard-rules.pro:2）、保留 `Signature/InnerClasses/EnclosingMethod/Annotation` 属性（:4）、webp-imageio 与 AWT 的 dontwarn（:9-14）；kotlinx-serialization 与 Room 靠自带 consumer 规则（:15 注释）。新增反射式依赖（序列化、DI、注解处理产物）必须验证 release 包，缺 keep 只在 release 崩。
-5. 签名密钥只从 `local.properties` 读，缺失回退 debug 签名（app/build.gradle.kts:11-17、:48）。因此“release 包”不等于“别人签的包”，发布前必须核对签名来源。任何密钥、口令、cookie 都不入库；`local.properties` 已在 .gitignore:4。
+5. 签名密钥只从 `local.properties` 读，缺失回退 debug 签名（app/build.gradle.kts:11-17、:48）。因此“release 包”不等于“别人签的包”，发布前必须核对签名来源。任何密钥、口令、cookie 都不入库；`local.properties` 与 `local.properties.bak` 已在 .gitignore:8-9。
 6. 构建命令固定用仓库自带的 `.\gradlew.bat`，禁止 `--offline`：曾因 `androidx.tracing:tracing-ktx:2.0.1` 未缓存导致离线构建失败。同一工作树同时只允许一个 Gradle 构建进程，并行任务要串行化构建，不要用离线参数“解决”锁冲突。
 7. 版本目录与 AGP 的联动开关在 gradle.properties:7（`android.builtInKotlin=false`）与 :9（`android.newDsl=false`）。升级 AGP 或 KGP 时这两项必须成对检查，否则报插件冲突而不是编译错误。
-8. 内部过程物不入库：`.scratch/`（.gitignore:13）、`implementation_plan.md`（:10）、`research/`（:11）都在忽略列表里。调研报告、计划、截图留在本地。
+8. 内部过程物与代理文档不入库：`AGENTS.md`（.gitignore:23）、`docs/`（:24）、`implementation_plan.md`（:25）、`research/`（:28）、`.scratch/`（:30）、`.trae/`（:31）等均在忽略列表里。调研报告、计划、截图与代理工作文档留在本地。
 
 ## 五、UI 与阅读器
 

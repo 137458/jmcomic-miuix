@@ -6,6 +6,7 @@ app/build/
 core/build/
 .kotlin/
 local.properties
+local.properties.bak
 .idea/
 *.iml
 .tools/
@@ -19,8 +20,11 @@ local.properties
 androidMain/
 
 # 工作草稿、私密调研与辅助工具文档（工程约束：Git 仅公开交付物）
+AGENTS.md
+docs/
 implementation_plan.md
 OPTIMIZATION_PLAN.md
+MIUIX_UPGRADE_LOOP.md
 research/
 .screenshots/
 .scratch/
