@@ -452,7 +452,7 @@ fun CouiFavoritesScreen(
             }
         }
 
-        LaunchedEffect(Unit) { loadFirstPage() }
+        LaunchedEffect(user?.uid) { loadFirstPage() }
 
         PaginationModeReloadEffect(mode) { loadFirstPage() }
 

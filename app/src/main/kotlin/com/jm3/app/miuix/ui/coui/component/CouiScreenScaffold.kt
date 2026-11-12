@@ -226,8 +226,8 @@ fun PaddingValues.couiWithBottomPadding(extra: Dp): PaddingValues = object : Pad
 @Composable
 fun CouiTopBarBackButton(
     onClick: () -> Unit,
-    contentDescription: String = "返回",
     modifier: Modifier = Modifier,
+    contentDescription: String = "返回",
 ) {
     if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
         CouiTopBarBackButton34(onClick = onClick, contentDescription = contentDescription, modifier = modifier)
@@ -260,9 +260,9 @@ private fun CouiTopBarBackButton34(
 @Composable
 internal fun CouiTopBarPlainBackButton(
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     contentDescription: String = "返回",
     spotlight: SpotlightPreset? = SpotlightPreset.OpaqueSmall2,
-    modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier

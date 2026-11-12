@@ -202,6 +202,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.roundToInt
+import me.saket.telephoto.zoomable.EnabledZoomGestures
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import me.saket.telephoto.zoomable.rememberZoomableState
@@ -2170,7 +2171,7 @@ private fun ReaderSpreadPage(
     Box(
         modifier = if (onHorizontalEdgeDrag != null) {
             modifier
-                .zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
+                .zoomable(state = zoomableState, gestures = EnabledZoomGestures.ZoomAndPan, onClick = tapHandler)
                 .pointerInput(zoomableState) {
                     collectHorizontalEdgeDrag(
                         contentOffsetX = { zoomableState.contentTransformation.offset.x },
@@ -2178,7 +2179,7 @@ private fun ReaderSpreadPage(
                     )
                 }
         } else {
-            modifier.zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
+            modifier.zoomable(state = zoomableState, gestures = EnabledZoomGestures.ZoomAndPan, onClick = tapHandler)
         },
     ) {
         if (images.size >= 2) {

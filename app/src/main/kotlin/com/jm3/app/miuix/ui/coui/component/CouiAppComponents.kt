@@ -518,12 +518,12 @@ fun CouiEmptyGroup(
 @Composable
 fun CouiPrimaryActionButton(
     title: String,
+    modifier: Modifier = Modifier,
     subtitle: String? = null,
     leadingIcon: ImageVector? = null,
     trailingIcon: ImageVector? = null,
     enabled: Boolean = true,
     shape: androidx.compose.ui.graphics.Shape = CouiDetailButtonShape,
-    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
@@ -689,7 +689,9 @@ fun CouiHeaderCapsuleAction(
     val fgColor = if (tinted) colors.accent else colors.onSurfaceVariant
 
     val renderer = remember(backdrop != null) {
-        if (couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null)) {
+        if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk &&
+            couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null)
+        ) {
             runCatching { CouiFloatingRenderer.standalone() }.getOrNull()
         } else {
             null
@@ -953,8 +955,8 @@ fun CouiLoadMoreFooter(
 @Composable
 fun CouiLoadMoreFooter(
     feed: PagedFeed<*>,
-    errorMessage: String = CouiStrings.LoadMoreFailedRetry,
     modifier: Modifier = Modifier,
+    errorMessage: String = CouiStrings.LoadMoreFailedRetry,
     onRetry: () -> Unit,
 ) {
     CouiLoadMoreFooter(
@@ -1696,8 +1698,8 @@ fun CouiFeedRefreshAction(
 /** 登录过期或未登录时的落点卡片：解释原因并提供明确的「去登录」入口。 */
 @Composable
 fun CouiFeedLoginGroup(
-    message: String = CouiStrings.LoginExpired,
     modifier: Modifier = Modifier,
+    message: String = CouiStrings.LoginExpired,
     title: String = CouiStrings.NeedLogin,
     onOpenLogin: () -> Unit,
 ) {
@@ -1769,10 +1771,10 @@ fun CouiAutoLoadMoreEffect(
 @Composable
 fun CouiAvatar(
     url: String?,
+    modifier: Modifier = Modifier,
     size: Dp = 40.dp,
     name: String? = null,
     contentDescription: String? = null,
-    modifier: Modifier = Modifier,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
     val initial = name?.trim()?.firstOrNull()?.uppercaseChar()?.toString()
@@ -2045,7 +2047,7 @@ internal fun Modifier.couiContourSurface(
     edgeWidthDp: Float = if (emphasized) 2.5f else 2.2f,
     fallbackBorderColor: Color = Color.Transparent,
 ): Modifier {
-    if (!couiContourSurfaceEnabled(Build.VERSION.SDK_INT)) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !couiContourSurfaceEnabled(Build.VERSION.SDK_INT)) {
         return this
             .clip(shape)
             .background(surfaceColor)
@@ -2058,6 +2060,30 @@ internal fun Modifier.couiContourSurface(
             )
     }
 
+    return couiContourSurface33(
+        shape = shape,
+        surfaceColor = surfaceColor,
+        cornerRadius = cornerRadius,
+        cornerWeight = cornerWeight,
+        style = style,
+        edgeAlpha = edgeAlpha,
+        innerGlowAlpha = innerGlowAlpha,
+        edgeWidthDp = edgeWidthDp,
+    )
+}
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@Composable
+private fun Modifier.couiContourSurface33(
+    shape: Shape,
+    surfaceColor: Color,
+    cornerRadius: Dp,
+    cornerWeight: Float,
+    style: CouiContourStyle,
+    edgeAlpha: Float,
+    innerGlowAlpha: Float,
+    edgeWidthDp: Float,
+): Modifier {
     val contourGlow = LocalCouiContourGlowEnabled.current
     val contour = remember(contourGlow, style) {
         if (contourGlow) CouiContour(floating = false, style = style) else null
@@ -2474,7 +2500,9 @@ internal fun CouiInstallProgressButton(
     }
 
     val renderer = remember(backdrop != null) {
-        if (couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null)) {
+        if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk &&
+            couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null)
+        ) {
             runCatching { CouiFloatingRenderer.standalone() }.getOrNull()
         } else {
             null
@@ -2599,7 +2627,9 @@ internal fun CouiCircleActionButton(
     val scheme = CouiTheme.colorSchemeFor(dark)
     val resolvedTint = tint.takeOrElse { scheme.onSurface }
     val renderer = remember(backdrop != null) {
-        if (couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null)) {
+        if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk &&
+            couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null)
+        ) {
             runCatching { CouiFloatingRenderer.standalone() }.getOrNull()
         } else {
             null

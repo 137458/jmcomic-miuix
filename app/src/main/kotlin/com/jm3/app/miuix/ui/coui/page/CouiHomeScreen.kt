@@ -74,14 +74,16 @@ import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.couiHomeExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
-import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiHeaderCapsuleAction
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
+import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTagCapsulePill
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
@@ -110,6 +112,7 @@ import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 
@@ -307,7 +310,7 @@ fun CouiHomeScreen(
                 val next = authCall.call { gateway.latest(1) }
                 if (token == listToken) rememberFeed(next.asListState(CouiStrings.LoadFailed))
             }
-            refreshing = false
+            if (token == listToken) refreshing = false
         }
     }
 
@@ -378,23 +381,23 @@ fun CouiHomeScreen(
             runSearch(activeQuery, byTag = searchByTag, sort = order)
         }
         if (sessionCache.homeSide.isEmpty) {
-            scope.launch {
-                val tags = authCall.call { gateway.hotTags() }.orDegrade(emptyList())
-                val picks = authCall.call { gateway.randomRecommend() }.orDegrade(emptyList())
-                val updates = authCall
-                    .call { gateway.serialization(1) }
-                    .orDegrade<SearchPage?>(null)
-                    ?.items
-                    ?.take(SERIAL_CAROUSEL_LIMIT)
-                    .orEmpty()
-                val storedHistory = readSearchHistory(deps.settings) { emptyList() }
-                rememberSide(tags = tags, updates = updates, picks = picks)
-                searchHistory = storedHistory
+            coroutineScope {
+                launch {
+                    val tags = authCall.call { gateway.hotTags() }.orDegrade(emptyList())
+                    val picks = authCall.call { gateway.randomRecommend() }.orDegrade(emptyList())
+                    val updates = authCall
+                        .call { gateway.serialization(1) }
+                        .orDegrade<SearchPage?>(null)
+                        ?.items
+                        ?.take(SERIAL_CAROUSEL_LIMIT)
+                        .orEmpty()
+                    val storedHistory = readSearchHistory(deps.settings) { emptyList() }
+                    rememberSide(tags = tags, updates = updates, picks = picks)
+                    searchHistory = storedHistory
+                }
             }
         } else {
-            scope.launch {
-                searchHistory = readSearchHistory(deps.settings) { searchHistory }
-            }
+            searchHistory = readSearchHistory(deps.settings) { searchHistory }
         }
     }
 
@@ -604,58 +607,25 @@ fun CouiHomeScreen(
             }
             when (val current = feedState) {
                 null, is ListState.Loading -> item(key = "coui-home-loading") {
-                    CouiGroupRow(isFirst = true, isLast = true) {
-                        Item(
-                            title = {
-                                CouiBodyText(
-                                    text = if (searching) "正在搜索…" else "正在加载最新上架…",
-                                    color = CouiTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Start,
-                                )
-                            },
-                        )
-                    }
+                    CouiLoadingGroup(
+                        text = if (searching) "正在搜索…" else "正在加载最新上架…",
+                    )
                 }
 
                 is ListState.Failed -> item(key = "coui-home-error") {
                     val failureMessage = current.message.ifBlank { if (searching) "搜索失败" else CouiStrings.LoadFailed }
-                    CouiGroupRow(isFirst = true, isLast = true) {
-                        Item(
-                            title = {
-                                CouiBodyText(
-                                    text = if (current.sessionExpired) "登录状态已失效" else CouiStrings.LoadFailed,
-                                    textAlign = TextAlign.Start,
-                                )
-                            },
-                            summary = {
-                                Text(
-                                    text = failureMessage,
-                                    kind = CouiTextKind.ItemSummary,
-                                    color = CouiTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Start,
-                                )
-                            },
-                            trailing = {
-                                CouiHeaderCapsuleAction(
-                                    text = if (current.sessionExpired) "去登录" else CouiStrings.Retry,
-                                    onClick = {
-                                        when {
-                                            current.sessionExpired -> onOpenLogin()
-                                            searching -> runSearch(activeQuery, searchByTag, order)
-                                            else -> refresh()
-                                        }
-                                    },
-                                )
-                            },
-                            onClick = {
-                                when {
-                                    current.sessionExpired -> onOpenLogin()
-                                    searching -> runSearch(activeQuery, searchByTag, order)
-                                    else -> refresh()
-                                }
-                            },
-                        )
-                    }
+                    CouiScreenFailureGroup(
+                        message = failureMessage,
+                        expired = current.sessionExpired,
+                        onRetry = {
+                            if (searching) {
+                                runSearch(activeQuery, searchByTag, order)
+                            } else {
+                                refresh()
+                            }
+                        },
+                        onOpenLogin = onOpenLogin,
+                    )
                 }
 
                 is ListState.Loaded -> {
@@ -663,17 +633,9 @@ fun CouiHomeScreen(
                     val items = loadedFeed.items
                     if (items.isEmpty()) {
                         item(key = "coui-home-empty") {
-                            CouiGroupRow(isFirst = true, isLast = true) {
-                                Item(
-                                    title = {
-                                        CouiBodyText(
-                                            text = if (searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent,
-                                            color = CouiTheme.colorScheme.onSurfaceVariant,
-                                            textAlign = TextAlign.Start,
-                                        )
-                                    },
-                                )
-                            }
+                            CouiEmptyGroup(
+                                text = if (searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent,
+                            )
                         }
                         item(key = "coui-home-empty-hint") {
                             Footer(

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +50,7 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -75,6 +77,7 @@ import com.jm3.core.model.WeeklyPicksDetail
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 时间轴左侧轨道宽度：圆点与竖线都落在这条带子里。 */
 private val WeekRailWidth = 28.dp
@@ -96,8 +99,10 @@ internal fun CouiWeekScreen(
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     onOpenLogin: () -> Unit = {},
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val scope = rememberCoroutineScope()
+    val user by deps.account.user.collectAsState()
     var periods by remember { mutableStateOf<List<WeeklyPeriod>>(emptyList()) }
     var periodsLoading by remember { mutableStateOf(true) }
     var periodsFailure by remember { mutableStateOf<String?>(null) }
@@ -108,7 +113,8 @@ internal fun CouiWeekScreen(
     var detailFailure by remember { mutableStateOf<String?>(null) }
     var detailExpired by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
-    // 切期代际号：只认最后一次选择的响应
+    // 期数与切期代际号：只认最后一次请求的响应
+    var periodsToken by remember { mutableIntStateOf(0) }
     var detailToken by remember { mutableIntStateOf(0) }
 
     fun loadDetail(index: Int, showLoading: Boolean = true) {
@@ -136,10 +142,12 @@ internal fun CouiWeekScreen(
     }
 
     fun loadPeriods() {
+        val token = ++periodsToken
         periodsFailure = null
         periodsExpired = false
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.weeklyPicks() }
+            if (token != periodsToken) return@launch
             refreshing = false
             periodsLoading = false
             when (outcome) {
@@ -159,6 +167,7 @@ internal fun CouiWeekScreen(
                     if (plan.keepContent) {
                         // 有旧期数时刷新失败只降级提示，不把已有内容清空
                         periodsFailure = null
+                        plan.notice?.let { notice -> snackbarHostState.showSnackbar(notice) }
                     } else {
                         periodsExpired = plan.phase == ScreenLoadPhase.Expired
                         periodsFailure = plan.message
@@ -168,7 +177,7 @@ internal fun CouiWeekScreen(
         }
     }
 
-    LaunchedEffect(Unit) { loadPeriods() }
+    LaunchedEffect(user?.uid) { loadPeriods() }
 
     CouiTheme {
         val listState = rememberLazyListState()
@@ -177,7 +186,8 @@ internal fun CouiWeekScreen(
         val scheme = CouiKitTheme.colorScheme
         val currentPeriod = periods.getOrNull(selected)
 
-        CouiAppScaffold(
+        Box(modifier = Modifier.fillMaxSize()) {
+            CouiAppScaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 LargeTopAppBar(
@@ -300,9 +310,17 @@ internal fun CouiWeekScreen(
                             }
                             item(key = "week-tail") { Spacer(modifier = Modifier.size(CouiPageDefaults.groupSpacing)) }
                         }
+                        }
                     }
                 }
             }
+
+            GlassSnackbarHost(
+                state = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+            )
         }
     }
 }

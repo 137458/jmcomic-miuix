@@ -42,6 +42,7 @@ import com.itos.coui.layout.Footer
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.text.CouiTextKind
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
@@ -76,7 +77,6 @@ import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private const val TASK_STATE_DONE = "已达成"
 private const val TASK_STATE_UNDONE = "未达成"
@@ -161,14 +161,19 @@ internal fun CouiTasksScreen(
         if (showLoading) states[targetTypeIdx] = TasksUiState.Loading
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.tasks(requestType, requestFilter) }
-            if (refreshingTab == targetTypeIdx) refreshingTab = null
             if (requestTokens[targetTypeIdx] != token || clampedFilterIndex != requestFilterIdx) return@launch
+            if (refreshingTab == targetTypeIdx) refreshingTab = null
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    val host = runCatching { deps.gateway.imageHost() }
-                        .getOrNull()
+                    val host = (deps.authCall.call { deps.gateway.imageHost() } as? SessionOutcome.Ok)
+                        ?.value
                         .orEmpty()
-                        .ifBlank { runCatching { deps.gateway.usedDomain() }.getOrNull().orEmpty() }
+                        .ifBlank {
+                            (deps.authCall.call { deps.gateway.usedDomain() } as? SessionOutcome.Ok)
+                                ?.value
+                                .orEmpty()
+                        }
+                    if (requestTokens[targetTypeIdx] != token || clampedFilterIndex != requestFilterIdx) return@launch
                     states[targetTypeIdx] = TasksUiState.Loaded(outcome.value, host)
                 }
                 is SessionOutcome.Expired -> applyFailure(targetTypeIdx, outcome)
@@ -281,7 +286,10 @@ internal fun CouiTasksScreen(
                         val pageMessage = pageLoaded?.page?.message.orEmpty()
                         if (pageMessage.isNotBlank()) {
                             item(key = "tasks-message") {
-                                Footer(text = pageMessage, color = MiuixTheme.colorScheme.error)
+                                Footer(
+                                    text = pageMessage,
+                                    color = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive,
+                                )
                             }
                         }
 

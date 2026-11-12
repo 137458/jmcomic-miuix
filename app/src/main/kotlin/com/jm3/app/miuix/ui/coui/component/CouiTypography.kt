@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
 import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme
 import com.itos.coui.theme.LocalCouiContentColor
@@ -37,10 +36,9 @@ private const val CouiLargeTypographyScale = 1.12f
 @Composable
 internal fun couiLargeTypography(): Boolean = LocalWideLayout.current.largeTypography
 
-/** 按大屏档缩放字阶：字号与行高同比放大，未指定的行高原样保留。 */
-@Composable
-internal fun couiScaledStyle(style: TextStyle): TextStyle {
-    if (!couiLargeTypography()) return style
+/** 按大屏档缩放字阶的纯计算入口：字号与行高同比放大，未指定的行高原样保留。 */
+internal fun scaleCouiTextStyle(style: TextStyle, largeTypography: Boolean): TextStyle {
+    if (!largeTypography) return style
     return style.copy(
         fontSize = if (style.fontSize.isSpecified) style.fontSize * CouiLargeTypographyScale else style.fontSize,
         lineHeight = if (style.lineHeight.isSpecified) {
@@ -50,6 +48,11 @@ internal fun couiScaledStyle(style: TextStyle): TextStyle {
         },
     )
 }
+
+/** 按大屏档缩放字阶：字号与行高同比放大，未指定的行高原样保留。 */
+@Composable
+internal fun couiScaledStyle(style: TextStyle): TextStyle =
+    scaleCouiTextStyle(style, couiLargeTypography())
 
 /** 只给字号时的逐项放大：侧栏与底栏标签这类自带行距的短文本用它。 */
 @Composable
@@ -62,14 +65,17 @@ internal fun couiScaledSize(base: Dp): Dp =
     if (couiLargeTypography()) base * CouiLargeTypographyScale else base
 
 @Composable
-internal fun rememberCouiBodyTextStyle(): TextStyle = rememberCouiTextStyle(CouiTextKind.Search)
+internal fun rememberCouiBodyTextStyle(): TextStyle =
+    couiScaledStyle(rememberCouiTextStyle(CouiTextKind.Search))
 
 @Composable
 internal fun rememberCouiSectionTitleStyle(): TextStyle =
-    rememberCouiTextStyle(CouiTextKind.ItemTitle).copy(
-        fontSize = 18.sp,
-        lineHeight = 22.sp,
-        fontWeight = FontWeight.SemiBold,
+    couiScaledStyle(
+        rememberCouiTextStyle(CouiTextKind.ItemTitle).copy(
+            fontSize = 18.sp,
+            lineHeight = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+        ),
     )
 
 @Composable
@@ -96,10 +102,10 @@ internal fun CouiBodyText(
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
-    Text(
-        modifier = modifier,
+    CouiCustomStyledText(
         text = text,
-        kind = CouiTextKind.Search,
+        style = rememberCouiBodyTextStyle(),
+        modifier = modifier,
         color = color,
         onLineCount = onLineCount,
         textAlign = textAlign,
@@ -154,6 +160,7 @@ internal fun CouiCustomStyledText(
     style: TextStyle,
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
+    onLineCount: (Int) -> Unit = {},
     textAlign: TextAlign = TextAlign.Start,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
@@ -168,6 +175,7 @@ internal fun CouiCustomStyledText(
             color = resolvedColor,
             textAlign = textAlign,
         ),
+        onTextLayout = { onLineCount(it.lineCount) },
         maxLines = maxLines,
         overflow = overflow,
     )

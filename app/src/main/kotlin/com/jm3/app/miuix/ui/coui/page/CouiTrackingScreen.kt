@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -102,6 +103,7 @@ internal fun CouiTrackingScreen(
     onOpenLogin: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    val user by deps.account.user.collectAsState()
     val haptic = rememberSelectionHaptic()
     val dateFormat = rememberDateFormatter()
     val mode = deps.preferences.paginationMode
@@ -256,7 +258,7 @@ internal fun CouiTrackingScreen(
         }
     }
 
-    LaunchedEffect(Unit) { loadFirstPage() }
+    LaunchedEffect(user?.uid) { loadFirstPage() }
     PaginationModeReloadEffect(mode) { loadFirstPage() }
     // 只有滚动分页才预取：点击分页下提前拉下一页会让页码与内容对不上
     CouiFeedPrefetchEffect(
@@ -272,135 +274,138 @@ internal fun CouiTrackingScreen(
         val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior()
         val items = feed.items
 
-        CouiAppScaffold(
-            modifier = Modifier.fillMaxSize(),
-            topBar = {
-                LargeTopAppBar(
-                    title = { CouiTopBarTitle(text = "连载追踪", textAlign = TextAlign.Start) },
-                    navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
-                    actions = {
-                        CouiFeedRefreshAction(
-                            refreshing = refreshing,
-                            onRefresh = {
-                                if (!refreshing) {
-                                    refreshing = true
-                                    loadFirstPage(showLoading = false)
+        Box(modifier = Modifier.fillMaxSize()) {
+            CouiAppScaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    LargeTopAppBar(
+                        title = { CouiTopBarTitle(text = "连载追踪", textAlign = TextAlign.Start) },
+                        navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
+                        actions = {
+                            CouiFeedRefreshAction(
+                                refreshing = refreshing,
+                                onRefresh = {
+                                    if (!refreshing) {
+                                        refreshing = true
+                                        loadFirstPage(showLoading = false)
+                                    }
+                                },
+                            )
+                        },
+                        scrollBehavior = scrollBehavior,
+                        colors = couiTopAppBarColors(),
+                    )
+                },
+            ) { innerPadding ->
+                // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+                val feedColumns = LocalWideLayout.current.feedColumns
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .readableWidth()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .consumeWindowInsets(innerPadding),
+                    state = listState,
+                    contentPadding = couiScreenContentPadding(scrollBehavior, innerPadding),
+                    overscrollEffect = overscroll,
+                ) {
+                    if (items.isNotEmpty()) {
+                        item(key = "tracking-subtitle") {
+                            Footer(text = "共 " + (feed.total ?: items.size) + " 部")
+                        }
+                    }
+                    when (val current = state) {
+                        TrackingUiState.Loading -> item(key = "tracking-loading") {
+                            CouiLoadingGroup(
+                                modifier = Modifier.padding(top = 8.dp),
+                                text = "正在加载追踪列表…",
+                            )
+                        }
+                        is TrackingUiState.Failed -> if (current.sessionExpired) {
+                            item(key = "tracking-expired") {
+                                CouiFeedLoginGroup(message = current.message, onOpenLogin = onOpenLogin)
+                            }
+                        } else {
+                            item(key = "tracking-error") {
+                                CouiErrorGroup(
+                                    message = current.message,
+                                    onRetry = { loadFirstPage() },
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                        }
+                        TrackingUiState.Loaded -> if (items.isEmpty()) {
+                            item(key = "tracking-empty") {
+                                CouiEmptyGroup(
+                                    text = "暂无追踪",
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                            item(key = "tracking-empty-hint") { Footer(text = "在详情页开启追更后会出现在这里") }
+                        } else {
+                            feedRowItems(
+                                count = items.size,
+                                columns = feedColumns,
+                                keyPrefix = "tracking-",
+                                keyOf = { index -> items[index].id },
+                            ) { index ->
+                                val item = items[index]
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            horizontal = CouiPageDefaults.horizontalMargin,
+                                            vertical = CouiWorkCardTokens.RowSpacing / 2,
+                                        ),
+                                ) {
+                                    CouiWorkRowCard(
+                                        coverUrl = item.coverUrl,
+                                        title = item.name,
+                                        onClick = { onOpenAlbum(item.id) },
+                                        albumId = item.id,
+                                        subtitle = item.updateAt.toReadableUpdateTime(dateFormat),
+                                        trailing = {
+                                            TrackingCancelAction(
+                                                busy = removingId == item.id,
+                                                onClick = { unfollow(item) },
+                                            )
+                                        },
+                                    )
                                 }
-                            },
-                        )
-                    },
-                    scrollBehavior = scrollBehavior,
-                    colors = couiTopAppBarColors(),
-                )
-            },
-        ) { innerPadding ->
-            // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
-            val feedColumns = LocalWideLayout.current.feedColumns
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .readableWidth()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .consumeWindowInsets(innerPadding),
-                state = listState,
-                contentPadding = couiScreenContentPadding(scrollBehavior, innerPadding),
-                overscrollEffect = overscroll,
-            ) {
-                if (items.isNotEmpty()) {
-                    item(key = "tracking-subtitle") {
-                        Footer(text = "共 " + (feed.total ?: items.size) + " 部")
-                    }
-                }
-                when (val current = state) {
-                    TrackingUiState.Loading -> item(key = "tracking-loading") {
-                        CouiLoadingGroup(
-                            modifier = Modifier.padding(top = 8.dp),
-                            text = "正在加载追踪列表…",
-                        )
-                    }
-                    is TrackingUiState.Failed -> if (current.sessionExpired) {
-                        item(key = "tracking-expired") {
-                            CouiFeedLoginGroup(message = current.message, onOpenLogin = onOpenLogin)
-                        }
-                    } else {
-                        item(key = "tracking-error") {
-                            CouiErrorGroup(
-                                message = current.message,
-                                onRetry = { loadFirstPage() },
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
-                    }
-                    TrackingUiState.Loaded -> if (items.isEmpty()) {
-                        item(key = "tracking-empty") {
-                            CouiEmptyGroup(
-                                text = "暂无追踪",
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
-                        item(key = "tracking-empty-hint") { Footer(text = "在详情页开启追更后会出现在这里") }
-                    } else {
-                        feedRowItems(
-                            count = items.size,
-                            columns = feedColumns,
-                            keyPrefix = "tracking-",
-                            keyOf = { index -> items[index].id },
-                        ) { index ->
-                            val item = items[index]
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        horizontal = CouiPageDefaults.horizontalMargin,
-                                        vertical = CouiWorkCardTokens.RowSpacing / 2,
-                                    ),
-                            ) {
-                                CouiWorkRowCard(
-                                    coverUrl = item.coverUrl,
-                                    title = item.name,
-                                    onClick = { onOpenAlbum(item.id) },
-                                    albumId = item.id,
-                                    subtitle = item.updateAt.toReadableUpdateTime(dateFormat),
-                                    trailing = {
-                                        TrackingCancelAction(
-                                            busy = removingId == item.id,
-                                            onClick = { unfollow(item) },
-                                        )
-                                    },
-                                )
                             }
-                        }
-                        item(key = "tracking-footer") {
-                            if (clickPaging) {
-                                CouiPagingGroup(
-                                    page = feed.page,
-                                    pageCount = feed.pageCount,
-                                    hasMore = feed.hasMore,
-                                    onJumpPage = { jumpToPage(it) },
-                                    modifier = Modifier.padding(top = 8.dp),
-                                )
-                            } else {
-                                CouiLoadMoreFooter(
-                                    feed = feed,
-                                    errorMessage = CouiStrings.LoadFailed,
-                                    onRetry = { loadMore() },
-                                    modifier = Modifier.padding(top = 8.dp),
-                                )
+                            item(key = "tracking-footer") {
+                                if (clickPaging) {
+                                    CouiPagingGroup(
+                                        page = feed.page,
+                                        pageCount = feed.pageCount,
+                                        hasMore = feed.hasMore,
+                                        onJumpPage = { jumpToPage(it) },
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    )
+                                } else {
+                                    CouiLoadMoreFooter(
+                                        feed = feed,
+                                        errorMessage = CouiStrings.LoadFailed,
+                                        onRetry = { loadMore() },
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    )
+                                }
                             }
-                        }
-                        item(key = "tracking-tail") {
-                            Spacer(modifier = Modifier.size(CouiPageDefaults.groupSpacing))
+                            item(key = "tracking-tail") {
+                                Spacer(modifier = Modifier.size(CouiPageDefaults.groupSpacing))
+                            }
                         }
                     }
                 }
             }
-        }
 
-        GlassSnackbarHost(
-            state = snackbarHostState,
-            modifier = Modifier
-                .fillMaxSize(),
-        )
+            GlassSnackbarHost(
+                state = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+            )
+        }
     }
 }
 

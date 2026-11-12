@@ -324,7 +324,8 @@ internal fun CouiForumScreen(
             },
         )
 
-        CouiScreenScaffold(
+        Box(modifier = Modifier.fillMaxSize()) {
+            CouiScreenScaffold(
             title = "社区论坛",
             onBack = onBack,
             scrollBehavior = scrollBehavior,
@@ -509,10 +510,13 @@ internal fun CouiForumScreen(
             }
         }
 
-        GlassSnackbarHost(
-            state = snackbarHostState,
-            modifier = Modifier.fillMaxSize(),
-        )
+            GlassSnackbarHost(
+                state = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+            )
+        }
 
         CouiForumInputDialog(
             visible = composing,
@@ -662,7 +666,7 @@ private fun CouiForumTopic(
 }
 
 /** 楼层扁平化：只保留两层缩进，更深的回复按最深层级展示，避免正文被挤成一条。 */
-private fun flattenForumReplies(root: CommentItem): List<Pair<CommentItem, Int>> {
+internal fun flattenForumReplies(root: CommentItem): List<Pair<CommentItem, Int>> {
     val rows = mutableListOf<Pair<CommentItem, Int>>()
     fun walk(item: CommentItem, depth: Int) {
         for (reply in item.replies) {

@@ -4,7 +4,7 @@ package com.jm3.app.miuix.ui.coui.page
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -594,7 +594,7 @@ private fun CouiCreatorWorksRow(
 /** 赞助外链：起不来就回调失败，由调用方提示，不静默吞掉。 */
 private fun openCouiExternal(context: Context, url: String, onFailure: () -> Unit) {
     runCatching {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
     }.onFailure { onFailure() }
 }

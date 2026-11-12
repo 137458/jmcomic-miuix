@@ -87,14 +87,14 @@ private sealed interface CouiHistoryListState {
 }
 
 /** 按作品聚合的阅读历史：最近一章用于一键续读，chapters 为该作品已读章节数。 */
-private data class CouiAlbumHistory(
+internal data class CouiAlbumHistory(
     val albumId: String,
     val latest: HistoryEntry,
     val chapters: Int,
 )
 
 /** 保持最近阅读时间倒序，把同一作品的记录折叠成一条。 */
-private fun List<HistoryEntry>.couiGroupByAlbum(): List<CouiAlbumHistory> {
+internal fun List<HistoryEntry>.couiGroupByAlbum(): List<CouiAlbumHistory> {
     val order = mutableListOf<String>()
     val latest = mutableMapOf<String, HistoryEntry>()
     val counts = mutableMapOf<String, Int>()

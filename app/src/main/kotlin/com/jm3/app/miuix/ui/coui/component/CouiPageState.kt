@@ -124,7 +124,7 @@ fun CouiGroupRow(
  *
  * 采样密度与 CouiShape 相同（线段相对曲线的误差上限 0.05px），因此与 [Group] 的整卡圆角逐像素贴合。
  */
-private data class CouiRowShape(
+internal data class CouiRowShape(
     private val radius: Dp,
     private val roundTop: Boolean,
     private val roundBottom: Boolean,

@@ -5,9 +5,7 @@ package com.jm3.app.miuix.ui.coui.page
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,11 +26,13 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -117,6 +118,7 @@ internal fun CouiNotificationsScreen(
     onOpenLogin: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    val user by deps.account.user.collectAsState()
     var page by remember { mutableStateOf<NotificationPage?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -195,7 +197,7 @@ internal fun CouiNotificationsScreen(
         }
     }
 
-    LaunchedEffect(Unit) { load() }
+    LaunchedEffect(user?.uid) { load() }
 
     CouiTheme {
         val listStates = remember { List(NotificationTab.entries.size) { LazyListState() } }
@@ -517,11 +519,29 @@ private fun NotificationCard(
     }
 }
 
+internal enum class CouiSwipeActionTrigger {
+    START,
+    END,
+    NONE,
+}
+
+/** 融合滑动松手判定：半程以上触发对应侧动作，未过半程回弹。 */
+internal fun resolveCouiSwipeAction(offsetPx: Float, reachPx: Float): CouiSwipeActionTrigger {
+    if (reachPx <= 0f) return CouiSwipeActionTrigger.NONE
+    val threshold = reachPx * 0.5f
+    return when {
+        offsetPx >= threshold -> CouiSwipeActionTrigger.START
+        offsetPx <= -threshold -> CouiSwipeActionTrigger.END
+        else -> CouiSwipeActionTrigger.NONE
+    }
+}
+
 /**
- * 融合滑动行：横向拖拽把卡片推开，露出两侧动作，越过半程松手即提交。
+ * 融合滑动行：长按后横向拖拽把卡片推开，露出两侧动作，越过半程松手即提交。
  *
+ * 长按启动手势将普通水平滑屏让给外层 [HorizontalPager]，避免从消息卡片上起滑无法切换页签；
  * 融合感来自推离程度的模糊渐变（[CouiSwipeRevealDefaults.fusedRevealMaxBlurPx]）与回弹
- * 弹簧（[CouiSwipeRevealDefaults.itemSettleSpec]），所以拖到一半松手会自然弹回原位。
+ * 弹簧（[CouiSwipeRevealDefaults.itemSettleSpec]），拖到一半松手会自然弹回原位。
  */
 @Composable
 private fun CouiSwipeRow(
@@ -542,6 +562,8 @@ private fun CouiSwipeRow(
         (CouiSwipeRevealDefaults.fusedRevealMaxBlurPx * scrim.coerceAtLeast(0f)).toDp()
     }
     val scope = rememberCoroutineScope()
+    val currentStartAction by rememberUpdatedState(onStartAction)
+    val currentEndAction by rememberUpdatedState(onEndAction)
 
     Box(modifier = modifier.fillMaxWidth()) {
         // 动作层先铺满：卡片被推开时露出的就是这一层，文字始终落在可读位置
@@ -580,25 +602,38 @@ private fun CouiSwipeRow(
             modifier = Modifier
                 .offset { IntOffset(offset.value.roundToInt(), 0) }
                 .blur(blurRadius)
-                .draggable(
-                    orientation = Orientation.Horizontal,
-                    state = rememberDraggableState { delta ->
-                        scope.launch {
-                            offset.snapTo((offset.value + delta).coerceIn(-reachPx, reachPx))
-                        }
-                    },
-                    onDragStopped = {
-                        val current = offset.value
-                        if (current >= reachPx * 0.5f) {
-                            haptic()
-                            onStartAction()
-                        } else if (current <= -reachPx * 0.5f) {
-                            haptic()
-                            onEndAction()
-                        }
-                        offset.animateTo(0f, CouiSwipeRevealDefaults.itemSettleSpec)
-                    },
-                ),
+                .pointerInput(reachPx) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { haptic() },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            scope.launch {
+                                offset.snapTo((offset.value + dragAmount.x).coerceIn(-reachPx, reachPx))
+                            }
+                        },
+                        onDragEnd = {
+                            scope.launch {
+                                when (resolveCouiSwipeAction(offset.value, reachPx)) {
+                                    CouiSwipeActionTrigger.START -> {
+                                        haptic()
+                                        currentStartAction()
+                                    }
+                                    CouiSwipeActionTrigger.END -> {
+                                        haptic()
+                                        currentEndAction()
+                                    }
+                                    CouiSwipeActionTrigger.NONE -> Unit
+                                }
+                                offset.animateTo(0f, CouiSwipeRevealDefaults.itemSettleSpec)
+                            }
+                        },
+                        onDragCancel = {
+                            scope.launch {
+                                offset.animateTo(0f, CouiSwipeRevealDefaults.itemSettleSpec)
+                            }
+                        },
+                    )
+                },
         ) {
             content()
         }

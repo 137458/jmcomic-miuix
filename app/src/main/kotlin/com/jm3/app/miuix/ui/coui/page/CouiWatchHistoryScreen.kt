@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -107,6 +108,8 @@ fun CouiWatchHistoryScreen(
         var uiState by remember { mutableStateOf<CouiWatchUiState>(CouiWatchUiState.Loading) }
         var deletingId by remember { mutableStateOf<String?>(null) }
         var pendingDeleteItem by remember { mutableStateOf<SearchResult?>(null) }
+        // 翻页/切模式代次号：仅接受最后一次请求的结果，防止并发覆盖
+        var requestToken by remember { mutableIntStateOf(0) }
 
         fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<SearchResult>, replace: Boolean) {
             val plan = planLoad(
@@ -136,8 +139,10 @@ fun CouiWatchHistoryScreen(
             } else if (showLoading) {
                 uiState = CouiWatchUiState.Loading
             }
+            val token = ++requestToken
             scope.launch {
                 val outcome = deps.authCall.call { deps.gateway.watchHistory(targetPage) }
+                if (token != requestToken) return@launch
                 when (outcome) {
                     is SessionOutcome.Ok -> {
                         val items = outcome.value
@@ -188,7 +193,7 @@ fun CouiWatchHistoryScreen(
             }
         }
 
-        LaunchedEffect(mode) { fetch(1, replace = true, showLoading = true) }
+        LaunchedEffect(Unit) { fetch(1, replace = true, showLoading = true) }
         // 翻页模式切换后当前页语义变了，回到第一页重新取，避免页脚停在旧页码
         PaginationModeReloadEffect(mode) { fetch(1, replace = true, showLoading = false) }
 

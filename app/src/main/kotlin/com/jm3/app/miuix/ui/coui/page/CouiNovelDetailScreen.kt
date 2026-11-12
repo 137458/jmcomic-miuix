@@ -160,7 +160,7 @@ private sealed interface CouiNovelDetailState {
 }
 
 /** 目录行：组头（十张一组）与章节行共用一份懒列表，键必须唯一。 */
-private sealed interface CouiNovelChapterRow {
+internal sealed interface CouiNovelChapterRow {
     val key: String
 
     data class GroupHeader(
@@ -738,7 +738,7 @@ private fun CouiNovelChapterRow.contentTypeKey(): String = when (this) {
  * 组默认展开规则由调用方给 [expandedGroupId]（null 表示全部收起）；
  * 只有一章的组不给折叠入口，直接铺开，与相册详情的目录一致。
  */
-private fun planNovelChapterRows(
+internal fun planNovelChapterRows(
     groups: List<ChapterGroup<NovelChapterMeta>>,
     expandedGroupId: String?,
     savedChapterId: String?,
@@ -769,7 +769,7 @@ private fun planNovelChapterRows(
 }
 
 /** 单章摘要：上次读到 > 需购买 > 新章节 > 已购买，与 HyperOS 版小说目录同序。 */
-private fun novelChapterMarker(chapter: NovelChapterMeta, savedChapterId: String?): String? = when {
+internal fun novelChapterMarker(chapter: NovelChapterMeta, savedChapterId: String?): String? = when {
     chapter.ncid == savedChapterId -> "上次读到"
     chapter.needBuy -> "需购买"
     chapter.isNew -> "新章节"

@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
@@ -92,7 +93,6 @@ import java.time.LocalDate
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Group 内的分隔线按图标列缩进：图标（24dp）+ 图标间距（16dp）+ 行首留白（16dp）。 */
 private val MineDividerStartIndent =
@@ -267,7 +267,7 @@ internal fun CouiMineScreen(
                     MineNavRow(
                         icon = CouiIcons.LogOut,
                         title = "退出登录",
-                        titleColor = MiuixTheme.colorScheme.error,
+                        titleColor = CouiDialogDefaults.themeColors(CouiTheme.isDark).destructive,
                         onClick = { confirmLogout = true },
                     )
                 }
@@ -484,8 +484,7 @@ private fun MineCheckInGroup(
     onOpenLogin: () -> Unit,
 ) {
     val scheme = CouiTheme.colorScheme
-    // COUI 调色板没有语义错误色，这里沿用全项目既有的 MIUIX 主题 token（只取颜色，不取组件）
-    val errorColor = MiuixTheme.colorScheme.error
+    val errorColor = CouiDialogDefaults.themeColors(CouiTheme.isDark).destructive
     val today = LocalDate.now()
     when {
         // 会话失效时重试必然再吃一次 401，唯一动作只能是去登录

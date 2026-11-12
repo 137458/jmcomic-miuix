@@ -94,7 +94,6 @@ import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
-import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
@@ -202,11 +201,8 @@ fun CouiSettingsScreen(
                 .getOrNull() ?: "未知"
         }
         val versionCode = remember {
-            @Suppress("DEPRECATION")
             runCatching {
-                context.packageManager.getPackageInfo(context.packageName, 0).let { info ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
-                }
+                context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
             }.getOrDefault(0L)
         }
 
