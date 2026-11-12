@@ -2,14 +2,17 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,17 +21,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -56,9 +57,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.itos.coui.dialog.CouiDialogAction
-import com.itos.coui.dialog.CouiDialogPlacement
-import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
@@ -66,54 +64,61 @@ import com.itos.coui.layout.Group
 import com.itos.coui.layout.Item
 import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.shape.CouiShape
 import com.itos.coui.switch.Switch
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
-import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
+import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.UpdateAvailableDialog
+import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.CouiCircleActionButton
 import com.jm3.app.miuix.ui.coui.component.CouiCustomStyledText
 import com.jm3.app.miuix.ui.coui.component.CouiDetailButtonShape
-import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiInstallProgressButton
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
-import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiSwitchRow
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
-import com.jm3.app.miuix.ui.couiPageExtraBottomDp
+import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
-import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.formatUpdateSize
-import com.jm3.app.miuix.ui.formatUpdateSpeed
+import com.jm3.app.miuix.ui.loadAppIcon
 import com.jm3.app.miuix.ui.loadCurrentVersion
 import com.jm3.app.miuix.ui.openUpdateReleasePage
 import com.jm3.app.miuix.ui.parseInlineNotes
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.updateBrowserFallbackUrl
-import com.jm3.app.miuix.ui.updateProgressText
+import com.jm3.app.miuix.ui.updateDialogDownloadDetail
 import com.jm3.app.miuix.update.ApkInstaller
 import com.jm3.app.miuix.update.UpdateDownloadState
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
+import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.ReleaseInfo
 import com.jm3.core.update.UpdateCenter
 import com.jm3.core.update.UpdateChecker
 import com.jm3.core.update.UpdateOutcome
+import com.jm3.core.update.UpdateProgress
 import com.jm3.core.update.UpdatePrompt
 import com.jm3.core.update.UpdatePromptState
 import java.io.File
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 更新说明的块间距，与更新弹窗保持同一节奏。 */
 private val NotesBlockSpacing = 6.dp
@@ -124,17 +129,18 @@ private val NotesPrefixMinWidth = 20.dp
 /** 已是最新版本且更新说明较长时默认预览的块数（对标 OShin 折叠说明）。 */
 private const val CHANGELOG_PREVIEW_BLOCK_LIMIT = 3
 
-/** 底部固定主操作栏的额外内容避让高度，确保滚动最底部卡片完整露出来。 */
-private val BottomActionClearance = 84.dp
+/** 底部固定主操作栏在实测前的默认内容避让高度（48dp 按钮 + 上下各 12dp）。 */
+private val BottomActionDefaultClearance = 72.dp
 
-/** 底部主操作进度动画时长（参考 OShin 软件更新页 250ms 填充节奏）。 */
-private const val DOWNLOAD_PROGRESS_ANIM_MS = 250
+private val HeroIconContainerShape = CouiShape(14.dp, 3f)
+private val HeroIconContainerSize = 52.dp
+private val HeroIconGlyphSize = 36.dp
 
 /**
- * COUI 检查更新页：一列详情卡，签名与原页面一致。
+ * COUI 检查更新页：光感主卡 + 说明/设置/信息分组 + 底部填充进度操作栏。
  *
- * 检查逻辑原样复用 [UpdateCenter] 与 [UpdatePrompt]：页面只负责状态落位与渲染。
- * 库侧没有进度条与开关行以外的表单控件，进度条按胶囊自绘，其余动作走卡片行。
+ * 检查逻辑原样复用 [UpdateCenter] 与 [UpdatePrompt]，新版本弹窗复用共享的 [UpdateAvailableDialog]；
+ * 底部操作栏采用两遍裁剪反白胶囊进度按钮（对标 `COUIInstallLoadProgress`）并随下载态附带取消/重下圆键。
  */
 @Composable
 internal fun CouiUpdateScreen(
@@ -154,7 +160,7 @@ internal fun CouiUpdateScreen(
     // null 表示正在检查：与 UpdateOutcome.Failed 区分开，否则首次进入会闪一帧「失败」
     var state by remember { mutableStateOf<UpdateOutcome?>(null) }
     var showDialog by rememberSaveable { mutableStateOf(false) }
-    var autoCheckUpdate by remember { mutableStateOf(false) }
+    var autoCheckUpdate by remember { mutableStateOf(true) }
     var ignoredVersion by remember { mutableStateOf<String?>(null) }
     val downloadState by deps.updateDownloader.state.collectAsState()
 
@@ -211,6 +217,12 @@ internal fun CouiUpdateScreen(
         }
     }
 
+    fun copyCurrentVersion() {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("版本号", currentVersion))
+        scope.launch { snackbarHostState.showSnackbar("已复制版本号 v$currentVersion") }
+    }
+
     fun install(file: File) {
         when (val result = ApkInstaller.install(context, file)) {
             is ApkInstaller.Result.Launched -> Unit
@@ -232,22 +244,28 @@ internal fun CouiUpdateScreen(
     }
 
     CouiTheme {
+        val density = LocalDensity.current
         val scrollState = rememberScrollState()
-        val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+        val scrollBehavior = rememberCouiScreenScrollBehavior(canScroll = { scrollState.maxValue > 0 })
+        var bottomBarBodyHeight by remember { mutableStateOf(BottomActionDefaultClearance) }
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiAppScaffold(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
                 topBar = {
                     LargeTopAppBar(
                         title = { CouiTopBarTitle(text = "检查更新", textAlign = TextAlign.Start) },
                         navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
                         actions = {
-                            CouiTopBarAction(
-                                icon = CouiIcons.Refresh,
-                                contentDescription = "重新检查",
-                                onClick = { attempt++ },
-                            )
+                            TopAppBarButtonGroup {
+                                CouiTopBarAction(
+                                    icon = CouiIcons.Refresh,
+                                    contentDescription = "重新检查",
+                                    onClick = { if (state != null) attempt++ },
+                                )
+                            }
                         },
                         scrollBehavior = scrollBehavior,
                         colors = couiTopAppBarColors(),
@@ -258,12 +276,11 @@ internal fun CouiUpdateScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .readableWidth()
-                        .nestedScroll(scrollBehavior.nestedScrollConnection)
                         .couiVerticalScroll(scrollState)
                         .padding(
-                            scrollBehavior.state.contentPadding(innerPadding, LocalDensity.current)
+                            scrollBehavior.state.contentPadding(innerPadding, density)
                                 .couiWithBottomPadding(
-                                    couiPageExtraBottomDp(hasFab = false).dp + BottomActionClearance,
+                                    couiPageExtraBottomDp(hasFab = false).dp + bottomBarBodyHeight,
                                 ),
                         )
                         .consumeWindowInsets(innerPadding),
@@ -274,7 +291,6 @@ internal fun CouiUpdateScreen(
                         state = state,
                         downloadState = downloadState,
                         onOpenRelease = ::openRelease,
-                        onCancelDownload = { deps.updateDownloader.cancel() },
                     )
                     if (release != null) {
                         UpdateNotesGroup(
@@ -285,6 +301,7 @@ internal fun CouiUpdateScreen(
                     }
                     UpdateSettingsGroup(
                         autoCheckUpdate = autoCheckUpdate,
+                        ignored = ignored,
                         ignoreSummary = ignoreSummary,
                         ignoreEnabled = hasNewVersion && latestVersion != null,
                         onAutoCheckChange = ::setAutoCheck,
@@ -292,7 +309,9 @@ internal fun CouiUpdateScreen(
                     )
                     UpdateMetaGroup(
                         currentVersion = currentVersion,
+                        state = state,
                         release = release,
+                        onCopyVersion = ::copyCurrentVersion,
                         onOpenRelease = { openRelease(UpdateChecker.RELEASES_PAGE_URL) },
                     )
                 }
@@ -311,38 +330,45 @@ internal fun CouiUpdateScreen(
                 UpdateBottomActionBar(
                     state = state,
                     downloadState = downloadState,
+                    onContentHeightMeasured = { px ->
+                        bottomBarBodyHeight = with(density) { px.toDp() }
+                    },
                     onRecheck = { attempt++ },
                     onOpenRelease = ::openRelease,
                     onStartDownload = { asset -> deps.updateDownloader.start(asset) },
+                    onCancelDownload = { deps.updateDownloader.cancel() },
                     onResetDownload = { deps.updateDownloader.reset() },
                     onInstall = ::install,
                 )
             }
         }
 
-        // 弹窗常驻组合，只切 visible：库要靠它保留退场动画窗口
-        UpdateAvailableDialog(
-            show = showDialog,
-            currentVersion = currentVersion,
-            release = release,
-            downloadState = downloadState,
-            onDismiss = { showDialog = false },
-            onDownload = { asset -> deps.updateDownloader.start(asset) },
-            onCancelDownload = { deps.updateDownloader.cancel() },
-            onResetDownload = { deps.updateDownloader.reset() },
-            onInstall = ::install,
-            onOpenRelease = ::openRelease,
-            onIgnore = { version ->
-                if (ignoredVersion != version) toggleIgnored(version)
-                showDialog = false
-            },
-        )
+        val dialogRelease = rememberRetainedTarget((state as? UpdateOutcome.Available)?.release)
+        if (dialogRelease != null) {
+            UpdateAvailableDialog(
+                show = showDialog,
+                currentVersion = currentVersion,
+                release = dialogRelease,
+                downloadState = downloadState,
+                onDismiss = { showDialog = false },
+                onDownload = { dialogRelease.apk?.let { deps.updateDownloader.start(it) } },
+                onOpenRelease = {
+                    showDialog = false
+                    openRelease(dialogRelease.htmlUrl)
+                },
+                onIgnore = { version ->
+                    showDialog = false
+                    if (ignoredVersion != version) toggleIgnored(version)
+                },
+                onCancelDownload = { deps.updateDownloader.cancel() },
+            )
+        }
     }
 }
 
 /**
- * 参考 OShin 软件更新页的顶部流体曲线玻璃视觉主卡：
- * 光感弧面玻璃底纹 + Release 标识胶囊 + 大字态结论 + 软件版本对照 + 发布元信息。
+ * 参考 ColorOS 软件更新页的顶部流体曲线玻璃视觉主卡：
+ * 光感弧面玻璃底纹 + 应用图标 + Release 状态胶囊 + 大字态结论 + 软件版本对照 + 下载实时速率。
  */
 @Composable
 private fun UpdateHeroCard(
@@ -351,15 +377,12 @@ private fun UpdateHeroCard(
     state: UpdateOutcome?,
     downloadState: UpdateDownloadState,
     onOpenRelease: (String) -> Unit,
-    onCancelDownload: () -> Unit,
 ) {
+    val context = LocalContext.current
     val dark = CouiKitTheme.isDark
     val scheme = CouiKitTheme.colorScheme
-    val release = when (state) {
-        is UpdateOutcome.Available -> state.release
-        is UpdateOutcome.UpToDate -> state.release
-        else -> null
-    }
+    val iconSizePx = with(LocalDensity.current) { HeroIconGlyphSize.roundToPx() }
+    val appIcon = remember(context, iconSizePx) { loadAppIcon(context, iconSizePx) }
     val checking = state == null
     val hasFailed = state is UpdateOutcome.Failed
     val isAvailable = state is UpdateOutcome.Available
@@ -370,16 +393,8 @@ private fun UpdateHeroCard(
         hasFailed -> CouiIcons.Info
         else -> CouiIcons.Check
     }
-    val headlineText = when {
-        checking -> "正在检测更新"
-        isAvailable -> "发现新版本"
-        hasFailed -> "检查更新失败"
-        else -> "已是最新版本"
-    }
-    val versionLine = when {
-        isAvailable && release != null -> "软件版本  v$currentVersion → v${release.version}"
-        else -> "软件版本  v$currentVersion"
-    }
+    val headlineText = couiUpdateHeadline(state)
+    val versionLine = couiUpdateVersionLine(currentVersion, state)
     val subtitleText = when {
         state is UpdateOutcome.Available -> couiUpdateReleaseMetaLine(state.release)
         state is UpdateOutcome.UpToDate -> couiUpdateReleaseMetaLine(state.release)
@@ -428,9 +443,27 @@ private fun UpdateHeroCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 24.dp),
+                .animateContentSize()
+                .padding(horizontal = 24.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (appIcon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(HeroIconContainerSize)
+                        .clip(HeroIconContainerShape)
+                        .background(Color.White.copy(alpha = if (dark) 0.14f else 0.22f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.36f), HeroIconContainerShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        bitmap = appIcon,
+                        contentDescription = appName,
+                        modifier = Modifier.size(HeroIconGlyphSize),
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             Row(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
@@ -456,7 +489,7 @@ private fun UpdateHeroCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             BasicText(
                 text = headlineText,
                 style = rememberCouiTextStyle(CouiTextKind.HomeTitle).copy(
@@ -506,23 +539,22 @@ private fun UpdateHeroCard(
                 )
             }
             if (isAvailable && downloadState is UpdateDownloadState.Downloading) {
-                Spacer(modifier = Modifier.height(14.dp))
-                CouiBodyText(
-                    text = updateProgressText(downloadState, withSize = true),
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (downloadState.speedBytesPerSec > 0L) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(CouiCapsuleShape)
+                        .background(Color.White.copy(alpha = if (dark) 0.14f else 0.20f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.30f), CouiCapsuleShape)
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                ) {
                     Text(
-                        text = "下载速度 " + formatUpdateSpeed(downloadState.speedBytesPerSec),
+                        text = updateDialogDownloadDetail(downloadState),
                         kind = CouiTextKind.GroupFooter,
-                        color = Color.White.copy(alpha = 0.80f),
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                HeroFrostedLinkButton(text = "取消下载", onClick = onCancelDownload)
             } else if (isAvailable && downloadState is UpdateDownloadState.Failed) {
                 Spacer(modifier = Modifier.height(12.dp))
                 CouiBodyText(
@@ -674,45 +706,27 @@ private fun HeroFrostedLinkButton(
 }
 
 /**
- * 底部固定主操作栏：对齐 OShin 的居中大边距（40dp 左右留白）与 250ms 填充下载进度。
+ * 底部固定主操作栏：使用 [CouiInstallProgressButton] 呈现双遍裁剪反白进度，
+ * 下载中与就绪态并排提供取消/重新下载圆形快捷按钮。
  */
 @Composable
 private fun UpdateBottomActionBar(
     state: UpdateOutcome?,
     downloadState: UpdateDownloadState,
+    onContentHeightMeasured: (Int) -> Unit,
     onRecheck: () -> Unit,
     onOpenRelease: (String) -> Unit,
-    onStartDownload: (com.jm3.core.update.ReleaseAsset) -> Unit,
+    onStartDownload: (ReleaseAsset) -> Unit,
+    onCancelDownload: () -> Unit,
     onResetDownload: () -> Unit,
     onInstall: (File) -> Unit,
 ) {
-    val dark = CouiKitTheme.isDark
     val scheme = CouiKitTheme.colorScheme
-    val checking = state == null
-    val isDownloading = downloadState is UpdateDownloadState.Downloading
-    val targetProgress = if (downloadState is UpdateDownloadState.Downloading) {
-        downloadState.progress.coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    val animatedProgress by animateFloatAsState(
-        targetValue = targetProgress,
-        animationSpec = tween(durationMillis = DOWNLOAD_PROGRESS_ANIM_MS),
-        label = "coui-update-bottom-progress",
-    )
+    val mode = couiUpdateActionBarMode(state, downloadState)
     val label = couiUpdateButtonLabel(state, downloadState)
-    val enabled = !checking && !isDownloading
-
-    val trackBg = when {
-        checking -> scheme.onSurface.copy(alpha = if (dark) 0.10f else 0.08f)
-        isDownloading -> scheme.accent.copy(alpha = if (dark) 0.22f else 0.16f)
-        else -> scheme.accent
-    }
-    val labelColor = when {
-        checking -> scheme.onSurfaceVariant
-        isDownloading -> scheme.onSurface
-        else -> scheme.onAccent
-    }
+    val progressFraction = couiUpdateProgressFraction(downloadState)
+    val isDownloading = mode == CouiUpdateActionBarMode.DOWNLOADING
+    val enabled = mode != CouiUpdateActionBarMode.CHECKING && !isDownloading
 
     Box(
         modifier = Modifier
@@ -727,56 +741,59 @@ private fun UpdateBottomActionBar(
                 ),
             )
             .navigationBarsPadding()
-            .padding(horizontal = 40.dp, vertical = 12.dp),
+            .onSizeChanged { onContentHeightMeasured(it.height) }
+            .padding(horizontal = 32.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .readableWidth()
-                .fillMaxWidth()
-                .height(48.dp)
-                .couiPressable(
-                    shape = CouiCapsuleShape,
-                    backgroundColor = trackBg,
-                    spotlight = if (enabled) SpotlightPreset.OpaqueMedium1 else null,
-                    enabled = enabled,
-                    scaleOnPress = enabled,
-                    minTouchTarget = CouiMinTouchTarget,
-                    onClick = {
-                        when {
-                            downloadState is UpdateDownloadState.Done -> onInstall(downloadState.file)
-                            downloadState is UpdateDownloadState.Failed -> onResetDownload()
-                            state is UpdateOutcome.Available -> {
-                                val asset = state.release.apk
-                                if (asset != null) onStartDownload(asset) else onOpenRelease(state.release.htmlUrl)
-                            }
-                            else -> onRecheck()
-                        }
-                    },
-                ),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (isDownloading) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clip(CouiCapsuleShape),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(animatedProgress)
-                            .background(scheme.accent),
-                    )
-                }
-            }
-            Text(
+            CouiInstallProgressButton(
                 text = label,
-                kind = CouiTextKind.ItemTitle,
-                color = labelColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                enabled = enabled,
+                progress = progressFraction,
+                isProgressActive = isDownloading,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    when (mode) {
+                        CouiUpdateActionBarMode.READY_TO_INSTALL -> {
+                            (downloadState as? UpdateDownloadState.Done)?.let { onInstall(it.file) }
+                        }
+                        CouiUpdateActionBarMode.DOWNLOAD_FAILED -> {
+                            val asset = (state as? UpdateOutcome.Available)?.release?.apk
+                            if (asset != null) onStartDownload(asset) else onResetDownload()
+                        }
+                        CouiUpdateActionBarMode.AVAILABLE_IDLE -> {
+                            val release = (state as? UpdateOutcome.Available)?.release ?: return@CouiInstallProgressButton
+                            val asset = release.apk
+                            if (asset != null) onStartDownload(asset) else onOpenRelease(release.htmlUrl)
+                        }
+                        CouiUpdateActionBarMode.CHECK_FAILED,
+                        CouiUpdateActionBarMode.UP_TO_DATE,
+                        -> onRecheck()
+                        CouiUpdateActionBarMode.CHECKING,
+                        CouiUpdateActionBarMode.DOWNLOADING,
+                        -> Unit
+                    }
+                },
             )
+            if (isDownloading) {
+                CouiCircleActionButton(
+                    icon = CouiIcons.Close,
+                    contentDescription = "取消下载",
+                    onClick = onCancelDownload,
+                )
+            } else if (mode == CouiUpdateActionBarMode.READY_TO_INSTALL) {
+                CouiCircleActionButton(
+                    icon = CouiIcons.Refresh,
+                    contentDescription = "重新下载",
+                    onClick = onResetDownload,
+                )
+            }
         }
     }
 }
@@ -826,6 +843,7 @@ private fun UpdateNotesGroup(
                             shape = CouiDetailButtonShape,
                             backgroundColor = scheme.accent.copy(alpha = 0.10f),
                             spotlight = SpotlightPreset.ChipTab,
+                            scaleOnPress = true,
                             minTouchTarget = CouiMinTouchTarget,
                             onClick = { expanded = !expanded },
                         )
@@ -842,32 +860,6 @@ private fun UpdateNotesGroup(
                 }
             }
         }
-    }
-}
-
-/** 自绘进度条：250ms 平滑过渡填充满胶囊轨道，供弹窗复用。 */
-@Composable
-private fun CouiProgressBar(progress: Float) {
-    val scheme = CouiKitTheme.colorScheme
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress.coerceIn(0f, 1f),
-        animationSpec = tween(durationMillis = DOWNLOAD_PROGRESS_ANIM_MS),
-        label = "coui-dialog-progress",
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .clip(CouiCapsuleShape)
-            .background(scheme.outlineVariant.copy(alpha = 0.6f)),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(animatedProgress)
-                .fillMaxHeight()
-                .clip(CouiCapsuleShape)
-                .background(scheme.accent),
-        )
     }
 }
 
@@ -936,29 +928,64 @@ private fun rememberCouiNotesInline(text: String): AnnotatedString {
     }
 }
 
-/** 更新设置卡：自动检查开关与忽略当前版本。 */
+/** 更新设置卡：整行可点的自动检查与忽略版本开关。 */
 @Composable
 private fun UpdateSettingsGroup(
     autoCheckUpdate: Boolean,
+    ignored: Boolean,
     ignoreSummary: String,
     ignoreEnabled: Boolean,
     onAutoCheckChange: (Boolean) -> Unit,
     onIgnoreToggle: () -> Unit,
 ) {
+    val scheme = CouiKitTheme.colorScheme
     Group(title = "更新设置") {
         Item(
+            modifier = Modifier.couiSwitchRow(
+                value = autoCheckUpdate,
+                onValueChange = onAutoCheckChange,
+            ),
             title = { Text(text = "自动检查更新", kind = CouiTextKind.ItemTitle) },
-            summary = { Text(text = "每次启动应用时自动检查最新版本", kind = CouiTextKind.ItemSummary) },
+            summary = {
+                Text(
+                    text = "每次启动应用时自动检查最新版本",
+                    kind = CouiTextKind.ItemSummary,
+                    color = scheme.onSurfaceVariant,
+                )
+            },
             trailing = {
-                Switch(checked = autoCheckUpdate, onCheckedChange = onAutoCheckChange)
+                Switch(checked = autoCheckUpdate, onCheckedChange = null)
             },
         )
         Divider()
         Item(
-            title = { Text(text = "忽略此版本", kind = CouiTextKind.ItemTitle) },
-            summary = { Text(text = ignoreSummary, kind = CouiTextKind.ItemSummary) },
+            modifier = Modifier.couiSwitchRow(
+                value = ignored,
+                enabled = ignoreEnabled,
+                onValueChange = { onIgnoreToggle() },
+            ),
             enabled = ignoreEnabled,
-            onClick = if (ignoreEnabled) onIgnoreToggle else null,
+            title = {
+                Text(
+                    text = "忽略此版本",
+                    kind = CouiTextKind.ItemTitle,
+                    color = if (ignoreEnabled) scheme.onSurface else scheme.onSurfaceVariant,
+                )
+            },
+            summary = {
+                Text(
+                    text = ignoreSummary,
+                    kind = CouiTextKind.ItemSummary,
+                    color = scheme.onSurfaceVariant,
+                )
+            },
+            trailing = {
+                Switch(
+                    checked = ignored,
+                    onCheckedChange = null,
+                    enabled = ignoreEnabled,
+                )
+            },
         )
     }
 }
@@ -967,157 +994,130 @@ private fun UpdateSettingsGroup(
 @Composable
 private fun UpdateMetaGroup(
     currentVersion: String,
+    state: UpdateOutcome?,
     release: ReleaseInfo?,
+    onCopyVersion: () -> Unit,
     onOpenRelease: () -> Unit,
 ) {
+    val scheme = CouiKitTheme.colorScheme
+    val remoteVersionText = when {
+        state == null -> "检测中…"
+        release != null -> release.version
+        state is UpdateOutcome.Failed -> "获取失败"
+        else -> "—"
+    }
     Group(title = "版本信息") {
         Item(
             title = { Text(text = "当前版本", kind = CouiTextKind.ItemTitle) },
-            trailing = { Text(text = currentVersion, kind = CouiTextKind.ItemValue) },
+            summary = {
+                Text(
+                    text = "点击复制版本号",
+                    kind = CouiTextKind.ItemSummary,
+                    color = scheme.onSurfaceVariant,
+                )
+            },
+            trailing = {
+                Text(
+                    text = currentVersion,
+                    kind = CouiTextKind.ItemValue,
+                    color = scheme.onSurfaceVariant,
+                )
+            },
+            onClick = onCopyVersion,
         )
         Divider()
         Item(
             title = { Text(text = "远端最新版本", kind = CouiTextKind.ItemTitle) },
-            trailing = { Text(text = release?.version ?: "—", kind = CouiTextKind.ItemValue) },
+            trailing = {
+                Text(
+                    text = remoteVersionText,
+                    kind = CouiTextKind.ItemValue,
+                    color = scheme.onSurfaceVariant,
+                )
+            },
         )
         Divider()
         Item(
             title = { Text(text = "GitHub Releases", kind = CouiTextKind.ItemTitle) },
-            summary = { Text(text = "在浏览器查看完整发布说明", kind = CouiTextKind.ItemSummary) },
+            summary = {
+                Text(
+                    text = "在浏览器查看完整发布说明",
+                    kind = CouiTextKind.ItemSummary,
+                    color = scheme.onSurfaceVariant,
+                )
+            },
+            trailing = {
+                Icon(
+                    imageVector = CouiIcons.Forward,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = scheme.onSurfaceVariant,
+                )
+            },
             onClick = onOpenRelease,
         )
     }
 }
 
-/** 发现新版本时的确认弹窗：强确认放居中，行动按下载态收敛成一条主操作。 */
-@Composable
-private fun UpdateAvailableDialog(
-    show: Boolean,
-    currentVersion: String,
-    release: ReleaseInfo?,
-    downloadState: UpdateDownloadState,
-    onDismiss: () -> Unit,
-    onDownload: (com.jm3.core.update.ReleaseAsset) -> Unit,
-    onCancelDownload: () -> Unit,
-    onResetDownload: () -> Unit,
-    onInstall: (File) -> Unit,
-    onOpenRelease: (String) -> Unit,
-    onIgnore: (String) -> Unit,
-) {
-    if (release == null) return
-    val scheme = CouiKitTheme.colorScheme
-    val asset = release.apk
-    Dialog(
-        onDismissRequest = onDismiss,
-        visible = show,
-        dark = CouiKitTheme.isDark,
-        material = couiDialogMaterial(),
-        placement = CouiDialogPlacement.Center,
-        title = "发现新版本 " + release.version,
-        message = "当前版本 " + currentVersion,
-        confirmAction = when (downloadState) {
-            is UpdateDownloadState.Done -> CouiDialogAction(
-                text = "立即安装",
-                onClick = { onInstall(downloadState.file) },
-            )
-            is UpdateDownloadState.Downloading -> CouiDialogAction(
-                text = "取消下载",
-                onClick = onCancelDownload,
-            )
-            else -> CouiDialogAction(
-                text = if (asset == null) "前往 Releases 页面" else "立即下载更新",
-                enabled = asset != null,
-                onClick = {
-                    if (asset == null) {
-                        onOpenRelease(release.htmlUrl)
-                    } else {
-                        onDownload(asset)
-                    }
-                },
-            )
-        },
-        dismissAction = CouiDialogAction(
-            text = "忽略此版本",
-            onClick = {
-                // 下载失败时不再记忽略：用户还没拿到安装包，记下来会吞掉下一次提示
-                if (downloadState !is UpdateDownloadState.Failed) onIgnore(release.version)
-                onDismiss()
-            },
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (release.publishedDate.isNotBlank()) {
-                Text(
-                    text = "发布于 " + release.publishedDate,
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.onSurfaceVariant,
-                )
-            }
-            when (downloadState) {
-                is UpdateDownloadState.Idle -> Text(
-                    text = asset?.let { "安装包 " + it.name + assetSizeSuffix(it.size) }
-                        ?: "该版本未附带安装包，请前往 Releases 页面手动下载。",
-                    kind = CouiTextKind.ItemSummary,
-                    color = scheme.onSurfaceVariant,
-                )
-                is UpdateDownloadState.Downloading -> {
-                    CouiBodyText(
-                        text = "正在下载 " + updateProgressText(downloadState, withSize = true),
-                    )
-                    CouiProgressBar(progress = downloadState.progress)
-                }
-                is UpdateDownloadState.Done -> CouiBodyText(
-                    text = "安装包已下载完成，点击安装完成升级。",
-                )
-                is UpdateDownloadState.Failed -> {
-                    CouiBodyText(text = downloadState.message, color = MiuixTheme.colorScheme.error)
-                    CouiInlineButton(text = CouiStrings.Retry, onClick = onResetDownload)
-                }
-            }
-        }
-    }
+/** 更新说明卡的标题：带版本号，让用户一眼看到看的是哪一版；区分本地领先与常规最新。 */
+private fun changelogTitle(state: UpdateOutcome?): String = couiUpdateChangelogTitle(state)
+
+internal enum class CouiUpdateActionBarMode {
+    CHECKING,
+    DOWNLOADING,
+    READY_TO_INSTALL,
+    DOWNLOAD_FAILED,
+    AVAILABLE_IDLE,
+    CHECK_FAILED,
+    UP_TO_DATE,
 }
 
-/** 站内动作按钮：库没有按钮组件，胶囊底 + 按压缩放即是本页全部按钮形态。 */
-@Composable
-private fun CouiInlineButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    emphasised: Boolean = false,
-) {
-    val scheme = CouiKitTheme.colorScheme
-    val color = if (emphasised) scheme.onAccent else scheme.accent
-    Box(
-        modifier = modifier
-            .couiPressable(
-                shape = CouiCapsuleShape,
-                backgroundColor = if (emphasised) scheme.accent else scheme.accent.copy(alpha = 0.14f),
-                // 强调色实底按库的主按钮口径取 OpaqueMedium1，浅底胶囊用 ChipTab
-                spotlight = if (emphasised) SpotlightPreset.OpaqueMedium1 else SpotlightPreset.ChipTab,
-                minTouchTarget = CouiMinTouchTarget,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-    ) {
-        Text(text = text, kind = CouiTextKind.ItemValue, color = color)
-    }
+internal fun couiUpdateHeadline(state: UpdateOutcome?): String = when (state) {
+    null -> "正在检测更新"
+    is UpdateOutcome.Available -> "发现新版本"
+    is UpdateOutcome.Failed -> "检查更新失败"
+    is UpdateOutcome.UpToDate -> if (state.localAhead) "当前版本已领先" else "已是最新版本"
 }
 
-/** 更新说明卡的标题：带版本号，让用户一眼看到看的是哪一版。 */
-private fun changelogTitle(state: UpdateOutcome?): String = when (state) {
-    is UpdateOutcome.Available -> "更新说明（" + state.release.version + "）"
-    is UpdateOutcome.UpToDate -> "当前版本说明（" + state.release.version + "）"
+internal fun couiUpdateVersionLine(currentVersion: String, state: UpdateOutcome?): String = when (state) {
+    is UpdateOutcome.Available -> "软件版本  v$currentVersion → v${state.release.version}"
+    is UpdateOutcome.UpToDate -> if (state.localAhead) {
+        "本地 v$currentVersion · 远端 v${state.release.version}"
+    } else {
+        "软件版本  v$currentVersion"
+    }
+    else -> "软件版本  v$currentVersion"
+}
+
+internal fun couiUpdateChangelogTitle(state: UpdateOutcome?): String = when (state) {
+    is UpdateOutcome.Available -> "更新说明（${state.release.version}）"
+    is UpdateOutcome.UpToDate -> if (state.localAhead) {
+        "最新公开发布说明（${state.release.version}）"
+    } else {
+        "当前版本说明（${state.release.version}）"
+    }
     else -> "更新说明"
 }
 
-private fun assetSizeSuffix(size: Long): String =
-    if (size > 0L) "（" + formatUpdateSize(size) + "）" else ""
+internal fun couiUpdateProgressFraction(downloadState: UpdateDownloadState): Float? = when (downloadState) {
+    is UpdateDownloadState.Downloading ->
+        if (downloadState.total > 0L) UpdateProgress.fraction(downloadState.downloaded, downloadState.total) else null
+    is UpdateDownloadState.Done -> 1f
+    else -> 0f
+}
+
+internal fun couiUpdateActionBarMode(
+    state: UpdateOutcome?,
+    downloadState: UpdateDownloadState,
+): CouiUpdateActionBarMode = when {
+    state == null -> CouiUpdateActionBarMode.CHECKING
+    downloadState is UpdateDownloadState.Downloading -> CouiUpdateActionBarMode.DOWNLOADING
+    downloadState is UpdateDownloadState.Done -> CouiUpdateActionBarMode.READY_TO_INSTALL
+    downloadState is UpdateDownloadState.Failed -> CouiUpdateActionBarMode.DOWNLOAD_FAILED
+    state is UpdateOutcome.Available -> CouiUpdateActionBarMode.AVAILABLE_IDLE
+    state is UpdateOutcome.Failed -> CouiUpdateActionBarMode.CHECK_FAILED
+    else -> CouiUpdateActionBarMode.UP_TO_DATE
+}
 
 internal fun couiInlineNotes(
     text: String,
@@ -1145,12 +1145,12 @@ internal fun couiUpdateButtonLabel(
 ): String = when {
     state == null -> "正在检测更新…"
     downloadState is UpdateDownloadState.Downloading -> {
-        val pct = if (downloadState.total > 0L) {
-            ((downloadState.downloaded * 100L) / downloadState.total).toInt().coerceIn(0, 100)
+        if (downloadState.total > 0L) {
+            val pct = UpdateProgress.percent(downloadState.progress)
+            "正在下载… $pct%"
         } else {
-            (downloadState.progress * 100f).toInt().coerceIn(0, 100)
+            "正在下载… ${formatUpdateSize(downloadState.downloaded)}"
         }
-        "正在下载… $pct%"
     }
     downloadState is UpdateDownloadState.Done -> "下载完成，立即安装"
     downloadState is UpdateDownloadState.Failed -> "重试下载"

@@ -657,7 +657,7 @@ private val AppIconSize = 88.dp
 private val AppIconInnerSize = 56.dp
 private val AppIconCorner = 24.dp
 
-private fun loadAppIcon(context: Context, sizePx: Int): ImageBitmap? = runCatching {
+internal fun loadAppIcon(context: Context, sizePx: Int): ImageBitmap? = runCatching {
     val drawable = context.packageManager.getApplicationIcon(context.packageName)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)

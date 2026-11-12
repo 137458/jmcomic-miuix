@@ -4,7 +4,15 @@ package com.jm3.app.miuix.ui.coui.component
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,6 +46,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -58,14 +67,16 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -80,8 +91,11 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -90,6 +104,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.itos.coui.backdrop.CouiBackdrop
@@ -1812,5 +1827,300 @@ fun CouiCommentRow(
                 )
             }
         }
+    }
+}
+
+/**
+ * 整行开关：库 Switch 传 null 回调后只呈现状态、不再自带 toggleable，
+ * 点击、开关角色与开/关播报由这里统一承担；反馈层与 toggleable 共用同一个
+ * interactionSource（库的用法约定），按压蒙层与普通设置行一致。
+ *
+ * 凝光补在蒙层之后：[Item] 的行底色由外层 [Group] 铺，行本体不画底色，
+ * 因此这里叠光不会被行底色盖住；关闭的开关不接光（[interactive] 跟随 enabled）。
+ */
+@Composable
+internal fun Modifier.couiSwitchRow(
+    value: Boolean,
+    onValueChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+): Modifier {
+    val interactionSource = remember { MutableInteractionSource() }
+    return this
+        .couiButtonFeedback(
+            dark = CouiTheme.isDark,
+            interactionSource = interactionSource,
+            enabled = enabled,
+        )
+        .couiSpotlightLight(SpotlightPreset.OpaqueSmall2, interactive = enabled)
+        .toggleable(
+            value = value,
+            interactionSource = interactionSource,
+            indication = null,
+            enabled = enabled,
+            role = Role.Switch,
+            onValueChange = onValueChange,
+        )
+}
+
+private const val CouiProgressAnimMs = 250
+private const val CouiIndeterminateAnimMs = 1200
+
+/**
+ * COUI 胶囊水平进度条：确定进度平滑补间填充，[progress] 为 null 时显示连续滑移的不定态光带。
+ */
+@Composable
+internal fun CouiLinearProgressBar(
+    progress: Float?,
+    modifier: Modifier = Modifier,
+    height: Dp = 6.dp,
+) {
+    val dark = CouiTheme.isDark
+    val scheme = CouiTheme.colorSchemeFor(dark)
+    val trackColor = scheme.accent.copy(alpha = if (dark) 0.22f else 0.14f)
+    if (progress != null) {
+        val animated by animateFloatAsState(
+            targetValue = progress.coerceIn(0f, 1f),
+            animationSpec = tween(durationMillis = CouiProgressAnimMs),
+            label = "coui-linear-progress",
+        )
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(CouiCapsuleShape)
+                .background(trackColor),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animated)
+                    .fillMaxHeight()
+                    .clip(CouiCapsuleShape)
+                    .background(scheme.accent),
+            )
+        }
+    } else {
+        val sweepWidth = 0.36f
+        val transition = rememberInfiniteTransition(label = "coui-linear-indeterminate")
+        val sweep by transition.animateFloat(
+            initialValue = -sweepWidth,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = CouiIndeterminateAnimMs, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "coui-linear-sweep",
+        )
+        Canvas(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(CouiCapsuleShape)
+                .background(trackColor),
+        ) {
+            val left = size.width * sweep
+            val width = size.width * sweepWidth
+            drawRect(
+                color = scheme.accent,
+                topLeft = Offset(left, 0f),
+                size = Size(width, size.height),
+            )
+        }
+    }
+}
+
+/**
+ * 对齐 ColorOS 原厂 `COUIInstallLoadProgress` 的胶囊进度主按钮：
+ * - [isProgressActive] 为 true 且 [progress] 非空时，采用双遍裁剪文字绘制（底层浅轨配强调色文字，
+ *   进度区用 [clipRect] 裁出实底与纯白文字），进度扫过时文字像素级反白，避免黑字压蓝条对比度崩塌；
+ * - [isProgressActive] 为 true 且 [progress] 为 null（总长未知）时，展示不定态流光轨道并保持高对比度文本；
+ * - 常规交互态复用 [couiPressable] 的弹性缩放与 `OpaqueMedium1` 跟手凝光。
+ */
+@Composable
+internal fun CouiInstallProgressButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    progress: Float? = null,
+    isProgressActive: Boolean = false,
+) {
+    val dark = CouiTheme.isDark
+    val scheme = CouiTheme.colorSchemeFor(dark)
+    if (isProgressActive) {
+        val trackBg = scheme.accent.copy(alpha = if (dark) 0.22f else 0.14f)
+        if (progress != null) {
+            val animatedProgress by animateFloatAsState(
+                targetValue = progress.coerceIn(0f, 1f),
+                animationSpec = tween(durationMillis = CouiProgressAnimMs),
+                label = "coui-install-progress",
+            )
+            val restLabelColor = if (dark) scheme.accentOnSurface else scheme.accent
+            Box(
+                modifier = modifier
+                    .height(48.dp)
+                    .clip(CouiCapsuleShape)
+                    .background(trackBg)
+                    .semantics {
+                        contentDescription = text
+                        progressBarRangeInfo = ProgressBarRangeInfo(animatedProgress, 0f..1f)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = text,
+                        kind = CouiTextKind.ItemTitle,
+                        color = restLabelColor,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .drawWithContent {
+                            val fillWidth = size.width * animatedProgress
+                            val isRtl = layoutDirection == LayoutDirection.Rtl
+                            clipRect(
+                                left = if (isRtl) size.width - fillWidth else 0f,
+                                right = if (isRtl) size.width else fillWidth,
+                            ) {
+                                this@drawWithContent.drawContent()
+                            }
+                        }
+                        .background(scheme.accent)
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = text,
+                        kind = CouiTextKind.ItemTitle,
+                        color = scheme.onAccent,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        } else {
+            val sweepWidth = 0.42f
+            val transition = rememberInfiniteTransition(label = "coui-install-indeterminate")
+            val sweep by transition.animateFloat(
+                initialValue = -sweepWidth,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = CouiIndeterminateAnimMs, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart,
+                ),
+                label = "coui-install-sweep",
+            )
+            val sweepColor = scheme.accent.copy(alpha = if (dark) 0.34f else 0.22f)
+            Box(
+                modifier = modifier
+                    .height(48.dp)
+                    .clip(CouiCapsuleShape)
+                    .background(trackBg)
+                    .semantics {
+                        contentDescription = text
+                        progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    drawRect(
+                        color = sweepColor,
+                        topLeft = Offset(size.width * sweep, 0f),
+                        size = Size(size.width * sweepWidth, size.height),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = text,
+                        kind = CouiTextKind.ItemTitle,
+                        color = scheme.onSurface,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        return
+    }
+
+    val bgColor = if (enabled) scheme.accent else scheme.onSurface.copy(alpha = if (dark) 0.10f else 0.08f)
+    val labelColor = if (enabled) scheme.onAccent else scheme.onSurfaceVariant
+    Box(
+        modifier = modifier
+            .height(48.dp)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                backgroundColor = bgColor,
+                spotlight = if (enabled) SpotlightPreset.OpaqueMedium1 else null,
+                enabled = enabled,
+                scaleOnPress = enabled,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            kind = CouiTextKind.ItemTitle,
+            color = labelColor,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * 圆形次级动作按钮：与底栏主进度胶囊并排提供取消下载/重新下载等快捷操作，触区与按压反馈统一走 [couiPressable]。
+ */
+@Composable
+internal fun CouiCircleActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Color.Unspecified,
+) {
+    val dark = CouiTheme.isDark
+    val scheme = CouiTheme.colorSchemeFor(dark)
+    val resolvedTint = tint.takeOrElse { scheme.onSurface }
+    val borderColor = scheme.onSurface.copy(alpha = if (dark) 0.14f else 0.08f)
+    Box(
+        modifier = modifier
+            .couiPressable(
+                shape = CircleShape,
+                backgroundColor = scheme.container,
+                spotlight = SpotlightPreset.OpaqueSmall2,
+                scaleOnPress = true,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
+            .size(48.dp)
+            .border(0.5.dp, borderColor, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(20.dp),
+            tint = resolvedTint,
+        )
     }
 }

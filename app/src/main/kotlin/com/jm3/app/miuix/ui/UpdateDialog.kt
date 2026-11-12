@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
@@ -39,10 +41,17 @@ import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog as CouiDialog
 import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text as CouiText
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.jm3.app.miuix.ui.coui.component.CouiLinearProgressBar
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.update.UpdateDownloadState
@@ -437,7 +446,10 @@ private fun CouiUpdateAvailableDialog(
     }
     val downloading = downloadState is UpdateDownloadState.Downloading
     val scrollState = rememberScrollState()
+    val hasContentAbove by remember { derivedStateOf { scrollState.value > 0 } }
+    val hasContentBelow by remember { derivedStateOf { scrollState.maxValue > scrollState.value } }
     val skin = LocalSkin.current
+    val notesCardShape = remember(skin.shapes.cardCorner) { CouiShape(skin.shapes.cardCorner, 3f) }
     val colors = CouiKitTheme.colorScheme
 
     CouiDialog(
@@ -453,60 +465,62 @@ private fun CouiUpdateAvailableDialog(
             style = CouiDialogActionStyle.Primary,
             colors = CouiDialogDefaults.primaryActionColors(colors.accent),
         ),
+        neutralAction = if (plan.showCancelDownload) {
+            CouiDialogAction(
+                text = "取消下载",
+                onClick = { onCancelDownload?.invoke() },
+            )
+        } else {
+            null
+        },
         dismissAction = CouiDialogAction(
-            text = if (plan.showCancelDownload) "取消下载" else plan.dismissText,
-            onClick = { if (plan.showCancelDownload) onCancelDownload?.invoke() else onDismiss() },
+            text = plan.dismissText,
+            onClick = onDismiss,
         ),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = DialogBodyMaxHeight)
-                .verticalScroll(scrollState),
+                .verticalEdgeFade(
+                    top = hasContentAbove,
+                    bottom = hasContentBelow,
+                    fade = DialogBodyFade,
+                )
+                .couiVerticalScroll(scrollState),
         ) {
             if (plan.summary.isNotBlank()) {
-                Text(
+                CouiText(
                     text = plan.summary,
-                    style = MiuixTheme.textStyles.footnote2,
+                    kind = CouiTextKind.ItemSummary,
                     color = colors.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (plan.showProgress) {
-                Text(
+                CouiText(
                     text = plan.progressDetail.orEmpty(),
-                    style = MiuixTheme.textStyles.footnote2,
+                    kind = CouiTextKind.ItemSummary,
                     color = colors.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(colors.container),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth((plan.progressFraction ?: 0f).coerceIn(0f, 1f))
-                            .fillMaxHeight()
-                            .background(colors.accent),
-                    )
-                }
+                CouiLinearProgressBar(progress = plan.progressFraction)
                 Spacer(modifier = Modifier.height(10.dp))
             }
             if (plan.hasNotes) {
-                Text(
+                CouiText(
                     text = "更新说明",
-                    style = MiuixTheme.textStyles.title4,
-                    color = colors.onSurface,
+                    kind = CouiTextKind.GroupTitle,
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
                     modifier = Modifier.padding(vertical = 6.dp),
                 )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(skin.shapes.cardCorner))
-                        .background(colors.card)
+                        .clip(notesCardShape)
+                        .background(couiDialogSurfaceColor())
+                        .border(couiDialogSurfaceBorder(), notesCardShape)
                         .padding(DialogCardPadding),
                 ) {
                     Column {
@@ -515,16 +529,21 @@ private fun CouiUpdateAvailableDialog(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         if (notesExpanded || notesState.hiddenLineCount > 0) {
-                            Text(
+                            Spacer(modifier = Modifier.height(NotesBlockSpacing))
+                            CouiText(
                                 text = if (notesExpanded) "收起说明" else "展开全部（还有 ${notesState.hiddenLineCount} 行）",
-                                style = MiuixTheme.textStyles.footnote1,
+                                kind = CouiTextKind.ItemValue,
                                 color = colors.accent,
+                                textAlign = TextAlign.Start,
                                 modifier = Modifier
-                                    .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                                    .couiPressable(
+                                        shape = CouiCapsuleShape,
+                                        spotlight = SpotlightPreset.ChipTab,
+                                        minTouchTarget = CouiMinTouchTarget,
+                                    ) {
                                         notesExpanded = !notesExpanded
                                     }
-                                    .clip(CouiCapsuleShape)
-                                    .padding(top = NotesBlockSpacing, bottom = 4.dp),
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
                             )
                         }
                     }
@@ -532,16 +551,20 @@ private fun CouiUpdateAvailableDialog(
             }
             if (plan.showIgnore) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
+                CouiText(
                     text = "忽略此版本",
-                    style = MiuixTheme.textStyles.footnote1,
+                    kind = CouiTextKind.ItemValue,
                     color = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive,
+                    textAlign = TextAlign.Start,
                     modifier = Modifier
-                        .couiPressable(shape = CouiCapsuleShape, minTouchTarget = CouiMinTouchTarget) {
+                        .couiPressable(
+                            shape = CouiCapsuleShape,
+                            spotlight = SpotlightPreset.ChipTab,
+                            minTouchTarget = CouiMinTouchTarget,
+                        ) {
                             onIgnore?.invoke(release.version)
                         }
-                        .clip(CouiCapsuleShape)
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                 )
             }
         }

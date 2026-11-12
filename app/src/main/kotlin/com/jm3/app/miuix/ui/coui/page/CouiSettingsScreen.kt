@@ -4,7 +4,6 @@ package com.jm3.app.miuix.ui.coui.page
 
 import android.os.Build
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -40,7 +38,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -48,8 +45,6 @@ import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
-import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.effect.couiButtonFeedback
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
@@ -80,7 +75,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
-import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
+import com.jm3.app.miuix.ui.coui.component.couiSwitchRow
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import top.yukonga.miuix.kmp.basic.Icon
@@ -771,38 +766,6 @@ private fun SettingsRowValue(text: String) {
         kind = CouiTextKind.ItemValue,
         color = CouiKitTheme.colorScheme.onSurfaceVariant,
     )
-}
-
-/**
- * 整行开关：库 Switch 传 null 回调后只呈现状态、不再自带 toggleable，
- * 点击、开关角色与开/关播报由这里统一承担；反馈层与 toggleable 共用同一个
- * interactionSource（库的用法约定），按压蒙层与普通设置行一致。
- *
- * 凝光补在蒙层之后：[Item] 的行底色由外层 [Group] 铺，行本体不画底色，
- * 因此这里叠光不会被行底色盖住；关闭的开关不接光（[interactive] 跟随 enabled）。
- */
-@Composable
-private fun Modifier.couiSwitchRow(
-    value: Boolean,
-    onValueChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
-): Modifier {
-    val interactionSource = remember { MutableInteractionSource() }
-    return this
-        .couiButtonFeedback(
-            dark = CouiKitTheme.isDark,
-            interactionSource = interactionSource,
-            enabled = enabled,
-        )
-        .couiSpotlightLight(SpotlightPreset.OpaqueSmall2, interactive = enabled)
-        .toggleable(
-            value = value,
-            interactionSource = interactionSource,
-            indication = null,
-            enabled = enabled,
-            role = Role.Switch,
-            onValueChange = onValueChange,
-        )
 }
 
 /** 诊断行：标签在上、值在下，长值自动换行。 */

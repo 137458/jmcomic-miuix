@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CouiUpdateScreenPolicyTest {
@@ -93,5 +94,79 @@ class CouiUpdateScreenPolicyTest {
 
         val noAsset = couiUpdateReleaseMetaLine(release(assetSize = 0L))
         assertEquals("发布于 2026-11-12", noAsset)
+    }
+
+    @Test
+    fun `couiUpdateButtonLabel falls back to downloaded bytes when total length is unknown`() {
+        val r = release()
+        assertEquals(
+            "正在下载… 4.0 KB",
+            couiUpdateButtonLabel(
+                UpdateOutcome.Available(r, false),
+                UpdateDownloadState.Downloading(4096L, 0L, 1024L),
+            ),
+        )
+    }
+
+    @Test
+    fun `couiUpdateHeadline and versionLine distinguish localAhead from regular up-to-date`() {
+        val r = release("v1.2.0")
+        assertEquals("正在检测更新", couiUpdateHeadline(null))
+        assertEquals("发现新版本", couiUpdateHeadline(UpdateOutcome.Available(r, false)))
+        assertEquals("检查更新失败", couiUpdateHeadline(UpdateOutcome.Failed(UpdateFailure.NETWORK, "err")))
+        assertEquals("已是最新版本", couiUpdateHeadline(UpdateOutcome.UpToDate(r, localAhead = false)))
+        assertEquals("当前版本已领先", couiUpdateHeadline(UpdateOutcome.UpToDate(r, localAhead = true)))
+
+        assertEquals("软件版本  v1.1.0 → v1.2.0", couiUpdateVersionLine("1.1.0", UpdateOutcome.Available(r, false)))
+        assertEquals("软件版本  v1.2.0", couiUpdateVersionLine("1.2.0", UpdateOutcome.UpToDate(r, localAhead = false)))
+        assertEquals("本地 v1.3.0 · 远端 v1.2.0", couiUpdateVersionLine("1.3.0", UpdateOutcome.UpToDate(r, localAhead = true)))
+    }
+
+    @Test
+    fun `couiUpdateChangelogTitle differentiates available, up-to-date, and localAhead`() {
+        val r = release("v1.2.0")
+        assertEquals("更新说明（1.2.0）", couiUpdateChangelogTitle(UpdateOutcome.Available(r, false)))
+        assertEquals("当前版本说明（1.2.0）", couiUpdateChangelogTitle(UpdateOutcome.UpToDate(r, localAhead = false)))
+        assertEquals("最新公开发布说明（1.2.0）", couiUpdateChangelogTitle(UpdateOutcome.UpToDate(r, localAhead = true)))
+        assertEquals("更新说明", couiUpdateChangelogTitle(null))
+    }
+
+    @Test
+    fun `couiUpdateProgressFraction returns indeterminate null when total unknown`() {
+        assertEquals(0f, couiUpdateProgressFraction(UpdateDownloadState.Idle))
+        assertEquals(0.45f, couiUpdateProgressFraction(UpdateDownloadState.Downloading(45L, 100L, 512L)))
+        assertNull(couiUpdateProgressFraction(UpdateDownloadState.Downloading(4096L, 0L, 512L)))
+        assertEquals(1f, couiUpdateProgressFraction(UpdateDownloadState.Done(File("app.apk"))))
+        assertEquals(0f, couiUpdateProgressFraction(UpdateDownloadState.Failed("err")))
+    }
+
+    @Test
+    fun `couiUpdateActionBarMode maps checking, download states, and outcomes accurately`() {
+        val r = release("v1.2.0")
+        assertEquals(CouiUpdateActionBarMode.CHECKING, couiUpdateActionBarMode(null, UpdateDownloadState.Idle))
+        assertEquals(
+            CouiUpdateActionBarMode.DOWNLOADING,
+            couiUpdateActionBarMode(UpdateOutcome.Available(r, false), UpdateDownloadState.Downloading(1L, 2L, 1L)),
+        )
+        assertEquals(
+            CouiUpdateActionBarMode.READY_TO_INSTALL,
+            couiUpdateActionBarMode(UpdateOutcome.Available(r, false), UpdateDownloadState.Done(File("a.apk"))),
+        )
+        assertEquals(
+            CouiUpdateActionBarMode.DOWNLOAD_FAILED,
+            couiUpdateActionBarMode(UpdateOutcome.Available(r, false), UpdateDownloadState.Failed("err")),
+        )
+        assertEquals(
+            CouiUpdateActionBarMode.AVAILABLE_IDLE,
+            couiUpdateActionBarMode(UpdateOutcome.Available(r, false), UpdateDownloadState.Idle),
+        )
+        assertEquals(
+            CouiUpdateActionBarMode.CHECK_FAILED,
+            couiUpdateActionBarMode(UpdateOutcome.Failed(UpdateFailure.NETWORK, "err"), UpdateDownloadState.Idle),
+        )
+        assertEquals(
+            CouiUpdateActionBarMode.UP_TO_DATE,
+            couiUpdateActionBarMode(UpdateOutcome.UpToDate(r, localAhead = false), UpdateDownloadState.Idle),
+        )
     }
 }
