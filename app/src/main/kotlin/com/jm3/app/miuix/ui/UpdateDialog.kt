@@ -7,25 +7,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.AnnotatedString
@@ -46,7 +40,6 @@ import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog as CouiDialog
 import com.itos.coui.effect.CouiContourStyle
 import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text as CouiText
@@ -54,7 +47,6 @@ import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ui.coui.component.CouiDialogSecondaryButton
 import com.jm3.app.miuix.ui.coui.component.CouiLinearProgressBar
-import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.couiContourSurface
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
@@ -69,7 +61,6 @@ import com.jm3.core.update.ReleaseInfo
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -83,12 +74,6 @@ private val NotesBlockSpacing = 6.dp
 private val NotesHeadingTopSpacing = 6.dp
 private val NotesPrefixMinWidth = 20.dp
 private val NotesPrefixGap = 6.dp
-
-/** 弹窗内容区的限高：超长说明在弹窗内部滚动，底部主按钮始终留在可视区。 */
-private val DialogBodyMaxHeight = 240.dp
-
-/** 内容区上下羽化距离：按视口高度取，太短会只剩一条几乎看不见的边。 */
-private val DialogBodyFade = 40.dp
 
 /** 弹窗底部：内容到按键区、按键之间各留一档，按键边界才分得清。 */
 private val DialogButtonsTopSpacing = 12.dp
@@ -459,8 +444,9 @@ private fun extractBareUrlEnd(text: String, start: Int): Int {
  * 取舍：
  * - 版本信息不再单独成卡：顶部摘要已给出「当前 → 最新 · 发布日期」，弹窗里不再重复
  *   当前版本、版本名称、安装包文件名、附件数量、说明行数等对"是否更新"没有影响的信息。
- * - 说明区限高 [DialogBodyMaxHeight] 并整体滚动，上下边缘按是否还有内容做羽化
- *   （[verticalEdgeFade]）：滚到顶/底时对应一侧完全实心，不做"永远有雾"的暗示。
+ * - 两种皮肤的说明区共用 [NotesScrollViewport]：按 [NotesDialogViewport] 限高并内部滚动，
+ *   只在还有内容的一侧羽化；折叠行渲染在视口之外，说明展开后仍然一屏内可点。
+ * - 弹窗本体不再自带滚动，避免同向两层滚动把折叠入口挤到视口外。
  * - 长说明默认折叠到 [UPDATE_NOTES_PREVIEW_LINES] 行，短说明不出现"展开全部"。
  * - 底部只有主按钮（下载 / 前往 Releases）与「稍后」「取消下载（仅下载中）」；
  *   「忽略此版本」降级为说明下方的文字链接，不再与主操作并列。
@@ -596,9 +582,13 @@ private fun CouiUpdateAvailableDialog(
                     textAlign = TextAlign.Start,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
-                val notesScrollState = rememberScrollState()
-                val hasNotesAbove by remember { derivedStateOf { notesScrollState.value > 0 } }
-                val hasNotesBelow by remember { derivedStateOf { notesScrollState.maxValue > notesScrollState.value } }
+                // 卡片只负责材质与描边；限高、羽化与滚动统一由 FoldableNotes 提供。
+                // 折叠行渲染在视口外侧，展开后不会跟着长文跑到几十屏开外，羽化也盖不到它。
+                val notesFold = updateNotesFold(
+                    expanded = notesExpanded,
+                    hiddenLineCount = notesState.hiddenLineCount,
+                    onToggle = { notesExpanded = !notesExpanded },
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -613,18 +603,10 @@ private fun CouiUpdateAvailableDialog(
                             fallbackBorderColor = colors.onSurface.copy(alpha = if (dark) 0.14f else 0.08f),
                         ),
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(if (notesExpanded) Modifier.heightIn(max = 220.dp) else Modifier)
-                                .verticalEdgeFade(
-                                    top = hasNotesAbove,
-                                    bottom = hasNotesBelow,
-                                    fade = DialogBodyFade,
-                                )
-                                .couiVerticalScroll(notesScrollState),
-                        ) {
+                    FoldableNotes(
+                        fold = notesFold,
+                        spec = NotesDialogViewport,
+                        content = {
                             MarkdownNotes(
                                 markdown = notesState.visibleMarkdown,
                                 modifier = Modifier
@@ -632,44 +614,49 @@ private fun CouiUpdateAvailableDialog(
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 notesStyle = couiNotesStyle,
                             )
-                        }
-                        if (notesExpanded || notesState.hiddenLineCount > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(0.5.dp)
-                                    .background(colors.outlineVariant.copy(alpha = 0.55f)),
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 44.dp)
-                                    .couiPressable(
-                                        spotlight = SpotlightPreset.ChipTab,
-                                        onClick = { notesExpanded = !notesExpanded },
+                        },
+                        footer = {
+                            // 视口只负责在视口里滚动；折叠行贴在视口下缘，展开再多说明也不用滑到底才点得到。
+                            notesFold?.let { fold ->
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(0.5.dp)
+                                            .background(colors.outlineVariant.copy(alpha = 0.55f)),
                                     )
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                CouiText(
-                                    text = if (notesExpanded) "收起说明" else "展开全部（还有 ${notesState.hiddenLineCount} 行）",
-                                    kind = CouiTextKind.ItemValue,
-                                    color = colors.accent,
-                                    textAlign = TextAlign.Start,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Icon(
-                                    imageVector = if (notesExpanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = colors.accent,
-                                )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 44.dp)
+                                            .couiPressable(
+                                                spotlight = SpotlightPreset.ChipTab,
+                                                onClick = fold.onToggle,
+                                            )
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        CouiText(
+                                            text = fold.label,
+                                            kind = CouiTextKind.ItemValue,
+                                            color = colors.accent,
+                                            textAlign = TextAlign.Start,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Icon(
+                                            imageVector = if (fold.expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = colors.accent,
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
+                        },
+                    )
                 }
             }
             if (plan.showIgnore) {
@@ -717,11 +704,14 @@ private fun MiuixUpdateAvailableDialog(
         updateDialogNotesState(release.notes, notesExpanded, UPDATE_NOTES_PREVIEW_LINES)
     }
     val downloading = downloadState is UpdateDownloadState.Downloading
-    val scrollState = rememberScrollState()
     val skin = LocalSkin.current
-    // 只在还有内容的方向羽化：滚到顶或底时对应一侧恢复实心，避免"永远有雾"的假暗示
-    val hasContentAbove by remember { derivedStateOf { scrollState.value > 0 } }
-    val hasContentBelow by remember { derivedStateOf { scrollState.maxValue > scrollState.value } }
+    // 说明区自带视口后，弹窗本体不再套第二层滚动：两层同向滚动时折叠入口会掉在视口外，
+    // 用户得先把整段说明滑到底才点得到"收起说明"。
+    val notesFold = updateNotesFold(
+        expanded = notesExpanded,
+        hiddenLineCount = notesState.hiddenLineCount,
+        onToggle = { notesExpanded = !notesExpanded },
+    )
 
     WindowDialog(
         show = show,
@@ -730,20 +720,9 @@ private fun MiuixUpdateAvailableDialog(
         cornerRadius = skin.shapes.dialogCorner,
         onDismissRequest = onDismiss,
     ) {
-        // 水平内边距由弹窗的 insideMargin 提供，这里只负责限高、滚动与边缘羽化。
-        // 羽化必须在 verticalScroll 外侧：放内侧时量到的是内容整高，遮罩落在滚出视口的顶部，
-        // 用户看到的就是"被硬裁切、没有渐变"。放外侧后按视口高度生成渐变带，上下边缘才肉眼可见。
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = DialogBodyMaxHeight)
-                .verticalEdgeFade(
-                    top = hasContentAbove,
-                    bottom = hasContentBelow,
-                    fade = DialogBodyFade,
-                )
-                .verticalScroll(scrollState),
-        ) {
+        // 水平内边距由弹窗的 insideMargin 提供；限高、羽化与滚动都交给说明区自己的视口，
+        // 这样进度、说明与按键区各就各位，说明再长也不会把按键区推出屏幕。
+        Column(modifier = Modifier.fillMaxWidth()) {
             if (plan.showProgress) {
                 Text(
                     text = plan.progressDetail.orEmpty(),
@@ -760,17 +739,25 @@ private fun MiuixUpdateAvailableDialog(
                 SmallTitle(text = "更新说明", insideMargin = DialogSectionMargin)
                 Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(DialogCardPadding)) {
-                        MarkdownNotes(
-                            markdown = notesState.visibleMarkdown,
-                            modifier = Modifier.fillMaxWidth(),
+                        FoldableNotes(
+                            fold = notesFold,
+                            spec = NotesDialogViewport,
+                            content = {
+                                MarkdownNotes(
+                                    markdown = notesState.visibleMarkdown,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            },
+                            footer = {
+                                notesFold?.let { fold ->
+                                    TextButton(
+                                        text = fold.label,
+                                        onClick = fold.onToggle,
+                                        modifier = Modifier.fillMaxWidth().padding(top = NotesBlockSpacing),
+                                    )
+                                }
+                            },
                         )
-                        if (notesExpanded || notesState.hiddenLineCount > 0) {
-                            TextButton(
-                                text = if (notesExpanded) "收起说明" else "展开全部（还有 ${notesState.hiddenLineCount} 行）",
-                                onClick = { notesExpanded = !notesExpanded },
-                                modifier = Modifier.fillMaxWidth().padding(top = NotesBlockSpacing),
-                            )
-                        }
                     }
                 }
             }

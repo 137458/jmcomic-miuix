@@ -367,6 +367,8 @@ fun CouiSettingsScreen(
                         // 宽屏下留出可读栏宽，和设置中心保持一致
                         .readableWidth()
                         .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        // 越界回弹走库默认实现，与其余 COUI 页面一致：库把甩动触边的回弹映射成
+                        // 最高 0.3731 屏高的视口位移，页面侧没有可调幅度或开关。
                         .couiVerticalScroll(scrollState)
                         // 顶栏的高与折叠位移由 state 参与计算，正文才会跟着顶栏一起让位
                         .padding(scrollBehavior.state.contentPadding(innerPadding, LocalDensity.current))

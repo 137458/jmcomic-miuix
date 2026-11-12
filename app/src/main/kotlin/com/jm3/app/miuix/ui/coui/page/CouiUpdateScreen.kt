@@ -62,7 +62,6 @@ import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.effect.CouiContourStyle
-import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Group
@@ -78,22 +77,22 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.FoldableNotes
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.InlineCodeText
+import com.jm3.app.miuix.ui.NotesFold
+import com.jm3.app.miuix.ui.NotesPageViewport
 import com.jm3.app.miuix.ui.UpdateAvailableDialog
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCircleActionButton
 import com.jm3.app.miuix.ui.coui.component.CouiHeaderCapsuleAction
 import com.jm3.app.miuix.ui.coui.component.CouiInstallProgressButton
-import com.jm3.app.miuix.ui.coui.component.CouiLibraryNavBarMinSdk
-import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiContourSurface
 import com.jm3.app.miuix.ui.coui.component.couiFloatingSurfaceEnabled
-import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiSwitchRow
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
@@ -130,7 +129,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 更新说明的块间距，与更新弹窗保持同一节奏。 */
 private val NotesBlockSpacing = 6.dp
@@ -878,66 +876,87 @@ private fun UpdateNotesGroup(
             }
         },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize()
-                .padding(
-                    horizontal = CouiPageDefaults.rowPadding,
-                    vertical = CouiPageDefaults.contentPadding + 2.dp,
-                ),
-            verticalArrangement = Arrangement.spacedBy(NotesBlockSpacing),
-        ) {
-            Text(
-                text = release.name.ifBlank { "版本特性说明" },
-                kind = CouiTextKind.ItemTitle,
-            )
-            if (previewLimit != 0) {
-                UpdateNotes(
-                    markdown = release.notes,
-                    previewLimit = previewLimit,
+        // 说明正文统一走 FoldableNotes：展开后在有界视口内滚动，折叠行留在视口外侧，
+        // 无论说明有多少屏，"收起更新说明"始终贴在卡片下缘。
+        FoldableNotes(
+            fold = if (collapsible) {
+                NotesFold(
+                    expanded = expanded,
+                    label = if (expanded) "收起更新说明" else "展开全部更新说明",
+                    onToggle = {
+                        userToggled = true
+                        expanded = !expanded
+                    },
                 )
-            }
-        }
-        if (collapsible) {
-            Divider()
-            Item(
-                title = {
+            } else {
+                null
+            },
+            spec = NotesPageViewport,
+            modifier = Modifier.animateContentSize(),
+            content = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = CouiPageDefaults.rowPadding,
+                            vertical = CouiPageDefaults.contentPadding + 2.dp,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(NotesBlockSpacing),
+                ) {
                     Text(
-                        text = if (expanded) "收起更新说明" else "展开全部更新说明",
-                        kind = CouiTextKind.ItemValue,
-                        color = scheme.accent,
+                        text = release.name.ifBlank { "版本特性说明" },
+                        kind = CouiTextKind.ItemTitle,
                     )
-                },
-                summary = if (!expanded) {
-                    {
-                        Text(
-                            text = if (previewLimit == 0) {
-                                "共 ${blocks.size} 段内容已收起"
-                            } else {
-                                "还有 $hiddenCount 段内容未展开"
-                            },
-                            kind = CouiTextKind.GroupFooter,
-                            color = scheme.onSurfaceVariant,
+                    if (previewLimit != 0) {
+                        UpdateNotes(
+                            markdown = release.notes,
+                            previewLimit = previewLimit,
                         )
                     }
-                } else {
-                    null
-                },
-                trailing = {
-                    Icon(
-                        imageVector = if (expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = scheme.accent,
+                }
+            },
+            footer = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Divider()
+                    Item(
+                        title = {
+                            Text(
+                                text = if (expanded) "收起更新说明" else "展开全部更新说明",
+                                kind = CouiTextKind.ItemValue,
+                                color = scheme.accent,
+                            )
+                        },
+                        summary = if (!expanded) {
+                            {
+                                Text(
+                                    text = if (previewLimit == 0) {
+                                        "共 ${blocks.size} 段内容已收起"
+                                    } else {
+                                        "还有 $hiddenCount 段内容未展开"
+                                    },
+                                    kind = CouiTextKind.GroupFooter,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                        trailing = {
+                            Icon(
+                                imageVector = if (expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = scheme.accent,
+                            )
+                        },
+                        onClick = {
+                            userToggled = true
+                            expanded = !expanded
+                        },
                     )
-                },
-                onClick = {
-                    userToggled = true
-                    expanded = !expanded
-                },
-            )
-        }
+                }
+            },
+        )
     }
 }
 
