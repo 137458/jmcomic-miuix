@@ -2,7 +2,6 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -20,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,12 +32,10 @@ import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
-import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.authorNames
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -58,10 +54,11 @@ import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
-import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pageLooksFull
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
@@ -73,23 +70,12 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 /** 观看记录每页条数：与旧页保持一致，hasMore 用它反推。 */
 private const val WATCH_PAGE_SIZE = 20
 
-private sealed interface CouiWatchUiState {
-    data object Loading : CouiWatchUiState
-
-    data object Loaded : CouiWatchUiState
-
-    data class Failed(
-        val message: String,
-        val sessionExpired: Boolean = false,
-    ) : CouiWatchUiState
-}
-
 /**
- * 观看记录（COUI 栅格版）：参数与旧 Miuix 页一比一，数据、分页与删除逻辑沿用旧页口径，
- * 只把行卡换成栅格卡。
+ * 观看记录（COUI 栅格版）：参数与旧 Miuix 页一比一，数据与分页语义由 SessionListLoader 统一，
+ * 本页只负责栅格渲染与删除确认。
  *
  * 栅格触底不用预取组件（COUI 预取只支持 LazyListState），改为页脚项进入组合即取下一页；
- * beginLoadMore 自带防抖，重复触发不会重发请求。
+ * loader 的 beginLoadMore 自带防抖，重复触发不会重发请求。
  */
 @Composable
 fun CouiWatchHistoryScreen(
@@ -107,70 +93,23 @@ fun CouiWatchHistoryScreen(
         val gridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
 
-        var feed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
-        var uiState by remember { mutableStateOf<CouiWatchUiState>(CouiWatchUiState.Loading) }
         var deletingId by remember { mutableStateOf<String?>(null) }
         var pendingDeleteItem by remember { mutableStateOf<SearchResult?>(null) }
-        // 翻页/切模式代次号：仅接受最后一次请求的结果，防止并发覆盖
-        var requestToken by remember { mutableIntStateOf(0) }
 
-        fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<SearchResult>, replace: Boolean) {
-            scope.applyLoadPlan(
-                outcome = outcome,
-                hasContent = !replace && inFlight.items.isNotEmpty(),
+        val loader = remember(mode, user?.uid, snackbarHostState) {
+            SessionListLoader(
+                scope = scope,
+                idOf = { item: SearchResult -> item.id },
                 failureMessage = "观看记录加载失败",
-                snackbarHostState = snackbarHostState,
-                stalePrefix = "加载失败：",
-                onKeepContent = { feed = inFlight.failLoadMore() },
-                onFullScreen = { plan ->
-                    feed = inFlight.copy(loadingMore = false)
-                    uiState = CouiWatchUiState.Failed(
-                        message = plan.message.orEmpty(),
-                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-                    )
+                fetchPage = { page ->
+                    deps.authCall.call { deps.gateway.watchHistory(page) }
+                        .toWatchSlice(page, WATCH_PAGE_SIZE)
                 },
+                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
             )
         }
-
-        fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
-            if (!replace && !feed.canLoadMore) return
-            val requested = if (replace) feed else feed.beginLoadMore()
-            // beginLoadMore 被拦下时返回同一实例：已经在拉或已到底，不再重复触发
-            if (!replace && requested === feed) return
-            if (!replace) {
-                feed = requested
-            } else if (showLoading) {
-                uiState = CouiWatchUiState.Loading
-            }
-            val token = ++requestToken
-            scope.launch {
-                val outcome = deps.authCall.call { deps.gateway.watchHistory(targetPage) }
-                if (token != requestToken) return@launch
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        val items = outcome.value
-                        val slice = PageSlice(
-                            items = items,
-                            hasMore = pageLooksFull(items.size, WATCH_PAGE_SIZE),
-                            page = targetPage,
-                        )
-                        feed = if (replace) {
-                            PagedFeed<SearchResult>().replace(slice) { it.id }
-                        } else {
-                            requested.append(slice) { it.id }
-                        }
-                        uiState = CouiWatchUiState.Loaded
-                    }
-
-                    else -> applyFailure(outcome, if (replace) feed else requested, replace)
-                }
-            }
-        }
-
-        fun loadMore() {
-            if (!feed.canLoadMore) return
-            fetch(feed.page + 1, replace = false, showLoading = false)
-        }
+        val snapshot by loader.snapshot.collectAsState()
+        val feed = snapshot.feed
 
         fun delete(item: SearchResult) {
             if (deletingId != null) return
@@ -180,7 +119,7 @@ fun CouiWatchHistoryScreen(
                 deletingId = null
                 when (outcome) {
                     is SessionOutcome.Ok -> {
-                        feed = feed.copy(items = feed.items.filterNot { it.id == item.id })
+                        loader.removeWhere { it.id == item.id }
                         snackbarHostState.showSnackbar("已删除观看记录")
                     }
 
@@ -197,9 +136,8 @@ fun CouiWatchHistoryScreen(
         }
 
         // 账号变化或翻页模式切换时重置到第一页重拉，避免跨账号残影与页码语义错乱
-        LaunchedEffect(user?.uid, mode) {
-            feed = PagedFeed()
-            fetch(1, replace = true, showLoading = true)
+        LaunchedEffect(loader) {
+            loader.loadFirstPage()
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -219,28 +157,28 @@ fun CouiWatchHistoryScreen(
                     verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
                     overscrollEffect = rememberCouiOverscrollEffect(),
                 ) {
-                    when (val state = uiState) {
-                        CouiWatchUiState.Loading -> item(
+                    when (val state = snapshot.state) {
+                        ListLoadState.Loading -> item(
                             key = "coui-watch-loading",
                             span = { GridItemSpan(maxLineSpan) },
                         ) {
                             CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 24.dp))
                         }
 
-                        is CouiWatchUiState.Failed -> item(
+                        is ListLoadState.Failed -> item(
                             key = "coui-watch-failed",
                             span = { GridItemSpan(maxLineSpan) },
                         ) {
                             CouiScreenFailureGroup(
                                 message = state.message,
                                 expired = state.sessionExpired,
-                                onRetry = { fetch(1, replace = true, showLoading = true) },
+                                onRetry = loader::loadFirstPage,
                                 onOpenLogin = onOpenLogin,
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                             )
                         }
 
-                        CouiWatchUiState.Loaded -> {
+                        ListLoadState.Loaded -> {
                             if (feed.items.isEmpty()) {
                                 item(key = "coui-watch-empty", span = { GridItemSpan(maxLineSpan) }) {
                                     CouiEmptyGroup(
@@ -285,16 +223,16 @@ fun CouiWatchHistoryScreen(
                                                 if (resolved != feed.page) {
                                                     scope.launch {
                                                         gridState.scrollToItem(0)
-                                                        fetch(resolved, replace = true, showLoading = true)
+                                                        loader.goToPage(resolved)
                                                     }
                                                 }
                                             },
                                         )
                                     } else {
-                                        CouiAutoLoadMoreEffect(feed = feed, onLoadMore = { loadMore() })
+                                        CouiAutoLoadMoreEffect(feed = feed, onLoadMore = loader::loadMore)
                                         CouiLoadMoreFooter(
                                             feed = feed,
-                                            onRetry = { loadMore() },
+                                            onRetry = loader::loadMore,
                                         )
                                     }
                                 }
@@ -362,4 +300,22 @@ private fun CouiGridDeleteBadge(
             tint = scheme.onSurfaceVariant,
         )
     }
+}
+
+/** 接口不返回总数，用本页条数推断是否还有下一页。 */
+private fun SessionOutcome<List<SearchResult>>.toWatchSlice(
+    page: Int,
+    pageSize: Int,
+): SessionOutcome<PageSlice<SearchResult>> = when (this) {
+    is SessionOutcome.Ok -> SessionOutcome.Ok(
+        PageSlice(
+            items = value,
+            hasMore = pageLooksFull(value.size, pageSize),
+            page = page,
+        ),
+    )
+
+    SessionOutcome.Expired -> SessionOutcome.Expired
+
+    is SessionOutcome.Failed -> this
 }

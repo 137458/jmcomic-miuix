@@ -48,16 +48,13 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
-import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
@@ -65,14 +62,16 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.core.CoverLocator
 import com.jm3.core.model.TaskFilter
-import com.jm3.core.model.TaskPage
 import com.jm3.core.model.TaskType
 import com.jm3.core.model.TaskItem
+import com.jm3.core.paging.PageSlice
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
@@ -81,12 +80,8 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 private const val TASK_STATE_DONE = "已达成"
 private const val TASK_STATE_UNDONE = "未达成"
 
-/** 成就页三态：称号/勋章条目不是 SearchResult，自带状态。 */
-private sealed interface TasksUiState {
-    data object Loading : TasksUiState
-    data class Loaded(val page: TaskPage, val imageHost: String) : TasksUiState
-    data class Failed(val message: String, val sessionExpired: Boolean = false) : TasksUiState
-}
+/** 成就页的非分页附加字段：服务端 message 与勋章图 host。 */
+private data class TasksExtra(val message: String?, val imageHost: String)
 
 /**
  * COUI 成就页：称号/勋章按行卡排布，类型与筛选用分段胶囊切换。
@@ -111,16 +106,48 @@ internal fun CouiTasksScreen(
     var filterIndex by rememberSaveable { mutableIntStateOf(0) }
     val clampedTypeIndex = typeIndex.coerceIn(0, types.lastIndex)
     val clampedFilterIndex = filterIndex.coerceIn(0, filters.lastIndex)
-    val states = remember { mutableStateMapOf<Int, TasksUiState>() }
     val listStates = remember { List(types.size) { LazyListState() } }
-    var lastFilterIndex by remember { mutableIntStateOf(clampedFilterIndex) }
-    var refreshingTab by remember { mutableStateOf<Int?>(null) }
     // 佩戴结果由本地覆盖，避免为了一个字段重新拉整页
     var equippedTitleOverride by remember { mutableStateOf<String?>(null) }
     var equippedBadgeId by remember { mutableStateOf<String?>(null) }
     var claimingId by remember { mutableStateOf<String?>(null) }
-    // 请求代际号：快速切筛选时丢弃旧条件的迟到响应
-    val requestTokens = remember { mutableStateMapOf<Int, Int>() }
+    // 成就接口不分页，服务端 message 与勋章图 host 没有能装进 PageSlice 的位置，按 Tab 另记一份
+    val pageExtras = remember(clampedFilterIndex) { mutableStateMapOf<Int, TasksExtra>() }
+    // 每个 Tab 是否已发起首屏请求；筛选变化时和 loader 一起换新
+    val startedTabs = remember(clampedFilterIndex) { mutableStateMapOf<Int, Boolean>() }
+    // 称号与勋章各一个 loader：两类条目互斥，切 Tab 时不会打断另一类的在途请求
+    val loaders = remember(clampedFilterIndex, snackbarHostState) {
+        types.mapIndexed { typeIdx, taskType ->
+            SessionListLoader(
+                scope = scope,
+                idOf = { item: TaskItem -> item.id },
+                failureMessage = "成就加载失败",
+                fetchPage = {
+                    val requestFilter = filters[clampedFilterIndex]
+                    when (val outcome = deps.authCall.call { deps.gateway.tasks(taskType, requestFilter) }) {
+                        is SessionOutcome.Ok -> {
+                            // 勋章图走 imageHost 拼相对路径；host 取不到就退化为纯文字行
+                            val host = (deps.authCall.call { deps.images.imageHost() } as? SessionOutcome.Ok)
+                                ?.value
+                                .orEmpty()
+                                .ifBlank {
+                                    (deps.authCall.call { deps.routes.usedDomain() } as? SessionOutcome.Ok)
+                                        ?.value
+                                        .orEmpty()
+                                }
+                            pageExtras[typeIdx] = TasksExtra(message = outcome.value.message, imageHost = host)
+                            SessionOutcome.Ok(PageSlice(items = outcome.value.items, hasMore = false, page = 1))
+                        }
+
+                        SessionOutcome.Expired -> SessionOutcome.Expired
+                        is SessionOutcome.Failed -> outcome
+                    }
+                },
+                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+            )
+        }
+    }
+    val snapshots = loaders.map { it.snapshot.collectAsState().value }
     val pagerState = rememberSyncedTabPagerState(
         selectedTab = clampedTypeIndex,
         pageCount = types.size,
@@ -134,43 +161,6 @@ internal fun CouiTasksScreen(
     LaunchedEffect(user?.uid) {
         equippedTitleOverride = null
         equippedBadgeId = null
-    }
-
-    fun load(targetTypeIdx: Int = clampedTypeIndex, showLoading: Boolean = true) {
-        val token = (requestTokens[targetTypeIdx] ?: 0) + 1
-        requestTokens[targetTypeIdx] = token
-        val requestType = types[targetTypeIdx]
-        val requestFilterIdx = clampedFilterIndex
-        val requestFilter = filters[requestFilterIdx]
-        if (showLoading) states[targetTypeIdx] = TasksUiState.Loading
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.tasks(requestType, requestFilter) }
-            if (requestTokens[targetTypeIdx] != token || clampedFilterIndex != requestFilterIdx) return@launch
-            if (refreshingTab == targetTypeIdx) refreshingTab = null
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val host = (deps.authCall.call { deps.images.imageHost() } as? SessionOutcome.Ok)
-                        ?.value
-                        .orEmpty()
-                        .ifBlank {
-                            (deps.authCall.call { deps.routes.usedDomain() } as? SessionOutcome.Ok)
-                                ?.value
-                                .orEmpty()
-                        }
-                    if (requestTokens[targetTypeIdx] != token || clampedFilterIndex != requestFilterIdx) return@launch
-                    states[targetTypeIdx] = TasksUiState.Loaded(outcome.value, host)
-                }
-                else -> scope.applyLoadPlan(
-                    outcome, hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
-                    failureMessage = "成就加载失败", snackbarHostState = snackbarHostState,
-                ) { plan ->
-                    states[targetTypeIdx] = TasksUiState.Failed(
-                        message = plan.message.orEmpty(),
-                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-                    )
-                }
-            }
-        }
     }
 
     fun claim(targetType: TaskType, item: TaskItem) {
@@ -204,15 +194,12 @@ internal fun CouiTasksScreen(
         }
     }
 
-    LaunchedEffect(clampedTypeIndex, clampedFilterIndex) {
-        val filterChanged = lastFilterIndex != clampedFilterIndex
-        if (filterChanged) {
-            lastFilterIndex = clampedFilterIndex
-            states.clear()
-        }
-        if (filterChanged || states[clampedTypeIndex] == null) {
+    // 每个 Tab 只在自己第一次被切到时拉一次；换筛选后 loader 是新的，进度条也回到顶部
+    LaunchedEffect(clampedTypeIndex, loaders) {
+        if (startedTabs[clampedTypeIndex] != true) {
+            startedTabs[clampedTypeIndex] = true
             listStates[clampedTypeIndex].requestScrollToItem(0)
-            load(targetTypeIdx = clampedTypeIndex, showLoading = true)
+            loaders[clampedTypeIndex].loadFirstPage()
         }
     }
 
@@ -225,13 +212,8 @@ internal fun CouiTasksScreen(
                 onBack = onBack,
                 actions = {
                     CouiFeedRefreshAction(
-                        refreshing = refreshingTab == clampedTypeIndex,
-                        onRefresh = {
-                            if (refreshingTab != clampedTypeIndex) {
-                                refreshingTab = clampedTypeIndex
-                                load(targetTypeIdx = clampedTypeIndex, showLoading = false)
-                            }
-                        },
+                        refreshing = snapshots[clampedTypeIndex].refreshing,
+                        onRefresh = loaders[clampedTypeIndex]::refresh,
                     )
                 },
                 topBarBottom = {
@@ -247,9 +229,9 @@ internal fun CouiTasksScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) { pageIdx ->
                     val pageType = types[pageIdx]
-                    val pageState = states[pageIdx] ?: TasksUiState.Loading
-                    val pageLoaded = pageState as? TasksUiState.Loaded
-                    val items = pageLoaded?.page?.items.orEmpty()
+                    val pageSnapshot = snapshots[pageIdx]
+                    val pageItems = pageSnapshot.feed.items
+                    val pageExtra = pageExtras[pageIdx]
 
                     LazyColumn(
                         modifier = Modifier
@@ -274,7 +256,7 @@ internal fun CouiTasksScreen(
                         }
 
                         // 服务端 message（如"暂未登录"）先播出来，再按空态处理
-                        val pageMessage = pageLoaded?.page?.message.orEmpty()
+                        val pageMessage = pageExtra?.message.orEmpty()
                         if (pageMessage.isNotBlank()) {
                             item(key = "tasks-message") {
                                 Footer(
@@ -284,27 +266,23 @@ internal fun CouiTasksScreen(
                             }
                         }
 
-                        when (pageState) {
-                            TasksUiState.Loading -> item(key = "tasks-loading") {
+                        when (val pageUiState = pageSnapshot.state) {
+                            ListLoadState.Loading -> item(key = "tasks-loading") {
                                 CouiLoadingGroup(
                                     modifier = Modifier.padding(top = 8.dp),
                                     text = "正在加载成就…",
                                 )
                             }
-                            is TasksUiState.Failed -> if (pageState.sessionExpired) {
-                                item(key = "tasks-expired") {
-                                    CouiFeedLoginGroup(message = pageState.message, onOpenLogin = onOpenLogin)
-                                }
-                            } else {
-                                item(key = "tasks-error") {
-                                    CouiErrorGroup(
-                                        message = pageState.message,
-                                        onRetry = { load(targetTypeIdx = pageIdx) },
-                                        modifier = Modifier.padding(top = 8.dp),
-                                    )
-                                }
+                            is ListLoadState.Failed -> item(key = "tasks-failed") {
+                                CouiScreenFailureGroup(
+                                    message = pageUiState.message,
+                                    expired = pageUiState.sessionExpired,
+                                    onRetry = loaders[pageIdx]::loadFirstPage,
+                                    onOpenLogin = onOpenLogin,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
                             }
-                            is TasksUiState.Loaded -> if (items.isEmpty()) {
+                            ListLoadState.Loaded -> if (pageItems.isEmpty()) {
                                 item(key = "tasks-empty") {
                                     CouiEmptyGroup(
                                         text = "暂无" + pageType.label,
@@ -324,15 +302,15 @@ internal fun CouiTasksScreen(
                                 item(key = "tasks-group-title") {
                                     CouiGroupTitle(title = pageType.label)
                                 }
-                                itemsIndexed(items, key = { _, item -> "task-" + item.id }) { index, item ->
+                                itemsIndexed(pageItems, key = { _, item -> "task-" + item.id }) { index, item ->
                                     CouiGroupRow(
                                         isFirst = index == 0,
-                                        isLast = index == items.lastIndex,
+                                        isLast = index == pageItems.lastIndex,
                                     ) {
                                         TaskRow(
                                             item = item,
                                             type = pageType,
-                                            imageHost = pageState.imageHost,
+                                            imageHost = pageExtra?.imageHost.orEmpty(),
                                             equipped = if (pageType == TaskType.TITLE) {
                                                 equippedTitleOverride == item.content
                                             } else {

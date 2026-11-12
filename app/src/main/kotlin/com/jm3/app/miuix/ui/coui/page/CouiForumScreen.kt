@@ -26,7 +26,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,21 +64,17 @@ import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.CommentItemNullableSaver
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.ScreenLoadPlan
-import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
-import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
@@ -91,6 +86,8 @@ import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
@@ -100,12 +97,12 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CommentSegment
 import com.jm3.core.model.ForumScope
+import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pageCountOf
 import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -124,13 +121,6 @@ private const val FORUM_BODY_MAX_LINES = 8
 
 /** 回复缩进层级上限：再深不再吃正文宽度。 */
 private const val FORUM_MAX_INDENT_DEPTH = 2
-
-private sealed interface ForumUiState {
-    data object Loading : ForumUiState
-    data object Loaded : ForumUiState
-    // 会话失效与普通失败分开：前者只能去登录，给重试按钮是骗人的
-    data class Failed(val plan: ScreenLoadPlan) : ForumUiState
-}
 
 /**
  * COUI 社区论坛：全部/漫画评论/闲聊三档，支持发帖、回复与两种分页模式。
@@ -154,11 +144,6 @@ internal fun CouiForumScreen(
 
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
     val clampedScopeIndex = scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)
-    val feeds = remember { mutableStateMapOf<Int, PagedFeed<CommentItem>>() }
-    val states = remember { mutableStateMapOf<Int, ForumUiState>() }
-    var refreshing by remember { mutableStateOf(false) }
-    // 失败页码：重试要回到失败的那一页，而不是一律回第一页
-    val failedPages = remember { mutableStateMapOf<Int, Int>() }
     var replyTarget by rememberSaveable(stateSaver = CommentItemNullableSaver) {
         mutableStateOf<CommentItem?>(null)
     }
@@ -166,122 +151,77 @@ internal fun CouiForumScreen(
     var composing by rememberSaveable { mutableStateOf(false) }
     var composeBusy by remember { mutableStateOf(false) }
     var rulesExpanded by rememberSaveable { mutableStateOf(false) }
-    // 请求代际号 + 在途协程：切档/翻页后晚到的旧响应不得覆盖新状态
-    var loadToken by remember { mutableIntStateOf(0) }
-    var inFlightJob by remember { mutableStateOf<Job?>(null) }
-    var inFlightTab by remember { mutableStateOf<Int?>(null) }
-    var lastPageMode by remember { mutableStateOf(pageMode) }
-
-    fun applyFailure(targetTab: Int, outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
-        // 保留内容时只把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈
-        scope.applyLoadPlan(
-            outcome = outcome,
-            hasContent = inFlight.items.isNotEmpty(),
-            failureMessage = "论坛加载失败",
-            snackbarHostState = snackbarHostState,
-            stalePrefix = "加载失败：",
-            onKeepContent = {
-                feeds[targetTab] = inFlight.failLoadMore()
-                states[targetTab] = ForumUiState.Loaded
-            },
-            onFullScreen = { plan ->
-                feeds[targetTab] = inFlight.copy(loadingMore = false)
-                states[targetTab] = ForumUiState.Failed(plan)
-            },
-        )
-    }
-
-    fun clearStaleLoadingMore(tabIndex: Int?) {
-        if (tabIndex == null) return
-        val stale = feeds[tabIndex] ?: return
-        if (stale.loadingMore) {
-            feeds[tabIndex] = stale.copy(loadingMore = false)
-        }
-    }
-
-    fun fetch(
-        targetPage: Int,
-        replace: Boolean,
-        showLoading: Boolean,
-        targetTab: Int = clampedScopeIndex,
-    ) {
-        val currentFeed = feeds[targetTab] ?: PagedFeed()
-        val targetScope = ForumScope.entries[targetTab]
-        // 追加请求在途时不再发起新的翻页：连点会并发打同一页，返回顺序错乱后列表会重复
-        val requested = if (replace) currentFeed.copy(loadingMore = false) else currentFeed.beginLoadMore()
-        if (!replace && requested === currentFeed) return
-        // 切榜或替换取消旧请求前，先清掉原榜单遗留的 loadingMore，避免切回后无法再触发翻页
-        clearStaleLoadingMore(inFlightTab)
-        if (showLoading) states[targetTab] = ForumUiState.Loading
-        feeds[targetTab] = requested
-        failedPages[targetTab] = targetPage
-        inFlightJob?.cancel()
-        inFlightTab = targetTab
-        val token = ++loadToken
-        inFlightJob = scope.launch {
-            try {
-                val outcome = deps.authCall.call { deps.gateway.forum(targetScope, targetPage) }
-                if (token != loadToken) return@launch
-                refreshing = false
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        val resultPage = outcome.value
-                        // 评论页没有页码字段：页码与总页数由请求页和 total 补上
-                        val pageCount = pageCountOf(resultPage.total, FORUM_PAGE_SIZE)
-                        feeds[targetTab] = if (replace) {
-                            PagedFeed<CommentItem>().replacedBy(resultPage)
-                        } else {
-                            requested.appendedBy(resultPage)
-                        }.copy(page = targetPage, pageCount = pageCount)
-                        states[targetTab] = ForumUiState.Loaded
+    // 重试页码：整屏失败时列表停在上一次成功的页，重试要回到真正失败的那一页
+    val retryPages = remember(pageMode) { mutableMapOf<Int, Int>() }
+    // 回复后要保留到当前页：先记下目标页，随后的 refresh 由 fetchPage 一次取回 1..N 页合并
+    val pendingMerge = remember(pageMode) { mutableMapOf<Int, Int>() }
+    // 每档一个列表装配器：页码、在途、代次与失败计划都收在 loader 里，页面只提供「取哪一页」
+    val loaders = remember(pageMode, snackbarHostState) {
+        ForumScope.entries.mapIndexed { tabIndex, forumScope ->
+            SessionListLoader(
+                scope = scope,
+                idOf = { item: CommentItem -> item.id },
+                failureMessage = "论坛加载失败",
+                fetchPage = { page ->
+                    retryPages[tabIndex] = page
+                    val mergeThrough = pendingMerge.remove(tabIndex) ?: 0
+                    if (mergeThrough > 1) {
+                        // 回复后重载：并发取 1..N 页合成一页返回，对外仍是 loader 的单页替换
+                        val outcomes = coroutineScope {
+                            (1..mergeThrough)
+                                .map { targetPage ->
+                                    async { deps.authCall.call { deps.gateway.forum(forumScope, targetPage) } }
+                                }
+                                .awaitAll()
+                        }
+                        val failed = outcomes.firstOrNull { it !is SessionOutcome.Ok }
+                        when (failed) {
+                            null -> {
+                                val pages = outcomes.map { (it as SessionOutcome.Ok).value }
+                                val merged = mergeCouiForumPages(pages, activePage = mergeThrough)
+                                SessionOutcome.Ok(
+                                    PageSlice(
+                                        items = merged.items,
+                                        hasMore = merged.hasMore,
+                                        total = merged.total,
+                                        page = merged.page,
+                                        pageCount = merged.pageCount,
+                                    ),
+                                )
+                            }
+                            is SessionOutcome.Failed -> failed
+                            else -> SessionOutcome.Expired
+                        }
+                    } else {
+                        when (val outcome = deps.authCall.call { deps.gateway.forum(forumScope, page) }) {
+                            is SessionOutcome.Ok -> SessionOutcome.Ok(couiForumSlice(outcome.value, page))
+                            SessionOutcome.Expired -> SessionOutcome.Expired
+                            is SessionOutcome.Failed -> outcome
+                        }
                     }
-                    SessionOutcome.Expired -> applyFailure(targetTab, outcome, requested)
-                    is SessionOutcome.Failed -> applyFailure(targetTab, outcome, requested)
-                }
-            } finally {
-                if (token != loadToken) {
-                    clearStaleLoadingMore(targetTab)
-                }
-            }
+                },
+                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+                stalePrefix = "加载失败：",
+            )
         }
     }
+    val activeSnapshot by loaders[clampedScopeIndex].snapshot.collectAsState()
+    // 每档只首屏加载一次；模式切换会重建 loader，等价于把已加载标记清空
+    val startedTabs = remember(loaders) { mutableSetOf<Int>() }
 
-    fun refreshAfterReply(targetTab: Int, activePage: Int) {
+    /**
+     * 回复后重载：CLICK 模式或停在第 1 页时只换当前页；
+     * 滚动模式停在更深的页时，先记下合并目标页再走 refresh，由 fetchPage 一次取回 1..N 页。
+     */
+    fun reloadAfterReply(tabIndex: Int, activePage: Int) {
         val safeActivePage = activePage.coerceAtLeast(1)
+        val tabLoader = loaders[tabIndex]
         if (pageMode == PaginationMode.CLICK || safeActivePage <= 1) {
-            fetch(safeActivePage, replace = true, showLoading = false, targetTab = targetTab)
+            tabLoader.goToPage(safeActivePage)
             return
         }
-        val currentFeed = feeds[targetTab] ?: PagedFeed()
-        val targetScope = ForumScope.entries[targetTab]
-        clearStaleLoadingMore(inFlightTab)
-        feeds[targetTab] = currentFeed.copy(loadingMore = false)
-        inFlightJob?.cancel()
-        inFlightTab = targetTab
-        val token = ++loadToken
-        inFlightJob = scope.launch {
-            try {
-                val outcomes = coroutineScope {
-                    (1..safeActivePage)
-                        .map { page -> async { deps.authCall.call { deps.gateway.forum(targetScope, page) } } }
-                        .awaitAll()
-                }
-                if (token != loadToken) return@launch
-                refreshing = false
-                val failure = outcomes.firstOrNull { it !is SessionOutcome.Ok }
-                if (failure != null) {
-                    applyFailure(targetTab, failure, currentFeed.copy(loadingMore = false))
-                    return@launch
-                }
-                val pages = outcomes.map { (it as SessionOutcome.Ok).value }
-                feeds[targetTab] = mergeCouiForumPages(pages, activePage = safeActivePage)
-                states[targetTab] = ForumUiState.Loaded
-            } finally {
-                if (token != loadToken) {
-                    clearStaleLoadingMore(targetTab)
-                }
-            }
-        }
+        pendingMerge[tabIndex] = safeActivePage
+        tabLoader.refresh()
     }
 
     /** 回复楼层：闲聊帖缺少作品归属，无法定位接口实体，直接给出提示。 */
@@ -307,8 +247,7 @@ internal fun CouiForumScreen(
                 is SessionOutcome.Ok -> {
                     replyTarget = null
                     snackbarHostState.showSnackbar("回复已发送")
-                    val activePage = (feeds[clampedScopeIndex] ?: PagedFeed()).page
-                    refreshAfterReply(targetTab = clampedScopeIndex, activePage = activePage)
+                    reloadAfterReply(clampedScopeIndex, loaders[clampedScopeIndex].feed.page)
                 }
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(
                     planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty(),
@@ -334,7 +273,7 @@ internal fun CouiForumScreen(
                     // 新帖落在第一页首位，回到顶部才能看到刚发的内容
                     val activeTab = clampedScopeIndex
                     listStates[activeTab].requestScrollToItem(0)
-                    fetch(targetPage = 1, replace = true, showLoading = false, targetTab = activeTab)
+                    loaders[activeTab].goToPage(1)
                 }
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(
                     planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty(),
@@ -351,20 +290,16 @@ internal fun CouiForumScreen(
         if (user == null) onOpenLogin() else composing = true
     }
 
-    // 切档或换分页模式时重载；已缓存档位划回时保留列表并静默刷新
-    LaunchedEffect(clampedScopeIndex, pageMode) {
-        val modeChanged = lastPageMode != pageMode
-        if (modeChanged) {
-            feeds.clear()
-            states.clear()
-            failedPages.clear()
-            lastPageMode = pageMode
+    // 切档或换分页模式（loader 重建）时：没加载过的档位走首屏加载，已加载过的静默刷新
+    LaunchedEffect(clampedScopeIndex, loaders) {
+        val tabIndex = clampedScopeIndex
+        val tabLoader = loaders[tabIndex]
+        if (startedTabs.add(tabIndex)) {
+            listStates[tabIndex].requestScrollToItem(0)
+            tabLoader.loadFirstPage()
+        } else {
+            tabLoader.refresh()
         }
-        val showLoading = modeChanged || states[clampedScopeIndex] !is ForumUiState.Loaded
-        if (modeChanged) {
-            listStates[clampedScopeIndex].requestScrollToItem(0)
-        }
-        fetch(targetPage = 1, replace = true, showLoading = showLoading, targetTab = clampedScopeIndex)
     }
 
     CouiTheme {
@@ -397,13 +332,8 @@ internal fun CouiForumScreen(
                     modifier = Modifier.padding(end = 4.dp),
                 )
                 CouiFeedRefreshAction(
-                    refreshing = refreshing,
-                    onRefresh = {
-                        if (!refreshing) {
-                            refreshing = true
-                            fetch(targetPage = 1, replace = true, showLoading = false, targetTab = clampedScopeIndex)
-                        }
-                    },
+                    refreshing = activeSnapshot.refreshing,
+                    onRefresh = loaders[clampedScopeIndex]::refresh,
                 )
             },
             topBarBottom = {
@@ -424,9 +354,12 @@ internal fun CouiForumScreen(
                 modifier = Modifier.fillMaxSize(),
             ) { pageIdx ->
                 val pageScope = ForumScope.entries[pageIdx]
-                val pageFeed = feeds[pageIdx] ?: PagedFeed()
-                val pageState = states[pageIdx] ?: ForumUiState.Loading
-                val pageFailedAt = failedPages[pageIdx] ?: 1
+                val pageLoader = loaders[pageIdx]
+                val pageSnapshot by pageLoader.snapshot.collectAsState()
+                val pageFeed = pageSnapshot.feed
+                val pageState = pageSnapshot.state
+                // 重试回真正失败的那一页：整屏失败时列表还停在上一次成功的页
+                val pageFailedAt = retryPages[pageIdx] ?: 1
                 val pageListState = listStates[pageIdx]
                 val pageItems = pageFeed.items
                 val pageTopicTotal = pageFeed.total ?: 0
@@ -437,11 +370,9 @@ internal fun CouiForumScreen(
                     rowStart = 0,
                     listState = pageListState,
                     enabled = pageMode != PaginationMode.CLICK &&
-                        pageState == ForumUiState.Loaded &&
+                        pageState == ListLoadState.Loaded &&
                         pageIdx == clampedScopeIndex,
-                    onPrefetch = {
-                        fetch(pageFeed.page + 1, replace = false, showLoading = false, targetTab = pageIdx)
-                    },
+                    onPrefetch = pageLoader::loadMore,
                 )
 
                 LazyColumn(
@@ -454,36 +385,29 @@ internal fun CouiForumScreen(
                     overscrollEffect = overscroll,
                 ) {
                     when (pageState) {
-                        ForumUiState.Loading -> item(key = "forum-loading") {
+                        ListLoadState.Loading -> item(key = "forum-loading") {
                             CouiLoadingGroup(
                                 modifier = Modifier.padding(top = 8.dp),
                                 text = "正在加载话题…",
                             )
                         }
-                        is ForumUiState.Failed -> if (pageState.plan.phase == ScreenLoadPhase.Expired) {
-                            item(key = "forum-expired") {
-                                CouiFeedLoginGroup(
-                                    message = pageState.plan.message.orEmpty(),
-                                    onOpenLogin = onOpenLogin,
-                                )
-                            }
-                        } else {
-                            item(key = "forum-error") {
-                                CouiErrorGroup(
-                                    message = pageState.plan.message.orEmpty(),
-                                    onRetry = {
-                                        fetch(
-                                            targetPage = pageFailedAt,
-                                            replace = true,
-                                            showLoading = true,
-                                            targetTab = pageIdx,
-                                        )
-                                    },
-                                    modifier = Modifier.padding(top = 8.dp),
-                                )
-                            }
+                        is ListLoadState.Failed -> item(key = "forum-error") {
+                            CouiScreenFailureGroup(
+                                message = pageState.message,
+                                expired = pageState.sessionExpired,
+                                onRetry = {
+                                    // 首屏失败回第 1 页并给整屏加载态；翻页失败要回到失败的那一页
+                                    if (pageFailedAt <= 1) {
+                                        pageLoader.loadFirstPage()
+                                    } else {
+                                        pageLoader.goToPage(pageFailedAt)
+                                    }
+                                },
+                                onOpenLogin = onOpenLogin,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
                         }
-                        ForumUiState.Loaded -> {
+                        ListLoadState.Loaded -> {
                             // 闲聊档的规则卡：折叠态给提要，展开态给全文
                             if (pageScope == ForumScope.CHAT) {
                                 item(key = "forum-rules") {
@@ -546,7 +470,7 @@ internal fun CouiForumScreen(
                                                 onJumpPage = { target ->
                                                     if (target != pageFeed.page) {
                                                         pageListState.requestScrollToItem(0)
-                                                        fetch(target, replace = true, showLoading = false, targetTab = pageIdx)
+                                                        pageLoader.goToPage(target)
                                                     }
                                                 },
                                                 modifier = Modifier.padding(top = 8.dp),
@@ -556,9 +480,7 @@ internal fun CouiForumScreen(
                                         CouiLoadMoreFooter(
                                             feed = pageFeed,
                                             errorMessage = CouiStrings.LoadFailed,
-                                            onRetry = {
-                                                fetch(pageFeed.page + 1, replace = false, showLoading = false, targetTab = pageIdx)
-                                            },
+                                            onRetry = pageLoader::loadMore,
                                             modifier = Modifier.padding(top = 8.dp),
                                         )
                                     }
@@ -737,6 +659,19 @@ internal fun flattenForumReplies(root: CommentItem): List<Pair<CommentItem, Int>
     }
     walk(root, 1)
     return rows
+}
+
+/** 评论页没有页码字段：页码与总页数由请求页和 total 补上，末页之后不再多打一次空页。 */
+private fun couiForumSlice(page: CommentPage, requestPage: Int): PageSlice<CommentItem> {
+    val pageCount = pageCountOf(page.total, FORUM_PAGE_SIZE)
+    return PageSlice(
+        items = page.items,
+        // total 为 0 时页数未知，只能按本页有没有条目推断是否还有下一页
+        hasMore = if (pageCount == null) page.items.isNotEmpty() else requestPage < pageCount,
+        total = page.total.takeIf { it > 0 },
+        page = requestPage,
+        pageCount = pageCount,
+    )
 }
 
 /** 无限滚动回复后重拉已加载的 1..activePage 页，保留前序页面条目与游标。 */

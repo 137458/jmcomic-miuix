@@ -57,10 +57,6 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.IntStringPairNullableSaver
 import com.jm3.app.miuix.ui.LocalWideLayout
-import com.jm3.app.miuix.ui.PaginationModeReloadEffect
-import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.ScreenLoadPlan
-import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.authorNames
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
@@ -85,19 +81,19 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.appendedBy
 import com.jm3.core.model.FavoriteFolderAction
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.TagFavorite
-import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import com.jm3.core.toFeed
+import com.jm3.core.toSlice
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -132,10 +128,6 @@ fun CouiFavoritesScreen(
 
         // 0 = 收藏夹；1 = 标签收藏
         var tabIndex by rememberSaveable { mutableIntStateOf(0) }
-        // null 表示首页还没落地（整屏 Loading）；在途与失败标记由 PagedFeed 自己记
-        var feed by remember { mutableStateOf<PagedFeed<SearchResult>?>(null) }
-        var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-        var refreshing by remember { mutableStateOf(false) }
         var folderId by rememberSaveable { mutableIntStateOf(0) }
         var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
         var folderPickerOpen by rememberSaveable { mutableStateOf(false) }
@@ -163,108 +155,37 @@ fun CouiFavoritesScreen(
         var showAddTag by rememberSaveable { mutableStateOf(false) }
         var tagInput by rememberSaveable { mutableStateOf("") }
         var tagDeleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
-        // 翻页在途守卫：请求期间列表仍可读，但翻页条要禁用，避免连点重复请求
-        var pageBusy by remember { mutableStateOf(false) }
 
-        fun loadFirstPage() {
-            val targetFolderId = folderId
-            scope.launch {
-                failure = null
-                feed = null
-                val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, 1) }
-                // 请求期间切换了收藏夹：丢弃旧夹结果，避免覆盖新夹内容
-                if (targetFolderId != folderId) return@launch
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        val next = outcome.value
-                        if (next.folders.isNotEmpty()) folders = next.folders
-                        feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
-                    }
-
-                    SessionOutcome.Expired -> scope.applyLoadPlan(
-                        outcome, hasContent = false, failureMessage = "", snackbarHostState = snackbarHostState,
-                    ) { failure = it }
-
-                    is SessionOutcome.Failed -> scope.applyLoadPlan(
-                        outcome,
-                        hasContent = false,
-                        failureMessage = "收藏加载失败",
-                        snackbarHostState = snackbarHostState,
-                    ) { failure = it }
-                }
-            }
-        }
-
-        fun jumpToPage(target: Int) {
-            if (pageBusy) return
-            val current = feed ?: return
-            val resolved = pagerTargetPage(current.page, target, current.pageCount)
-            if (resolved == current.page) return
-            pageBusy = true
-            val targetFolderId = folderId
-            scope.launch {
-                try {
-                    val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, resolved) }
-                    if (targetFolderId != folderId) return@launch
-                    when (outcome) {
+        // 收藏夹列表：收藏夹 id 与账号都是 remember 键，切夹时重建 loader 等于丢掉旧夹内容
+        val loader = remember(folderId, mode, user?.uid, snackbarHostState) {
+            SessionListLoader(
+                scope = scope,
+                idOf = { item: SearchResult -> item.id },
+                failureMessage = "收藏加载失败",
+                fetchPage = { page ->
+                    when (val outcome = deps.authCall.call { deps.gateway.favorites(folderId, page) }) {
                         is SessionOutcome.Ok -> {
                             val next = outcome.value
+                            // 收藏夹名册随任一页返回，顺手更新；空名册不覆盖已有映射
                             if (next.folders.isNotEmpty()) folders = next.folders
-                            feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
-                            gridState.scrollToItem(0)
+                            SessionOutcome.Ok(
+                                SearchPage(next.currentPage, next.totalPages, next.items).toSlice(),
+                            )
                         }
 
-                        SessionOutcome.Expired -> scope.applyLoadPlan(
-                            outcome, hasContent = true, failureMessage = "", snackbarHostState = snackbarHostState,
-                        ) { failure = it }
-
-                        is SessionOutcome.Failed -> scope.applyLoadPlan(
-                            outcome,
-                            hasContent = true,
-                            failureMessage = "收藏翻页失败",
-                            snackbarHostState = snackbarHostState,
-                        ) { failure = it }
+                        SessionOutcome.Expired -> SessionOutcome.Expired
+                        is SessionOutcome.Failed -> outcome
                     }
-                } finally {
-                    pageBusy = false
-                }
-            }
+                },
+                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+            )
         }
-
-        // 刷新：保留当前列表，仅用第一页结果替换，避免整屏 Loading 闪烁
-        fun refresh() {
-            if (refreshing) return
-            refreshing = true
-            scope.launch {
-                val targetFolderId = folderId
-                val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, 1) }
-                refreshing = false
-                if (targetFolderId != folderId) return@launch
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        val next = outcome.value
-                        if (next.folders.isNotEmpty()) folders = next.folders
-                        feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
-                    }
-
-                    SessionOutcome.Expired -> scope.applyLoadPlan(
-                        outcome, hasContent = feed != null, failureMessage = "", snackbarHostState = snackbarHostState,
-                    ) { failure = it }
-
-                    is SessionOutcome.Failed -> scope.applyLoadPlan(
-                        outcome,
-                        hasContent = feed != null,
-                        failureMessage = "收藏刷新失败",
-                        snackbarHostState = snackbarHostState,
-                    ) { failure = it }
-                }
-            }
-        }
+        val snapshot by loader.snapshot.collectAsState()
+        val feed = snapshot.feed
 
         fun switchFolder(targetFolderId: Int) {
             if (targetFolderId == folderId) return
             folderId = targetFolderId
-            loadFirstPage()
         }
 
         /** 收藏夹增删改：成功后关闭弹窗并重拉列表；失败把服务端消息留在弹窗内。 */
@@ -288,11 +209,13 @@ fun CouiFavoritesScreen(
                         editTarget = null
                         deleteTarget = null
                         folderNameInput = ""
-                        // 删除当前所在收藏夹后回落到全部，避免停留在已不存在的夹
-                        if (action == FavoriteFolderAction.DELETE && targetId.toIntOrNull() == folderId) {
+                        // 删除当前所在收藏夹后回落到全部，避免停留在已不存在的夹；
+                        // folderId 变化会重建 loader 并自动重拉，没变化才显式刷新一次
+                        if (action == FavoriteFolderAction.DELETE && targetId.toIntOrNull() == folderId && folderId != 0) {
                             folderId = 0
+                        } else {
+                            loader.loadFirstPage()
                         }
-                        loadFirstPage()
                     }
 
                     // 账号态操作失效：提示一次并直接给登录入口，不让用户对着按钮重试
@@ -330,7 +253,7 @@ fun CouiFavoritesScreen(
                         }
                         moveTarget = null
                         snackbarHostState.showSnackbar("已移动到「" + folderName + "」")
-                        refresh()
+                        loader.refresh()
                     }
 
                     SessionOutcome.Expired -> {
@@ -421,40 +344,8 @@ fun CouiFavoritesScreen(
             }
         }
 
-        fun loadMore() {
-            val current = feed ?: return
-            val requested = current.beginLoadMore()
-            if (requested === current) return
-            val targetFolderId = folderId
-            feed = requested
-            scope.launch {
-                val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, requested.page + 1) }
-                // 加载期间切换了收藏夹：这批结果属于旧收藏夹，丢弃以免串夹
-                if (targetFolderId != folderId) return@launch
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        val next = outcome.value
-                        feed = requested.appendedBy(
-                            SearchPage(next.currentPage, next.totalPages, next.items),
-                        )
-                    }
-
-                    // 翻页撞上会话失效：已加载的列表不能顶掉，保留内容并把页脚置成可重试
-                    SessionOutcome.Expired -> {
-                        feed = requested.failLoadMore()
-                        scope.applyLoadPlan(
-                            outcome, hasContent = true, failureMessage = "", snackbarHostState = snackbarHostState,
-                        ) { failure = it }
-                    }
-
-                    is SessionOutcome.Failed -> feed = requested.failLoadMore()
-                }
-            }
-        }
-
-        LaunchedEffect(user?.uid) { loadFirstPage() }
-
-        PaginationModeReloadEffect(mode) { loadFirstPage() }
+        // 账号、收藏夹或翻页模式变化时 remember 会重建 loader，这里只负责首屏加载
+        LaunchedEffect(loader) { loader.loadFirstPage() }
 
         // 首次切到标签页才加载；登录态变化时清空旧数据，避免登出后残留
         LaunchedEffect(tabIndex, user?.uid) {
@@ -536,29 +427,28 @@ fun CouiFavoritesScreen(
                     ) {
                         if (page == 0) {
                         val gridFeed = feed
-                        val planned = failure
-                        when {
-                            planned != null -> item(
-                                key = "coui-favorites-failed",
-                                span = { GridItemSpan(maxLineSpan) },
-                            ) {
-                                CouiScreenFailureGroup(
-                                    message = planned.message,
-                                    expired = planned.phase == ScreenLoadPhase.Expired,
-                                    onRetry = { loadFirstPage() },
-                                    onOpenLogin = onOpenLogin,
-                                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                                )
-                            }
-
-                            gridFeed == null -> item(
+                        when (val currentState = snapshot.state) {
+                            ListLoadState.Loading -> item(
                                 key = "coui-favorites-loading",
                                 span = { GridItemSpan(maxLineSpan) },
                             ) {
                                 CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                             }
 
-                            else -> {
+                            is ListLoadState.Failed -> item(
+                                key = "coui-favorites-failed",
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                CouiScreenFailureGroup(
+                                    message = currentState.message,
+                                    expired = currentState.sessionExpired,
+                                    onRetry = loader::loadFirstPage,
+                                    onOpenLogin = onOpenLogin,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                                )
+                            }
+
+                            ListLoadState.Loaded -> {
                                 item(key = "coui-favorites-folders", span = { GridItemSpan(maxLineSpan) }) {
                                     Row(
                                         modifier = Modifier
@@ -625,13 +515,25 @@ fun CouiFavoritesScreen(
                                                 page = gridFeed.page,
                                                 pageCount = gridFeed.pageCount,
                                                 hasMore = gridFeed.hasMore,
-                                                onJumpPage = { target -> jumpToPage(target) },
+                                                onJumpPage = { target ->
+                                                    val resolved = pagerTargetPage(
+                                                        gridFeed.page,
+                                                        target,
+                                                        gridFeed.pageCount,
+                                                    )
+                                                    if (resolved != gridFeed.page) {
+                                                        scope.launch {
+                                                            gridState.scrollToItem(0)
+                                                            loader.goToPage(resolved)
+                                                        }
+                                                    }
+                                                },
                                             )
                                         } else {
-                                            CouiAutoLoadMoreEffect(feed = gridFeed, onLoadMore = { loadMore() })
+                                            CouiAutoLoadMoreEffect(feed = gridFeed, onLoadMore = loader::loadMore)
                                             CouiLoadMoreFooter(
                                                 feed = gridFeed,
-                                                onRetry = { loadMore() },
+                                                onRetry = loader::loadMore,
                                             )
                                         }
                                     }

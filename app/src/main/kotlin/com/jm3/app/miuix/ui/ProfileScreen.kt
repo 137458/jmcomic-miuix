@@ -140,19 +140,8 @@ fun ProfileScreen(
                     state = ProfileUiState.Loaded
                 }
 
-                SessionOutcome.Expired -> scope.applyLoadPlan(
-                    outcome = outcome,
-                    hasContent = profile != null,
-                    failureMessage = "个人资料加载失败",
-                    snackbarHostState = snackbarHostState,
-                ) { plan ->
-                    state = ProfileUiState.Failed(
-                        message = plan.message.orEmpty(),
-                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-                    )
-                }
-
-                is SessionOutcome.Failed -> scope.applyLoadPlan(
+                // 失效与失败同一落点：两个分支原本逐字相同，planLoad 内部已按 phase 分流
+                else -> scope.applyLoadPlan(
                     outcome = outcome,
                     hasContent = profile != null,
                     failureMessage = "个人资料加载失败",

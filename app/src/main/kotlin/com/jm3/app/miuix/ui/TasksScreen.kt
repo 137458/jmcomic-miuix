@@ -49,12 +49,14 @@ import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.CoverLocator
 import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
-import com.jm3.core.model.TaskPage
 import com.jm3.core.model.TaskType
+import com.jm3.core.paging.PageSlice
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -81,16 +83,6 @@ private val TaskCellMinHeight = 124.dp
 private const val TASK_STATE_DONE = "已达成"
 private const val TASK_STATE_UNDONE = "未达成"
 
-private sealed interface TasksUiState {
-    data object Loading : TasksUiState
-
-    /** imageHost 为图片域名，用于拼接勋章图的相对路径。 */
-    data class Loaded(val page: TaskPage, val imageHost: String) : TasksUiState
-
-    /** sessionExpired 区分「重试可能好」和「会话没了」：后者只能去登录，给重试按钮是骗人的。 */
-    data class Failed(val message: String, val sessionExpired: Boolean = false) : TasksUiState
-}
-
 /** 成就/任务：称号与勋章两个维度，支持「我的/全部」筛选。 */
 @Composable
 fun TasksScreen(
@@ -105,10 +97,8 @@ fun TasksScreen(
     var filterIndex by rememberSaveable { mutableIntStateOf(0) }
     val clampedTypeIndex = typeIndex.coerceIn(0, types.lastIndex)
     val clampedFilterIndex = filterIndex.coerceIn(0, filters.lastIndex)
-    val states = remember { mutableStateMapOf<Int, TasksUiState>() }
     val gridStates = remember { List(types.size) { LazyGridState() } }
     var lastFilterIndex by remember { mutableIntStateOf(clampedFilterIndex) }
-    var refreshingTab by remember { mutableStateOf<Int?>(null) }
     // 佩戴状态以本地覆盖优先：切换成功后服务端已更新，但账号缓存不会立刻刷新
     var equippedTitleOverride by remember { mutableStateOf<String?>(null) }
     var equippedBadgeId by remember { mutableStateOf<String?>(null) }
@@ -163,68 +153,52 @@ fun TasksScreen(
         }
     }
 
-    // 快速切换筛选时旧响应不能覆盖新条件的结果，慢网下否则会把旧条件的结果画在当前格子位置
-    val requestTokens = remember { mutableStateMapOf<Int, Int>() }
+    // 勋章图与 API 同域；封面域名未就绪时退回当前 API 域名，仍为空才不展示图片
+    var imageHost by remember { mutableStateOf("") }
+    // 接口按档位一次取全量：条目进 loader，响应里的 message 留在页内随档位一起用
+    val pageMessages = remember { mutableStateMapOf<Int, String>() }
+    val loaders = remember(types.size, clampedFilterIndex, user?.uid, snackbarHostState) {
+        val filter = filters.getOrNull(clampedFilterIndex) ?: TaskFilter.entries.first()
+        List(types.size) { idx ->
+            val type = types[idx]
+            SessionListLoader<TaskItem>(
+                scope = scope,
+                idOf = { it.id },
+                failureMessage = "成就列表加载失败",
+                fetchPage = {
+                    val host = runCatching { deps.images.imageHost() }
+                        .getOrDefault("")
+                        .ifBlank { runCatching { deps.routes.usedDomain() }.getOrNull().orEmpty() }
+                    val outcome = deps.authCall.call { deps.gateway.tasks(type, filter) }
+                    imageHost = host
+                    when (outcome) {
+                        is SessionOutcome.Ok -> {
+                            val page = outcome.value
+                            pageMessages[idx] = page.message.orEmpty()
+                            SessionOutcome.Ok(
+                                PageSlice(items = page.items, hasMore = false, page = 1, pageCount = 1),
+                            )
+                        }
 
-    fun load(targetTypeIdx: Int = clampedTypeIndex, showLoading: Boolean = true) {
-        if (showLoading) states[targetTypeIdx] = TasksUiState.Loading
-        val token = (requestTokens[targetTypeIdx] ?: 0) + 1
-        requestTokens[targetTypeIdx] = token
-        // 请求发出时定住筛选条件：响应回来时筛选可能已经切走
-        val requestType = types.getOrNull(targetTypeIdx) ?: return
-        val requestFilterIdx = clampedFilterIndex
-        val requestFilter = filters.getOrNull(requestFilterIdx) ?: return
-        scope.launch {
-            val outcome = deps.authCall.call {
-                // 勋章图与 API 同域；封面域名未就绪时退回当前 API 域名，仍为空才不展示图片
-                val host = runCatching { deps.images.imageHost() }
-                    .getOrDefault("")
-                    .ifBlank { runCatching { deps.routes.usedDomain() }.getOrNull().orEmpty() }
-                TasksUiState.Loaded(deps.gateway.tasks(requestType, requestFilter), host)
-            }
-            if (refreshingTab == targetTypeIdx) refreshingTab = null
-            // 令牌或筛选已被更新的请求替换：这次响应属于旧条件，整体丢弃
-            if (requestTokens[targetTypeIdx] != token || clampedFilterIndex != requestFilterIdx) return@launch
-            when (outcome) {
-                is SessionOutcome.Ok -> states[targetTypeIdx] = outcome.value
-
-                SessionOutcome.Expired -> scope.applyLoadPlan(
-                    outcome = outcome,
-                    hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
-                    failureMessage = "成就列表加载失败",
-                    snackbarHostState = snackbarHostState,
-                ) { plan ->
-                    states[targetTypeIdx] = TasksUiState.Failed(
-                        message = plan.message.orEmpty(),
-                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-                    )
-                }
-
-                is SessionOutcome.Failed -> scope.applyLoadPlan(
-                    outcome = outcome,
-                    hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
-                    failureMessage = "成就列表加载失败",
-                    snackbarHostState = snackbarHostState,
-                ) { plan ->
-                    states[targetTypeIdx] = TasksUiState.Failed(
-                        message = plan.message.orEmpty(),
-                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-                    )
-                }
-            }
+                        SessionOutcome.Expired -> SessionOutcome.Expired
+                        is SessionOutcome.Failed -> outcome
+                    }
+                },
+                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+            )
         }
     }
 
-    LaunchedEffect(clampedTypeIndex, clampedFilterIndex) {
-        val filterChanged = lastFilterIndex != clampedFilterIndex
-        if (filterChanged) {
+    LaunchedEffect(loaders, clampedTypeIndex) {
+        // 换筛选会换掉整组 loader：滚动位置与旧响应文案一起清掉
+        if (lastFilterIndex != clampedFilterIndex) {
             lastFilterIndex = clampedFilterIndex
-            states.clear()
+            gridStates.forEach { it.requestScrollToItem(0) }
+            pageMessages.clear()
         }
-        if (filterChanged || states[clampedTypeIndex] == null) {
-            gridStates[clampedTypeIndex].requestScrollToItem(0)
-            load(targetTypeIdx = clampedTypeIndex, showLoading = true)
-        }
+        // 只在首次进入该档位时取数据；划回来命中 Loaded/Failed 就不再重取
+        val current = loaders.getOrNull(clampedTypeIndex) ?: return@LaunchedEffect
+        if (current.state is ListLoadState.Loading) current.loadFirstPage()
     }
 
     GlassScaffold(
@@ -268,36 +242,35 @@ fun TasksScreen(
             modifier = Modifier.fillMaxSize(),
         ) { pageIdx ->
             val pageType = types.getOrNull(pageIdx) ?: return@HorizontalPager
-            val pageState = states[pageIdx] ?: TasksUiState.Loading
+            val loader = loaders.getOrNull(pageIdx) ?: return@HorizontalPager
+            val snapshot by loader.snapshot.collectAsState()
             Column(modifier = Modifier.fillMaxSize().readableWidth()) {
-                when (pageState) {
-                    TasksUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-                    is TasksUiState.Failed -> if (pageState.sessionExpired) {
+                when (val state = snapshot.state) {
+                    ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+                    is ListLoadState.Failed -> if (state.sessionExpired) {
                         LoginExpiredScreen(
                             onOpenLogin = onOpenLogin,
                             modifier = Modifier.padding(innerPadding),
                         )
                     } else {
                         ErrorScreen(
-                            message = pageState.message,
-                            onRetry = { load(targetTypeIdx = pageIdx) },
+                            message = state.message,
+                            onRetry = loader::loadFirstPage,
                             modifier = Modifier.padding(innerPadding),
                         )
                     }
-                    is TasksUiState.Loaded -> TaskGrid(
+                    ListLoadState.Loaded -> TaskGrid(
                         type = pageType,
-                        page = pageState.page,
-                        imageHost = pageState.imageHost,
+                        items = snapshot.feed.items,
+                        message = pageMessages[pageIdx]?.takeIf { it.isNotBlank() },
+                        imageHost = imageHost,
                         gridState = gridStates[pageIdx],
                         equippedTitle = equippedTitleOverride ?: user?.levelName,
                         equippedBadgeId = equippedBadgeId,
                         claimingId = claimingId,
                         contentPadding = innerPadding,
-                        refreshing = refreshingTab == pageIdx,
-                        onRefresh = {
-                            refreshingTab = pageIdx
-                            load(targetTypeIdx = pageIdx, showLoading = false)
-                        },
+                        refreshing = snapshot.refreshing,
+                        onRefresh = loader::refresh,
                         onClaim = { item -> claim(pageType, item) },
                     )
                 }
@@ -309,7 +282,8 @@ fun TasksScreen(
 @Composable
 private fun TaskGrid(
     type: TaskType,
-    page: TaskPage,
+    items: List<TaskItem>,
+    message: String?,
     imageHost: String,
     gridState: LazyGridState,
     equippedTitle: String?,
@@ -339,7 +313,7 @@ private fun TaskGrid(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // 服务端以 status 非 ok 返回时带 message，即便列表为空也要把原因呈现出来
-            page.message?.let { message ->
+            message?.let { message ->
                 item(key = "message", span = { GridItemSpan(maxLineSpan) }) {
                     Text(
                         text = message,
@@ -349,7 +323,7 @@ private fun TaskGrid(
                     )
                 }
             }
-            if (page.items.isEmpty()) {
+            if (items.isEmpty()) {
                 item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
                     EmptyState(
                         title = "暂无${type.label}",
@@ -361,7 +335,7 @@ private fun TaskGrid(
                     )
                 }
             }
-            items(page.items, key = { it.id }) { item ->
+            items(items, key = { it.id }) { item ->
                 val equipped = when (type) {
                     TaskType.TITLE -> equippedTitle != null && item.content == equippedTitle
                     TaskType.BADGE -> equippedBadgeId == item.id

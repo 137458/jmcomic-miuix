@@ -31,16 +31,16 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
-import com.jm3.core.appendedBy
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.core.model.FavoriteFolderAction
-import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.TagFavorite
-import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import com.jm3.core.toFeed
+import com.jm3.core.toSlice
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -75,18 +75,17 @@ fun FavoritesScreen(
 ) {
     val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
+    val uid = user?.uid
     val snackbarHostState = remember { SnackbarHostState() }
     // 0 = 收藏夹；1 = 标签收藏
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
 
-    // null 表示首页还没落地（整屏 Loading）；在途与失败标记由 PagedFeed 自己记
-    var feed by remember { mutableStateOf<PagedFeed<SearchResult>?>(null) }
-    // 失效与失败共用一个落点：计划自己决定「整屏去登录」还是「给重试按钮」
-    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-    var refreshing by remember { mutableStateOf(false) }
+    val mode = deps.paging.paginationMode
+    val clickPaging = mode == PaginationMode.CLICK
+    val listState = rememberLazyListState()
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
-    // 收藏夹筛选：0 = 全部；切换后重新拉第一页。
+    // 收藏夹筛选：0 = 全部；切夹即换 loader 实例，旧夹的在途结果随请求代次作废。
     var folderId by rememberSaveable { mutableIntStateOf(0) }
     var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var showCreate by rememberSaveable { mutableStateOf(false) }
@@ -105,143 +104,84 @@ fun FavoritesScreen(
     var moveBusy by remember { mutableStateOf(false) }
     var moveError by remember { mutableStateOf<String?>(null) }
 
-    // 标签收藏：null 表示加载中，空列表表示无数据
-    var tags by remember { mutableStateOf<List<TagFavorite>?>(null) }
-    var tagsError by remember { mutableStateOf<String?>(null) }
+    // 标签收藏的加载态交给 loader；本屏只剩弹层与行内错误文案
     var tagBusy by remember { mutableStateOf(false) }
     var tagError by remember { mutableStateOf<String?>(null) }
     var showAddTag by rememberSaveable { mutableStateOf(false) }
     var tagInput by rememberSaveable { mutableStateOf("") }
     var tagDeleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val mode = deps.paging.paginationMode
-    val clickPaging = mode == PaginationMode.CLICK
-    val listState = rememberLazyListState()
-    // 翻页在途守卫：请求期间列表仍可读，但翻页条要禁用，避免连点重复请求
-    var pageBusy by remember { mutableStateOf(false) }
-    var requestToken by remember { mutableIntStateOf(0) }
-    var tagsRequestToken by remember { mutableIntStateOf(0) }
-    var loadedUid by remember { mutableStateOf<String?>(null) }
-    var loadedTagsUid by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    fun loadFirstPage() {
-        val targetFolderId = folderId
-        val token = ++requestToken
-        refreshing = false
-        pageBusy = false
-        scope.launch {
-            failure = null
-            feed = null
-            // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
-            val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, 1) }
-            // 请求期间切换了收藏夹或发起了新请求：丢弃旧结果，避免覆盖新状态。
-            if (token != requestToken || targetFolderId != folderId) return@launch
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val next = outcome.value
-                    if (next.folders.isNotEmpty()) folders = next.folders
-                    feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
-                }
-
-                SessionOutcome.Expired -> scope.applyLoadPlan(
-                    outcome = outcome,
-                    hasContent = false,
-                    failureMessage = "",
-                    snackbarHostState = snackbarHostState,
-                ) { failure = it }
-
-                is SessionOutcome.Failed -> scope.applyLoadPlan(
-                    outcome = outcome,
-                    hasContent = false,
-                    failureMessage = "收藏加载失败",
-                    snackbarHostState = snackbarHostState,
-                ) { failure = it }
-            }
-        }
-    }
-
-    /** 点击分页：按目标页整页替换，页码换算复用通用判据。 */
-    fun jumpToPage(target: Int) {
-        if (pageBusy) return
-        val current = feed ?: return
-        val resolved = pagerTargetPage(current.page, target, current.pageCount)
-        if (resolved == current.page) return
-        pageBusy = true
-        val targetFolderId = folderId
-        val token = ++requestToken
-        scope.launch {
-            try {
-                val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, resolved) }
-                if (token != requestToken || targetFolderId != folderId) return@launch
+    // 收藏夹作品列表：首屏、翻页、刷新与失败落点都在 loader 里，本屏只给「取哪一页」与「怎么提示」。
+    val loader = remember(mode, uid, folderId, snackbarHostState) {
+        val folder = folderId
+        SessionListLoader<SearchResult>(
+            scope = scope,
+            idOf = { it.id },
+            failureMessage = "收藏加载失败",
+            stalePrefix = "刷新失败：",
+            fetchPage = { page ->
+                val outcome = deps.authCall.call { deps.gateway.favorites(folder, page) }
                 when (outcome) {
                     is SessionOutcome.Ok -> {
                         val next = outcome.value
+                        // 收藏夹清单随每页一起回来：loader 只装条目，夹名落到本屏状态
                         if (next.folders.isNotEmpty()) folders = next.folders
-                        feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
-                        listState.scrollToItem(0)
+                        // 收藏接口自带页码与总页数，直接按它建页片，不必再调分页判据
+                        SessionOutcome.Ok(
+                            PageSlice(
+                                items = next.items,
+                                hasMore = next.currentPage < next.totalPages,
+                                page = next.currentPage,
+                                pageCount = next.totalPages.takeIf { it > 0 },
+                            ),
+                        )
                     }
 
-                    SessionOutcome.Expired -> scope.applyLoadPlan(
-                        outcome = outcome,
-                        hasContent = true,
-                        failureMessage = "",
-                        snackbarHostState = snackbarHostState,
-                    ) { failure = it }
-
-                    is SessionOutcome.Failed -> scope.applyLoadPlan(
-                        outcome = outcome,
-                        hasContent = true,
-                        failureMessage = "收藏翻页失败",
-                        snackbarHostState = snackbarHostState,
-                    ) { failure = it }
+                    SessionOutcome.Expired -> SessionOutcome.Expired
+                    is SessionOutcome.Failed -> outcome
                 }
-            } finally {
-                if (token == requestToken) pageBusy = false
-            }
-        }
+            },
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+        )
+    }
+    val snapshot by loader.snapshot.collectAsState()
+    val feed = snapshot.feed
+    // 翻页成功后要回顶，但 loader 没有成功回调：登记目标页，等 feed.page 对上再滚
+    var pendingScrollPage by remember { mutableIntStateOf(0) }
+
+    // 标签收藏没有分页：整页取一次，加载态/重试/失效都由 loader 承担
+    val tagsLoader = remember(uid, snackbarHostState) {
+        SessionListLoader<TagFavorite>(
+            scope = scope,
+            idOf = { it.tag },
+            failureMessage = "标签收藏加载失败",
+            fetchPage = {
+                when (val outcome = deps.authCall.call { deps.gateway.tagsFavorite() }) {
+                    is SessionOutcome.Ok -> SessionOutcome.Ok(
+                        PageSlice(items = outcome.value, hasMore = false, page = 1, pageCount = 1),
+                    )
+
+                    SessionOutcome.Expired -> SessionOutcome.Expired
+                    is SessionOutcome.Failed -> outcome
+                }
+            },
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+        )
+    }
+    val tagsSnapshot by tagsLoader.snapshot.collectAsState()
+
+    LaunchedEffect(loader) {
+        loader.loadFirstPage()
     }
 
-    // 下拉刷新：保留当前列表，仅用第一页结果替换，避免整屏 Loading 闪烁。
-    fun refresh() {
-        if (refreshing) return
-        refreshing = true
-        val targetFolderId = folderId
-        val token = ++requestToken
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, 1) }
-            if (token != requestToken) return@launch
-            refreshing = false
-            if (targetFolderId != folderId) return@launch
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val next = outcome.value
-                    if (next.folders.isNotEmpty()) folders = next.folders
-                    feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
-                }
-
-                // 刷新失败/失效都不该把已有列表清掉：保留内容只提示，没有内容才换整屏
-                SessionOutcome.Expired -> scope.applyLoadPlan(
-                    outcome = outcome,
-                    hasContent = feed != null,
-                    failureMessage = "",
-                    snackbarHostState = snackbarHostState,
-                ) { failure = it }
-
-                is SessionOutcome.Failed -> scope.applyLoadPlan(
-                    outcome = outcome,
-                    hasContent = feed != null,
-                    failureMessage = "收藏刷新失败",
-                    snackbarHostState = snackbarHostState,
-                ) { failure = it }
-            }
+    // 翻页成功后要回顶，但 loader 没有成功回调：靠 feed.page 的变化对齐登记的目标页
+    LaunchedEffect(feed.page) {
+        if (pendingScrollPage > 0 && pendingScrollPage == feed.page) {
+            pendingScrollPage = 0
+            listState.scrollToItem(0)
         }
-    }
-
-    fun switchFolder(targetFolderId: Int) {
-        if (targetFolderId == folderId) return
-        folderId = targetFolderId
-        loadFirstPage()
     }
 
     /** 收藏夹增删改：成功后关闭弹窗并重拉列表；失败把服务端消息留在弹窗内。 */
@@ -263,11 +203,13 @@ fun FavoritesScreen(
                     editTarget = null
                     deleteTarget = null
                     folderNameInput = ""
-                    // 删除当前所在收藏夹后回落到全部，避免停留在已不存在的夹
+                    // 删除当前所在收藏夹后回落到全部，避免停留在已不存在的夹；
+                    // 改夹会让 loader 以新 key 重建并自动重取，夹未变时才需显式重拉
                     if (action == FavoriteFolderAction.DELETE && targetId.toIntOrNull() == folderId) {
                         folderId = 0
+                    } else {
+                        loader.loadFirstPage()
                     }
-                    loadFirstPage()
                 }
 
                 // 账号态操作失效：提示一次并直接给登录入口，不让用户对着按钮重试
@@ -305,7 +247,8 @@ fun FavoritesScreen(
                     }
                     moveTarget = null
                     snackbarHostState.showSnackbar("已移动到「$folderName」")
-                    refresh()
+                    // 静默刷新：保留当前列表，只把第一页结果盖回来
+                    loader.refresh()
                 }
 
                 SessionOutcome.Expired -> {
@@ -318,25 +261,6 @@ fun FavoritesScreen(
         }
     }
 
-    /** 标签收藏列表；未登录不发请求，由界面直接展示登录提示。 */
-    fun loadTags() {
-        // 绑定发起请求时的用户与代次，避免登出/换号/重复加载后把旧结果写回界面
-        val uid = user?.uid ?: return
-        val token = ++tagsRequestToken
-        tagsError = null
-        tags = null
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.tagsFavorite() }
-            if (token != tagsRequestToken || user?.uid != uid) return@launch
-            when (outcome) {
-                is SessionOutcome.Ok -> tags = outcome.value
-                // 会话失效后用户会置空，标签页自动回落到上面的未登录引导，不必再留错误文案
-                SessionOutcome.Expired -> Unit
-                is SessionOutcome.Failed -> tagsError = failureCopy(outcome, "标签收藏加载失败")
-            }
-        }
-    }
-
     /** 添加标签：空值与重复只做轻提示，不打断输入框。 */
     fun addTag() {
         val tag = tagInput.trim()
@@ -344,7 +268,7 @@ fun FavoritesScreen(
             scope.launch { snackbarHostState.showSnackbar("标签不能为空") }
             return
         }
-        if (tags.orEmpty().any { it.tag == tag }) {
+        if (tagsSnapshot.feed.items.any { it.tag == tag }) {
             scope.launch { snackbarHostState.showSnackbar("该标签已收藏") }
             return
         }
@@ -359,7 +283,7 @@ fun FavoritesScreen(
                     showAddTag = false
                     tagInput = ""
                     snackbarHostState.showSnackbar("已添加标签 #$tag")
-                    loadTags()
+                    tagsLoader.loadFirstPage()
                 }
 
                 SessionOutcome.Expired -> {
@@ -384,7 +308,7 @@ fun FavoritesScreen(
                 is SessionOutcome.Ok -> {
                     tagDeleteTarget = null
                     snackbarHostState.showSnackbar("已删除标签 #$tag")
-                    loadTags()
+                    tagsLoader.loadFirstPage()
                 }
 
                 SessionOutcome.Expired -> {
@@ -397,84 +321,16 @@ fun FavoritesScreen(
         }
     }
 
-    val uid = user?.uid
     LaunchedEffect(uid) {
-        if (uid == null) {
-            requestToken++
-            tagsRequestToken++
-            feed = null
-            failure = null
-            loadedUid = null
-            folders = emptyMap()
-            folderId = 0
-            tags = null
-            tagsError = null
-            loadedTagsUid = null
-            loadFirstPage()
-        } else if (feed == null || failure != null || loadedUid != uid) {
-            if (loadedUid != uid) {
-                tagsRequestToken++
-                tags = null
-                tagsError = null
-                loadedTagsUid = null
-                if (loadedUid != null) {
-                    folders = emptyMap()
-                    folderId = 0
-                }
-            }
-            loadedUid = uid
-            loadFirstPage()
-        }
+        // 未登录或换号：loader 以 uid 为 key 自行重建并重取，本屏只需清掉夹与标签残留
+        folders = emptyMap()
+        folderId = 0
     }
 
-    PaginationModeReloadEffect(mode) { loadFirstPage() }
-
-    // 首次切到标签页才加载；登录态变化时清空旧数据，避免登出后残留
-    LaunchedEffect(tabIndex, user?.uid) {
-        val currentUid = user?.uid
-        if (currentUid == null) {
-            tagsRequestToken++
-            tags = null
-            tagsError = null
-            loadedTagsUid = null
-        } else if (tabIndex == 1 && ((tags == null && tagsError == null) || loadedTagsUid != currentUid)) {
-            loadedTagsUid = currentUid
-            loadTags()
-        }
-    }
-
-    fun loadMore() {
-        val current = feed ?: return
-        val requested = current.beginLoadMore()
-        if (requested === current) return
-        val targetFolderId = folderId
-        val token = requestToken
-        feed = requested
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, requested.page + 1) }
-            // 加载期间切换了收藏夹或发起了新请求：这批结果属于旧批次，丢弃以免串夹。
-            if (token != requestToken || targetFolderId != folderId) return@launch
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val next = outcome.value
-                    feed = requested.appendedBy(
-                        SearchPage(next.currentPage, next.totalPages, next.items),
-                    )
-                }
-
-                // 翻页撞上会话失效：已加载的列表不能顶掉，保留内容并把页脚置成可重试，只用提示告知去登录
-                SessionOutcome.Expired -> {
-                    feed = requested.failLoadMore()
-                    scope.applyLoadPlan(
-                        outcome = outcome,
-                        hasContent = true,
-                        failureMessage = "",
-                        snackbarHostState = snackbarHostState,
-                    ) { failure = it }
-                }
-
-                is SessionOutcome.Failed -> feed = requested.failLoadMore()
-            }
+    // 首次切到标签页才加载；未登录时界面直接给登录引导，不发请求
+    LaunchedEffect(tabIndex, uid) {
+        if (uid != null && tabIndex == 1 && tagsLoader.state is ListLoadState.Loading) {
+            tagsLoader.loadFirstPage()
         }
     }
 
@@ -497,11 +353,9 @@ fun FavoritesScreen(
         },
         useMiuixSpring = true,
     )
-    if (!clickPaging) {
-        val scrollFeed = feed
-        if (scrollFeed != null) {
-            LoadMoreOnScroll(listState = listState, feed = scrollFeed, onLoadMore = ::loadMore)
-        }
+    // 滚动分页只在列表已落地时挂载：首屏 Loading 期间挂上去会立刻触发第二次首页请求
+    if (!clickPaging && snapshot.state == ListLoadState.Loaded) {
+        LoadMoreOnScroll(listState = listState, feed = feed, onLoadMore = loader::loadMore)
     }
 
     GlassScaffold(
@@ -556,26 +410,24 @@ fun FavoritesScreen(
             modifier = Modifier.fillMaxSize(),
         ) { page ->
             if (page == 0) {
-            val p = feed
-            val planned = failure
-            when {
-                planned != null -> if (planned.phase == ScreenLoadPhase.Expired) {
+            when (val state = snapshot.state) {
+                ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+                is ListLoadState.Failed -> if (state.sessionExpired) {
                     LoginExpiredScreen(
                         onOpenLogin = onOpenLogin,
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
                     ErrorScreen(
-                        message = planned.message.orEmpty(),
-                        onRetry = ::loadFirstPage,
+                        message = state.message,
+                        onRetry = loader::loadFirstPage,
                         modifier = Modifier.padding(innerPadding),
                     )
                 }
-                p == null -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
-                else -> GlassPullToRefresh(
-                    isRefreshing = refreshing,
-                    onRefresh = ::refresh,
+                ListLoadState.Loaded -> GlassPullToRefresh(
+                    isRefreshing = snapshot.refreshing,
+                    onRefresh = loader::refresh,
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                     // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
@@ -601,7 +453,8 @@ fun FavoritesScreen(
                                     summary = currentFolderName,
                                     showValue = false,
                                     onSelectedIndexChange = { index ->
-                                        folderOptions.getOrNull(index)?.let { switchFolder(it.first) }
+                                        // 切夹即改 loader 的 key：旧夹在途结果作废，新夹自动取第一页
+                                        folderOptions.getOrNull(index)?.let { folderId = it.first }
                                     },
                                 )
                                 // 仅自建收藏夹可改名/删除；「全部」是聚合视图，不提供操作
@@ -630,19 +483,19 @@ fun FavoritesScreen(
                                 }
                             }
                         }
-                        if (p.items.isEmpty()) {
+                        if (feed.items.isEmpty()) {
                             item(key = "empty") {
                                 EmptyState(title = "暂无收藏", hint = "在作品详情页点击收藏后会出现在这里")
                             }
                         }
                         // key 仍是作品 id：与单列时逐字一致，升级后滚动位置不丢
                         feedRowItems(
-                            count = p.items.size,
+                            count = feed.items.size,
                             columns = feedColumns,
                             keyPrefix = "",
-                            keyOf = { index -> p.items[index].id },
+                            keyOf = { index -> feed.items[index].id },
                         ) { index ->
-                            val result = p.items[index]
+                            val result = feed.items[index]
                             WorkRowCard(
                                 coverUrl = result.coverUrl,
                                 title = result.title,
@@ -666,18 +519,24 @@ fun FavoritesScreen(
                                 WorkCardMetaRow(tags = result.tags, albumCode = result.id)
                             }
                         }
-                        if (p.items.isNotEmpty()) {
+                        if (feed.items.isNotEmpty()) {
                             item(key = "pagination-footer") {
                                 if (clickPaging) {
                                     PagerBar(
-                                        page = p.page,
-                                        totalPages = p.pageCount,
-                                        hasMore = p.hasMore,
-                                        enabled = !pageBusy,
-                                        onPageChange = ::jumpToPage,
+                                        page = feed.page,
+                                        totalPages = feed.pageCount,
+                                        hasMore = feed.hasMore,
+                                        onPageChange = { target ->
+                                            val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
+                                            if (resolved != feed.page) {
+                                                // 成功回顶要等新首页落地，登记目标页由 feed.page 变化触发
+                                                pendingScrollPage = resolved
+                                                loader.goToPage(resolved)
+                                            }
+                                        },
                                     )
                                 } else {
-                                    LoadMoreFooter(feed = p, onLoadMore = ::loadMore)
+                                    LoadMoreFooter(feed = feed, onLoadMore = loader::loadMore)
                                 }
                             }
                         }
@@ -685,20 +544,29 @@ fun FavoritesScreen(
                 }
             }
         } else {
-            val list = tags
-            val tagsErr = tagsError
+            val list = tagsSnapshot.feed.items
+            val tagsState = tagsSnapshot.state
             when {
                 user == null -> CenteredEmptyState(
                     title = "登录后查看标签收藏",
                     hint = "请先在「我的」页面登录",
                     modifier = Modifier.padding(innerPadding).readableWidth(),
                 )
-                tagsErr != null -> ErrorScreen(
-                    message = tagsErr,
-                    onRetry = ::loadTags,
+                tagsState is ListLoadState.Failed -> if (tagsState.sessionExpired) {
+                    LoginExpiredScreen(
+                        onOpenLogin = onOpenLogin,
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                } else {
+                    ErrorScreen(
+                        message = tagsState.message,
+                        onRetry = tagsLoader::loadFirstPage,
+                        modifier = Modifier.padding(innerPadding).readableWidth(),
+                    )
+                }
+                tagsState == ListLoadState.Loading -> LoadingScreen(
                     modifier = Modifier.padding(innerPadding).readableWidth(),
                 )
-                list == null -> LoadingScreen(modifier = Modifier.padding(innerPadding).readableWidth())
                 list.isEmpty() -> CenteredEmptyState(
                     title = "暂无标签收藏",
                     hint = "点击右上角「+」添加标签，这里就会显示",

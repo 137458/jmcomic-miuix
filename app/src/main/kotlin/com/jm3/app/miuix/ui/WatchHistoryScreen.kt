@@ -11,26 +11,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
-import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
-import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pageLooksFull
-import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.paging.pagerNextPage
+import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
@@ -49,13 +49,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** 服务端观看记录单页条数；接口不返回总数，用返回条数推断是否还有下一页。 */
 private const val WATCH_PAGE_SIZE = 20
 
-private sealed interface WatchUiState {
-    data object Loading : WatchUiState
-    data object Loaded : WatchUiState
-    // sessionExpired 区分「重试可能好」与「会话没了」：后者只能去登录，给重试按钮是骗人的
-    data class Failed(val message: String, val sessionExpired: Boolean = false) : WatchUiState
-}
-
 /** 服务端观看记录：与本地历史不同，这里记录的是账号云端足迹，支持逐条删除。 */
 @Composable
 fun WatchHistoryScreen(
@@ -68,78 +61,26 @@ fun WatchHistoryScreen(
     val mode = deps.paging.paginationMode
     val user by deps.account.user.collectAsState()
     val skin = LocalSkin.current
-    // 当前页码、是否还有下一页、追加在途与追加失败都由 PagedFeed 记；
-    // 追加失败时 hasMore 保持原值，所以页脚一定留着重试入口，不会被误画成「已经到底」
-    var feed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
-    var state by remember { mutableStateOf<WatchUiState>(WatchUiState.Loading) }
-    var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var deletingId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteItem by remember { mutableStateOf<SearchResult?>(null) }
     val listState = rememberLazyListState()
-    var requestToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    /**
-     * 失效与失败共用一个落点：分派与提示交给 [applyLoadPlan]，这里只写本屏的两处差异。
-     *
-     * 保留内容时把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈。
-     */
-    fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<SearchResult>, replace: Boolean) {
-        scope.applyLoadPlan(
-            outcome = outcome,
-            hasContent = !replace && inFlight.items.isNotEmpty(),
+    // 代次守卫、在途标记、翻页游标与失败落点都在 loader 里；这里只给「取哪一页」与「怎么提示」
+    val loader = remember(mode, user?.uid, snackbarHostState) {
+        SessionListLoader(
+            scope = scope,
+            idOf = { item: SearchResult -> item.id },
             failureMessage = "观看记录加载失败",
-            snackbarHostState = snackbarHostState,
-            stalePrefix = "加载失败：",
-            onKeepContent = {
-                feed = inFlight.failLoadMore()
+            fetchPage = { page ->
+                deps.authCall.call { deps.gateway.watchHistory(page) }.toWatchSlice(page)
             },
-            onFullScreen = { plan ->
-                feed = inFlight.copy(loadingMore = false)
-                state = WatchUiState.Failed(
-                    message = plan.message.orEmpty(),
-                    sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-                )
-            },
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
         )
     }
-
-    fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {
-        // 翻页请求在途时不再发起新的翻页，避免连点并发打同一页导致列表重复
-        if (!replace && !feed.canLoadMore) return
-        if (showLoading) state = WatchUiState.Loading
-        val requested = if (replace) feed else feed.beginLoadMore()
-        if (!replace) feed = requested
-        val token = if (replace) ++requestToken else requestToken
-        scope.launch {
-            // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
-            val outcome = deps.authCall.call { deps.gateway.watchHistory(targetPage) }
-            if (token != requestToken) return@launch
-            refreshing = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val slice = PageSlice(
-                        items = outcome.value,
-                        // 接口不返回总数，用本页条数推断还有没有下一页
-                        hasMore = pageLooksFull(outcome.value.size, WATCH_PAGE_SIZE),
-                        page = targetPage,
-                    )
-                    feed = if (replace) {
-                        PagedFeed<SearchResult>().replace(slice) { it.id }
-                    } else {
-                        requested.append(slice) { it.id }
-                    }
-                    state = WatchUiState.Loaded
-                }
-
-                // 失效不是「加载失败」：没有列表可留时换成「去登录」，别让用户反复点重试
-                SessionOutcome.Expired -> applyFailure(outcome, requested, replace)
-
-                is SessionOutcome.Failed -> applyFailure(outcome, requested, replace)
-            }
-        }
-    }
+    val snapshot by loader.snapshot.collectAsState()
+    val feed = snapshot.feed
 
     fun delete(item: SearchResult) {
         if (deletingId != null) return
@@ -149,7 +90,7 @@ fun WatchHistoryScreen(
             deletingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    feed = feed.copy(items = feed.items.filterNot { it.id == item.id })
+                    loader.removeWhere { it.id == item.id }
                     snackbarHostState.showSnackbar("已删除观看记录")
                 }
 
@@ -167,23 +108,15 @@ fun WatchHistoryScreen(
     }
 
     // 分页模式或登录账号切换后重新加载第一页，避免残留旧账号或旧分页语义的列表
-    LaunchedEffect(mode, user?.uid) {
-        refreshing = false
-        feed = PagedFeed()
-        fetch(targetPage = 1, replace = true, showLoading = true)
+    LaunchedEffect(loader) {
+        loader.loadFirstPage()
     }
 
-    if (mode != PaginationMode.CLICK && state == WatchUiState.Loaded) {
+    if (mode != PaginationMode.CLICK && snapshot.state == ListLoadState.Loaded) {
         LoadMoreOnScroll(
             listState = listState,
             feed = feed,
-            onLoadMore = {
-                fetch(
-                    pagerNextPage(feed.page, feed.pageCount ?: Int.MAX_VALUE),
-                    replace = false,
-                    showLoading = false,
-                )
-            },
+            onLoadMore = loader::loadMore,
         )
     }
 
@@ -199,9 +132,9 @@ fun WatchHistoryScreen(
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        when (val s = state) {
-            WatchUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            is WatchUiState.Failed -> if (s.sessionExpired) {
+        when (val s = snapshot.state) {
+            ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+            is ListLoadState.Failed -> if (s.sessionExpired) {
                 LoginExpiredScreen(
                     onOpenLogin = onOpenLogin,
                     modifier = Modifier.padding(innerPadding),
@@ -209,16 +142,13 @@ fun WatchHistoryScreen(
             } else {
                 ErrorScreen(
                     message = s.message,
-                    onRetry = { fetch(targetPage = 1, replace = true, showLoading = true) },
+                    onRetry = loader::loadFirstPage,
                     modifier = Modifier.padding(innerPadding),
                 )
             }
-            WatchUiState.Loaded -> GlassPullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = {
-                    refreshing = true
-                    fetch(targetPage = 1, replace = true, showLoading = false)
-                },
+            ListLoadState.Loaded -> GlassPullToRefresh(
+                isRefreshing = snapshot.refreshing,
+                onRefresh = loader::refresh,
                 pullToRefreshState = refreshState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = innerPadding,
@@ -275,18 +205,14 @@ fun WatchHistoryScreen(
                                     page = feed.page,
                                     hasMore = feed.hasMore,
                                     onPageChange = { target ->
-                                        fetch(
-                                            pagerTargetPage(feed.page, target, feed.pageCount),
-                                            replace = true,
-                                            showLoading = false,
-                                        )
+                                        loader.goToPage(pagerTargetPage(feed.page, target, feed.pageCount))
                                     },
                                 )
                             } else {
                                 // 三态页脚与其他列表保持一致：加载中 / 失败重试 / 没有更多
                                 LoadMoreFooter(
                                     feed = feed,
-                                    onLoadMore = { fetch(pagerNextPage(feed.page, feed.pageCount ?: Int.MAX_VALUE), replace = false, showLoading = false) },
+                                    onLoadMore = loader::loadMore,
                                 )
                             }
                         }
@@ -329,3 +255,19 @@ fun WatchHistoryScreen(
         }
     }
 }
+
+/** 接口不返回总数，用本页条数推断是否还有下一页。 */
+private fun SessionOutcome<List<SearchResult>>.toWatchSlice(page: Int): SessionOutcome<PageSlice<SearchResult>> =
+    when (this) {
+        is SessionOutcome.Ok -> SessionOutcome.Ok(
+            PageSlice(
+                items = value,
+                hasMore = pageLooksFull(value.size, WATCH_PAGE_SIZE),
+                page = page,
+            ),
+        )
+
+        SessionOutcome.Expired -> SessionOutcome.Expired
+
+        is SessionOutcome.Failed -> this
+    }

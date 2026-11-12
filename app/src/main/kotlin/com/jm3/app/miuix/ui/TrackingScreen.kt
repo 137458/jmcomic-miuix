@@ -21,15 +21,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
-import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
-import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
+import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.core.model.TrackingItem
+import com.jm3.core.model.TrackingPage
 import com.jm3.core.paging.PageSlice
-import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.hasMoreByLoaded
 import com.jm3.core.paging.loadedThrough
 import com.jm3.core.paging.pagerTargetPage
@@ -47,14 +49,16 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import java.time.format.DateTimeFormatter
 
-private sealed interface TrackingUiState {
-    data object Loading : TrackingUiState
-    data object Loaded : TrackingUiState
-    // sessionExpired 区分「重试可能好」和「会话没了」：后者只能去登录，给重试按钮是骗人的
-    data class Failed(val message: String, val sessionExpired: Boolean = false) : TrackingUiState
-}
-
-/** 连载追踪：已关注作品的更新列表，支持一键取消关注。 */
+/**
+ * 连载追踪：已关注作品的更新列表，支持一键取消关注。
+ *
+ * 加载编排（请求代次、在途标记、翻页游标、失败落点）都在 [SessionListLoader]；本屏只给
+ * 「取哪一页」与「怎么提示」两个回调。另有三处 loader 表达不了、只能留在页内：
+ *
+ * 1. 每页条数提示：接口只给总数，翻页要用首屏条数估「已加载到第几条」；
+ * 2. 取消追踪：成功后按条件抹掉一行，撤销时 loader 没有回插入口，只能回源刷新；
+ * 3. 翻页成功后回到列表顶部：loader 不暴露成功回调，用目标页与当前页对齐触发一次。
+ */
 @Composable
 fun TrackingScreen(
     deps: ScreenDeps,
@@ -63,168 +67,35 @@ fun TrackingScreen(
     snackbarHostState: SnackbarHostState,
     onOpenLogin: () -> Unit = {},
 ) {
-    // 在途、失败、是否还有下一页、累计总数都由 PagedFeed 记，页面不再各存一份布尔
-    var feed by remember { mutableStateOf(PagedFeed<TrackingItem>()) }
-    var state by remember { mutableStateOf<TrackingUiState>(TrackingUiState.Loading) }
-    var refreshing by remember { mutableStateOf(false) }
-    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
-    var removingId by remember { mutableStateOf<String?>(null) }
     val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
-    val listState = rememberLazyListState()
-    var pageSizeHint by remember { mutableIntStateOf(0) }
     val user by deps.account.user.collectAsState()
-    // 翻页在途守卫：请求期间禁用翻页条，避免连点重复请求
-    var pageBusy by remember { mutableStateOf(false) }
-    var requestToken by remember { mutableIntStateOf(0) }
-    var loadedUid by remember { mutableStateOf<String?>(null) }
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
+    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    var removingId by remember { mutableStateOf<String?>(null) }
+    // 首屏条数：接口按页返回且无总页数，翻页时用它配合 loadedThrough 估算已加载条数
+    var pageSizeHint by remember { mutableIntStateOf(0) }
+    // 待回顶的目标页：翻页请求回来、页码真的变了才滚到顶部
+    var pendingScrollPage by remember { mutableStateOf<Int?>(null) }
 
-    /**
-     * 整屏失败态：只有没有内容可保留时才会被 [applyLoadPlan] 回调。
-     *
-     * 失效时 AuthCall 已在返回结局前清掉本地会话，整屏只能去登录，重试同一个请求只会再吃一次 401。
-     */
-    val fullScreenFailure: (ScreenLoadPlan) -> Unit = { plan ->
-        state = TrackingUiState.Failed(
-            message = plan.message.orEmpty(),
-            sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+    // 账号或分页模式一变就换一个 loader：新实例从空列表起，旧账号的条目不会残留在屏上
+    val loader = remember(mode, user?.uid, snackbarHostState) {
+        SessionListLoader(
+            scope = scope,
+            idOf = { item: TrackingItem -> item.id },
+            failureMessage = "追踪列表加载失败",
+            fetchPage = { page ->
+                // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只把一页转成 PageSlice
+                val outcome = deps.authCall.call { deps.gateway.trackingList(page) }
+                if (page == 1 && outcome is SessionOutcome.Ok) pageSizeHint = outcome.value.items.size
+                outcome.toTrackingSlice(page, pageSizeHint)
+            },
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
         )
     }
-
-    fun loadFirstPage(showLoading: Boolean = true) {
-        val token = ++requestToken
-        pageBusy = false
-        if (showLoading) state = TrackingUiState.Loading
-        scope.launch {
-            // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
-            val outcome = deps.authCall.call { deps.gateway.trackingList(1) }
-            if (token != requestToken) return@launch
-            refreshing = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val page = outcome.value
-                    pageSizeHint = page.items.size
-                    feed = PagedFeed<TrackingItem>().replace(
-                        PageSlice(
-                            items = page.items,
-                            hasMore = hasMoreByLoaded(page.items.size, page.items.size, page.total),
-                            total = page.total,
-                            page = 1,
-                        ),
-                    ) { it.id }
-                    state = TrackingUiState.Loaded
-                }
-
-                SessionOutcome.Expired -> scope.applyLoadPlan(
-                    outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
-                )
-
-                is SessionOutcome.Failed -> scope.applyLoadPlan(
-                    outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
-                )
-            }
-        }
-    }
-
-    val uid = user?.uid
-    LaunchedEffect(uid) {
-        if (uid == null) {
-            requestToken++
-            feed = PagedFeed()
-            pageSizeHint = 0
-            loadedUid = null
-            refreshing = false
-            pageBusy = false
-            removingId = null
-            loadFirstPage()
-        } else if (state !is TrackingUiState.Loaded || loadedUid != uid) {
-            if (loadedUid != null && loadedUid != uid) {
-                feed = PagedFeed()
-                pageSizeHint = 0
-                removingId = null
-            }
-            loadedUid = uid
-            loadFirstPage()
-        }
-    }
-    PaginationModeReloadEffect(mode) { loadFirstPage() }
-
-    /** 点击分页：按目标页整页替换；接口只给总数，用首页条数估算页码容量。 */
-    fun jumpToPage(target: Int) {
-        if (pageBusy) return
-        val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
-        if (resolved == feed.page) return
-        pageBusy = true
-        val token = ++requestToken
-        scope.launch {
-            try {
-                val outcome = deps.authCall.call { deps.gateway.trackingList(resolved) }
-                if (token != requestToken) return@launch
-                refreshing = false
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        val page = outcome.value
-                        val loaded = loadedThrough(resolved, pageSizeHint, page.items.size)
-                        feed = PagedFeed<TrackingItem>().replace(
-                            PageSlice(
-                                items = page.items,
-                                hasMore = hasMoreByLoaded(page.items.size, loaded, page.total),
-                                total = page.total,
-                                page = resolved,
-                            ),
-                        ) { it.id }
-                        state = TrackingUiState.Loaded
-                        listState.scrollToItem(0)
-                    }
-
-                    SessionOutcome.Expired -> scope.applyLoadPlan(
-                        outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
-                    )
-
-                    is SessionOutcome.Failed -> scope.applyLoadPlan(
-                        outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
-                    )
-                }
-            } finally {
-                if (token == requestToken) pageBusy = false
-            }
-        }
-    }
-
-    fun loadMore() {
-        if (state != TrackingUiState.Loaded) return
-        val requested = feed.beginLoadMore()
-        if (requested === feed) return
-        val page = requested.page + 1
-        val token = requestToken
-        feed = requested
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.trackingList(page) }
-            if (token != requestToken) return@launch
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val next = outcome.value
-                    // 接口按页返回且无总页数，按累计条数对比总数收敛；空页直接视为到底
-                    val merged = (requested.items + next.items).distinctBy { it.id }
-                    feed = requested.append(
-                        PageSlice(
-                            items = next.items,
-                            hasMore = hasMoreByLoaded(next.items.size, merged.size, next.total),
-                            total = next.total.coerceAtLeast(requested.total ?: 0),
-                            page = page,
-                        ),
-                    ) { it.id }
-                }
-
-                SessionOutcome.Expired -> scope.applyLoadPlan(
-                    outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
-                )
-
-                is SessionOutcome.Failed -> feed = requested.failLoadMore()
-            }
-        }
-    }
+    val snapshot by loader.snapshot.collectAsState()
+    val feed = snapshot.feed
 
     fun unfollow(item: TrackingItem) {
         if (removingId != null) return
@@ -234,51 +105,49 @@ fun TrackingScreen(
             removingId = null
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    val slice = feed.items.removeMatching { it.id == item.id }
-                    feed = feed.copy(
-                        items = slice.remaining,
-                        total = feed.total?.minus(slice.removed.size)?.coerceAtLeast(slice.remaining.size),
-                    )
+                    loader.removeWhere { it.id == item.id }
                     val result = snackbarHostState.showSnackbar(
                         message = "已取消追踪",
                         actionLabel = "撤销",
                     )
-                    if (result == SnackbarResult.ActionPerformed && slice.removed.isNotEmpty()) {
+                    if (result == SnackbarResult.ActionPerformed) {
+                        // 撤销是把条目放回原位：loader 只有整页替换与按条件抹除，没有回插，
+                        // 所以这里回源刷新一次，让服务端顺序决定它落在哪
                         when (val undoOutcome = deps.authCall.call { deps.gateway.setTracking(item.id) }) {
-                            is SessionOutcome.Ok -> {
-                                feed = feed.copy(
-                                    items = feed.items.restoreAt(slice.removed, slice.insertIndex) { it.id },
-                                    total = feed.total?.plus(slice.removed.size),
-                                )
-                            }
-                            SessionOutcome.Expired -> scope.applyLoadPlan(
-                                undoOutcome,
-                                feed.items.isNotEmpty(),
-                                "追踪列表加载失败",
-                                snackbarHostState,
-                                onFullScreen = fullScreenFailure,
+                            is SessionOutcome.Ok -> loader.refresh()
+                            SessionOutcome.Expired -> snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
+                            is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
+                                "撤销失败：" + failureCopy(undoOutcome, "请稍后重试"),
                             )
-                            is SessionOutcome.Failed -> {
-                                snackbarHostState.showSnackbar("撤销失败：" + failureCopy(undoOutcome, "请稍后重试"))
-                            }
                         }
                     }
                 }
 
-                SessionOutcome.Expired -> scope.applyLoadPlan(
-                    outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
-                )
+                // 账号态操作失效：列表留在原处，只提示一次，重试同一个请求只会再吃一次 401
+                SessionOutcome.Expired -> snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
 
-                is SessionOutcome.Failed -> {
-                    snackbarHostState.showSnackbar("操作失败：" + failureCopy(outcome, "请稍后重试"))
-                }
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
+                    "操作失败：" + failureCopy(outcome, "请稍后重试"),
+                )
             }
         }
     }
 
-    // 触底加载只在无限滚动模式生效；点击翻页由列表底部翻页条驱动。
-    if (!clickPaging) {
-        LoadMoreOnScroll(listState = listState, feed = feed, onLoadMore = ::loadMore)
+    LaunchedEffect(loader) {
+        loader.loadFirstPage()
+    }
+
+    LaunchedEffect(feed.page) {
+        val target = pendingScrollPage
+        if (target != null && feed.page == target) {
+            pendingScrollPage = null
+            listState.scrollToItem(0)
+        }
+    }
+
+    // 触底加载只在无限滚动模式生效；点击翻页由列表底部翻页条驱动
+    if (!clickPaging && snapshot.state == ListLoadState.Loaded) {
+        LoadMoreOnScroll(listState = listState, feed = feed, onLoadMore = loader::loadMore)
     }
 
     GlassScaffold(
@@ -293,9 +162,9 @@ fun TrackingScreen(
         },
         snackbarHost = { GlassSnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        when (val s = state) {
-            TrackingUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
-            is TrackingUiState.Failed -> if (s.sessionExpired) {
+        when (val s = snapshot.state) {
+            ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+            is ListLoadState.Failed -> if (s.sessionExpired) {
                 LoginExpiredScreen(
                     onOpenLogin = onOpenLogin,
                     modifier = Modifier.padding(innerPadding),
@@ -303,11 +172,11 @@ fun TrackingScreen(
             } else {
                 ErrorScreen(
                     message = s.message,
-                    onRetry = { loadFirstPage() },
+                    onRetry = loader::loadFirstPage,
                     modifier = Modifier.padding(innerPadding),
                 )
             }
-            TrackingUiState.Loaded -> if (feed.items.isEmpty()) {
+            ListLoadState.Loaded -> if (feed.items.isEmpty()) {
                 CenteredEmptyState(
                     title = "暂无追踪",
                     hint = "在详情页开启追更后会出现在这里",
@@ -315,11 +184,8 @@ fun TrackingScreen(
                 )
             } else {
                 GlassPullToRefresh(
-                    isRefreshing = refreshing,
-                    onRefresh = {
-                        refreshing = true
-                        loadFirstPage(showLoading = false)
-                    },
+                    isRefreshing = snapshot.refreshing,
+                    onRefresh = loader::refresh,
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
@@ -362,18 +228,21 @@ fun TrackingScreen(
                                 WorkCardMetaRow(tags = emptyList(), albumCode = item.id)
                             }
                         }
-                        if (feed.items.isNotEmpty()) {
-                            item(key = "pagination-footer") {
-                                if (clickPaging) {
-                                    PagerBar(
-                                        page = feed.page,
-                                        hasMore = feed.hasMore,
-                                        enabled = !pageBusy,
-                                        onPageChange = ::jumpToPage,
-                                    )
-                                } else {
-                                    LoadMoreFooter(feed = feed, onLoadMore = ::loadMore)
-                                }
+                        item(key = "pagination-footer") {
+                            if (clickPaging) {
+                                PagerBar(
+                                    page = feed.page,
+                                    hasMore = feed.hasMore,
+                                    onPageChange = { target ->
+                                        val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
+                                        if (resolved != feed.page) {
+                                            pendingScrollPage = resolved
+                                            loader.goToPage(resolved)
+                                        }
+                                    },
+                                )
+                            } else {
+                                LoadMoreFooter(feed = feed, onLoadMore = loader::loadMore)
                             }
                         }
                     }
@@ -383,6 +252,32 @@ fun TrackingScreen(
     }
 }
 
+/**
+ * 追踪列表一页转 [PageSlice]：接口只给总数、不给总页数，按累计条数对比总数收敛末页。
+ *
+ * [sizeHint] 是首屏条数，把「已加载条数」估算到当前页；空页由 [hasMoreByLoaded] 直接判到底。
+ * 与旧页内实现的唯一差别：跨页出现重复条目时，旧实现按去重后的条数算已加载，这里按页内条数算。
+ */
+private fun SessionOutcome<TrackingPage>.toTrackingSlice(
+    page: Int,
+    sizeHint: Int,
+): SessionOutcome<PageSlice<TrackingItem>> = when (this) {
+    is SessionOutcome.Ok -> {
+        val loaded = loadedThrough(page, sizeHint, value.items.size)
+        SessionOutcome.Ok(
+            PageSlice(
+                items = value.items,
+                hasMore = hasMoreByLoaded(value.items.size, loaded, value.total),
+                total = value.total,
+                page = page,
+            ),
+        )
+    }
+
+    SessionOutcome.Expired -> SessionOutcome.Expired
+
+    is SessionOutcome.Failed -> this
+}
 
 /** Unix 秒字符串转本地时间；非数字原样返回，避免吞掉服务端文案。 */
 private fun String.toReadableTime(dateFormat: DateTimeFormatter): String =
