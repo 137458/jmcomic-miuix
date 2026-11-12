@@ -31,6 +31,8 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -122,6 +124,7 @@ fun BrowseScreen(
     // 周更区块的三态：空列表既可能是「还没回来」也可能是「回来 0 条」，必须分开
     var weeklyLoading by remember { mutableStateOf(true) }
     var weeklyFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
+    var weeklyLoadToken by remember { mutableIntStateOf(0) }
     // 子分类/标签点击后的检索词；非空时页面切换为标签结果，返回即恢复分类浏览。
     var tagKeyword by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = tagKeyword != null) { tagKeyword = null }
@@ -172,6 +175,7 @@ fun BrowseScreen(
         val current = (state as? ListState.Loaded)?.feed ?: return
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
+        refreshing = false
         requestToken++
         val token = requestToken
         val key = pageKey
@@ -211,27 +215,30 @@ fun BrowseScreen(
     fun loadMoreWeekly() {
         val requested = weeklyFeed.beginLoadMore()
         if (requested === weeklyFeed) return
+        val token = ++weeklyLoadToken
         weeklyFeed = requested
+        weeklyFailure = null
         scope.launch {
-            val next = deps.authCall.call { deps.gateway.serialization(requested.page + 1) }
-                .orDegrade<com.jm3.core.model.SearchPage?>(null)
-            weeklyFeed = if (next != null) requested.appendedBy(next) else requested.failLoadMore()
+            val outcome = deps.authCall.call { deps.gateway.serialization(requested.page + 1) }
+            if (token != weeklyLoadToken) return@launch
+            val next = resolveWeeklyLoadMore(requested = requested, outcome = outcome)
+            weeklyFeed = next.feed
+            weeklyFailure = next.failure
         }
     }
 
     /** 周更首屏/重试：成功给列表、失效与失败给可重试的失败态，空结果不等于加载中。 */
     fun loadWeekly() {
+        val token = ++weeklyLoadToken
         weeklyLoading = true
         weeklyFailure = null
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.serialization(1) }
+            if (token != weeklyLoadToken) return@launch
+            val next = resolveWeeklyLoad(currentFeed = weeklyFeed, outcome = outcome)
             weeklyLoading = false
-            weeklyFailure = planLoad(
-                outcome = outcome,
-                hasContent = false,
-                failureMessage = "每周更新加载失败",
-            )
-            weeklyFeed = (outcome as? SessionOutcome.Ok)?.value?.toFeed() ?: weeklyFeed
+            weeklyFailure = next.failure
+            weeklyFeed = next.feed
         }
     }
 
@@ -304,18 +311,20 @@ fun BrowseScreen(
                                 GlassChipRow(
                                     tabs = BrowseTime.entries.map { it.label },
                                     selectedTabIndex = BrowseTime.entries.indexOf(time),
-                                    onTabSelected = {
+                                    onTabSelected = { index ->
+                                        val picked = BrowseTime.entries.getOrNull(index) ?: return@GlassChipRow
                                         selectionHaptic()
-                                        timeValue = BrowseTime.entries[it].apiValue
+                                        timeValue = picked.apiValue
                                     },
                                     contentPadding = FilterChipsPadding,
                                 )
                                 GlassChipRow(
                                     tabs = BrowseOrder.entries.map { it.shortLabel },
                                     selectedTabIndex = BrowseOrder.entries.indexOf(order),
-                                    onTabSelected = {
+                                    onTabSelected = { index ->
+                                        val picked = BrowseOrder.entries.getOrNull(index) ?: return@GlassChipRow
                                         selectionHaptic()
-                                        orderValue = BrowseOrder.entries[it].apiValue
+                                        orderValue = picked.apiValue
                                     },
                                     contentPadding = FilterChipsPadding,
                                 )
@@ -327,9 +336,10 @@ fun BrowseScreen(
                                     GlassChipRow(
                                         tabs = BrowseCategory.entries.map { it.label },
                                         selectedTabIndex = BrowseCategory.entries.indexOf(category),
-                                        onTabSelected = {
+                                        onTabSelected = { index ->
+                                            val picked = BrowseCategory.entries.getOrNull(index) ?: return@GlassChipRow
                                             selectionHaptic()
-                                            categoryValue = BrowseCategory.entries[it].apiValue
+                                            categoryValue = picked.apiValue
                                         },
                                         modifier = Modifier.weight(1f).chipRowEndFade(),
                                         contentPadding = PaddingValues(vertical = 4.dp),
@@ -346,9 +356,10 @@ fun BrowseScreen(
                                 GlassChipRow(
                                     tabs = BrowseOrder.entries.map { it.shortLabel },
                                     selectedTabIndex = BrowseOrder.entries.indexOf(order),
-                                    onTabSelected = {
+                                    onTabSelected = { index ->
+                                        val picked = BrowseOrder.entries.getOrNull(index) ?: return@GlassChipRow
                                         selectionHaptic()
-                                        orderValue = BrowseOrder.entries[it].apiValue
+                                        orderValue = picked.apiValue
                                     },
                                     contentPadding = FilterChipsPadding,
                                 )
@@ -553,7 +564,21 @@ fun BrowseScreen(
                             WorkCardMetaRow(tags = result.tags, albumCode = result.id)
                         }
                     }
-                    if (feed.hasMore) {
+                    if (failure?.phase == ScreenLoadPhase.Expired) {
+                        item(key = "weekly-expired") {
+                            ScreenFailureOrLogin(
+                                message = failure.message.orEmpty(),
+                                expired = true,
+                                onRetry = ::loadWeekly,
+                                onOpenLogin = {
+                                    showWeeklySheet = false
+                                    weeklyFailure = null
+                                    onOpenLogin()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    } else if (feed.hasMore) {
                         item(key = "weekly-more") {
                             LoadMoreFooter(feed = feed, onLoadMore = ::loadMoreWeekly)
                         }
@@ -568,24 +593,22 @@ fun BrowseScreen(
                     InfiniteProgressIndicator()
                 }
 
-                failure != null -> Column(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                failure != null -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = overlayMaxHeight(240.dp))
+                        .verticalScroll(rememberScrollState()),
                 ) {
-                    val isExpired = failure.phase == ScreenLoadPhase.Expired
-                    val actionText = if (isExpired) "去登录" else "重试"
-                    val onAction: () -> Unit = if (isExpired) {
-                        {
+                    ScreenFailureOrLogin(
+                        message = failure.message.orEmpty(),
+                        expired = failure.phase == ScreenLoadPhase.Expired,
+                        onRetry = ::loadWeekly,
+                        onOpenLogin = {
                             showWeeklySheet = false
                             onOpenLogin()
-                        }
-                    } else {
-                        ::loadWeekly
-                    }
-                    Text(text = failure.message.orEmpty())
-                    MinTouchTarget(onClick = onAction) {
-                        TextButton(text = actionText, onClick = onAction, minWidth = 0.dp)
-                    }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
 
                 else -> Box(
@@ -855,3 +878,48 @@ internal fun shouldReloadRestoredTag(
     loading: Boolean,
     hasFailure: Boolean,
 ): Boolean = normalizeBrowseTagKeyword(tagKeyword) != null && itemCount == 0 && !loading && !hasFailure
+
+internal data class WeeklyLoadOutcome(
+    val feed: PagedFeed<SearchResult>,
+    val failure: ScreenLoadPlan?,
+)
+
+internal fun resolveWeeklyLoad(
+    currentFeed: PagedFeed<SearchResult>,
+    outcome: SessionOutcome<com.jm3.core.model.SearchPage>,
+): WeeklyLoadOutcome = when (outcome) {
+    is SessionOutcome.Ok -> WeeklyLoadOutcome(
+        feed = outcome.value.toFeed(),
+        failure = null,
+    )
+    else -> WeeklyLoadOutcome(
+        feed = currentFeed,
+        failure = planLoad(
+            outcome = outcome,
+            hasContent = false,
+            failureMessage = "每周更新加载失败",
+        ),
+    )
+}
+
+internal fun resolveWeeklyLoadMore(
+    requested: PagedFeed<SearchResult>,
+    outcome: SessionOutcome<com.jm3.core.model.SearchPage>,
+): WeeklyLoadOutcome = when (outcome) {
+    is SessionOutcome.Ok -> WeeklyLoadOutcome(
+        feed = requested.appendedBy(outcome.value),
+        failure = null,
+    )
+    SessionOutcome.Expired -> WeeklyLoadOutcome(
+        feed = requested.failLoadMore(),
+        failure = planLoad(
+            outcome = outcome,
+            hasContent = false,
+            failureMessage = "每周更新加载失败",
+        ),
+    )
+    is SessionOutcome.Failed -> WeeklyLoadOutcome(
+        feed = requested.failLoadMore(),
+        failure = null,
+    )
+}

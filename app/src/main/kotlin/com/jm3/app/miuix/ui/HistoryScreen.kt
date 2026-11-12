@@ -46,7 +46,7 @@ import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private sealed interface HistoryListState {
+internal sealed interface HistoryListState {
     data object Loading : HistoryListState
     data object Loaded : HistoryListState
     data class Failed(val message: String) : HistoryListState
@@ -161,37 +161,50 @@ fun HistoryScreen(
             if (token != requestToken) return@launch
             outcome
                 .onSuccess { next ->
-                    feed = requested.append(
+                    feed = feed.append(
                         PageSlice(items = next, hasMore = next.size >= pageSize, page = page),
                     ) { entry -> entry.photoId }
                 }
-                .onFailure { feed = requested.failLoadMore() }
+                .onFailure { feed = feed.failLoadMore() }
         }
     }
 
-    /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从当前列表移除，并提供撤销入口。 */
+    /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从最新列表移除，并提供撤销入口。 */
     fun removeAlbum(albumId: String) {
-        val slice = feed.items.removeMatching { it.albumId == albumId }
-        if (slice.removed.isEmpty()) return
+        val initialSlice = feed.items.removeMatching { it.albumId == albumId }
+        if (initialSlice.removed.isEmpty()) return
+        val token = requestToken
         scope.launch {
             val deleteOutcome = runCatchingSuspending { repository.deleteAlbum(albumId) }
             if (deleteOutcome.isFailure) {
                 snackbarHostState.showSnackbar("删除失败")
                 return@launch
             }
-            feed = feed.copy(items = slice.remaining)
+            if (token != requestToken) return@launch
+            val applied = removeAlbumFromFeed(feed, albumId)
+            val removed = applied.slice.removed.ifEmpty { initialSlice.removed }
+            val insertIndex = if (applied.slice.removed.isNotEmpty()) applied.slice.insertIndex else initialSlice.insertIndex
+            feed = applied.feed
             val result = snackbarHostState.showSnackbar(
                 message = "已删除阅读记录",
                 actionLabel = "撤销",
             )
             if (result == SnackbarResult.ActionPerformed) {
+                if (token != requestToken) return@launch
                 val restoreOutcome = runCatchingSuspending {
-                    slice.removed.forEach { repository.upsert(it) }
+                    removed.forEach { repository.upsert(it) }
                 }
                 if (restoreOutcome.isSuccess) {
-                    feed = feed.copy(
-                        items = feed.items.restoreAt(slice.removed, slice.insertIndex) { it.photoId },
+                    val restored = restoreAlbumToFeed(
+                        latestFeed = feed,
+                        removed = removed,
+                        insertIndex = insertIndex,
+                        requestTokenAtDelete = token,
+                        currentRequestToken = requestToken,
                     )
+                    if (restored != null) {
+                        feed = restored
+                    }
                 } else {
                     snackbarHostState.showSnackbar("撤销失败")
                 }
@@ -202,12 +215,27 @@ fun HistoryScreen(
     fun clearAll() {
         if (clearing) return
         clearing = true
+        val token = ++requestToken
+        pageBusy = false
         scope.launch {
-            runCatchingSuspending { repository.clear() }
-            clearing = false
+            val outcome = try {
+                runCatchingSuspending { repository.clear() }
+            } finally {
+                clearing = false
+            }
             showClearConfirm = false
-            feed = PagedFeed()
-            state = HistoryListState.Loaded
+            val resolution = resolveClearAllOutcome(
+                currentFeed = feed,
+                currentState = state,
+                outcome = outcome,
+                requestTokenAtClear = token,
+                currentRequestToken = requestToken,
+            )
+            feed = resolution.feed
+            state = resolution.state
+            if (resolution.showFailureSnackbar) {
+                snackbarHostState.showSnackbar("清除失败")
+            }
         }
     }
 
@@ -375,4 +403,67 @@ private fun AlbumHistoryCard(
             }
         }
     }
+}
+
+internal data class HistoryRemoveResult(
+    val feed: PagedFeed<HistoryEntry>,
+    val slice: RemovedSlice<HistoryEntry>,
+)
+
+internal fun removeAlbumFromFeed(
+    latestFeed: PagedFeed<HistoryEntry>,
+    albumId: String,
+): HistoryRemoveResult {
+    val slice = latestFeed.items.removeMatching { it.albumId == albumId }
+    return HistoryRemoveResult(
+        feed = latestFeed.copy(items = slice.remaining),
+        slice = slice,
+    )
+}
+
+internal fun restoreAlbumToFeed(
+    latestFeed: PagedFeed<HistoryEntry>,
+    removed: List<HistoryEntry>,
+    insertIndex: Int,
+    requestTokenAtDelete: Int,
+    currentRequestToken: Int,
+): PagedFeed<HistoryEntry>? {
+    if (requestTokenAtDelete != currentRequestToken) return null
+    return latestFeed.copy(
+        items = latestFeed.items.restoreAt(removed, insertIndex) { it.photoId },
+    )
+}
+
+internal data class ClearAllOutcome(
+    val feed: PagedFeed<HistoryEntry>,
+    val state: HistoryListState,
+    val showFailureSnackbar: Boolean,
+)
+
+internal fun resolveClearAllOutcome(
+    currentFeed: PagedFeed<HistoryEntry>,
+    currentState: HistoryListState,
+    outcome: Result<Unit>,
+    requestTokenAtClear: Int,
+    currentRequestToken: Int,
+): ClearAllOutcome = if (outcome.isSuccess) {
+    if (requestTokenAtClear == currentRequestToken) {
+        ClearAllOutcome(
+            feed = PagedFeed(),
+            state = HistoryListState.Loaded,
+            showFailureSnackbar = false,
+        )
+    } else {
+        ClearAllOutcome(
+            feed = currentFeed,
+            state = currentState,
+            showFailureSnackbar = false,
+        )
+    }
+} else {
+    ClearAllOutcome(
+        feed = currentFeed,
+        state = currentState,
+        showFailureSnackbar = true,
+    )
 }
