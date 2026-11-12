@@ -276,10 +276,80 @@ internal fun parseInlineNotes(
             }
             continue
         }
+        if (text[index] == '<') {
+            val closingAngle = text.indexOf('>', index + 1)
+            if (closingAngle > index + 1) {
+                val candidate = text.substring(index + 1, closingAngle)
+                if (looksLikeHttpUrl(candidate) && candidate.none { it.isWhitespace() }) {
+                    builder.appendUrlLink(candidate, linkColor)
+                    index = closingAngle + 1
+                    continue
+                }
+            }
+        }
+        if (looksLikeHttpUrlAt(text, index)) {
+            val end = extractBareUrlEnd(text, index)
+            if (end > index) {
+                builder.appendUrlLink(text.substring(index, end), linkColor)
+                index = end
+                continue
+            }
+        }
         builder.append(text[index])
         index++
     }
     return builder.toAnnotatedString()
+}
+
+private fun AnnotatedString.Builder.appendUrlLink(url: String, linkColor: Color) {
+    withLink(
+        LinkAnnotation.Url(
+            url = url,
+            styles = TextLinkStyles(
+                style = SpanStyle(
+                    color = linkColor,
+                    textDecoration = TextDecoration.Underline,
+                ),
+            ),
+        ),
+    ) {
+        append(url)
+    }
+}
+
+private fun looksLikeHttpUrl(text: String): Boolean =
+    text.startsWith("https://") || text.startsWith("http://")
+
+private fun looksLikeHttpUrlAt(text: String, index: Int): Boolean {
+    if (!text.startsWith("https://", index) && !text.startsWith("http://", index)) return false
+    if (index == 0) return true
+    val prev = text[index - 1]
+    return prev !in 'a'..'z' && prev !in 'A'..'Z' && prev !in '0'..'9'
+}
+
+private fun extractBareUrlEnd(text: String, start: Int): Int {
+    var end = start
+    while (end < text.length) {
+        val c = text[end]
+        if (c.isWhitespace() || c == '<' || c == '>' || c == '"' || c == '\'' ||
+            c in "\u3001\uFF0C\u3002\uFF1B\uFF1A\uFF08\uFF09\u3010\u3011"
+        ) {
+            break
+        }
+        end++
+    }
+    while (end > start) {
+        val tail = text[end - 1]
+        val trimPunct = when (tail) {
+            '.', ',', ';', '!', '?', ':' -> true
+            ')' -> text.substring(start, end).count { it == '(' } < text.substring(start, end).count { it == ')' }
+            ']' -> text.substring(start, end).count { it == '[' } < text.substring(start, end).count { it == ']' }
+            else -> false
+        }
+        if (!trimPunct) break
+        end--
+    }
+    return if (end > text.indexOf("://", start) + 3) end else start
 }
 
 /**

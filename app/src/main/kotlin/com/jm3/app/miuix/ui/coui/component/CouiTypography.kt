@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -88,8 +89,53 @@ internal fun CouiSectionTitleText(
 }
 
 @Composable
+internal fun CouiBodyText(
+    modifier: Modifier = Modifier,
+    text: AnnotatedString,
+    color: Color = Color.Unspecified,
+    textAlign: TextAlign = TextAlign.Start,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    CouiCustomStyledText(
+        text = text,
+        style = rememberCouiBodyTextStyle(),
+        color = color,
+        textAlign = textAlign,
+        maxLines = maxLines,
+        overflow = overflow,
+        modifier = modifier,
+    )
+}
+
+@Composable
 internal fun CouiCustomStyledText(
     text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    textAlign: TextAlign = TextAlign.Start,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    val resolvedColor = color.takeOrElse {
+        LocalCouiContentColor.current.takeOrElse { CouiTheme.colorScheme.onSurface }
+    }
+    BasicText(
+        text = text,
+        modifier = modifier,
+        style = style.copy(
+            color = resolvedColor,
+            textAlign = textAlign,
+        ),
+        maxLines = maxLines,
+        overflow = overflow,
+    )
+}
+
+@Composable
+internal fun CouiCustomStyledText(
+    text: AnnotatedString,
     style: TextStyle,
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,

@@ -48,4 +48,23 @@ class MarkdownNotesInlineTest {
         assertEquals(1, result.getLinkAnnotations(0, result.length).size)
         assertEquals(FontWeight.Bold, result.spanStyles.single().item.fontWeight)
     }
+
+    @Test
+    fun `bare http and https urls become clickable links without absorbing trailing punctuation`() {
+        val result = parse("完整更新日志：https://github.com/137458/jmcomic-miuix/compare/v1.0...v1.1。")
+
+        assertEquals("完整更新日志：https://github.com/137458/jmcomic-miuix/compare/v1.0...v1.1。", result.text)
+        val links = result.getLinkAnnotations(0, result.length)
+        assertEquals(1, links.size)
+        val link = assertIs<LinkAnnotation.Url>(links.single().item)
+        assertEquals("https://github.com/137458/jmcomic-miuix/compare/v1.0...v1.1", link.url)
+    }
+
+    @Test
+    fun `bare url inside inline code stays literal code and is not linked`() {
+        val result = parse("接口地址 `https://example.com/api`")
+
+        assertEquals("接口地址 https://example.com/api", result.text)
+        assertEquals(0, result.getLinkAnnotations(0, result.length).size)
+    }
 }
