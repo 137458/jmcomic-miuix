@@ -20,51 +20,27 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal fun startupDomainPool(custom: List<String>, cached: List<String>): List<String> =
     Domains.normalize(custom + cached)
 
-/** 库没有公开替换域名池的入口，只能读私有字段；字段名变更时惰性失败并降级，而非抛异常拖垮调用方。 */
-internal fun findDeclaredField(clazz: Class<*>, name: String): Field? =
-    runCatching {
-        clazz.getDeclaredField(name).apply { isAccessible = true }
-    }.getOrElse { failure ->
-        Jm3Log.warn(TAG, "库内反射成员 $name 取不到（${failure.javaClass.name}），相关能力降级")
-        null
-    }
-
-private val domainManagerField: Field? by lazy {
-    findDeclaredField(AbstractJmClient::class.java, "domainManager")
-}
-
-internal fun domainManagerOf(client: AbstractJmClient): JmDomainManager? =
-    runCatching {
-        domainManagerField?.get(client) as? JmDomainManager
-    }.getOrElse { failure ->
-        Jm3Log.warn(TAG, "库内反射成员 domainManager 读取失败（${failure.javaClass.name}），相关能力降级")
-        null
-    }
-
 /**
- * 库只在 protected 的 createDomainProbe 上暴露探活器；成员名变更时降级为「不刷新线路池」并留一条事实日志。
+ * 按类与成员名取可写字段，缺成员时降级为 null 并留一条事实日志。
  *
- * 惰性初始化只尝试一次：取不到就缓存 null，后续刷新直接跳过，不会反复反射也不会重复刷日志。
+ * 反射成员的解析与降级收口在 [LibraryReflection]，这里只是包内通用的字段入口。
  */
-private val domainProbeMethod: Method? by lazy {
-    runCatching {
-        AbstractJmClient::class.java.getDeclaredMethod("createDomainProbe").apply { isAccessible = true }
-    }.getOrElse { failure ->
-        Jm3Log.warn(TAG, "库内反射成员 createDomainProbe 取不到（" + failure.javaClass.name + "），线路池刷新降级")
-        null
-    }
-}
+internal fun findDeclaredField(clazz: Class<*>, name: String): Field? =
+    LibraryReflection.fieldOf(clazz, name)
 
-/** 探活器取不到时返回 null，由调用方跳过整段刷新。 */
+/** 域名管理器取不到时返回 null，降级原语与日志都在 [LibraryReflection]。 */
+internal fun domainManagerOf(client: AbstractJmClient): JmDomainManager? =
+    LibraryReflection.member(LibraryReflection.domainManager.name) {
+        LibraryReflection.domainManagerField?.get(client) as? JmDomainManager
+    }
+
+/** 探活器取不到时返回 null，由调用方跳过整段刷新；探活器自己抛的异常同样只降级。 */
 internal fun domainProbeOf(
     client: AbstractJmClient,
-    probeMethod: Method? = domainProbeMethod,
+    probeMethod: Method? = LibraryReflection.domainProbeMethod,
 ): DomainProbe? =
-    runCatching {
+    LibraryReflection.invokeOrNull(LibraryReflection.createDomainProbe.name) {
         probeMethod?.invoke(client) as? DomainProbe
-    }.getOrElse { failure ->
-        Jm3Log.warn(TAG, "库内反射成员 createDomainProbe 调用失败（${failure.javaClass.name}），线路池刷新降级")
-        null
     }
 
 /** 首屏之后再补跑线路表刷新的延迟：留出首屏请求的窗口，避免探活抢首屏带宽。 */
@@ -117,7 +93,7 @@ internal fun refreshDomainPoolInBackground(
                 if (pool != null && !cancelled.get()) onPoolRefreshed(pool)
             }.onFailure { failure ->
                 if (!cancelled.get()) {
-                    Jm3Log.warn(TAG, "后台刷新线路池失败（${failure.javaClass.name}），现有线路池保持不变")
+                    Jm3Log.warn(TAG, "后台刷新线路池失败（" + failure.javaClass.name + "），现有线路池保持不变")
                 }
             }
         } finally {
@@ -186,7 +162,7 @@ internal fun persistDomainPool(
         val pool = Domains.normalize(custom + manager.domains.toList())
         if (pool.isNotEmpty()) onPoolRefreshed(pool)
     }.onFailure { failure ->
-        Jm3Log.warn(TAG, "落盘线路池失败（${failure.javaClass.name}），相关能力降级")
+        Jm3Log.warn(TAG, "落盘线路池失败（" + failure.javaClass.name + "），相关能力降级")
     }
 }
 

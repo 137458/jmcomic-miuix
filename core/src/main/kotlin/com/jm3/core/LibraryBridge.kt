@@ -36,76 +36,15 @@ internal interface LibraryBridge {
 }
 
 /**
- * [LibraryBridge] 的真实实现：按 jmcomic v1.1.12 的字节码反射取成员。
+ * [LibraryBridge] 的真实实现：成员名、解析与降级都在 [LibraryReflection]，这里只负责读写库内状态。
  *
  * 取不到成员不抛异常：对应能力静默降级，只留一条事实日志（只报成员名与异常类型，不打印成员值）。
  */
 internal object ReflectiveLibraryBridge : LibraryBridge {
 
-    private fun <T> member(member: String, block: () -> T): T? =
-        runCatching(block).getOrElse { failure ->
-            Jm3Log.warn(TAG, "库内反射成员 " + member + " 取不到（" + failure.javaClass.name + "），相关能力降级")
-            null
-        }
-
-    private val cookieManagerField: java.lang.reflect.Field? by lazy {
-        member("cookieManager") {
-            AbstractJmClient::class.java.getDeclaredField("cookieManager").apply { isAccessible = true }
-        }
-    }
-
-    private val cacheUsernameMethod: java.lang.reflect.Method? by lazy {
-        member("cacheUsername") {
-            AbstractJmClient::class.java.getDeclaredMethod("cacheUsername", String::class.java)
-                .apply { isAccessible = true }
-        }
-    }
-
-    private val autoLoginRefreshAllowedField: java.lang.reflect.Field? by lazy {
-        member("autoLoginRefreshAllowed") {
-            AbstractJmClient::class.java.getDeclaredField("autoLoginRefreshAllowed").apply { isAccessible = true }
-        }
-    }
-
-    private val loginHostField: java.lang.reflect.Field? by lazy {
-        member("loginHost") {
-            AbstractJmClient::class.java.getDeclaredField("loginHost").apply { isAccessible = true }
-        }
-    }
-
-    /** 库的 protected 方法：用本客户端的内存密钥把明文密码加密后写进 encryptedPassword。 */
-    private val encryptPasswordInMemoryMethod: java.lang.reflect.Method? by lazy {
-        member("encryptPasswordInMemory") {
-            AbstractJmClient::class.java.getDeclaredMethod("encryptPasswordInMemory", String::class.java)
-                .apply { isAccessible = true }
-        }
-    }
-
-    private val encryptedPasswordField: java.lang.reflect.Field? by lazy {
-        member("encryptedPassword") {
-            AbstractJmClient::class.java.getDeclaredField("encryptedPassword").apply { isAccessible = true }
-        }
-    }
-
-    private val newHttpUrlBuilderMethod: java.lang.reflect.Method? by lazy {
-        member("newHttpUrlBuilder") {
-            AbstractJmClient::class.java.getDeclaredMethod("newHttpUrlBuilder").apply { isAccessible = true }
-        }
-    }
-
-    private val executeGetRequestMethod: java.lang.reflect.Method? by lazy {
-        member("executeGetRequest") {
-            io.github.jukomu.jmcomic.core.client.impl.JmApiClient::class.java.getDeclaredMethod(
-                "executeGetRequest",
-                okhttp3.HttpUrl::class.java,
-                String::class.java,
-            ).apply { isAccessible = true }
-        }
-    }
-
     override fun cookieStoreCookies(client: Any): List<CookieSnapshot> =
         runCatching {
-            val manager = cookieManagerField?.get(client) as? java.net.CookieManager
+            val manager = LibraryReflection.cookieManagerField?.get(client) as? java.net.CookieManager
             manager?.cookieStore?.cookies.orEmpty().map {
                 CookieSnapshot(
                     name = it.name,
@@ -129,7 +68,7 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
         quietly(TAG, "写入库内登录域") {
             val bestHost = targetDomains.map { sanitizeDomain(it) }.firstOrNull { it.isNotBlank() }
                 ?: Domains.FALLBACK_MIRRORS.first()
-            loginHostField?.set(library, bestHost)
+            LibraryReflection.loginHostField?.set(library, bestHost)
         }
     }
 
@@ -140,53 +79,44 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
 
     override fun forgetCredentials(client: Any) {
         val library = client as? AbstractJmClient ?: return
-        quietly(TAG, "关闭库内自动重登") { autoLoginRefreshAllowedField?.set(library, false) }
-        quietly(TAG, "清掉库内内存密码") { encryptedPasswordField?.set(library, null) }
+        quietly(TAG, "关闭库内自动重登") { LibraryReflection.autoLoginRefreshAllowedField?.set(library, false) }
+        quietly(TAG, "清掉库内内存密码") { LibraryReflection.encryptedPasswordField?.set(library, null) }
     }
 
     override fun serializationJson(client: Any, type: String, date: Int, page: Int): String? {
         val apiClient = client as? io.github.jukomu.jmcomic.core.client.impl.JmApiClient ?: return null
-        val builderMethod = newHttpUrlBuilderMethod ?: return null
-        val executeMethod = executeGetRequestMethod ?: return null
+        val builderMethod = LibraryReflection.newHttpUrlBuilderMethod ?: return null
+        val executeMethod = LibraryReflection.executeGetRequestMethod ?: return null
         val url = (invokeSerializationBuilder(builderMethod, apiClient) ?: return null)
             .addPathSegment("serialization")
             .addQueryParameter("type", type)
             .addQueryParameter("date", date.toString())
             .addQueryParameter("page", page.toString())
             .build()
-        val response = try {
+        val response = LibraryReflection.invokeOrThrow(LibraryReflection.executeGetRequest.name) {
             executeMethod.invoke(apiClient, url, SERIALIZATION_APP_HEADER)
-        } catch (e: java.lang.reflect.InvocationTargetException) {
-            throw e.targetException ?: e
-        } catch (e: IllegalAccessException) {
-            Jm3Log.warn(TAG, "调用库内反射成员 executeGetRequest 失败（${e.javaClass.name}），相关能力降级")
-            return null
         } as? io.github.jukomu.jmcomic.core.net.model.JmApiResponse
         return response?.decodedData
     }
 
+    /** 调库内 newHttpUrlBuilder：库方法自己抛的异常也按降级处理，拉取失败交给调用方走原路径。 */
     internal fun invokeSerializationBuilder(
         builderMethod: java.lang.reflect.Method,
         client: Any,
-    ): okhttp3.HttpUrl.Builder? = try {
-        builderMethod.invoke(client) as? okhttp3.HttpUrl.Builder
-    } catch (e: java.lang.reflect.InvocationTargetException) {
-        val cause = e.targetException ?: e
-        Jm3Log.warn(TAG, "调用库内反射成员 newHttpUrlBuilder 失败（${cause.javaClass.name}），相关能力降级")
-        null
-    } catch (e: IllegalAccessException) {
-        Jm3Log.warn(TAG, "调用库内反射成员 newHttpUrlBuilder 失败（${e.javaClass.name}），相关能力降级")
-        null
-    }
+    ): okhttp3.HttpUrl.Builder? =
+        LibraryReflection.invokeOrNull(LibraryReflection.newHttpUrlBuilder.name) {
+            builderMethod.invoke(client) as? okhttp3.HttpUrl.Builder
+        }
 
     /** 用户名、允许自动重登，以及拿得到时加密后的密码；密码缺省表示只恢复身份。 */
     private fun applyLoginState(client: AbstractJmClient, username: String, password: String? = null) {
-        quietly(TAG, "写入库内用户名") { cacheUsernameMethod?.invoke(client, username) }
-        quietly(TAG, "打开库内自动重登") { autoLoginRefreshAllowedField?.set(client, true) }
+        quietly(TAG, "写入库内用户名") { LibraryReflection.cacheUsernameMethod?.invoke(client, username) }
+        quietly(TAG, "打开库内自动重登") { LibraryReflection.autoLoginRefreshAllowedField?.set(client, true) }
         if (password == null) return
         quietly(TAG, "写入库内内存密码") {
-            val encrypted = encryptPasswordInMemoryMethod?.invoke(client, password) as? ByteArray ?: return@quietly
-            encryptedPasswordField?.set(client, encrypted)
+            val encrypted = LibraryReflection.encryptPasswordInMemoryMethod?.invoke(client, password) as? ByteArray
+                ?: return@quietly
+            LibraryReflection.encryptedPasswordField?.set(client, encrypted)
         }
     }
 
