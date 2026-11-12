@@ -13,7 +13,7 @@
 开始任何功能或重构前，先回答以下三问：
 
 1. **分层归属**：能进 `:core` 的逻辑禁止写进 `:app`；能写成纯函数的判定禁止藏在 Composable 内。`:core` 为纯 JVM 模块（`core/build.gradle.kts:1-4`），严禁引入 Android 类型。
-2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 164 个测试类（`:core` 73 个、`:app` 91 个）。无法测试说明分层有误，须先拆层。
+2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 176 个测试类（`:core` 77 个、`:app` 99 个）。无法测试说明分层有误，须先拆层。
 3. **红线冲击**：核对是否破坏单一网关、单一状态真源、双皮肤组件隔离、阅读器手势优先级及 Release 混淆签名规则。
 
 ---
@@ -40,9 +40,9 @@
 ### 1.2 协程作用域与界面编排
 
 - 唯一长期协程作用域为 `appScope`（`Jm3App.kt:156`，`SupervisorJob() + Dispatchers.IO`）。禁止使用 `GlobalScope`。
-- 现有用途限于装配注入、`ScreenDeps.appScope`、`ApiDomain`（`:29`）、`UpdateDomain`（`:29`）、`DownloadManager`（`:28`）、`DownloadService`（`:153`、`:160`、`:213`）、`MainActivity.onStop`（`:79`）、`ReaderScreen` 退出补记页码（`:630`）与 `CouiReaderScreen` 退出补记页码（`ui/coui/page/CouiReaderScreen.kt:691`）。新增使用点必须说明为何无法挂载至 `rememberCoroutineScope`。
+- 现有用途限于装配注入、`ScreenDeps.appScope`、`ApiDomain`（`:29`、`:119`）、`UpdateDomain`（`:16`、`:39`）、`DownloadManager`（`:28`、`:57`、`:62`）、`DownloadService`（`:147`、`:177`、`:184`）、`MainActivity.onStop`（`:79`）、`ReaderScreen` 退出补记页码（`:658`）、`CouiReaderScreen` 退出补记页码（`ui/coui/page/CouiReaderScreen.kt:698`）与 `SettingsScreen` 偏好写盘/切换线路/清空数据（`ui/SettingsScreen.kt:152`、`:462`、`:600`；因退出设置页会取消 `rememberCoroutineScope`，导致内存状态与 DataStore/网关/数据库清理半途不一致，故须挂载至进程作用域）。新增使用点必须说明为何无法挂载至 `rememberCoroutineScope`。
 - 本仓库不引入 `ViewModel`。屏幕数据状态使用 `remember` 与 `LaunchedEffect` 编排，状态复杂时抽离纯 Kotlin 状态容器（如 `AlbumDetailStateHolder`）。
-- 网关调用一律经 `AuthCall.call`（`core/src/main/kotlin/com/jm3/core/session/AuthCall.kt:32`）。禁止在屏幕内自写 `withContext(Dispatchers.IO)` 调网关，禁止跳过启动闸门与统一失效回调。
+- 网关调用一律经 `AuthCall.call`（`core/src/main/kotlin/com/jm3/core/session/AuthCall.kt:36`）。禁止在屏幕内自写 `withContext(Dispatchers.IO)` 调网关，禁止跳过启动闸门与统一失效回调。
 
 ### 1.3 持久化与单真源
 
@@ -133,7 +133,7 @@
 
 - **手势状态机**（`ui/ReaderScreen.kt`、`ui/ReaderZoomLogic.kt`）：
   - 缩放态仅由当前页通过 `isPageZoomed`（`ReaderZoomLogic.kt:13`）回写，翻页后自动复位。
-  - 横向 `HorizontalPager` 挂载 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ReaderScreen.kt:929`、`CouiReaderScreen.kt:986`），确保放大平移时不触发翻页。
+  - 横向 `HorizontalPager` 挂载 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ReaderScreen.kt:957`、`CouiReaderScreen.kt:993`），确保放大平移时不触发翻页。
   - 放大贴边翻页在 `PointerEventPass.Initial` 采集原始位移，交由 `EdgeDragTracker`（`ReaderZoomLogic.kt:58`）与 `decideEdgePageTurn`（`:23`）判定，复核通过后执行 `springAnimateToPage`。
   - 纯常量（`ZOOMED_THRESHOLD = 0.02f`、`EDGE_PAGE_DISTANCE_RATIO = 0.18f`、`CONTENT_PIN_TOLERANCE_PX = 24f`、`EDGE_CONFIRM_DELAY_MS = 120L`、`EDGE_CONFIRM_MOVE_PX = 8f`）集中于 `ReaderZoomLogic.kt:4-49`，禁止散落回 Composable。
 - **比例与解码**（`ui/ReaderPageLogic.kt`、`ui/ReaderImages.kt`）：
@@ -141,7 +141,7 @@
   - 像素预算派生自 `ReaderImageQuality.STANDARD.maxDecodePixels`（4,000,000 px，`ReaderPreferences.kt:6`），单边上限 `MAX_PAGE_DECODE_EDGE_PX = 8192`（`ReaderPageLogic.kt:33`）。
   - 统一通过 `configureReaderDefaults()`（`ReaderImages.kt:223-225`）指定 `Bitmap.Config.RGB_565` 解码，4 MP 标准档单页位图内存约 `8 MB`（较 `ARGB_8888` 降低 50%）。
   - 比例回填走 `readerPageBackfill`（`ReaderPageLogic.kt:155`）：`pageRatios` 无条件更新，`decodeRatios` 仅在 `isBoxLimited`（`:126`）为真时回填。
-  - 纵向长图模式不做就地缩放，双击打开全屏缩放覆盖层（`zoomOverlayIndex`，`ReaderScreen.kt:416`）；章节种子仅接受不窄于 `MIN_SEED_ASPECT_RATIO = 0.5f`（`ReaderPageLogic.kt:40`）的常规页比例。
+  - 纵向长图模式不做就地缩放，双击打开全屏缩放覆盖层（`zoomOverlayIndex`，`ReaderScreen.kt:438`）；章节种子仅接受不窄于 `MIN_SEED_ASPECT_RATIO = 0.5f`（`ReaderPageLogic.kt:40`）的常规页比例。
 - **页码真源**：页码、跳页冻结与可见页回写统一收口于 `ReaderPagePlan`（`core/src/main/kotlin/com/jm3/core/reader/ReaderPagePlan.kt:17`、`jumpTo` `:53`、`settleJump` `:65`、`visiblePage` `:74`）。
 
 ### 5.4 动效、共享元素与大屏窗口
@@ -149,7 +149,7 @@
 - **封面骨架与微光**：骨架屏仅挂载于 `AlbumCoverImage`（`ui/AlbumHero.kt:385`），外部卡片不再重复套用骨架修饰符。
 - **edge-to-edge 与音量键**：`MainActivity.kt:27` 开启沉浸式，`MainActivity.kt:83-85` 将音量键分发给 `ReaderVolumeKeys`（`ReaderScreen.kt:156`）。长图缩放覆盖层打开时须消费并返回 `false` 屏蔽翻页，销毁时须校验回调归属后再置空。
 - **共享元素飞行**：列表侧挂 `.albumHeroCover`（`AlbumHero.kt:538`）、详情侧挂 `.albumHeroHeader`（`:642`），圆角读取 `LocalSkin.current.shapes.cardCorner`，行卡缩略图 `HERO_THUMB_CORNER_DP = 8f`（`:425`）、角标 `HERO_BADGE_CORNER_DP = 6f`（`:428`）。详情路由转场固定为纯 alpha 渐变（`albumDetailTransitionFor`，`Jm3App.kt:415`），禁止改为水平位移动画。
-- **窗口断点与大屏策略**：窗口尺寸统一读取 `rememberWindowDpSize()`（`ui/AdaptiveLayout.kt:76`），整数断点使用 `Dp.toLayoutDpInt()`（`:83`）向下取整，禁止使用 `Configuration.screenWidthDp`。大屏布局阈值集中于 `WideLayoutPolicy`（`core/src/main/kotlin/com/jm3/core/layout/WideLayoutPolicy.kt:22`）：中屏 `600 dp`（`:25`）、大屏 `840 dp`（`:28`），详情双栏、行卡两列、网格列数与侧栏宽高双条件（`:139-145`）均从此处派生。
+- **窗口断点与大屏策略**：窗口尺寸统一读取 `rememberWindowDpSize()`（`ui/AdaptiveLayout.kt:76`），整数断点使用 `Dp.toLayoutDpInt()`（`:83`）向下取整，禁止使用 `Configuration.screenWidthDp`。大屏布局阈值集中于 `WideLayoutPolicy`（`core/src/main/kotlin/com/jm3/core/layout/WideLayoutPolicy.kt:22`）：中屏 `600 dp`（`:25`）、大屏 `840 dp`（`:28`），详情双栏条件（`:139-141`）、侧栏宽高双条件（`:144-145`）、行卡两列与网格列数均从此处派生。
 
 ---
 
@@ -175,9 +175,9 @@
 
 测试基线（2026-11-12 实跑 `:core:test` 与 `:app:testDebugUnitTest`，以 `build/test-results/**/TEST-*.xml` 为准）：
 
-- **`:core`**：73 个测试类 / 679 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`）。
-- **`:app`**：91 个测试类 / 636 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`）。
-- **全仓合计**：164 个测试类 / 1,315 个测试用例，全部通过，0 失败、0 跳过。
+- **`:core`**：77 个测试类 / 710 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`）。
+- **`:app`**：99 个测试类 / 687 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`）。
+- **全仓合计**：176 个测试类 / 1,397 个测试用例，全部通过，0 失败、0 跳过。
 
 典型纯逻辑边界测试规模：`AccountManagerTest`（36）、`AlbumHeroLogicTest`（31）、`ReaderPageLogicTest`（31）、`MappersTest`（29）、`CheckInLoadPolicyTest`（29）、`ReaderProgressCodecTest`（27）、`AlbumHeroHostTest`（26）、`CouiWorkCardLayoutTest`（26）、`ReaderZoomLogicTest`（22）、`DownloadQueueTest`（21）。
 
@@ -198,7 +198,7 @@
 后续改动若与以下既定决策冲突，必须先更新决策再修改代码，禁止暗中绕过：
 
 1. **阅读器缩放选用 `telephoto`**：使用 `me.saket.telephoto:zoomable-image-coil3:0.19.0`（`gradle/libs.versions.toml:16`、`:30`），以同时获得分块超采样与缩放感知解码，避免放大模糊。
-2. **手势让渡显式关闭翻页拦截**：Miuix `PagerSwipeNode` 在 `Initial` 阶段判消费，而 `telephoto` 在 `Main` 阶段消费。因此横向 `HorizontalPager` 恒挂 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ReaderScreen.kt:927`），防止平移与翻页同时触发。
+2. **手势让渡显式关闭翻页拦截**：Miuix `PagerSwipeNode` 在 `Initial` 阶段判消费，而 `telephoto` 在 `Main` 阶段消费。因此横向 `HorizontalPager` 恒挂 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ReaderScreen.kt:957`、`CouiReaderScreen.kt:993`），防止平移与翻页同时触发。
 3. **放大贴边翻页采用 `Initial` 旁路**：`telephoto` 越过触摸阈值后会消费全部位移，故在 `ReaderPage` 的 `PointerEventPass.Initial` 阶段采集原始位移并减去内容偏移，松手 `120 ms` 后复核内容静止方判定翻页。
 4. **长图模式禁止就地缩放**：层内缩放会与纵向列表滚动冲突并裁切内容，故双击弹出全屏缩放覆盖层，单击或返回键退出。页框跟随页内真实比例，避免 3:4 强制裁切导致条幅拉伸模糊。
 5. **阅读器图片强制走磁盘快照**：`telephoto` 分块超采样依赖 `FileImageSource` 的 `diskCacheKey`。禁止将内存 `okio.Buffer` 作为常规路径返回；缓存键统一由 `ReaderKeyer.keyOf` 生成。
@@ -233,6 +233,6 @@
 3. **放大边缘翻页暂不做跟手拖拽**：跟手拖拽需重构 `HorizontalPager` 滚动源，改动面大于当前收益，维持松手判定后弹性翻页方案。
 4. **运行验证缺口**：
    - 已真机验证项：已在小米 15（`targetSdk 36`）实测阅读器缩放与边缘翻页、双击整屏缩放覆盖层、`dataSync` 前台服务与进度通知（含提升型通知分支）。
-   - 未真机验证项：全仓目前主要依赖编译、164 个测试类（1,315 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
+   - 未真机验证项：全仓目前主要依赖编译、176 个测试类（1,397 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
 5. **COUI 皮肤暂不实现下拉刷新**：当前 `COUI-Kit` 未提供下拉刷新容器，COUI 页面刷新入口统一由错误态重试与页面操作按钮承担，不在页面层手拼手势容器。
 6. **小说列表不做分页**：上游小说列表接口一次返回全量数据且无分页参数，屏幕按全量渲染，不强套 `PagedFeed`。
