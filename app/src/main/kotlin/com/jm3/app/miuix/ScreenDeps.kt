@@ -10,6 +10,7 @@ import com.jm3.app.miuix.data.download.DownloadManager
 import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.update.ApkInstaller
 import com.jm3.app.miuix.update.UpdateDownloader
+import com.jm3.core.DomainRoutes
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.Jm3Log
 import com.jm3.core.download.DownloadStore
@@ -74,6 +75,10 @@ class ScreenDeps internal constructor(
 
     val gateway: Jm3Gateway
         get() = api.gateway
+
+    /** 线路可观测面：只想知道「现在走哪条线路、哪条快」的屏幕用这个面，不必认识内容方法。 */
+    val routes: DomainRoutes
+        get() = gateway
 
     val settings: SettingsRepository
         get() = preferences.repository

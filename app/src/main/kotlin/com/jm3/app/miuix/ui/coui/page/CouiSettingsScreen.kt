@@ -146,7 +146,7 @@ fun CouiSettingsScreen(
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         // 网关与结局翻译统一从 ScreenDeps 取，调用方不再并行传一份
-        val gateway = deps.gateway
+        val routes = deps.routes
         val authCall = deps.authCall
         val repository = deps.settings
 
@@ -227,8 +227,8 @@ fun CouiSettingsScreen(
             diagError = null
             // 两个网关查询合成一次结局：等待会话恢复、切 IO、判失效都在 AuthCall 内完成。
             val result = authCall.call {
-                gateway.usedDomain() to
-                    gateway.domainLatency().entries
+                routes.usedDomain() to
+                    routes.domainLatency().entries
                         .sortedBy { it.value }
                         .map { it.key to it.value }
             }
@@ -251,7 +251,7 @@ fun CouiSettingsScreen(
             if (reprobeBusy) return
             reprobeBusy = true
             scope.launch {
-                val result = authCall.call { gateway.reprobeDomains() }
+                val result = authCall.call { routes.reprobeDomains() }
                 // 先重读诊断再解锁：按钮解锁那一刻列表已是新延迟，不会停留在旧数字。
                 // 无论成败都重读一次，失败时也保留上一次可用的探活结果。
                 loadDomainsDiagnostics()

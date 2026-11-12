@@ -153,7 +153,7 @@ internal fun CouiTasksScreen(
                         ?.value
                         .orEmpty()
                         .ifBlank {
-                            (deps.authCall.call { deps.gateway.usedDomain() } as? SessionOutcome.Ok)
+                            (deps.authCall.call { deps.routes.usedDomain() } as? SessionOutcome.Ok)
                                 ?.value
                                 .orEmpty()
                         }

@@ -86,7 +86,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val skin = LocalSkin.current
     // 网关与结局翻译统一从 ScreenDeps 取，调用方不再并行传一份
-    val gateway = deps.gateway
+    val routes = deps.routes
     val authCall = deps.authCall
 
     val domainsInput = rememberSaveable { mutableStateOf("") }
@@ -169,8 +169,8 @@ fun SettingsScreen(
             diagError = null
             // 两个网关查询合成一次结局：等待会话恢复、切 IO、判失效都在 AuthCall 内完成。
             val result = authCall.call {
-                gateway.usedDomain() to
-                    gateway.domainLatency().entries
+                routes.usedDomain() to
+                    routes.domainLatency().entries
                         .sortedBy { it.value }
                         .map { it.key to it.value }
             }
@@ -192,7 +192,7 @@ fun SettingsScreen(
         if (reprobeBusy) return
         reprobeBusy = true
         scope.launch {
-            val result = authCall.call { gateway.reprobeDomains() }
+            val result = authCall.call { routes.reprobeDomains() }
             reprobeBusy = false
             when (result) {
                 is SessionOutcome.Ok -> snackbarHostState.showSnackbar("线路探活完成")

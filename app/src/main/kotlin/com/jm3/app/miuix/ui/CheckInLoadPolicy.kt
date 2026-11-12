@@ -454,7 +454,7 @@ internal class MineCheckInHolder(
         settings = deps.settings,
         sessionCache = deps.sessionCache,
         awaitReady = {
-            awaitGatewayReady(ready = { runCatching { deps.gateway.domainsReady() }.getOrDefault(false) })
+            awaitGatewayReady(ready = { runCatching { deps.routes.domainsReady() }.getOrDefault(false) })
         },
         fetchStatus = { targetUid ->
             deps.authCall.call { deps.gateway.dailyCheckInStatus(targetUid) }

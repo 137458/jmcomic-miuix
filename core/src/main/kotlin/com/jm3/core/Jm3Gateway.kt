@@ -44,7 +44,27 @@ import io.github.jukomu.jmcomic.core.client.AbstractJmClient
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
 
-interface Jm3Gateway : SessionAuth, PhotoSource {
+
+/**
+ * 线路可观测面：现在走哪条线路、探活结果如何、什么时候该换线路。
+ *
+ * 与内容接口分开，是因为关心点不同：设置页只想知道哪条线路快、点一下重探，
+ * 任务页与详情页只想在请求前拿到当前线路名做展示——它们不需要认识内容方法。
+ */
+interface DomainRoutes {
+    /** 当前实际使用的 API 域名；域名未就绪时为 null。 */
+    fun usedDomain(): String?
+
+    /** 域名管理器是否已就绪（READY）。未就绪时首个请求会阻塞在库的初始化链上，调用方应等待后再发。 */
+    fun domainsReady(): Boolean
+
+    /** 各域名延迟（毫秒）；空表表示尚未探测。 */
+    fun domainLatency(): Map<String, Int>
+
+    /** 重新探测全部域名。阻塞调用。 */
+    fun reprobeDomains()
+}
+interface Jm3Gateway : SessionAuth, PhotoSource, DomainRoutes {
     /** 搜索。scope 对应原版搜索类型（站内/作品/作者/标签/登场人物），time 由服务端过滤时间范围。阻塞调用。 */
     fun search(
         text: String,
@@ -170,18 +190,6 @@ interface Jm3Gateway : SessionAuth, PhotoSource {
         name: String = "",
         albumId: String = "",
     ): FolderOperation
-
-    /** 当前实际使用的 API 域名；域名未就绪时为 null。 */
-    fun usedDomain(): String?
-
-    /** 域名管理器是否已就绪（READY）。未就绪时首个请求会阻塞在库的初始化链上，调用方应等待后再发。 */
-    fun domainsReady(): Boolean
-
-    /** 各域名延迟（毫秒）；空表表示尚未探测。 */
-    fun domainLatency(): Map<String, Int>
-
-    /** 重新探测全部域名。阻塞调用。 */
-    fun reprobeDomains()
 
     /** 释放底层客户端资源（退出或切换线路时调用）。 */
     fun close()
