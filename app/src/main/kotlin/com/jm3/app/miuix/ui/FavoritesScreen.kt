@@ -532,6 +532,8 @@ fun FavoritesScreen(
                     // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                     contentPadding = innerPadding,
                 ) {
+                    // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
+                    val feedColumns = LocalWideLayout.current.feedColumns
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize().readableWidth(),
@@ -584,7 +586,14 @@ fun FavoritesScreen(
                                 EmptyState(title = "暂无收藏", hint = "在作品详情页点击收藏后会出现在这里")
                             }
                         }
-                        items(p.items, key = { it.id }) { result ->
+                        // key 仍是作品 id：与单列时逐字一致，升级后滚动位置不丢
+                        feedRowItems(
+                            count = p.items.size,
+                            columns = feedColumns,
+                            keyPrefix = "",
+                            keyOf = { index -> p.items[index].id },
+                        ) { index ->
+                            val result = p.items[index]
                             WorkRowCard(
                                 coverUrl = result.coverUrl,
                                 title = result.title,
@@ -690,6 +699,7 @@ fun FavoritesScreen(
 
         OverlayDialog(
             show = showCreate || editTarget != null,
+            maxWidth = overlayDialogMaxWidth(),
             title = if (showCreate) "新建收藏夹" else "重命名收藏夹",
             cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = {
@@ -738,6 +748,7 @@ fun FavoritesScreen(
 
         OverlayDialog(
             show = deleteTarget != null,
+            maxWidth = overlayDialogMaxWidth(),
             title = "删除收藏夹",
             cornerRadius = skin.shapes.dialogCorner,
             summary = deleteTarget?.let { "将删除收藏夹「${it.second}」，夹内作品不会取消收藏。" },
@@ -793,7 +804,7 @@ fun FavoritesScreen(
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = overlayMaxHeight(320.dp))) {
                         items(movableFolders, key = { it.first }) { (id, name) ->
                             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                                 BasicComponent(
@@ -825,6 +836,7 @@ fun FavoritesScreen(
         // 添加标签
         OverlayDialog(
             show = showAddTag,
+            maxWidth = overlayDialogMaxWidth(),
             title = "添加标签",
             cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = {
@@ -872,6 +884,7 @@ fun FavoritesScreen(
         // 删除标签确认
         OverlayDialog(
             show = tagDeleteTarget != null,
+            maxWidth = overlayDialogMaxWidth(),
             title = "删除标签",
             cornerRadius = skin.shapes.dialogCorner,
             summary = tagDeleteTarget?.let { "将取消收藏标签「#$it」。" },

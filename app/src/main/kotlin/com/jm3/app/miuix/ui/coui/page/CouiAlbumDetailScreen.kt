@@ -113,6 +113,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.COUI_COMMENT_MAX_INDENT_DEPTH
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiDetailSplitHandle
 import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiDetailActionTile
@@ -368,7 +369,8 @@ private fun CouiAlbumDetailScreenBody(
     }
 
     // 宽屏两栏：左栏作品信息与章节，右栏评论；两栏各自持有滚动状态，互不牵连
-    val wideDetail = LocalWideLayout.current.twoPaneDetail
+    val wideLayout = LocalWideLayout.current
+    val wideDetail = wideLayout.twoPaneDetail
     val singleListState = rememberLazyListState()
     val mainListState = rememberLazyListState()
     val commentListState = rememberLazyListState()
@@ -659,6 +661,10 @@ private fun CouiAlbumDetailScreenBody(
                 if (wideDetail) {
                     // 宽屏两栏：左栏是「这部作品是什么」（头部 + 操作 + 简介 + 信息），
                     // 右栏是「读什么、大家怎么说」（预览 + 章节 + 相关 + 评论）；两栏各自滚动、互不牵扯
+                    // 比例随本页保存：拖过分隔条后重进本页仍记得，双击分隔条回到默认比例
+                    var splitFraction by rememberSaveable {
+                        mutableStateOf(wideLayout.defaultDetailSplitFraction)
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
@@ -668,7 +674,7 @@ private fun CouiAlbumDetailScreenBody(
                         LazyColumn(
                             state = mainListState,
                             modifier = Modifier
-                                .weight(0.38f)
+                                .weight(splitFraction)
                                 .fillMaxHeight(),
                             contentPadding = contentPadding,
                             overscrollEffect = rememberCouiOverscrollEffect(),
@@ -676,10 +682,16 @@ private fun CouiAlbumDetailScreenBody(
                             couiInclude(headItems)
                             couiInclude(infoItems)
                         }
+                        CouiDetailSplitHandle(
+                            fraction = splitFraction,
+                            defaultFraction = wideLayout.defaultDetailSplitFraction,
+                            availableWidthDp = wideLayout.contentWidthDp,
+                            onFractionChange = { splitFraction = it },
+                        )
                         LazyColumn(
                             state = commentListState,
                             modifier = Modifier
-                                .weight(0.62f)
+                                .weight(1f - splitFraction)
                                 .fillMaxHeight(),
                             contentPadding = contentPadding,
                             overscrollEffect = rememberCouiOverscrollEffect(),

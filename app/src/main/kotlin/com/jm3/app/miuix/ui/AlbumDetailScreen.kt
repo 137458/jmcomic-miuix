@@ -6,8 +6,11 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,10 +46,12 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -67,6 +73,7 @@ import com.jm3.core.Jm3Gateway
 import com.jm3.core.albumPreviewPlan
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
+import com.jm3.core.layout.WideLayoutPolicy
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
@@ -522,26 +529,51 @@ internal fun AlbumDetailScreen(
                     contentPadding = innerPadding,
                 ) {
                     // 大屏两栏：左封面+信息、右预览/章节/评论，避免单栏拉满整屏；
-                    // 手机断点以下或详情未就绪时仍走原来的单栏列表
-                    val wideDetail = loadedDetail?.takeIf { LocalWideLayout.current.twoPaneDetail }
+                    // 手机断点以下、矮横屏（宽高双条件）或详情未就绪时仍走原来的单栏列表
+                    val wide = LocalWideLayout.current
+                    val wideDetail = loadedDetail?.takeIf { wide.twoPaneDetail }
                     if (wideDetail != null) {
-                        Row(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                            TrackedLazyColumn(
-                                state = listState,
-                                contentPadding = PaddingValues(0.dp),
-                                modifier = Modifier.weight(0.38f).fillMaxHeight(),
-                            ) {
-                                headerItem()
-                                infoItems(wideDetail)
-                            }
-                            TrackedLazyColumn(
-                                state = rightListState,
-                                contentPadding = PaddingValues(0.dp),
-                                modifier = Modifier.weight(0.62f).fillMaxHeight(),
-                            ) {
-                                previewItems()
-                                chapterItems(wideDetail)
-                                tailItems(wideDetail)
+                        // 拖动分隔条后的比例随页面保存；首次进入用按内容宽夹取的默认值
+                        var splitFraction by rememberSaveable {
+                            mutableStateOf(wide.defaultDetailSplitFraction)
+                        }
+                        val dividerTouchWidthPx = with(LocalDensity.current) {
+                            WideLayoutPolicy.DETAIL_DIVIDER_TOUCH_WIDTH_DP.dp.toPx()
+                        }
+                        BoxWithConstraints(
+                            // 分栏分支也要限宽：否则 1280dp 下两栏各自横跨到窗口边缘
+                            modifier = Modifier.fillMaxSize().padding(innerPadding).readableWidth(),
+                        ) {
+                            // 比例只作用于扣掉分隔条后的可分空间；两栏各有独立滚动状态
+                            val paneWidthPx = (constraints.maxWidth.toFloat() - dividerTouchWidthPx)
+                                .coerceAtLeast(1f)
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                TrackedLazyColumn(
+                                    state = listState,
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.weight(splitFraction).fillMaxHeight(),
+                                ) {
+                                    headerItem()
+                                    infoItems(wideDetail)
+                                }
+                                DetailSplitHandle(
+                                    onDragPx = { dragPx ->
+                                        splitFraction = WideLayoutPolicy.clampDetailSplitFraction(
+                                            fraction = splitFraction + dragPx / paneWidthPx,
+                                            availableWidthDp = wide.contentWidthDp,
+                                        )
+                                    },
+                                    onReset = { splitFraction = wide.defaultDetailSplitFraction },
+                                )
+                                TrackedLazyColumn(
+                                    state = rightListState,
+                                    contentPadding = PaddingValues(0.dp),
+                                    modifier = Modifier.weight(1f - splitFraction).fillMaxHeight(),
+                                ) {
+                                    previewItems()
+                                    chapterItems(wideDetail)
+                                    tailItems(wideDetail)
+                                }
                             }
                         }
                     } else {
@@ -645,6 +677,43 @@ internal fun AlbumDetailScreen(
     }
 }
 
+/**
+ * 双栏之间的分隔条：28dp 触摸区，拖动像素由调用方按内容宽换算成比例，双击回到默认比例。
+ *
+ * 视觉上只有 1dp 细线，触摸区按手指尺寸放宽，免得必须精确压线才拖得动；
+ * 手势协程只启动一次，用 rememberUpdatedState 读当前 lambda，尺寸变化后不会被旧闭包锁死。
+ */
+@Composable
+private fun DetailSplitHandle(
+    onDragPx: (dragPx: Float) -> Unit,
+    onReset: () -> Unit,
+) {
+    val drag by rememberUpdatedState(onDragPx)
+    val reset by rememberUpdatedState(onReset)
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(WideLayoutPolicy.DETAIL_DIVIDER_TOUCH_WIDTH_DP.dp)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, dragAmount ->
+                    change.consume()
+                    drag(dragAmount)
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = { reset() })
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(MiuixTheme.colorScheme.dividerLine),
+        )
+    }
+}
+
 /** 头部：封面（大尺寸 144x192 dp，比例 3:4，对齐列表预览与 eh 布局） + 标题/作者/热度 + 阅读按钮与高频动作台。 */
 @Composable
 private fun DetailHeader(
@@ -711,7 +780,7 @@ private fun DetailHeader(
                     if (title.isNotBlank()) {
                         Text(
                             text = title,
-                            style = MiuixTheme.textStyles.title4,
+                            style = largeScreenTitleStyle(MiuixTheme.textStyles.title4),
                             fontWeight = FontWeight.Medium,
                             maxLines = 4,
                             overflow = TextOverflow.Ellipsis,

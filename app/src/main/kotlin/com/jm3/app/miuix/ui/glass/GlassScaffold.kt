@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.alignToReadableContent
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -158,7 +159,13 @@ fun GlassScaffold(
         Scaffold(
             modifier = modifier,
             snackbarHost = snackbarHost,
-            floatingActionButton = floatingActionButton,
+            // 悬浮动作栏与顶栏同处限宽内容列内：不套 readableWidth 时它会贴在窗口右下角，
+            // 而正文收在中间，大屏上看着像脱离了页面。
+            floatingActionButton = {
+                Box(modifier = Modifier.alignToReadableContent()) {
+                    floatingActionButton()
+                }
+            },
         ) { innerPadding ->
             // bottom 不含折叠位移，是常量；折叠位移由 CollapsingContentPadding 留到测量期再读。
             val contentBottomPadding = maxOf(innerPadding.calculateBottomPadding(), systemBarBottom) +
@@ -220,9 +227,12 @@ fun GlassScaffold(
                             )
                         }
                         // 实测高度只取顶栏内容本身：模糊层不计入内容净空、折叠位移与展开高度。
+                        // 横向只收窄这一层：标题、页签、搜索框跟着正文落在同一内容列里，
+                        // 上面的渐变模糊层与降级实色仍满窗口宽，滚动到边缘时不会露出硬边。
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .alignToReadableContent()
                                 .onSizeChanged { topBarMaxHeightPx = maxOf(topBarMaxHeightPx, it.height) },
                         ) {
                             topBar()

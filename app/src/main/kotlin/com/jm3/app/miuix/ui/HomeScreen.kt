@@ -527,6 +527,8 @@ fun HomeScreen(
             // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
             contentPadding = innerPadding,
         ) {
+            // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
+            val feedColumns = LocalWideLayout.current.feedColumns
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
@@ -560,6 +562,7 @@ fun HomeScreen(
                             onLoadMore = ::loadMore,
                             onPageChange = ::jumpToPage,
                             onOpenAlbum = { openAlbum(it) },
+                            columns = feedColumns,
                         )
                     }
                 } else {
@@ -661,6 +664,7 @@ fun HomeScreen(
                             onLoadMore = ::loadMore,
                             onPageChange = ::jumpToPage,
                             onOpenAlbum = { openAlbum(it) },
+                            columns = feedColumns,
                         )
                     }
                 }
@@ -670,6 +674,7 @@ fun HomeScreen(
         // 原版搜索语法帮助：空格=同时包含，+ 必须包含，- 排除；按钮沿用 HyperOS 纵向全宽惯例。
         OverlayDialog(
             show = showSearchHelp,
+            maxWidth = overlayDialogMaxWidth(),
             title = "搜索语法",
             cornerRadius = skin.shapes.dialogCorner,
             summary = "用空格与 +/- 组合关键词，可缩小搜索范围。",
@@ -822,7 +827,7 @@ private fun InlineLoading() {
 private fun RandomPickCard(pick: SearchResult, onClick: () -> Unit) {
     // 行高缺省时会按字形最大度量排版：日文假名、emoji 能让个别标题每行高出一点，
     // 同排卡片便出现毫厘之差。三行文字都按字号折算固定行高，整卡高度只由行数决定。
-    val titleLineHeight = MiuixTheme.textStyles.body2.pinnedLineHeight()
+    val titleLineHeight = largeScreenTitleStyle(MiuixTheme.textStyles.body2).pinnedLineHeight()
     val subtitleLineHeight = MiuixTheme.textStyles.footnote1.pinnedLineHeight()
     val tagLineHeight = MiuixTheme.textStyles.footnote2.pinnedLineHeight()
     WorkGridCard(

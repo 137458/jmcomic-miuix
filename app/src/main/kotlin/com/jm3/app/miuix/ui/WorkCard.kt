@@ -345,7 +345,7 @@ internal fun WorkGridCard(
         ) {
             Text(
                 text = title,
-                style = MiuixTheme.textStyles.body2,
+                style = largeScreenTitleStyle(MiuixTheme.textStyles.body2),
                 fontWeight = FontWeight.Medium,
                 color = MiuixTheme.colorScheme.onSurface,
                 lineHeight = titleLineHeight,
@@ -426,7 +426,7 @@ internal fun WorkRowCard(
             ) {
                 Text(
                     text = title,
-                    style = MiuixTheme.textStyles.body1,
+                    style = largeScreenTitleStyle(MiuixTheme.textStyles.body1),
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.onSurface,
                     // 固定占两行：单行标题的行不再比两行标题的行矮，列表里每张卡高度一致

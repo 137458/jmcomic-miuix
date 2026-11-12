@@ -110,10 +110,14 @@ fun SettingsScreen(
     val bottomBarSizeOption =
         if (deps.preferences.bottomBarSize == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
     val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.preferences.bottomBarForm)
-    // 宽屏导航：未设置时默认底栏，用户显式选侧栏才切换；
+    // 宽屏导航：展示布局真正采用的那一档（未设置时按窗口宽高断点推导），
+    // 否则大屏上「设置说底栏、界面却是侧栏」会自相矛盾；
     // 该项只在 600dp 及以上（含小平板/折叠展开/分屏）渲染整行，其余设备完全隐藏。
-    val wideScreenNavigation =
-        BottomBarPreferencePolicy.resolveWideScreenNavigation(deps.preferences.wideScreenNavigation)
+    val wideScreenNavigation = BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
+        deps.preferences.wideScreenNavigation,
+        widthDp,
+        windowDp.height.toLayoutDpInt(),
+    )
     val showWideScreenNavigation = BottomBarPreferencePolicy.supportsWideScreenNavigation(widthDp)
     // 阅读器设置：与分页模式同卡片，读写沿用现有设置存储，不新建二级页
     // 双页只在 600dp 以上横屏可见；其它窗口尺寸整行不渲染，阅读器也会自动回落到单页
@@ -551,6 +555,7 @@ fun SettingsScreen(
 
         OverlayDialog(
             show = confirmClear != null,
+            maxWidth = overlayDialogMaxWidth(),
             title = if (clearingHistory) "清空阅读历史" else "清空下载",
             cornerRadius = skin.shapes.dialogCorner,
             summary = if (clearingHistory) {
@@ -583,6 +588,7 @@ fun SettingsScreen(
 
         OverlayDialog(
             show = showDisclaimer,
+            maxWidth = overlayDialogMaxWidth(),
             title = "免责声明",
             cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = { showDisclaimer = false },

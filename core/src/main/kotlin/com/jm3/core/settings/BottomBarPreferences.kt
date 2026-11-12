@@ -12,7 +12,7 @@ enum class BottomBarForm(val label: String) {
     DOCKED("不悬浮"),
 }
 
-/** 宽屏导航：默认底栏，侧栏为可选。 */
+/** 宽屏导航：宽高都够时默认侧栏，其余窗口一律底栏。 */
 enum class WideScreenNavigation(val label: String) {
     BOTTOM_BAR("底栏"),
     RAIL("侧栏"),
@@ -46,9 +46,27 @@ object BottomBarPreferencePolicy {
     /** 未设置即悬浮；默认值的唯一出口在 [defaultForm]。 */
     fun resolveForm(explicit: BottomBarForm?): BottomBarForm = explicit ?: defaultForm()
 
-    /** 宽屏导航默认底栏；用户显式选过侧栏才走 Rail。 */
+    /**
+     * 只解析显式值：未设置返回底栏兜底。
+     *
+     * 布局用的默认值依赖窗口宽高，走 [defaultWideScreenNavigation]；
+     * 这里保持无窗口参数的纯解析，供设置页等只读持久化值的场景使用。
+     */
     fun resolveWideScreenNavigation(explicit: WideScreenNavigation?): WideScreenNavigation =
         explicit ?: WideScreenNavigation.BOTTOM_BAR
+
+    /**
+     * 宽屏导航默认形态：宽高都达到断点才用侧栏。
+     *
+     * 只看宽度会把 800x400dp 的横屏手机当宽屏，而 4 项侧栏在 400dp 高度里
+     * 会挤到点不准；600x600 是「放得下侧栏且还能容纳正文」的最低组合。
+     */
+    fun defaultWideScreenNavigation(widthDp: Int, heightDp: Int): WideScreenNavigation =
+        if (supportsWideScreenNavigationRail(widthDp, heightDp)) {
+            WideScreenNavigation.RAIL
+        } else {
+            WideScreenNavigation.BOTTOM_BAR
+        }
 
     /**
      * 宽屏导航设置项可见的窗口阈值：复用既有平板断点 [TABLET_MIN_WIDTH_DP]（600dp），
@@ -59,11 +77,31 @@ object BottomBarPreferencePolicy {
     fun supportsWideScreenNavigation(widthDp: Int): Boolean =
         widthDp >= WIDE_SCREEN_NAVIGATION_MIN_WIDTH_DP
 
-    /** 布局实际采用的导航：设置项不可见时一律底栏，即使盘上残留了侧栏的显式值。 */
-    fun resolveActiveWideScreenNavigation(explicit: WideScreenNavigation?, widthDp: Int): WideScreenNavigation =
-        if (supportsWideScreenNavigation(widthDp)) {
-            resolveWideScreenNavigation(explicit)
-        } else {
-            WideScreenNavigation.BOTTOM_BAR
-        }
+    /** 侧栏要求的最小窗口高度：矮横屏里侧栏放不下几项，也挤掉正文高度。 */
+    const val WIDE_SCREEN_NAVIGATION_MIN_HEIGHT_DP = TABLET_MIN_WIDTH_DP
+
+    /** 侧栏可用的宽高双条件：宽度与高度都必须达到断点。 */
+    fun supportsWideScreenNavigationRail(widthDp: Int, heightDp: Int): Boolean =
+        supportsWideScreenNavigation(widthDp) && heightDp >= WIDE_SCREEN_NAVIGATION_MIN_HEIGHT_DP
+
+    /**
+     * 布局实际采用的导航：未设置走断点默认，显式选择优先；但窗口撑不起侧栏时一律底栏。
+     *
+     * 设置项不可见（宽度不足）时同样底栏，即使盘上残留了侧栏的显式值。
+     */
+    fun resolveActiveWideScreenNavigation(
+        explicit: WideScreenNavigation?,
+        widthDp: Int,
+        heightDp: Int,
+    ): WideScreenNavigation = when {
+        !supportsWideScreenNavigation(widthDp) -> WideScreenNavigation.BOTTOM_BAR
+        explicit == null -> defaultWideScreenNavigation(widthDp, heightDp)
+        explicit == WideScreenNavigation.RAIL ->
+            if (supportsWideScreenNavigationRail(widthDp, heightDp)) {
+                WideScreenNavigation.RAIL
+            } else {
+                WideScreenNavigation.BOTTOM_BAR
+            }
+        else -> WideScreenNavigation.BOTTOM_BAR
+    }
 }

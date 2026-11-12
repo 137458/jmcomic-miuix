@@ -67,7 +67,10 @@ import com.jm3.app.miuix.ui.skin.LocalSkin
 internal object CouiWorkCardTokens {
     /** 封面宽高比：3:4 竖版，与详情页头图、hero 共享元素的飞行终点一致。 */
     const val CoverAspect = 0.75f
-    /** 竖卡宽度：与原版卡一致，扣掉左右内衬后正文列仍有 80dp。 */
+    /**
+     * 竖卡宽度：栅格内的卡片已改为跟随单元宽度（[CouiWorkGridCard] 用 fillMaxWidth），
+     * 这里只剩两处用途：首页横滑轨道给无界容器里的卡片兜底定宽，以及分类角标的宽度上限。
+     */
     val GridWidth = 112.dp
     val GridSpacing = 8.dp
     val TextPaddingH = 16.dp
@@ -312,8 +315,11 @@ fun CouiWorkGridCard(
     val border = remember(isDark) { couiCardBorder(isDark) }
     CouiPressHapticEffect(interaction)
     Column(
+        // 卡片宽度跟随栅格单元：列数由 WideLayoutPolicy 按限宽后的内容宽算出，
+        // 这里再写死 112dp 会在 840dp 以上留下 1/4 以上空白（大屏仍按手机卡宽铺 6 列）。
+        // 轨道横滑等无界容器由调用方传 Modifier.width(CouiWorkCardTokens.GridWidth)。
         modifier = modifier
-            .width(CouiWorkCardTokens.GridWidth)
+            .fillMaxWidth()
             // 卡片自身是不透明表面：按压缩放、裁剪、垫底色、独立描边、叠光都落在同一节点上，
             // 光才按整卡轮廓折射，缩放也不会只带动封面而露出卡片色环。
             .graphicsLayer {
@@ -607,7 +613,8 @@ private class CouiPinnedText(val style: TextStyle, val blockHeight: Dp)
 
 @Composable
 private fun couiPinnedText(kind: CouiTextKind, lines: Int): CouiPinnedText {
-    val base = rememberCouiTextStyle(kind)
+    // 大屏档放大字阶；行高与占位高度都从同一份样式推导，卡片不会因为放大而错行
+    val base = couiScaledStyle(rememberCouiTextStyle(kind))
     val lineHeight = couiPinnedLineHeight(base.fontSize, base.lineHeight)
     val style = remember(base, lineHeight) { base.copy(lineHeight = lineHeight) }
     val density = LocalDensity.current

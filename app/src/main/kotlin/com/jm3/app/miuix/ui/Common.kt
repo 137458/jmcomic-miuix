@@ -68,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImagePainter
 import com.jm3.core.paging.PagedFeed
@@ -87,6 +88,7 @@ import top.yukonga.miuix.kmp.basic.VerticalScrollBar
 import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.layout.DialogDefaults
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -133,6 +135,43 @@ internal fun MinTouchTarget(
  * 没有卡片内衬的裸文字头必须直接取本值，不能再按 12dp 排。
  */
 internal val SectionTextStartPadding: Dp = SectionHorizontalPadding + 16.dp
+
+/**
+ * 弹窗宽度上限：大屏按断点放宽（440/520dp），手机返回组件库默认 420dp。
+ *
+ * 组件库默认值固定 420dp，1280dp 窗口下弹窗只占屏宽三分之一，标题与操作按钮都被挤压。
+ * 只给 [OverlayDialog] 用：抽屉的库默认是 640dp，已经宽于本值，再收紧反而是倒退。
+ */
+@Composable
+internal fun overlayDialogMaxWidth(): Dp =
+    LocalWideLayout.current.dialogWidth ?: DialogDefaults.MaxWidth
+
+/**
+ * 弹层内容高度上限：不超过窗口推导值，也不超过调用方原本的保守上限。
+ *
+ * 两个方向都必要：竖屏手机窗口高 800dp 时推导值 480dp 会放宽原有 320/420/440dp 的观感，
+ * 而 800x400dp 矮横屏推导值只有 368dp，写死的高度会把列表压出窗口、末尾几行点不到。
+ */
+@Composable
+internal fun overlayMaxHeight(preferred: Dp): Dp =
+    minOf(preferred, LocalWideLayout.current.dialogMaxHeight ?: preferred)
+
+/**
+ * 大屏字号档：宽 840dp 以上把标题类文字升 2sp，行高同步 +3sp。
+ *
+ * 1280dp 窗口下网格卡片宽到 196dp，标题仍是手机的 16sp，标题与卡片不成比例；
+ * 只抬标题层级、正文保持原样，避免整页变松。行高必须跟字号一起抬：
+ * 调用方会传固定标题行高（[WorkCard] 的 pinnedLineHeight），只放大字号会把文字裁掉。
+ */
+@Composable
+internal fun largeScreenTitleStyle(base: TextStyle): TextStyle {
+    if (!LocalWideLayout.current.largeTypography) return base
+    // 只在 Sp 单位上做加法：Em 或 Unspecified 保持原样，避免把未指定的行高算成 NaN
+    return base.copy(
+        fontSize = if (base.fontSize.isSp) (base.fontSize.value + 2f).sp else base.fontSize,
+        lineHeight = if (base.lineHeight.isSp) (base.lineHeight.value + 3f).sp else base.lineHeight,
+    )
+}
 
 /** 评论回复面板：显示被回复作者、200 字上限与发送状态；换目标时清空草稿。 */
 @Composable
@@ -522,6 +561,7 @@ private fun SearchResultCard(
  * 搜索/浏览共用的结果列表与加载更多入口；是否还有下一页、在不在拉、上次是否失败都由 [PagedFeed] 回答。
  *
  * @param ranked 榜单模式：在封面前补名次序号（跨页累加，合并多页后依然连续）。
+ * @param columns 大屏列数：由 [WideLayout.feedColumns] 给出，1 表示与手机一致的单列行卡。
  */
 fun LazyListScope.searchResultItems(
     feed: PagedFeed<SearchResult>,
@@ -530,13 +570,21 @@ fun LazyListScope.searchResultItems(
     ranked: Boolean = false,
     clickPaging: Boolean = false,
     onPageChange: ((Int) -> Unit)? = null,
+    columns: Int = 1,
 ) {
     if (feed.items.isEmpty()) {
         item(key = "empty") {
             EmptyState(title = "无结果", hint = "换个关键词再试试")
         }
     }
-    itemsIndexed(feed.items, key = { _, result -> result.id }) { index, result ->
+    // key 仍是作品 id（与单列时逐字一致），名次按切片前的顺序右移一位
+    feedRowItems(
+        count = feed.items.size,
+        columns = columns,
+        keyPrefix = "",
+        keyOf = { index -> feed.items[index].id },
+    ) { index ->
+        val result = feed.items[index]
         SearchResultCard(
             result = result,
             rank = if (ranked) index + 1 else null,
@@ -638,11 +686,18 @@ fun LazyListScope.pagedSearchResultItems(
     feed: PagedFeed<SearchResult>,
     onPageChange: (Int) -> Unit,
     onOpenAlbum: (String) -> Unit,
+    columns: Int = 1,
 ) {
     if (feed.items.isEmpty()) {
         item(key = "empty") { EmptyState(title = "无结果", hint = "换个关键词再试试") }
     }
-    items(feed.items, key = { it.id }) { result ->
+    feedRowItems(
+        count = feed.items.size,
+        columns = columns,
+        keyPrefix = "",
+        keyOf = { index -> feed.items[index].id },
+    ) { index ->
+        val result = feed.items[index]
         SearchResultCard(result = result, onClick = { onOpenAlbum(result.id) })
     }
     item(key = "pager") {
@@ -661,11 +716,22 @@ fun LazyListScope.resultItems(
     onLoadMore: () -> Unit,
     onPageChange: (Int) -> Unit,
     onOpenAlbum: (String) -> Unit,
+    columns: Int = 1,
 ) {
     if (clickPaging) {
-        pagedSearchResultItems(feed = feed, onPageChange = onPageChange, onOpenAlbum = onOpenAlbum)
+        pagedSearchResultItems(
+            feed = feed,
+            onPageChange = onPageChange,
+            onOpenAlbum = onOpenAlbum,
+            columns = columns,
+        )
     } else {
-        searchResultItems(feed = feed, onLoadMore = onLoadMore, onOpenAlbum = onOpenAlbum)
+        searchResultItems(
+            feed = feed,
+            onLoadMore = onLoadMore,
+            onOpenAlbum = onOpenAlbum,
+            columns = columns,
+        )
     }
 }
 

@@ -197,6 +197,8 @@ fun SearchScreen(
                     )
                 }
             }
+            // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
+            val feedColumns = LocalWideLayout.current.feedColumns
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().readableWidth(),
@@ -227,12 +229,14 @@ fun SearchScreen(
                             feed = s.feed,
                             onPageChange = ::jumpToPage,
                             onOpenAlbum = onOpenAlbum,
+                            columns = feedColumns,
                         )
                     } else {
                         searchResultItems(
                             feed = s.feed,
                             onLoadMore = ::loadMore,
                             onOpenAlbum = onOpenAlbum,
+                            columns = feedColumns,
                         )
                     }
                 }

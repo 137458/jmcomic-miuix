@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -58,6 +59,7 @@ import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiDetailSplitHandle
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
@@ -67,6 +69,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
+import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
@@ -206,11 +209,13 @@ private fun CouiCreatorWorkBody(
                 if (loaded.related.isEmpty()) {
                     item(key = "coui-work-related-empty") { CouiEmptyGroup(text = "暂无相关作品") }
                 } else {
-                    itemsIndexed(
-                        items = loaded.related,
-                        key = { _, item -> "coui-work-related-${item.id}" },
-                        contentType = { _, _ -> "coui-work-related" },
-                    ) { _, item ->
+                    feedRowItems(
+                        count = loaded.related.size,
+                        columns = wideLayout.feedColumns,
+                        keyPrefix = "coui-work-related-",
+                        keyOf = { index -> loaded.related[index].id },
+                    ) { index ->
+                        val item = loaded.related[index]
                         CouiCreatorRelatedRow(item = item, onClick = { onOpenWork(item.id) })
                     }
                     item(key = "coui-work-related-footer") { Footer(text = "作者的其他作品") }
@@ -284,6 +289,10 @@ private fun CouiCreatorWorkBody(
                 extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
             )
             if (twoPane) {
+                // 比例随本页保存：拖过分隔条后重进本页仍记得，双击分隔条回到默认比例
+                var splitFraction by rememberSaveable {
+                    mutableStateOf(wideLayout.defaultDetailSplitFraction)
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
@@ -292,15 +301,21 @@ private fun CouiCreatorWorkBody(
                 ) {
                     LazyColumn(
                         state = leftListState,
-                        modifier = Modifier.weight(0.38f).fillMaxHeight(),
+                        modifier = Modifier.weight(splitFraction).fillMaxHeight(),
                         contentPadding = contentPadding,
                         overscrollEffect = rememberCouiOverscrollEffect(),
                     ) {
                         metaItems()
                     }
+                    CouiDetailSplitHandle(
+                        fraction = splitFraction,
+                        defaultFraction = wideLayout.defaultDetailSplitFraction,
+                        availableWidthDp = wideLayout.contentWidthDp,
+                        onFractionChange = { splitFraction = it },
+                    )
                     LazyColumn(
                         state = rightListState,
-                        modifier = Modifier.weight(0.62f).fillMaxHeight(),
+                        modifier = Modifier.weight(1f - splitFraction).fillMaxHeight(),
                         contentPadding = contentPadding,
                         overscrollEffect = rememberCouiOverscrollEffect(),
                     ) {

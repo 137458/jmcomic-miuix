@@ -47,6 +47,7 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.ListState
+import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
@@ -62,6 +63,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
+import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
@@ -229,6 +231,8 @@ private fun CouiSearchBody(
                 horizontalPadding = null,
                 extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
             )
+            // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+            val feedColumns = LocalWideLayout.current.feedColumns
             LazyColumn(
                 state = lazyState,
                 modifier = Modifier
@@ -269,11 +273,13 @@ private fun CouiSearchBody(
                                 }
                             }
                         } else {
-                            itemsIndexed(
-                                items = current.feed.items,
-                                key = { _, result -> "coui-search-result-${result.id}" },
-                                contentType = { _, _ -> "coui-search-result" },
-                            ) { _, result ->
+                            feedRowItems(
+                                count = current.feed.items.size,
+                                columns = feedColumns,
+                                keyPrefix = "coui-search-result-",
+                                keyOf = { index -> current.feed.items[index].id },
+                            ) { index ->
+                                val result = current.feed.items[index]
                                 CouiSearchResultRow(
                                     result = result,
                                     onClick = { onOpenAlbum(result.id) },

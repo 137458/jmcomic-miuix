@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -66,6 +67,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.HomeSideData
 import com.jm3.app.miuix.ui.ListState
+import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.asListState
@@ -88,6 +90,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
 import com.jm3.app.miuix.ui.coui.component.LocalCouiFallbackContentColor
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
+import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.isShowingSearchResults
@@ -531,6 +534,8 @@ fun CouiHomeScreen(
             }
         }
         val feedState = if (searching) results else feed
+        // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+        val feedColumns = LocalWideLayout.current.feedColumns
         // 大屏按 LocalWideLayout 的断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding，
         // 页面不再自写宽度常量；窄屏该内衬为 0，行为与旧页一致
         LazyColumn(
@@ -681,10 +686,14 @@ fun CouiHomeScreen(
                         }
                     } else {
                         // key 用作品 id：首行贴齐标题下沿（top=0）与其它分段保持 8dp 标题间距，末行归零由下个分段自己留白
-                        itemsIndexed(
-                            items = items,
-                            key = { _, album -> "coui-home-row-${album.id}" },
-                        ) { index, album ->
+                        // 大屏把发现流行卡排成两列，手机断点仍是单列；key 与改动前一致，滚动位置不丢
+                        feedRowItems(
+                            count = items.size,
+                            columns = feedColumns,
+                            keyPrefix = "coui-home-row-",
+                            keyOf = { index -> items[index].id },
+                        ) { index ->
+                            val album = items[index]
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -816,7 +825,7 @@ fun CouiHomeScreen(
 /**
  * 一条横滑轨道：标题 + 一行竖卡。
  *
- * 卡片宽度由 CouiWorkGridCard 自己固定成 112dp，轨道这边只负责首尾留白与卡片间距；
+ * 卡片放在无界横滑容器里，宽度必须由轨道自己固定成 112dp（CouiWorkGridCard 已改为跟随栅格单元）；
  * 名次徽章只画在封面左上角（金银铜前三名由 CouiWorkRankBadge 判定），首页不重复报数。
  */
 @Composable
@@ -861,6 +870,7 @@ private fun CouiHomeTrackSection(
                     subtitle = album.authors.firstOrNull(),
                     category = album.category,
                     badge = badge,
+                    modifier = Modifier.width(CouiWorkCardTokens.GridWidth),
                 )
             }
         }

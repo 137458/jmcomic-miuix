@@ -199,12 +199,21 @@ fun WatchHistoryScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
+                    // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
+                    val feedColumns = LocalWideLayout.current.feedColumns
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().readableWidth(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                         contentPadding = innerPadding,
                     ) {
-                        items(feed.items, key = { it.id }) { item ->
+                        // key 仍是作品 id：与单列时逐字一致，升级后滚动位置不丢
+                        feedRowItems(
+                            count = feed.items.size,
+                            columns = feedColumns,
+                            keyPrefix = "",
+                            keyOf = { index -> feed.items[index].id },
+                        ) { index ->
+                            val item = feed.items[index]
                             WorkRowCard(
                                 coverUrl = item.coverUrl,
                                 title = item.title,
@@ -257,6 +266,7 @@ fun WatchHistoryScreen(
         if (toDelete != null) {
             OverlayDialog(
                 show = true,
+                maxWidth = overlayDialogMaxWidth(),
                 title = "删除观看记录",
                 cornerRadius = skin.shapes.dialogCorner,
                 onDismissRequest = { pendingDeleteItem = null },

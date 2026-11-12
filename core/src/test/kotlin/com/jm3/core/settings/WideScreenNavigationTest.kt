@@ -10,11 +10,27 @@ import kotlin.test.assertTrue
 class WideScreenNavigationTest {
 
     @Test
-    fun `未设置时宽屏默认底栏`() {
-        // 未显式设置时不再按设备类型分派：宽屏同样渲染底栏，侧栏只在用户主动选择时启用
+    fun `显式解析未设置时回落底栏兜底`() {
+        // 该函数只解析盘上的显式值；窗口断点默认由 resolveActiveWideScreenNavigation 负责
         assertEquals(
             WideScreenNavigation.BOTTOM_BAR,
             BottomBarPreferencePolicy.resolveWideScreenNavigation(null),
+        )
+    }
+
+    @Test
+    fun `未设置时宽高都够才默认侧栏`() {
+        assertEquals(
+            WideScreenNavigation.RAIL,
+            BottomBarPreferencePolicy.defaultWideScreenNavigation(1280, 800),
+        )
+        assertEquals(
+            WideScreenNavigation.BOTTOM_BAR,
+            BottomBarPreferencePolicy.defaultWideScreenNavigation(1280, 480),
+        )
+        assertEquals(
+            WideScreenNavigation.BOTTOM_BAR,
+            BottomBarPreferencePolicy.defaultWideScreenNavigation(400, 900),
         )
     }
 
@@ -80,15 +96,20 @@ class WideScreenNavigationTest {
         // 用户曾在大屏选过侧栏，回到窄窗口时布局按默认底栏，不因残留值走 Rail
         assertEquals(
             WideScreenNavigation.BOTTOM_BAR,
-            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(WideScreenNavigation.RAIL, 580),
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(WideScreenNavigation.RAIL, 580, 800),
         )
         assertEquals(
             WideScreenNavigation.RAIL,
-            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(WideScreenNavigation.RAIL, 1000),
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(WideScreenNavigation.RAIL, 1000, 800),
         )
         assertEquals(
+            WideScreenNavigation.RAIL,
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(null, 1000, 800),
+        )
+        // 高度不足时侧栏不成立：即便盘上残留显式侧栏，布局也必须回落底栏
+        assertEquals(
             WideScreenNavigation.BOTTOM_BAR,
-            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(null, 1000),
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(WideScreenNavigation.RAIL, 1000, 400),
         )
     }
 }

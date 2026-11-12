@@ -137,6 +137,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiDialogListMaxHeight
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
@@ -1337,7 +1338,7 @@ private fun ReaderPages(
                     CouiBodyText(text = CouiStrings.EmptyChapters)
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = couiDialogListMaxHeight(420.dp))) {
                     items(chapters, key = { it.id }) { chapter ->
                         Item(
                             title = {
@@ -1390,7 +1391,9 @@ private fun ReaderPages(
 
                     page == null || page.items.isEmpty() -> ReaderDialogHint(text = CouiStrings.EmptyComments)
 
-                    else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    else -> LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = couiDialogListMaxHeight(320.dp)),
+                    ) {
                         items(page.items, key = { it.id }) { item ->
                             ReaderCommentRow(
                                 item = item,

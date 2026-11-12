@@ -190,6 +190,8 @@ fun WeekScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
+                    // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
+                    val feedColumns = LocalWideLayout.current.feedColumns
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().readableWidth(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
@@ -226,6 +228,7 @@ fun WeekScreen(
                                 feed = PagedFeed(items = loaded.items),
                                 onLoadMore = {},
                                 onOpenAlbum = onOpenAlbum,
+                                columns = feedColumns,
                             )
                         }
                     }

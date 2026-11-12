@@ -171,6 +171,7 @@ fun ShelfScreen(
         if (toDelete != null) {
             OverlayDialog(
                 show = true,
+                maxWidth = overlayDialogMaxWidth(),
                 title = "删除下载",
                 cornerRadius = skin.shapes.dialogCorner,
                 onDismissRequest = { pendingDeleteRecord = null },

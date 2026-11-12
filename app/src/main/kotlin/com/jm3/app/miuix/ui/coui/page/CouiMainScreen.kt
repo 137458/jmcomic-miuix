@@ -35,12 +35,15 @@ import com.jm3.app.miuix.ui.BrowseMode
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.coui.component.CouiNavigationBar
 import com.jm3.app.miuix.ui.coui.component.CouiNavigationRail
+import com.jm3.app.miuix.ui.coui.component.CouiRailWidth
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
+import com.jm3.app.miuix.ui.LocalWideLayout
+import com.jm3.app.miuix.ui.railAwareWideLayout
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.settings.UiSkin
@@ -105,13 +108,16 @@ fun CouiMainScreen(
         LaunchedEffect(user?.uid) { unreadBadge.refresh(user != null) }
 
         // 与全 app 断点同一取整方式：599.6dp 不能被四舍五入成 600 提前进入平板布局
-        val widthDp = rememberWindowDpSize().width.toLayoutDpInt()
+        val windowSize = rememberWindowDpSize()
+        val widthDp = windowSize.width.toLayoutDpInt()
+        val heightDp = windowSize.height.toLayoutDpInt()
         // 宽屏导航偏好与底栏 token 同源：600dp 以下设置项不可见，布局一律按底栏渲染；
-        // 大屏未设置时默认底栏，用户显式选侧栏才切成侧栏。
-        val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation, widthDp) {
+        // 够宽够高时未设置默认侧栏，矮横屏一律回落底栏。
+        val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation, widthDp, heightDp) {
             BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
                 deps.preferences.wideScreenNavigation,
                 widthDp,
+                heightDp,
             )
         }
         // 尺寸档与形态档在组合期一次性解析成 token，切换偏好只重建这份数值，不进入测量热路径
@@ -124,6 +130,10 @@ fun CouiMainScreen(
             )
         }
         val useRail = wideScreenNavigation == WideScreenNavigation.RAIL
+        // 侧栏占掉 88dp 定宽，正文的限宽留白要按剩下的宽度算，否则内容列整体右偏半个侧栏
+        val contentLayout = railAwareWideLayout(
+            availableWidthDp = if (useRail) (widthDp - CouiRailWidth.value).toInt() else widthDp,
+        )
 
         // 导航项只随枚举变化：不 remember 会让主框架每次重组都新建列表，连带四页整树重组
         val navItems = remember {
@@ -151,6 +161,7 @@ fun CouiMainScreen(
 
         CompositionLocalProvider(
             LocalFloatingBarContentPadding provides couiBottomBarClearance(useRail, tokens),
+            LocalWideLayout provides contentLayout,
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 if (useRail) {

@@ -286,6 +286,7 @@ fun MineScreen(
         // 登出属于会话级操作：与清空数据一致，采用二次确认弹窗
         OverlayDialog(
             show = confirmLogout,
+            maxWidth = overlayDialogMaxWidth(),
             title = "退出登录",
             cornerRadius = skin.shapes.dialogCorner,
             summary = "确定要登出账号吗？",

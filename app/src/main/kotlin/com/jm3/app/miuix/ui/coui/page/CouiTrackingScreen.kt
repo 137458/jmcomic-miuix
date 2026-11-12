@@ -39,6 +39,7 @@ import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
@@ -55,6 +56,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
+import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
@@ -292,6 +294,8 @@ internal fun CouiTrackingScreen(
                 )
             },
         ) { innerPadding ->
+            // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+            val feedColumns = LocalWideLayout.current.feedColumns
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -336,7 +340,13 @@ internal fun CouiTrackingScreen(
                         }
                         item(key = "tracking-empty-hint") { Footer(text = "在详情页开启追更后会出现在这里") }
                     } else {
-                        items(items, key = { item -> "tracking-" + item.id }) { item ->
+                        feedRowItems(
+                            count = items.size,
+                            columns = feedColumns,
+                            keyPrefix = "tracking-",
+                            keyOf = { index -> items[index].id },
+                        ) { index ->
+                            val item = items[index]
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()

@@ -71,6 +71,45 @@ class BottomBarPreferencesTest {
     }
 
     @Test
+    fun `宽屏导航未设置时按宽高双条件给默认值`() {
+        // 600x600 起默认侧栏：平板开箱即得侧栏，不必用户手动切换
+        assertEquals(
+            WideScreenNavigation.RAIL,
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(null, 1280, 800),
+        )
+        assertEquals(
+            WideScreenNavigation.RAIL,
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(null, 600, 600),
+        )
+        // 矮横屏（800x400）只满足宽度，侧栏 8 项会溢出，回落底栏
+        assertEquals(
+            WideScreenNavigation.BOTTOM_BAR,
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(null, 800, 400),
+        )
+        assertEquals(
+            WideScreenNavigation.BOTTOM_BAR,
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(null, 599, 900),
+        )
+    }
+
+    @Test
+    fun `显式选择优先但高度不足仍回落底栏`() {
+        assertEquals(
+            WideScreenNavigation.BOTTOM_BAR,
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(WideScreenNavigation.BOTTOM_BAR, 1280, 800),
+        )
+        assertEquals(
+            WideScreenNavigation.RAIL,
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(WideScreenNavigation.RAIL, 1280, 800),
+        )
+        // 盘上残留侧栏、但窗口高度不足：布局必须回落底栏
+        assertEquals(
+            WideScreenNavigation.BOTTOM_BAR,
+            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(WideScreenNavigation.RAIL, 800, 400),
+        )
+    }
+
+    @Test
     fun `显式写入后可原样读回`() = runBlocking {
         val repo = InMemorySettingsRepository()
         repo.setBottomBarSize(BottomBarSize.GENEROUS)

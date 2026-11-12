@@ -853,7 +853,7 @@ private fun CreatorRow(creator: CreatorMeta, onClick: () -> Unit) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = creator.name.ifBlank { creator.id },
-                        style = MiuixTheme.textStyles.title4,
+                        style = largeScreenTitleStyle(MiuixTheme.textStyles.title4),
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -984,7 +984,7 @@ private fun CreatorHero(author: CreatorAuthorWorks) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = author.authorName.ifBlank { "未知创作者" },
-                    style = MiuixTheme.textStyles.title3,
+                    style = largeScreenTitleStyle(MiuixTheme.textStyles.title3),
                     color = Color.White,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

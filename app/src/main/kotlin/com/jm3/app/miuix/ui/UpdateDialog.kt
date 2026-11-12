@@ -717,6 +717,8 @@ private fun MiuixUpdateAvailableDialog(
         show = show,
         title = "发现新版本",
         summary = plan.summary,
+        // 宽屏下与其它 OverlayDialog 同档放宽：1280dp 窗口里 420dp 的更新说明窄得读不动
+        maxWidth = overlayDialogMaxWidth(),
         cornerRadius = skin.shapes.dialogCorner,
         onDismissRequest = onDismiss,
     ) {

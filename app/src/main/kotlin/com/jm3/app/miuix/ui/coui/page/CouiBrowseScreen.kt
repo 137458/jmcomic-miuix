@@ -75,6 +75,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.BrowseMode
 import com.jm3.app.miuix.ui.BrowsePageKey
 import com.jm3.app.miuix.ui.ListState
+import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
@@ -105,9 +106,11 @@ import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
 import com.jm3.app.miuix.ui.coui.component.LocalCouiAppBackdrop
+import com.jm3.app.miuix.ui.coui.component.couiDialogListMaxHeight
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
 import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
+import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
@@ -571,6 +574,8 @@ internal fun CouiBrowseScreen(
             horizontalPadding = null,
             extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
         )
+        // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+        val feedColumns = LocalWideLayout.current.feedColumns
         LazyColumn(
             state = lazyState,
             // 大屏按 LocalWideLayout 断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding
@@ -622,10 +627,13 @@ internal fun CouiBrowseScreen(
                     }
 
                     else -> {
-                        items(
-                            items = tagItems,
-                            key = { result -> "coui-tag-row-${result.id}" },
-                        ) { result ->
+                        feedRowItems(
+                            count = tagItems.size,
+                            columns = feedColumns,
+                            keyPrefix = "coui-tag-row-",
+                            keyOf = { index -> tagItems[index].id },
+                        ) { index ->
+                            val result = tagItems[index]
                             CouiBrowseRowSlot(
                                 result = result,
                                 rank = null,
@@ -765,10 +773,14 @@ internal fun CouiBrowseScreen(
                             }
                             // 首页拿不到时退回本页条数：宁可名次在本页重新起算，也不要空着
                             val stride = if (pageStride > 0) pageStride else feed.items.size.coerceAtLeast(1)
-                            itemsIndexed(
-                                items = feed.items,
-                                key = { index, result -> "coui-browse-row-${result.id}-$index" },
-                            ) { index, result ->
+                            // 大屏两列，key 与单列时完全一致（含序号），滚动位置不丢
+                            feedRowItems(
+                                count = feed.items.size,
+                                columns = feedColumns,
+                                keyPrefix = "coui-browse-row-",
+                                keyOf = { index -> feed.items[index].id + "-" + index },
+                            ) { index ->
+                                val result = feed.items[index]
                                 CouiBrowseRowSlot(
                                     result = result,
                                     rank = if (mode == BrowseMode.RANK) {
@@ -1075,7 +1087,7 @@ private fun CouiMoreCategoriesDialog(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 420.dp),
+                        .heightIn(max = couiDialogListMaxHeight(420.dp)),
                     contentPadding = PaddingValues(bottom = 8.dp),
                 ) {
                     itemsIndexed(filteredBlocks, key = { _, block -> block.title }) { index, block ->

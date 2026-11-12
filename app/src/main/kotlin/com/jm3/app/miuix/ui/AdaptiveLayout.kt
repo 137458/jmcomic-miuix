@@ -24,8 +24,35 @@ data class WideLayout(
     val heightDp: Int,
 ) {
     val contentMaxWidth: Dp? = WideLayoutPolicy.contentMaxWidthDp(widthDp)?.dp
+
+    /** 限宽后真正可用的内容宽度：列数与卡片尺寸都以它为基准。 */
+    val contentWidthDp: Int = WideLayoutPolicy.contentWidthDp(widthDp)
+
     val gridColumns: Int = WideLayoutPolicy.gridColumns(widthDp)
+
+    /** 行卡列表的分栏列数：内容宽够 840dp 才排两列，手机恒为单列。 */
+    val feedColumns: Int = WideLayoutPolicy.feedColumns(contentWidthDp)
     val twoPaneDetail: Boolean = WideLayoutPolicy.supportsDetailTwoPane(widthDp, heightDp)
+
+    /** 侧栏可用的宽高双条件：矮横屏即使够宽也不出侧栏。 */
+    val supportsRail: Boolean = WideLayoutPolicy.supportsNavigationRail(widthDp, heightDp)
+
+    /** 大屏放大档：840dp 起标题与控件允许加一档，手机断点以下恒为 false。 */
+    val largeTypography: Boolean = widthDp >= WideLayoutPolicy.EXPANDED_MIN_WIDTH_DP
+
+    /** 弹层宽度：手机为 null 表示沿用组件库默认宽度。 */
+    val dialogWidth: Dp? = WideLayoutPolicy.dialogWidthDp(widthDp)?.dp
+
+    /** 弹层最大高度：null 表示不额外约束（手机竖屏与默认值场景）。 */
+    val dialogMaxHeight: Dp? = WideLayoutPolicy.dialogMaxHeightDp(heightDp)
+        .takeIf { it > 0 }
+        ?.dp
+
+    /** 双栏详情默认比例：0.2..0.8，两栏都放不下最小宽度时退回等分。 */
+    val defaultDetailSplitFraction: Float = WideLayoutPolicy.clampDetailSplitFraction(
+        WideLayoutPolicy.detailSplitFraction(WideLayoutPolicy.DETAIL_SPLIT_PERCENT_DEFAULT),
+        contentWidthDp,
+    )
 
     /** 限宽后的左右留白：窗口超宽时把内容收进可读宽度并居中。 */
     val readableHorizontalPadding: Dp
@@ -64,3 +91,26 @@ internal fun Dp.toLayoutDpInt(): Int = floor(value).toInt().coerceAtLeast(0)
 @Composable
 fun Modifier.readableWidth(): Modifier =
     this.padding(horizontal = LocalWideLayout.current.readableHorizontalPadding)
+
+/**
+ * 顶栏 / 悬浮动作栏等「看上去属于正文」的元素用它对齐内容列。
+ *
+ * 与 [readableWidth] 同一份留白来源，因此大屏上标题、返回键与正文左缘始终共线；
+ * 满宽背景（玻璃采样层）不要套它，否则模糊边缘会跟着内容列收缩。
+ */
+@Composable
+fun Modifier.alignToReadableContent(): Modifier =
+    this.padding(horizontal = LocalWideLayout.current.readableHorizontalPadding)
+
+/**
+ * 侧栏占用横向空间后，重新以「内容盒宽度」为基准推导布局参数。
+ *
+ * 限宽留白按窗口宽计算会让正文在有侧栏时右偏，因此主框架在侧栏内侧再提供一份
+ * 以剩余宽度为窗口宽的 [WideLayout]；页面侧无需知道侧栏是否存在。
+ */
+@Composable
+fun railAwareWideLayout(availableWidthDp: Int): WideLayout {
+    val window = LocalWideLayout.current
+    if (availableWidthDp <= 0 || availableWidthDp == window.widthDp) return window
+    return window.copy(widthDp = availableWidthDp)
+}

@@ -282,6 +282,7 @@ fun HistoryScreen(
 
         OverlayDialog(
             show = showClearConfirm,
+            maxWidth = overlayDialogMaxWidth(),
             title = "清空阅读历史",
             cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = { showClearConfirm = false },

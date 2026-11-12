@@ -407,6 +407,8 @@ fun BrowseScreen(
                     // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                     contentPadding = innerPadding,
                 ) {
+                    // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
+                    val feedColumns = LocalWideLayout.current.feedColumns
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize().readableWidth(),
@@ -491,6 +493,7 @@ fun BrowseScreen(
                                 onOpenAlbum = onOpenAlbum,
                                 clickPaging = clickPaging,
                                 onPageChange = ::jumpToPage,
+                                columns = feedColumns,
                             )
                         }
                     }
@@ -524,7 +527,7 @@ fun BrowseScreen(
             val feed = weeklyFeed
             val failure = weeklyFailure
             when {
-                feed.items.isNotEmpty() -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
+                feed.items.isNotEmpty() -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = overlayMaxHeight(440.dp))) {
                     items(feed.items, key = { it.id }) { result ->
                         WorkRowCard(
                             coverUrl = result.coverUrl,
@@ -597,7 +600,7 @@ private fun CategoryBlocksSheet(blocks: List<CategoryBlock>, onTagClick: (String
             Text(text = "暂无更多分类")
         }
     } else {
-        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = overlayMaxHeight(440.dp))) {
             items(blocks, key = { it.title }) { block ->
                 SmallTitle(text = block.title)
                 Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding, vertical = 4.dp)) {
@@ -711,6 +714,8 @@ private fun TagResultSection(
     }
 
     Column(modifier = modifier) {
+        // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
+        val feedColumns = LocalWideLayout.current.feedColumns
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize().readableWidth(),
@@ -740,6 +745,7 @@ private fun TagResultSection(
                     onOpenAlbum = onOpenAlbum,
                     clickPaging = clickPaging,
                     onPageChange = ::jumpToPage,
+                    columns = feedColumns,
                 )
             }
         }

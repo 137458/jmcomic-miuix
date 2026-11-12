@@ -82,6 +82,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiDetailActionTile
 import com.jm3.app.miuix.ui.coui.component.CouiPrimaryActionButton
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiDetailSplitHandle
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
@@ -672,18 +673,28 @@ private fun CouiNovelDetailBody(
                 ).dp,
             )
             if (wideLayout.twoPaneDetail) {
+                // 比例随本页保存：拖过分隔条后重进本页仍记得，双击分隔条回到默认比例
+                var splitFraction by rememberSaveable {
+                    mutableStateOf(wideLayout.defaultDetailSplitFraction)
+                }
                 Row(modifier = Modifier.fillMaxSize().readableWidth().consumeWindowInsets(innerPadding)) {
                     LazyColumn(
                         state = leftListState,
-                        modifier = Modifier.weight(0.38f).fillMaxHeight(),
+                        modifier = Modifier.weight(splitFraction).fillMaxHeight(),
                         contentPadding = contentPadding,
                         overscrollEffect = rememberCouiOverscrollEffect(),
                     ) {
                         couiInclude(headerItems)
                     }
+                    CouiDetailSplitHandle(
+                        fraction = splitFraction,
+                        defaultFraction = wideLayout.defaultDetailSplitFraction,
+                        availableWidthDp = wideLayout.contentWidthDp,
+                        onFractionChange = { splitFraction = it },
+                    )
                     LazyColumn(
                         state = rightListState,
-                        modifier = Modifier.weight(0.62f).fillMaxHeight(),
+                        modifier = Modifier.weight(1f - splitFraction).fillMaxHeight(),
                         contentPadding = contentPadding,
                         overscrollEffect = rememberCouiOverscrollEffect(),
                     ) {

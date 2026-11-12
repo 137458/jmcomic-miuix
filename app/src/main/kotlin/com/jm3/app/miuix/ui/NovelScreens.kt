@@ -765,7 +765,7 @@ private fun NovelDetailHeader(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = detail.name,
-                    style = MiuixTheme.textStyles.title4,
+                    style = largeScreenTitleStyle(MiuixTheme.textStyles.title4),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1163,7 +1163,7 @@ fun NovelReaderScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 480.dp)
+                    .heightIn(max = overlayMaxHeight(480.dp))
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {

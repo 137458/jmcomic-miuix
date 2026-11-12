@@ -161,6 +161,8 @@ import com.itos.coui.topappbar.CouiTopAppBarButtonDefaults
 import com.itos.coui.topappbar.CouiTopAppBarColors
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.jm3.app.miuix.ui.MiuixDockedNavItem
+import com.jm3.app.miuix.ui.LocalWideLayout
+import com.jm3.app.miuix.ui.alignToReadableContent
 import com.jm3.app.miuix.ui.MiuixDockedNavigationBar
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
@@ -194,6 +196,7 @@ fun CouiAppScaffold(
     modifier: Modifier = Modifier,
     floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
     contentBackdrop: CouiBackdrop? = null,
+    alignTopBar: Boolean = true,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     // 净空值不含系统导航栏 inset，占位也要让出同一条底部安全区
@@ -203,7 +206,19 @@ fun CouiAppScaffold(
         modifier = modifier.imePadding(),
         topBar = {
             CompositionLocalProvider(LocalCouiAppBackdrop provides contentBackdrop) {
-                topBar()
+                // 顶栏内容统一收进正文列：大屏上标题、返回键与正文左缘共线。
+                // 满宽底色与毛玻璃采样层由各页顶栏自己铺在收窄层之外，不跟着内容列缩。
+                if (alignTopBar) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alignToReadableContent(),
+                    ) {
+                        topBar()
+                    }
+                } else {
+                    topBar()
+                }
             }
         },
         bottomBar = {
@@ -216,7 +231,12 @@ fun CouiAppScaffold(
                 )
             }
         },
-        floatingActionButton = floatingActionButton,
+        floatingActionButton = floatingActionButton?.let { fab ->
+            // FAB 与正文同处限宽内容列：不跟着收窄时它贴在大屏窗口右下角，看着像脱离了页面。
+            {
+                Box(modifier = Modifier.alignToReadableContent()) { fab() }
+            }
+        },
         content = { innerPadding ->
             if (contentBackdrop != null) {
                 Box(
@@ -414,7 +434,8 @@ internal fun Modifier.couiSpotlightLight(
  */
 @Composable
 fun CouiTopBarTitle(text: String, modifier: Modifier = Modifier, textAlign: TextAlign? = null) {
-    val style = LocalCouiTextStyle.current
+    // 大屏档把库下发的标题字阶整体放大，库内折叠比例的换算不受影响
+    val style = couiScaledStyle(LocalCouiTextStyle.current)
     BasicText(
         text = text,
         modifier = modifier,
@@ -970,7 +991,7 @@ private val CouiBarShadowRadius = 10.dp
 internal const val CouiSelectedContainerAlpha = 0.14f
 
 /** 侧栏宽度：只放图标列，横向固定不参与伸缩。 */
-private val CouiRailWidth = 88.dp
+internal val CouiRailWidth = 88.dp
 
 /** 侧栏项与栏边之间的横向留白。 */
 private val CouiRailItemMargin = 8.dp
@@ -1294,14 +1315,14 @@ private fun CouiPlainNavigationBar(
                         Icon(
                             imageVector = if (selected) item.selectedIcon else item.icon,
                             contentDescription = null,
-                            modifier = Modifier.size(tokens.iconSize),
+                            modifier = Modifier.size(couiScaledSize(tokens.iconSize)),
                             tint = if (selected) selectedColor else unselectedColor,
                         )
                         Spacer(Modifier.height(CouiNavLabelGap))
                         BasicText(
                             text = item.title,
                             style = TextStyle(
-                                fontSize = tokens.labelSize,
+                                fontSize = couiScaledFontSize(tokens.labelSize),
                                 fontWeight = FontWeight.Medium,
                             ),
                             color = { if (selected) selectedColor else unselectedColor },
@@ -1379,14 +1400,14 @@ internal fun CouiNavigationRail(
                     imageVector = if (selected) item.selectedIcon else item.icon,
                     // 文字标签常显，图标不再重复播报
                     contentDescription = null,
-                    modifier = Modifier.size(tokens.iconSize),
+                    modifier = Modifier.size(couiScaledSize(tokens.iconSize)),
                     tint = if (selected) colors.accent else colors.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(CouiRailLabelSpacing))
                 BasicText(
                     text = item.title,
                     style = TextStyle(
-                        fontSize = tokens.labelSize,
+                        fontSize = couiScaledFontSize(tokens.labelSize),
                         fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
                     ),
                     color = { if (selected) colors.accent else colors.onSurfaceVariant },
@@ -2650,4 +2671,24 @@ internal fun CouiCircleActionButton(
             tint = resolvedTint,
         )
     }
+}
+
+/**
+ * 弹层内长列表的最大高度：手机断点以下保持既有设计值，大屏放宽到窗口可用高度。
+ *
+ * COUI-Kit 的弹层表面自己会按 632dp / 横屏 306dp 封顶（库内 heightIn），这里只把页面里
+ * 写死的 420/320dp 抬到「窗口高度」这一档，让章节、分类这类长列表在平板上不再只占小半屏；
+ * 矮横屏下仍由库的封顶生效，返回值偏大也无害（父约束会先收紧）。
+ *
+ * 判定用 contentMaxWidth 是否为 null（600dp 断点）而不是 dialogMaxHeight：后者在手机竖屏
+ * 也会算出 0.6×高，直接放开会把手机上的弹层列表一并撑高，超出本次改造范围。
+ */
+@Composable
+fun couiDialogListMaxHeight(compactMaxHeight: Dp): Dp {
+    val wide = LocalWideLayout.current
+    if (wide.contentMaxWidth == null) return compactMaxHeight
+    val wideMax = wide.dialogMaxHeight ?: return compactMaxHeight
+    return wideMax
+        .coerceAtMost(CouiDialogDefaults.maxHeight)
+        .coerceAtLeast(compactMaxHeight)
 }

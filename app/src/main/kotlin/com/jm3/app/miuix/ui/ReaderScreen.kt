@@ -58,6 +58,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.IntSize
@@ -352,9 +353,18 @@ private fun ReaderPages(
     val windowSize = LocalWindowInfo.current.containerSize
     val scope = rememberCoroutineScope()
     val user by deps.account.user.collectAsState()
-    // 页宽固定为容器宽；解码尺寸不再写死 3:4，而是按这一页的真实宽高比推算，
-    // 否则 800x20000 的长条图会被解成 58x1440 再拉满整宽，放大十几倍必然发糊。
-    val pageWidthPx = windowSize.width.coerceAtLeast(1)
+    // 页宽取「窗口宽」与正文列宽的较小值：竖屏手机两者相同，1280dp 横屏窗口里正文列只有 840dp，
+    // 横向单页因此收成居中的阅读列，而不是拉满整屏只留左右各 340dp 纯黑边。
+    // 解码尺寸也从这一页的真实宽高比推算，否则 800x20000 的长条图会被解成 58x1440 再拉满整宽，
+    // 放大十几倍必然发糊。
+    val wideLayout = LocalWideLayout.current
+    val density = LocalDensity.current
+    val pageWidthPx = remember(windowSize.width, wideLayout.contentWidthDp, density) {
+        val contentWidthPx = with(density) { wideLayout.contentWidthDp.dp.roundToPx() }
+        minOf(windowSize.width, contentWidthPx).coerceAtLeast(1)
+    }
+    // pager 的左右内缩：让单页/双页都落在阅读列内并居中，整条翻页手势区仍是满窗宽
+    val pageSidePadding = with(density) { ((windowSize.width - pageWidthPx) / 2f).coerceAtLeast(0f).toDp() }
     // 已解码页的真实宽高比：解码成功即回填，只驱动页框布局
     val pageRatios = remember(photo) { mutableStateMapOf<Int, Float>() }
     // 只驱动请求尺寸的比例：仅当解码结果顶满请求框时才回填，避免一次回填就把内存缓存键换掉
@@ -367,16 +377,15 @@ private fun ReaderPages(
     var imageQuality by remember { mutableStateOf(ReaderImageQuality.STANDARD) }
     var prefetchPages by remember { mutableIntStateOf(ReaderPreferences.DEFAULT_PREFETCH_PAGES) }
     // 左右模式整屏展示，解码尺寸按屏幕容器
-    val screenSize = remember(windowSize.width, windowSize.height, imageQuality) {
-        // 横向整屏同样受质量档预算约束，预取与展示共用这一份尺寸
-        val fit = readerScreenDecodeSize(windowSize.width, windowSize.height, imageQuality.maxDecodePixels)
+    val screenSize = remember(pageWidthPx, windowSize.height, imageQuality) {
+        // 横向单页按阅读列宽解码（宽屏下小于窗口宽），同样受质量档预算约束，预取与展示共用这一份尺寸
+        val fit = readerScreenDecodeSize(pageWidthPx, windowSize.height, imageQuality.maxDecodePixels)
         Size(fit.width, fit.height)
     }
     // 横向翻页整屏、纵向按容器宽，两套排布的解码尺寸不同
     var horizontal by rememberSaveable { mutableStateOf(false) }
     // 双页阅读只在大屏横屏下叠加在左右阅读上：默认单页，转屏或换设备后自动回落到单页。
     var spreadMode by rememberSaveable { mutableStateOf(ReaderSpreadMode.SINGLE) }
-    val wideLayout = LocalWideLayout.current
     val spreadEligible = ReaderSpreadPolicy.supportsSpread(wideLayout.widthDp, wideLayout.heightDp)
     val spreadActive = spreadEligible && spreadMode == ReaderSpreadMode.DOUBLE && horizontal
     // pager 的页数随单/双页切换：跨页索引只是 pager 下标，持久化仍走单页索引
@@ -387,9 +396,9 @@ private fun ReaderPages(
     }
     val pagerState = rememberPagerState { pagerPageCount }
     // 双页并存时两页共用一档质量预算：单页宽度取半屏、预算取一半，合计不翻倍
-    val spreadPageSize = remember(windowSize.width, windowSize.height, imageQuality) {
+    val spreadPageSize = remember(pageWidthPx, windowSize.height, imageQuality) {
         val fit = readerSpreadPageDecodeSize(
-            windowSize.width,
+            pageWidthPx,
             windowSize.height,
             imageQuality.maxDecodePixels,
         )
@@ -911,6 +920,7 @@ private fun ReaderPages(
             if (horizontal) {
                 HorizontalPager(
                     state = pagerState,
+                    contentPadding = PaddingValues(horizontal = pageSidePadding),
                     modifier = Modifier
                         .fillMaxSize()
                         // 放大时整条手势链都交给缩放层，未放大才允许翻页
@@ -1121,7 +1131,7 @@ private fun ReaderPages(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                 )
             } else {
-                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = overlayMaxHeight(420.dp))) {
                     items(chapters, key = { it.id }) { chapter ->
                         BasicComponent(
                             title = chapter.title,
@@ -1180,7 +1190,7 @@ private fun ReaderPages(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                     )
 
-                    else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = overlayMaxHeight(320.dp))) {
                         items(page.items, key = { it.id }) { item ->
                             CommentRow(
                                 item = item,
@@ -1215,6 +1225,7 @@ private fun ReaderPages(
 
         OverlayDialog(
             show = showTrackPrompt,
+            maxWidth = overlayDialogMaxWidth(),
             title = "已经最后一话了！",
             cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = { closeTrackPrompt() },

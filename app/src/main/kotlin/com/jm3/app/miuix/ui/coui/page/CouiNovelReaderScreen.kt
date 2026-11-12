@@ -69,6 +69,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
+import com.jm3.app.miuix.ui.coui.component.couiDialogListMaxHeight
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
@@ -842,7 +843,9 @@ private fun NovelCommentsPanel(
 
             feed.items.isEmpty() -> ReaderDialogHint(text = CouiStrings.EmptyComments)
 
-            else -> LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = couiDialogListMaxHeight(320.dp)),
+            ) {
                 items(feed.items, key = { it.id }) { item ->
                     ReaderCommentRow(
                         item = item,

@@ -39,7 +39,6 @@ import com.itos.coui.topappbar.TopAppBarButton
 import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
-import com.jm3.app.miuix.ui.readableWidth
 import top.yukonga.miuix.kmp.basic.Icon
 
 // 顶栏按钮尺寸与 52dp 的 COUI 顶栏配套；图标沿用 22dp，和主框架底栏图标同档。
@@ -109,13 +108,11 @@ fun CouiScreenScaffold(
                     colors = couiTopAppBarColors(),
                 )
             }
-            if (topBarBottom == null) {
+            // 横向对齐由 CouiAppScaffold 的顶栏内容层统一负责，这里只负责纵向叠放，
+            // 再套一次 alignToReadableContent 会叠加成双倍留白。
+            Column(modifier = Modifier.fillMaxWidth()) {
                 topAppBar()
-            } else {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    topAppBar()
-                    topBarBottom()
-                }
+                if (topBarBottom != null) topBarBottom()
             }
         },
         floatingActionButton = floatingActionButton,
@@ -138,10 +135,11 @@ fun CouiTopBarSegmentedTabs(
     enabled: Boolean = true,
 ) {
     val backdrop = LocalCouiAppBackdrop.current
+    // 横向对齐由 CouiAppScaffold 的顶栏内容层统一负责，此处再套 readableWidth 会叠加成双倍留白，
+    // 840dp 以上页签与正文就会错开。
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .readableWidth()
             .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 6.dp),
     ) {
         CouiSegmentedCapsules(
