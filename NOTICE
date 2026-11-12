@@ -1,39 +1,25 @@
-jm3
-Copyright (c) 2026 jm3 contributors
+# 第三方代码与许可证声明
 
-除文件头带 Apache-2.0 或 ISC SPDX 标注的文件外，本仓库以 MIT 许可证分发（见 LICENSE）。
+`jm3` 项目除文件头显式标注 `Apache-2.0` 或 `ISC` 的源文件外，其余源码均依据 [MIT](LICENSE) 许可证分发。
 
-第三方代码说明
+## 第三方源码文件
 
-app/src/main/kotlin/com/jm3/app/miuix/ui/glass/ 下的以下文件源自 Apache License 2.0
-许可的液态玻璃渲染实现，保留原始 SPDX 标注并按 Apache-2.0 分发：
+### Apache License 2.0 标注文件
 
-  BackdropSupport.kt
-  CombinedBackdrop.kt
-  DampedDragAnimation.kt
-  FloatingBottomBar.kt
-  FloatingBottomBarItems.kt
-  FloatingBottomBarLayers.kt
-  GlassFloatingActionBar.kt
-  GlassPullToRefresh.kt
-  GlassScaffold.kt
-  GlassSurface.kt
-  InnerShadow.kt
-  InteractiveHighlight.kt
-  Lens.kt
-  Vibrancy.kt
+`app/src/main/kotlin/com/jm3/app/miuix/ui/` 目录下共 59 个文件保留 `// SPDX-License-Identifier: Apache-2.0` 文件头，按 Apache License 2.0 分发：
 
-上述文件头部均带 "SPDX-License-Identifier: Apache-2.0"。
-Apache License 2.0 全文见 https://www.apache.org/licenses/LICENSE-2.0 。
+- `glass/` 目录（14 个）：`BackdropSupport.kt`、`CombinedBackdrop.kt`、`DampedDragAnimation.kt`、`FloatingBottomBar.kt`、`FloatingBottomBarItems.kt`、`FloatingBottomBarLayers.kt`、`GlassFloatingActionBar.kt`、`GlassPullToRefresh.kt`、`GlassScaffold.kt`、`GlassSurface.kt`、`InnerShadow.kt`、`InteractiveHighlight.kt`、`Lens.kt`、`Vibrancy.kt`。
+- `coui/` 目录（33 个）：包含 `component/` 下 6 个文件、`page/` 下 26 个文件与 `theme/` 下 1 个文件（不含无标注的自研排版与阅读器文件）。
+- `ui/` 根级与 `route/` 目录（12 个）：`GlassCapsule.kt`、`GlassChipRow.kt`、`GlassSnackbar.kt`、`InlineCodePresentation.kt`、`MiuixDockedNavigationBar.kt`、`NotesViewport.kt`、`NovelChapterLogic.kt`、`ReaderSettingsSection.kt`、`ReaderSettingsState.kt`、`StatePersistence.kt`、`TabPagerState.kt` 与 `route/AppRouteScreens.kt`。
 
-app/src/main/kotlin/com/jm3/app/miuix/ui/coui/icon/CouiIcons.kt 由 Lucide
-（https://lucide.dev，lucide-static v1.70.0）的 SVG 路径生成，源自 ISC License，
-保留 "SPDX-License-Identifier: ISC" 标注并按其分发。
+Apache License 2.0 全文见 <https://www.apache.org/licenses/LICENSE-2.0>。
 
-依赖库说明
+### ISC License 标注文件
 
-COUI-Kit（io.github.itoseo:coui 0.0.1-alpha10）以依赖形式使用，未复制其源码，
-按 Mozilla Public License 2.0（MPL-2.0）分发；许可证全文见
-https://www.mozilla.org/en-US/MPL/2.0/ 。
+`app/src/main/kotlin/com/jm3/app/miuix/ui/coui/icon/CouiIcons.kt` 由 Lucide（`lucide-static v1.70.0`）的 SVG 路径生成，保留 `// SPDX-License-Identifier: ISC` 文件头并依据 ISC License 分发。
 
-其余依赖的许可证：Miuix、androidx、Coil、telephoto 为 Apache License 2.0；jmcomic-api 为 MIT。
+## 第三方依赖库
+
+- `COUI-Kit`（`io.github.itoseo:coui 0.0.1-alpha10`）：以二进制依赖形式接入，未复制源码，依据 Mozilla Public License 2.0（MPL-2.0）分发，全文见 <https://www.mozilla.org/en-US/MPL/2.0/>。
+- `Miuix`、`AndroidX`、`Coil`、`telephoto`、`kotlinx-coroutines`、`kotlinx-serialization`：均依据 Apache License 2.0 分发。
+- `jmcomic-api`（`io.github.jukomu:jmcomic-api v1.1.12`）：依据上游仓库声明为 MIT 许可证（Maven 构件元数据未内嵌许可证文件）。
