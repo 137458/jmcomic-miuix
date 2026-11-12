@@ -84,6 +84,15 @@ internal object CouiWorkCardTokens {
     val BadgeInset = 6.dp
     val RowCoverWidth = 72.dp
     val RowCoverHeight = 96.dp
+    /**
+     * 行卡封面在卡内的上下留白：封面不再顶满卡片，卡片的上下边缘与圆角保持完整。
+     * 可视高度扣掉两倍留白，可视宽度按 [CoverAspect] 换算，左右余量再均分回 [RowCoverWidth] 的占位，
+     * 因此行卡的文字左缘与行高都不变。
+     */
+    val RowCoverInset = 6.dp
+    val RowCoverInnerHeight = RowCoverHeight - RowCoverInset * 2
+    val RowCoverInnerWidth = RowCoverInnerHeight * CoverAspect
+    val RowCoverSideInset = (RowCoverWidth - RowCoverInnerWidth) / 2
     val RowTextPaddingH = 16.dp
     val RowTextPaddingV = 8.dp
     val ThumbWidth = 48.dp
@@ -365,9 +374,10 @@ fun CouiWorkGridCard(
 }
 
 /**
- * 行卡：封面贴齐左缘固定 3:4，右侧是标题、次级信息与附加内容。
+ * 行卡：封面在卡内留出上下空隙、保持 3:4，右侧是标题、次级信息与附加内容。
  *
- * 行高由封面决定（[CouiWorkCardTokens.RowCoverHeight]），标题占几行都不改变同一列表里的封面大小。
+ * 行高由封面的占位高度决定（[CouiWorkCardTokens.RowCoverHeight]），标题占几行都不改变同一列表里的封面大小；
+ * 封面可视尺寸由 [CouiWorkCardTokens.RowCoverInset] 内缩，卡片自身高度不变。
  *
  * @param leading 封面前方槽位（榜单名次）。
  * @param trailing 行尾槽位（下载、更多）。落在卡片点击区内，内部按钮自己的点击不受影响。
@@ -426,8 +436,14 @@ fun CouiWorkRowCard(
             contentDescription = coverContentDescription,
             shape = shape,
             modifier = Modifier
-                .width(CouiWorkCardTokens.RowCoverWidth)
-                .height(CouiWorkCardTokens.RowCoverHeight),
+                .padding(
+                    start = CouiWorkCardTokens.RowCoverSideInset,
+                    end = CouiWorkCardTokens.RowCoverSideInset,
+                    top = CouiWorkCardTokens.RowCoverInset,
+                    bottom = CouiWorkCardTokens.RowCoverInset,
+                )
+                .width(CouiWorkCardTokens.RowCoverInnerWidth)
+                .height(CouiWorkCardTokens.RowCoverInnerHeight),
         )
         Column(
             modifier = Modifier
