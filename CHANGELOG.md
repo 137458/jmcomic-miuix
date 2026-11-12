@@ -85,6 +85,8 @@
 
 ### 修复
 
+- 修复了进入阅读器再返回后退出作品详情页时缺失封面反向飞行动画与标签列表闪回加载态的问题：`AlbumHeroHost` 在起飞时留存 `lastCoverRects`、`lastCoverCorners` 与 `lastCoverUrls` 快照（仅在详情页彻底离场且脱离追踪集合后清理），并在取消预测性返回时先归还 origin 再结束飞行，避免列表页因导航栈达到 `opaqueDepth` 销毁后退栈丢失落点；同时在 `SessionCache` 新增 `BrowseTag` 缓存键供 `BrowseScreen`（Miuix）与 `CouiBrowseScreen`（ColorOS）首帧直接恢复标签结果与滚动位置，并为 HyperOS 分类与标签结果切换补充横向平滑转场。
+- 修复了 ColorOS 皮肤「每周连载更新」作品卡片与其他列表样式不一致的问题：移除榜单页内嵌周更区块的外层 `Group` 与分割线及分类页周更弹窗内的 `Divider`，与常规列表及标签列表统一复用 `CouiBrowseRowSlot` 与 `CouiWorkCardTokens.RowSpacing` 独立浮岛行卡，并更新 `couiBrowseHeadCount` 按展开后的周更条数计算预取行起点。
 - 修复了 ColorOS 更新日志超链接不可点击及裸网址未识别的问题：为 `CouiTypography` 的 `CouiBodyText` 与 `CouiCustomStyledText` 补充 `AnnotatedString` 重载并在 `CouiUpdateScreen` 的标题、条目与段落块接入 `parseInlineNotes`，同时扩展 `parseInlineNotes` 支持 `<https://...>` 与文本内裸 `http/https` 网址（自动剥离尾部中英文标点，行内代码内网址保持字面量）。
 - 修复了榜单/浏览页「每周更新」加载失败的问题：由于库内 `JmApiClient.getSerialization` 未传 `type` 与 `date` 查询参数且误按搜索页 `content` 字段解析，`GET /serialization` 返回「參數錯誤」或空列表；现通过 `LibraryBridge.serializationJson` 补传 `type=all&date=0&page=<n>` 并由 `SerializationParser` 解析 `list`、字符串/数值 `total` 与 `error` 错误分支。
 - 修复了分类标签结果页在进入详情并打开阅读器后返回直接跳回分类页的问题：导航栈深于 `opaqueDepth` 销毁主页面时 `remember` 态的 `tagKeyword` 丢失，现将在 HyperOS `BrowseScreen`（并补充系统返回键 `BackHandler`）与 ColorOS `CouiBrowseScreen` 中改为 `rememberSaveable` 保存并在重建后自动补拉空白标签结果。
