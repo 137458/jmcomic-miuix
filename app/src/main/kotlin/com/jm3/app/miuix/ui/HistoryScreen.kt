@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -90,6 +91,7 @@ fun HistoryScreen(
     val listState = rememberLazyListState()
     // 翻页在途守卫：仓库读取期间禁用翻页条，避免连点重复请求
     var pageBusy by remember { mutableStateOf(false) }
+    var requestToken by remember { mutableIntStateOf(0) }
     // 在途、失败、是否还有下一页都由 PagedFeed 记；仓库按 pageSize 分页，满页即代表还有下一页
     var feed by remember { mutableStateOf(PagedFeed<HistoryEntry>()) }
     var state by remember { mutableStateOf<HistoryListState>(HistoryListState.Loading) }
@@ -99,9 +101,13 @@ fun HistoryScreen(
     val scope = rememberCoroutineScope()
 
     fun loadFirstPage() {
+        val token = ++requestToken
+        pageBusy = false
         scope.launch {
             state = HistoryListState.Loading
-            runCatchingSuspending { repository.page(1, pageSize) }
+            val outcome = runCatchingSuspending { repository.page(1, pageSize) }
+            if (token != requestToken) return@launch
+            outcome
                 .onSuccess {
                     feed = PagedFeed<HistoryEntry>().replace(
                         PageSlice(items = it, hasMore = it.size >= pageSize, page = 1),
@@ -123,9 +129,12 @@ fun HistoryScreen(
         val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
         if (resolved == feed.page) return
         pageBusy = true
+        val token = ++requestToken
         scope.launch {
             try {
-                runCatchingSuspending { repository.page(resolved, pageSize) }
+                val outcome = runCatchingSuspending { repository.page(resolved, pageSize) }
+                if (token != requestToken) return@launch
+                outcome
                     .onSuccess {
                         feed = PagedFeed<HistoryEntry>().replace(
                             PageSlice(items = it, hasMore = it.size >= pageSize, page = resolved),
@@ -135,7 +144,7 @@ fun HistoryScreen(
                     }
                     .onFailure { state = HistoryListState.Failed(failureCopy(it, "历史加载失败")) }
             } finally {
-                pageBusy = false
+                if (token == requestToken) pageBusy = false
             }
         }
     }
@@ -145,9 +154,12 @@ fun HistoryScreen(
         val requested = feed.beginLoadMore()
         if (requested === feed) return
         val page = requested.page + 1
+        val token = requestToken
         feed = requested
         scope.launch {
-            runCatchingSuspending { repository.page(page, pageSize) }
+            val outcome = runCatchingSuspending { repository.page(page, pageSize) }
+            if (token != requestToken) return@launch
+            outcome
                 .onSuccess { next ->
                     feed = requested.append(
                         PageSlice(items = next, hasMore = next.size >= pageSize, page = page),

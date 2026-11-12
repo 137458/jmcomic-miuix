@@ -84,10 +84,6 @@ private fun GlassChip(
     onClick: () -> Unit,
 ) {
     val colorScheme = MiuixTheme.colorScheme
-    val surfaceModifier = glassCapsuleSurface(
-        tint = if (selected) colorScheme.primary else colorScheme.surfaceContainer,
-        tintAlpha = if (selected) 0.92f else 0.55f,
-    )
 
     Text(
         text = text,
@@ -97,7 +93,10 @@ private fun GlassChip(
         maxLines = 1,
         modifier = Modifier
             .pressScale(hapticFeedback = false)
-            .then(surfaceModifier)
+            .glassCapsuleSurface(
+                tint = if (selected) colorScheme.primary else colorScheme.surfaceContainer,
+                tintAlpha = if (selected) 0.92f else 0.55f,
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),
     )

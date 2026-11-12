@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -542,7 +543,9 @@ fun Modifier.albumHeroCover(
 ): Modifier {
     val host = LocalAlbumHeroHost.current ?: return this
     if (title != null || url != null) {
-        host.rememberAlbum(albumId, title, url)
+        SideEffect {
+            host.rememberAlbum(albumId, title, url)
+        }
     }
     val registered = remember(host, albumId) { mutableStateOf<HeroRect?>(null) }
     DisposableEffect(host, albumId) {

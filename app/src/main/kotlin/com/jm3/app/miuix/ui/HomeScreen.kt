@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -61,6 +60,7 @@ import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -326,26 +326,28 @@ fun HomeScreen(
         if (searching && results == null) {
             runSearch(activeQuery, byTag = searchByTag, sort = order)
         }
-        if (sessionCache.homeSide.isEmpty) {
-            scope.launch {
-                // 三份侧栏数据都是可降级内容：接口失败或会话失效一律留空，主列表与整屏错误态不受影响。
-                val tags = deps.authCall.call { deps.gateway.hotTags() }.orDegrade(emptyList())
-                val picks = deps.authCall.call { deps.gateway.randomRecommend() }.orDegrade(emptyList())
-                val updates = deps.authCall
-                    .call { deps.gateway.serialization(1) }
-                    .orDegrade<SearchPage?>(null)
-                    ?.items
-                    ?.take(SERIAL_CAROUSEL_LIMIT)
-                    .orEmpty()
-                // 搜索历史是本地 DataStore，不走网关，因此不进 AuthCall，直接留在 IO 线程读。
-                val storedHistory = readSearchHistory(deps.settings) { emptyList() }
-                rememberSide(tags = tags, updates = updates, picks = picks)
-                searchHistory = storedHistory
-            }
-        } else {
-            scope.launch {
-                // 同上：本地历史读取与网关无关，仍在 IO 线程读取并保留取消传播。
-                searchHistory = readSearchHistory(deps.settings) { searchHistory }
+        coroutineScope {
+            if (sessionCache.homeSide.isEmpty) {
+                launch {
+                    // 三份侧栏数据都是可降级内容：接口失败或会话失效一律留空，主列表与整屏错误态不受影响。
+                    val tags = deps.authCall.call { deps.gateway.hotTags() }.orDegrade(emptyList())
+                    val picks = deps.authCall.call { deps.gateway.randomRecommend() }.orDegrade(emptyList())
+                    val updates = deps.authCall
+                        .call { deps.gateway.serialization(1) }
+                        .orDegrade<SearchPage?>(null)
+                        ?.items
+                        ?.take(SERIAL_CAROUSEL_LIMIT)
+                        .orEmpty()
+                    // 搜索历史是本地 DataStore，不走网关，因此不进 AuthCall，直接留在 IO 线程读。
+                    val storedHistory = readSearchHistory(deps.settings) { emptyList() }
+                    rememberSide(tags = tags, updates = updates, picks = picks)
+                    searchHistory = storedHistory
+                }
+            } else {
+                launch {
+                    // 同上：本地历史读取与网关无关，仍在 IO 线程读取并保留取消传播。
+                    searchHistory = readSearchHistory(deps.settings) { searchHistory }
+                }
             }
         }
     }
@@ -529,11 +531,11 @@ fun HomeScreen(
         ) {
             // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
             val feedColumns = LocalWideLayout.current.feedColumns
-            LazyColumn(
+            TrackedLazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                 // 首项下移让出顶栏高度，底部额外让出悬浮操作胶囊高度
                 contentPadding = listContentPadding,
+                modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
             ) {
                 if (searching) {
                     item(key = "search-header") {

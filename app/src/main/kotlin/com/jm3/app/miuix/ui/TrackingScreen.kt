@@ -7,11 +7,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,8 +70,11 @@ fun TrackingScreen(
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     var pageSizeHint by remember { mutableIntStateOf(0) }
+    val user by deps.account.user.collectAsState()
     // 翻页在途守卫：请求期间禁用翻页条，避免连点重复请求
     var pageBusy by remember { mutableStateOf(false) }
+    var requestToken by remember { mutableIntStateOf(0) }
+    var loadedUid by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     /**
@@ -97,10 +99,13 @@ fun TrackingScreen(
     }
 
     fun loadFirstPage(showLoading: Boolean = true) {
+        val token = ++requestToken
+        pageBusy = false
         if (showLoading) state = TrackingUiState.Loading
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
             val outcome = deps.authCall.call { deps.gateway.trackingList(1) }
+            if (token != requestToken) return@launch
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -124,7 +129,17 @@ fun TrackingScreen(
         }
     }
 
-    LaunchedEffect(Unit) { loadFirstPage() }
+    val uid = user?.uid
+    LaunchedEffect(uid) {
+        if (uid == null) {
+            if (feed.items.isEmpty() && state is TrackingUiState.Loading) {
+                loadFirstPage()
+            }
+        } else if (state !is TrackingUiState.Loaded || loadedUid != uid) {
+            loadedUid = uid
+            loadFirstPage()
+        }
+    }
     PaginationModeReloadEffect(mode) { loadFirstPage() }
 
     /** 点击分页：按目标页整页替换；接口只给总数，用首页条数估算页码容量。 */
@@ -133,9 +148,11 @@ fun TrackingScreen(
         val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
         if (resolved == feed.page) return
         pageBusy = true
+        val token = ++requestToken
         scope.launch {
             try {
                 val outcome = deps.authCall.call { deps.gateway.trackingList(resolved) }
+                if (token != requestToken) return@launch
                 refreshing = false
                 when (outcome) {
                     is SessionOutcome.Ok -> {
@@ -159,7 +176,7 @@ fun TrackingScreen(
                     is SessionOutcome.Failed -> applyFailure(outcome)
                 }
             } finally {
-                pageBusy = false
+                if (token == requestToken) pageBusy = false
             }
         }
     }
@@ -169,9 +186,11 @@ fun TrackingScreen(
         val requested = feed.beginLoadMore()
         if (requested === feed) return
         val page = requested.page + 1
+        val token = requestToken
         feed = requested
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.trackingList(page) }
+            if (token != requestToken) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val next = outcome.value
@@ -288,11 +307,11 @@ fun TrackingScreen(
                     val dateFormat = rememberDateFormatter()
                     // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
                     val feedColumns = LocalWideLayout.current.feedColumns
-                    LazyColumn(
+                    TrackedLazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize().readableWidth(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                         contentPadding = innerPadding,
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                     ) {
                         // key 仍是作品 id：与单列时逐字一致，升级后滚动位置不丢
                         feedRowItems(

@@ -231,11 +231,11 @@ const val COMMENT_REPLY_MAX_LENGTH = 200
 /** 纵向图标单元：详情动作台与悬浮工具条共用；禁用降灰、激活主色、按压微缩放。 */
 @Composable
 fun ActionCell(
-    icon: ImageVector? = null,
-    glyph: String? = null,
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    glyph: String? = null,
     enabled: Boolean = true,
     active: Boolean = false,
 ) {
@@ -363,7 +363,7 @@ fun DialogActionRow(
 
 /** 列表空态：标题 + 可选引导文案。 */
 @Composable
-fun EmptyState(title: String, hint: String? = null, modifier: Modifier = Modifier) {
+fun EmptyState(title: String, modifier: Modifier = Modifier, hint: String? = null) {
     Column(
         modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -383,7 +383,7 @@ fun EmptyState(title: String, hint: String? = null, modifier: Modifier = Modifie
 
 /** 全屏空态：在可用区域内垂直居中，供无列表的空页面使用。 */
 @Composable
-fun CenteredEmptyState(title: String, hint: String? = null, modifier: Modifier = Modifier) {
+fun CenteredEmptyState(title: String, modifier: Modifier = Modifier, hint: String? = null) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         EmptyState(title = title, hint = hint)
     }

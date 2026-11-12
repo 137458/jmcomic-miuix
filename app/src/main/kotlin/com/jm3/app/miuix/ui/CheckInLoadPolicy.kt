@@ -13,7 +13,7 @@ import com.jm3.app.miuix.failureCopy
 import com.jm3.core.Jm3Log
 import com.jm3.core.model.CheckInDay
 import com.jm3.core.model.DailyCheckInStatus
-import com.jm3.core.runCatchingSuspending
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.CheckInSettings
 import java.time.LocalDate
@@ -427,6 +427,12 @@ internal class CheckInCoordinator(
     }
 }
 
+/** 每日签到状态单次回读：直接经 [AuthCall.call] 透传网络与会话失效异常，不吞异常。 */
+internal suspend fun fetchDailyCheckInStatusOnce(
+    authCall: AuthCall,
+    fetch: suspend () -> DailyCheckInStatus,
+): SessionOutcome<DailyCheckInStatus?> = authCall.call { fetch() }
+
 /** 面向我的页的统一签到状态持有人：ColorOS 与 HyperOS 双皮肤共享同一条链路。 */
 @Stable
 internal class MineCheckInHolder(
@@ -447,9 +453,7 @@ internal class MineCheckInHolder(
             deps.authCall.call { deps.gateway.dailyCheckInStatus(targetUid) }
         },
         fetchStatusOnce = { targetUid ->
-            deps.authCall.call {
-                runCatchingSuspending { deps.gateway.dailyCheckInStatus(targetUid) }.getOrNull()
-            }
+            fetchDailyCheckInStatusOnce(deps.authCall) { deps.gateway.dailyCheckInStatus(targetUid) }
         },
         submitCheckIn = { targetUid, dailyId ->
             deps.authCall.call { deps.gateway.dailyCheckIn(targetUid, dailyId) }

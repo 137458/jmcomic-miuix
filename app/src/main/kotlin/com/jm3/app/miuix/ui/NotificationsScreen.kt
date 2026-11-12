@@ -10,13 +10,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,12 +72,15 @@ fun NotificationsScreen(
     onOpenAlbum: (albumId: String) -> Unit = {},
     onOpenLogin: () -> Unit = {},
 ) {
+    val user by deps.account.user.collectAsState()
     var page by remember { mutableStateOf<NotificationPage?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     // 会话失效与「刷新失败」要分开：前者给重试按钮是骗人的，只能去登录
     var sessionExpired by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    var requestToken by remember { mutableIntStateOf(0) }
+    var loadedUid by remember { mutableStateOf<String?>(null) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var markingId by remember { mutableStateOf<String?>(null) }
     // 展开态要跟相邻页签一样熬过旋屏重建：Set 不在 Bundle 可存类型里，拆成 List 存取
@@ -118,9 +122,11 @@ fun NotificationsScreen(
     }
 
     fun load(showLoading: Boolean = true) {
+        val token = ++requestToken
         if (showLoading) loading = true
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.notifications() }
+            if (token != requestToken) return@launch
             loading = false
             refreshing = false
             when (outcome) {
@@ -165,7 +171,17 @@ fun NotificationsScreen(
         }
     }
 
-    LaunchedEffect(Unit) { load() }
+    val uid = user?.uid
+    LaunchedEffect(uid) {
+        if (uid == null) {
+            if (page == null && !sessionExpired && error == null) {
+                load()
+            }
+        } else if (page == null || sessionExpired || error != null || loadedUid != uid) {
+            loadedUid = uid
+            load()
+        }
+    }
 
     val items = page?.items.orEmpty()
     val unread = items.count { !it.read }
@@ -222,11 +238,11 @@ fun NotificationsScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
-                    LazyColumn(
+                    TrackedLazyColumn(
                         state = listStates[pageIndex],
-                        modifier = Modifier.fillMaxSize().readableWidth(),
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                         contentPadding = innerPadding,
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                     ) {
                         if (pageVisible.isEmpty()) {
                             item(key = "empty") {

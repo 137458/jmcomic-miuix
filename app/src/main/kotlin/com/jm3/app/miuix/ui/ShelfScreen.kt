@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,10 +92,12 @@ fun ShelfScreen(
                 modifier = Modifier.padding(innerPadding).readableWidth(),
             )
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().readableWidth(),
+            val listState = rememberLazyListState()
+            TrackedLazyColumn(
+                state = listState,
                 // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                 contentPadding = innerPadding,
+                modifier = Modifier.fillMaxSize().readableWidth(),
             ) {
                 items(records, key = { it.photoId }) { record ->
                     val albumId = shelfAlbumId(record)

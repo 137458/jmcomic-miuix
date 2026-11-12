@@ -2,8 +2,8 @@ package com.jm3.app.miuix.ui
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -121,15 +120,19 @@ fun LibraryScreen(
     var creatorFeed by remember { mutableStateOf(PagedFeed<CreatorMeta>()) }
     var workFeed by remember { mutableStateOf(PagedFeed<CreatorWorkMeta>()) }
     var filters by rememberSaveable { mutableStateOf(CreatorFilters()) }
-    var loadingTab by remember { mutableStateOf<Int?>(0) }
+    var creatorLoading by remember { mutableStateOf(false) }
+    var workLoading by remember { mutableStateOf(false) }
     var creatorLoadedOnce by remember { mutableStateOf(false) }
     var workLoadedOnce by remember { mutableStateOf(false) }
-    var refreshing by remember { mutableStateOf(false) }
+    var refreshingTab by remember { mutableStateOf<Int?>(null) }
     // 失效与失败分 Tab 持有：切走再切回仍保留对应页的错误/重登提示
     var creatorFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var workFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-    // 切换 Tab/筛选/搜索时旧响应不能覆盖新结果
-    var loadToken by remember { mutableIntStateOf(0) }
+    // 两个 Tab 各持独立代次，切换 Tab 时互不作废对方在途请求
+    var creatorLoadToken by remember { mutableIntStateOf(0) }
+    var workLoadToken by remember { mutableIntStateOf(0) }
+    var attemptedCreatorQuery by remember { mutableStateOf<String?>(null) }
+    var attemptedWorkParams by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     val paginationMode = deps.preferences.paginationMode
     // 阻尼阈值略低：下拉更轻快即触发刷新，回弹仍由库的弹簧曲线负责
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
@@ -169,11 +172,16 @@ fun LibraryScreen(
         // 拦截必须在占用 token 之前：被拦下的重复触底若先自增 token，在途请求的结果会被丢弃，
         // feed 就永远停在 loadingMore，页脚一直转圈且再也拉不动。
         if (creatorRequest === creatorFeed || workRequest === workFeed) return
-        loadToken++
-        val token = loadToken
+        val token = if (append) {
+            if (targetTab == 0) creatorLoadToken else workLoadToken
+        } else {
+            if (targetTab == 0) ++creatorLoadToken else ++workLoadToken
+        }
         if (creatorRequest != null) creatorFeed = creatorRequest
         if (workRequest != null) workFeed = workRequest
-        if (!append && !refreshing) loadingTab = targetTab
+        if (!append && refreshingTab != targetTab) {
+            if (targetTab == 0) creatorLoading = true else workLoading = true
+        }
         if (targetTab == 0) creatorFailure = null else workFailure = null
         // 附加页说明列表已有内容；首屏与下拉刷新则按当前 Tab 是否已有条目决定要不要保住列表
         val hasContent = append || if (targetTab == 0) {
@@ -190,9 +198,10 @@ fun LibraryScreen(
                     deps.gateway.creatorWorks(targetPage, keyword, lang, source)
                 }
             }
-            if (token != loadToken) return@launch
-            loadingTab = null
-            refreshing = false
+            val currentToken = if (targetTab == 0) creatorLoadToken else workLoadToken
+            if (token != currentToken) return@launch
+            if (targetTab == 0) creatorLoading = false else workLoading = false
+            if (refreshingTab == targetTab) refreshingTab = null
             when (outcome) {
                 is SessionOutcome.Ok -> when (val value = outcome.value) {
                     is CreatorPage -> {
@@ -225,17 +234,25 @@ fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(appliedQuery) {
-        creatorLoadedOnce = false
-        workLoadedOnce = false
-    }
-    LaunchedEffect(lang, source) {
-        workLoadedOnce = false
-    }
     LaunchedEffect(tab, appliedQuery, lang, source) {
+        if (tab == 0) {
+            if (attemptedCreatorQuery != appliedQuery) {
+                attemptedCreatorQuery = appliedQuery
+                load(1, append = false, targetTab = 0)
+            }
+        } else {
+            val params = Triple(appliedQuery, lang, source)
+            if (attemptedWorkParams != params) {
+                attemptedWorkParams = params
+                load(1, append = false, targetTab = 1)
+            }
+        }
+    }
+    PaginationModeReloadEffect(paginationMode) {
+        attemptedCreatorQuery = if (tab == 0) appliedQuery else null
+        attemptedWorkParams = if (tab == 1) Triple(appliedQuery, lang, source) else null
         load(1, append = false, targetTab = tab)
     }
-    PaginationModeReloadEffect(paginationMode) { load(1, append = false, targetTab = tab) }
 
     val activeFeed: PagedFeed<*> = if (tab == 0) creatorFeed else workFeed
     val total = activeFeed.total ?: 0
@@ -326,8 +343,16 @@ fun LibraryScreen(
             val pageTotalPages = libraryPageCount(pageTotal)
             val pageFailure = if (page == 0) creatorFailure else workFailure
             val pageLoadedOnce = if (page == 0) creatorLoadedOnce else workLoadedOnce
-            val pageLoading = loadingTab == page || (!pageLoadedOnce && pageFailure == null)
+            val pageLoading = (if (page == 0) creatorLoading else workLoading) || (!pageLoadedOnce && pageFailure == null)
             val pageListState = if (page == 0) creatorListState else workListState
+
+            if (paginationMode != PaginationMode.CLICK && !pageLoading && pageFailure == null && pageItemCount > 0) {
+                LoadMoreOnScroll(
+                    listState = pageListState,
+                    feed = pageFeed,
+                    onLoadMore = { load(pageFeed.page + 1, append = true, targetTab = page) },
+                )
+            }
 
             when {
                 pageLoading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -358,9 +383,9 @@ fun LibraryScreen(
                 )
 
                 else -> GlassPullToRefresh(
-                    isRefreshing = refreshing && tab == page,
+                    isRefreshing = refreshingTab == page,
                     onRefresh = {
-                        refreshing = true
+                        refreshingTab = page
                         load(1, append = false, targetTab = page)
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -369,10 +394,10 @@ fun LibraryScreen(
                     contentPadding = innerPadding,
                 ) {
                     // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                    LazyColumn(
+                    TrackedLazyColumn(
                         state = pageListState,
-                        modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                         contentPadding = innerPadding,
+                        modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                     ) {
                         if (page == 0) {
                             items(creatorFeed.items, key = { it.id }) { creator ->
@@ -538,10 +563,12 @@ fun CreatorWorksScreen(
                 // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                 contentPadding = innerPadding,
             ) {
+                val listState = rememberLazyListState()
                 // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().readableWidth(),
+                TrackedLazyColumn(
+                    state = listState,
                     contentPadding = innerPadding,
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                 ) {
                     item(key = "hero") {
                         val current = data
@@ -721,10 +748,12 @@ fun CreatorWorkDetailScreen(
                     val extraBottom = creatorWorkExtraBottomDp(hasRelated = related.isNotEmpty()).dp
                     innerPadding.withSpacing(extraBottom = extraBottom)
                 }
+                val listState = rememberLazyListState()
                 // 首项下移让出顶栏高度，底部按是否存在相关作品悬浮栏预留净空
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().readableWidth(),
+                TrackedLazyColumn(
+                    state = listState,
                     contentPadding = listContentPadding,
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                 ) {
                     if (body.contentText.isNotBlank()) {
                         item(key = "content") {
@@ -1102,6 +1131,6 @@ private fun LibraryCover(
 
 /** 外链打开：无匹配 Activity 时回调提示，不抛异常。 */
 private fun openExternal(context: Context, url: String, onFailure: () -> Unit) {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+    val intent = Intent(Intent.ACTION_VIEW, url.toUri())
     runCatching { context.startActivity(intent) }.onFailure { onFailure() }
 }

@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,6 +89,7 @@ fun ProfileScreen(
     var profile by remember { mutableStateOf<UserProfile?>(null) }
     var saving by remember { mutableStateOf(false) }
     var selector by remember { mutableStateOf<ProfileSelector?>(null) }
+    var requestToken by remember { mutableIntStateOf(0) }
     var savedUidToken by rememberSaveable { mutableStateOf(ProfileDraftPolicy.UID_UNSET) }
     var savedDrafts by rememberSaveable(stateSaver = StringMapSaver) {
         mutableStateOf<Map<String, String>>(emptyMap())
@@ -138,6 +140,7 @@ fun ProfileScreen(
     }
 
     fun load(showLoading: Boolean = true) {
+        val token = ++requestToken
         val uid = user?.uid
         if (uid == null) {
             state = ProfileUiState.Failed("请先登录后查看个人资料", sessionExpired = true)
@@ -146,6 +149,7 @@ fun ProfileScreen(
         if (showLoading) state = ProfileUiState.Loading
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.userProfile(uid) }
+            if (token != requestToken || user?.uid != uid) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     applyProfile(outcome.value)
@@ -230,8 +234,8 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .readableWidth()
-                    .padding(innerPadding)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState())
+                    .padding(innerPadding),
             ) {
                 // SmallTitle 自带 8dp 上间距，再补 8dp 与顶栏拉开呼吸空间
                 Spacer(modifier = Modifier.height(8.dp))

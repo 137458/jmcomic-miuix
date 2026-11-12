@@ -119,6 +119,9 @@ fun FavoritesScreen(
     val listState = rememberLazyListState()
     // 翻页在途守卫：请求期间列表仍可读，但翻页条要禁用，避免连点重复请求
     var pageBusy by remember { mutableStateOf(false) }
+    var requestToken by remember { mutableIntStateOf(0) }
+    var tagsRequestToken by remember { mutableIntStateOf(0) }
+    var loadedUid by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成「去登录」）。 */
@@ -143,13 +146,16 @@ fun FavoritesScreen(
 
     fun loadFirstPage() {
         val targetFolderId = folderId
+        val token = ++requestToken
+        refreshing = false
+        pageBusy = false
         scope.launch {
             failure = null
             feed = null
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
             val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, 1) }
-            // 请求期间切换了收藏夹：丢弃旧夹结果，避免覆盖新夹内容。
-            if (targetFolderId != folderId) return@launch
+            // 请求期间切换了收藏夹或发起了新请求：丢弃旧结果，避免覆盖新状态。
+            if (token != requestToken || targetFolderId != folderId) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val next = outcome.value
@@ -172,10 +178,11 @@ fun FavoritesScreen(
         if (resolved == current.page) return
         pageBusy = true
         val targetFolderId = folderId
+        val token = ++requestToken
         scope.launch {
             try {
                 val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, resolved) }
-                if (targetFolderId != folderId) return@launch
+                if (token != requestToken || targetFolderId != folderId) return@launch
                 when (outcome) {
                     is SessionOutcome.Ok -> {
                         val next = outcome.value
@@ -189,7 +196,7 @@ fun FavoritesScreen(
                     is SessionOutcome.Failed -> applyFailure(outcome, hasContent = true, failureMessage = "收藏翻页失败")
                 }
             } finally {
-                pageBusy = false
+                if (token == requestToken) pageBusy = false
             }
         }
     }
@@ -198,9 +205,11 @@ fun FavoritesScreen(
     fun refresh() {
         if (refreshing) return
         refreshing = true
+        val targetFolderId = folderId
+        val token = ++requestToken
         scope.launch {
-            val targetFolderId = folderId
             val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, 1) }
+            if (token != requestToken) return@launch
             refreshing = false
             if (targetFolderId != folderId) return@launch
             when (outcome) {
@@ -308,13 +317,14 @@ fun FavoritesScreen(
 
     /** 标签收藏列表；未登录不发请求，由界面直接展示登录提示。 */
     fun loadTags() {
-        // 绑定发起请求时的用户，避免登出/换号后把旧结果写回界面
+        // 绑定发起请求时的用户与代次，避免登出/换号/重复加载后把旧结果写回界面
         val uid = user?.uid ?: return
+        val token = ++tagsRequestToken
         scope.launch {
             tagsError = null
             tags = null
             val outcome = deps.authCall.call { deps.gateway.tagsFavorite() }
-            if (user?.uid != uid) return@launch
+            if (token != tagsRequestToken || user?.uid != uid) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> tags = outcome.value
                 // 会话失效后用户会置空，标签页自动回落到上面的未登录引导，不必再留错误文案
@@ -384,8 +394,16 @@ fun FavoritesScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        loadFirstPage()
+    val uid = user?.uid
+    LaunchedEffect(uid) {
+        if (uid == null) {
+            if (feed == null && failure == null) {
+                loadFirstPage()
+            }
+        } else if (feed == null || failure != null || loadedUid != uid) {
+            loadedUid = uid
+            loadFirstPage()
+        }
     }
 
     PaginationModeReloadEffect(mode) { loadFirstPage() }
@@ -393,6 +411,7 @@ fun FavoritesScreen(
     // 首次切到标签页才加载；登录态变化时清空旧数据，避免登出后残留
     LaunchedEffect(tabIndex, user?.uid) {
         if (user == null) {
+            tagsRequestToken++
             tags = null
             tagsError = null
         } else if (tabIndex == 1 && tags == null && tagsError == null) {
@@ -405,11 +424,12 @@ fun FavoritesScreen(
         val requested = current.beginLoadMore()
         if (requested === current) return
         val targetFolderId = folderId
+        val token = requestToken
         feed = requested
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.favorites(targetFolderId, requested.page + 1) }
-            // 加载期间切换了收藏夹：这批结果属于旧收藏夹，丢弃以免串夹。
-            if (targetFolderId != folderId) return@launch
+            // 加载期间切换了收藏夹或发起了新请求：这批结果属于旧批次，丢弃以免串夹。
+            if (token != requestToken || targetFolderId != folderId) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val next = outcome.value
@@ -534,10 +554,10 @@ fun FavoritesScreen(
                 ) {
                     // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
                     val feedColumns = LocalWideLayout.current.feedColumns
-                    LazyColumn(
+                    TrackedLazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize().readableWidth(),
                         contentPadding = innerPadding,
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                     ) {
                         item(key = "folder-selector") {
                             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -656,10 +676,10 @@ fun FavoritesScreen(
                     modifier = Modifier.padding(innerPadding).readableWidth(),
                 )
                 // 列表内容穿到玻璃顶栏（顶栏 + 分段条）下方，顶栏才能采样到真实背景
-                else -> LazyColumn(
+                else -> TrackedLazyColumn(
                     state = tagListState,
-                    modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = innerPadding,
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                 ) {
                     item(key = "add-tag") {
                         Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {

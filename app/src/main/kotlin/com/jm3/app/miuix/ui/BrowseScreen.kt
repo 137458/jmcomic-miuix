@@ -102,7 +102,7 @@ fun BrowseScreen(
     val sessionCache = deps.sessionCache
     val pageMode = deps.preferences.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
-    var state by remember { mutableStateOf(sessionCache.stateOf(SessionListKey.Browse(pageKey))) }
+    var state by remember(pageKey) { mutableStateOf(sessionCache.stateOf(SessionListKey.Browse(pageKey))) }
     // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
@@ -146,8 +146,10 @@ fun BrowseScreen(
      * 只改 state 的话，切走再回来缓存里还是上一份，页面会先闪一次旧列表再跳成新的。
      */
     fun publish(key: BrowsePageKey, next: ListState) {
-        state = next
         sessionCache.remember(SessionListKey.Browse(key), next)
+        if (key == pageKey) {
+            state = next
+        }
     }
 
     fun refresh(byPull: Boolean = false) {
@@ -187,6 +189,7 @@ fun BrowseScreen(
         val requested = loaded.feed.beginLoadMore()
         if (requested === loaded.feed) return
         val token = requestToken
+        val key = pageKey
         state = ListState.Loaded(requested)
         scope.launch {
             val next = deps.authCall.call { deps.gateway.browse(filter(), requested.page + 1) }
@@ -196,7 +199,7 @@ fun BrowseScreen(
                 is SessionOutcome.Ok -> requested.appendedBy(next.value)
                 else -> requested.failLoadMore()
             }
-            publish(pageKey, ListState.Loaded(updated))
+            publish(key, ListState.Loaded(updated))
         }
     }
 
@@ -243,9 +246,15 @@ fun BrowseScreen(
         }
     }
 
-    LaunchedEffect(mode, categoryValue, orderValue, timeValue) {
-        // 同一口径的结果还在缓存里（切 tab 回来就是这个情况）：直接拿来用，别退回 Loading 把位置冲掉
-        if (sessionCache.hasPage(SessionListKey.Browse(pageKey))) return@LaunchedEffect
+    LaunchedEffect(pageKey) {
+        val cacheKey = SessionListKey.Browse(pageKey)
+        // 同一口径的结果还在缓存里（切 tab 或切回已缓存筛选）：直接同步缓存并作废旧在途请求
+        if (sessionCache.hasPage(cacheKey)) {
+            requestToken++
+            refreshing = false
+            state = sessionCache.stateOf(cacheKey)
+            return@LaunchedEffect
+        }
         refresh()
     }
 
@@ -409,10 +418,10 @@ fun BrowseScreen(
                 ) {
                     // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
                     val feedColumns = LocalWideLayout.current.feedColumns
-                    LazyColumn(
+                    TrackedLazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize().readableWidth(),
                         contentPadding = innerPadding,
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                     ) {
                         item(key = "filters") {
                             // 当前主分类的子分类（分类树尚未返回时为空，区域自动隐藏）
@@ -716,10 +725,10 @@ private fun TagResultSection(
     Column(modifier = modifier) {
         // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
         val feedColumns = LocalWideLayout.current.feedColumns
-        LazyColumn(
+        TrackedLazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().readableWidth(),
             contentPadding = contentPadding,
+            modifier = Modifier.fillMaxSize().readableWidth(),
         ) {
             when (val s = state) {
                 is ListState.Loading -> item(key = "tag-loading") {

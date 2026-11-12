@@ -94,21 +94,19 @@ internal fun BottomBarBaseLayer(
                     indication = null,
                     onClick = {},
                 )
-                .then(
-                    glassSurface(
-                        backdrop = backdrop,
-                        role = GlassRole.BottomBar,
-                        tint = containerColor,
-                        shape = pillShape,
-                        requested = mode,
-                        highlight = { baseHighlight.value },
-                        layerBlock = {
-                            val width = size.width.coerceAtLeast(1f)
-                            val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDragAnimation.pressProgress)
-                            scaleX = s
-                            scaleY = s
-                        },
-                    ),
+                .glassSurface(
+                    backdrop = backdrop,
+                    role = GlassRole.BottomBar,
+                    tint = containerColor,
+                    shape = pillShape,
+                    requested = mode,
+                    highlight = { baseHighlight.value },
+                    layerBlock = {
+                        val width = size.width.coerceAtLeast(1f)
+                        val s = lerp(1f, 1f + 16.dp.toPx() / width, dampedDragAnimation.pressProgress)
+                        scaleX = s
+                        scaleY = s
+                    },
                 )
                 .then(if (isLiquidGlassMode && interactiveHighlight != null) interactiveHighlight.modifier else Modifier)
                 .height(tokens.height)

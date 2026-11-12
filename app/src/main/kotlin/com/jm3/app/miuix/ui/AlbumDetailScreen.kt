@@ -226,17 +226,19 @@ internal fun AlbumDetailScreen(
     }
 
     fun share(detail: AlbumDetail) {
-        val host = gateway.usedDomain()
-        val link = host?.takeIf { it.isNotBlank() }?.let { "https://" + it + "/album/" + detail.id }
-        val text = buildString {
-            append(detail.title)
-            if (link != null) append('\n').append(link)
+        scope.launch {
+            val host = authCall.call { gateway.usedDomain() }.orDegrade<String?>(null)
+            val link = host?.takeIf { it.isNotBlank() }?.let { "https://" + it + "/album/" + detail.id }
+            val text = buildString {
+                append(detail.title)
+                if (link != null) append('\n').append(link)
+            }
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            context.startActivity(Intent.createChooser(send, "分享作品"))
         }
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, text)
-        }
-        context.startActivity(Intent.createChooser(send, "分享作品"))
     }
 
     LaunchedEffect(albumId, user?.uid) {

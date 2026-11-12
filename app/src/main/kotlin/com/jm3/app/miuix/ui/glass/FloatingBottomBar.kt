@@ -333,15 +333,17 @@ fun FloatingBottomBar(
         }
     }
 
+    val currentTabWidthPx by rememberUpdatedState(tabWidthPx)
     val interactiveHighlight =
         if (isLiquidGlassMode) {
-            remember(animationScope, tabWidthPx, isLtr) {
+            remember(animationScope, isLtr) {
                 InteractiveHighlight(
                     animationScope = animationScope,
                     position = { size, _ ->
+                        val widthPx = currentTabWidthPx
                         Offset(
-                            if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffsetState.value
-                            else size.width - (dampedDragAnimation.value + 0.5f) * tabWidthPx + panelOffsetState.value,
+                            if (isLtr) (dampedDragAnimation.value + 0.5f) * widthPx + panelOffsetState.value
+                            else size.width - (dampedDragAnimation.value + 0.5f) * widthPx + panelOffsetState.value,
                             size.height / 2f,
                         )
                     },

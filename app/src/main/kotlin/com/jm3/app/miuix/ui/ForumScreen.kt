@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -324,6 +323,15 @@ fun ForumScreen(
                 // 加载成功就渲染列表：即使没有内容也保留列表本体，
                 // 闲聊档的规则卡与下拉刷新在空态下才不会跟着一起消失
                 ForumUiState.Loaded -> {
+                    if (pageMode != PaginationMode.CLICK) {
+                        LoadMoreOnScroll(
+                            listState = pageListState,
+                            feed = pageFeed,
+                            onLoadMore = {
+                                fetch(pageFeed.page + 1, replace = false, showLoading = false, targetTab = pageIdx)
+                            },
+                        )
+                    }
                     // 列表内容穿到玻璃顶栏（顶栏 + 档位条）下方，顶栏才能采样到真实背景
                     GlassPullToRefresh(
                         isRefreshing = refreshing && pageIdx == clampedScopeIndex,
@@ -336,10 +344,10 @@ fun ForumScreen(
                         // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                         contentPadding = innerPadding,
                     ) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize().readableWidth(),
+                        TrackedLazyColumn(
                             state = pageListState,
                             contentPadding = innerPadding,
+                            modifier = Modifier.fillMaxSize().readableWidth(),
                         ) {
                             if (pageScope == ForumScope.CHAT) {
                                 item(key = "rules") {

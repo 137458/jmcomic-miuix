@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -199,10 +198,10 @@ fun SearchScreen(
             }
             // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
             val feedColumns = LocalWideLayout.current.feedColumns
-            LazyColumn(
+            TrackedLazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().readableWidth(),
                 contentPadding = innerPadding,
+                modifier = Modifier.fillMaxSize().readableWidth(),
             ) {
                 when (val s = state) {
                     is SearchUiState.Loading -> if (!refreshing) {

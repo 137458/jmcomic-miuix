@@ -96,7 +96,7 @@ fun SettingsScreen(
     var reprobeBusy by remember { mutableStateOf(false) }
     var diagError by remember { mutableStateOf<String?>(null) }
 
-    // 破坏性操作二次确认：3 秒未确认自动复位。
+    // 破坏性操作二次确认弹窗目标（"history" / "downloads"），由用户确认或取消后关闭。
     var confirmClear by remember { mutableStateOf<String?>(null) }
     var showDisclaimer by rememberSaveable { mutableStateOf(false) }
 
@@ -137,9 +137,7 @@ fun SettingsScreen(
     val versionCode = remember {
         @Suppress("DEPRECATION")
         runCatching {
-            context.packageManager.getPackageInfo(context.packageName, 0).let { info ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
-            }
+            context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
         }.getOrDefault(0L)
     }
 
@@ -231,13 +229,6 @@ fun SettingsScreen(
             activeDomains.value = saved.joinToString("、")
         }
         loadDomainsDiagnostics()
-    }
-
-    LaunchedEffect(confirmClear) {
-        if (confirmClear != null) {
-            delay(3000)
-            confirmClear = null
-        }
     }
 
     val clearingHistory = confirmClear == "history"

@@ -41,7 +41,7 @@ private fun glassCapsuleShape(): Shape = remember { RoundedCornerShape(GlassCaps
  * @param tintAlpha 液态玻璃档的底衬不透明度；压到 0.55~0.92 让折射显影
  */
 @Composable
-internal fun glassCapsuleSurface(tint: Color, tintAlpha: Float): Modifier = glassSurface(
+internal fun Modifier.glassCapsuleSurface(tint: Color, tintAlpha: Float): Modifier = glassSurface(
     backdrop = LocalGlassBackdrop.current,
     role = GlassRole.Capsule,
     tint = tint,
@@ -68,10 +68,6 @@ fun GlassActionChip(
 ) {
     val colorScheme = MiuixTheme.colorScheme
     val tint = if (emphasized) colorScheme.primary else colorScheme.surfaceContainer
-    val surfaceModifier = glassCapsuleSurface(
-        tint = tint,
-        tintAlpha = if (emphasized) 0.92f else 0.55f,
-    )
 
     Text(
         text = text,
@@ -81,7 +77,10 @@ fun GlassActionChip(
         maxLines = 1,
         modifier = modifier
             .pressScale(hapticFeedback = false)
-            .then(surfaceModifier)
+            .glassCapsuleSurface(
+                tint = tint,
+                tintAlpha = if (emphasized) 0.92f else 0.55f,
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),
     )

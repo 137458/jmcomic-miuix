@@ -110,14 +110,12 @@ private fun GlassSnackbar(
                 ),
             )
             // 磨砂、采样余量与三态底衬都由 Snackbar 角色表决定；提示条没有边缘高光
-            .then(
-                glassSurface(
-                    backdrop = backdrop,
-                    role = GlassRole.Snackbar,
-                    tint = surface,
-                    shape = GlassSnackbarShape,
-                    highlight = null,
-                ),
+            .glassSurface(
+                backdrop = backdrop,
+                role = GlassRole.Snackbar,
+                tint = surface,
+                shape = GlassSnackbarShape,
+                highlight = null,
             )
             // 吃掉点击，避免提示条把点击传给下层内容
             .pointerInput(Unit) { detectTapGestures { } },

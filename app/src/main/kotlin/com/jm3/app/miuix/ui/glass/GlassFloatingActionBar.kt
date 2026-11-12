@@ -104,7 +104,7 @@ fun GlassFloatingActionBar(
         horizontalPaddingDp = GlassFabHorizontalPadding.value,
     ).dp
 
-    val surfaceModifier = glassSurface(
+    val surfaceModifier = Modifier.glassSurface(
         backdrop = backdrop,
         role = GlassRole.FloatingActionBar,
         tint = containerColor,

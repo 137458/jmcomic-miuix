@@ -15,9 +15,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -370,10 +370,10 @@ fun NovelListScreen(
                     contentPadding = innerPadding,
                 ) {
                     // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                    LazyColumn(
+                    TrackedLazyColumn(
                         state = listStates[pageIdx],
-                        modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                         contentPadding = innerPadding,
+                        modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                     ) {
                         items(pageState.items, key = { it.id }) { item ->
                             NovelListRow(
@@ -641,10 +641,12 @@ fun NovelDetailScreen(
                         modifier = Modifier.padding(innerPadding),
                     )
                 } else {
+                    val listState = rememberLazyListState()
                     // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().readableWidth(),
+                    TrackedLazyColumn(
+                        state = listState,
                         contentPadding = innerPadding,
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                     ) {
                         item(key = "header") {
                             NovelDetailHeader(

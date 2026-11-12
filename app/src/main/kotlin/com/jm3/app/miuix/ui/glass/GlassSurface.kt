@@ -233,7 +233,7 @@ internal fun resolveGlassSurface(role: GlassRole, tier: GlassTier, style: GlassS
  * @param borderColor 实色兜底的描边色，仅在角色要求描边且为实色档时生效
  */
 @Composable
-internal fun glassSurface(
+internal fun Modifier.glassSurface(
     backdrop: Backdrop?,
     role: GlassRole,
     tint: Color,
@@ -261,7 +261,7 @@ internal fun glassSurface(
     val scrim = tint.copy(alpha = plan.scrimAlpha)
 
     if (!plan.drawsBackdrop || backdrop == null) {
-        val solid = Modifier.background(scrim, shape)
+        val solid = background(scrim, shape)
         return if (plan.border && borderColor != null) {
             solid.border(1.dp, borderColor, shape)
         } else {
@@ -269,7 +269,7 @@ internal fun glassSurface(
         }
     }
 
-    return Modifier.drawBackdrop(
+    return drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
         effects = {

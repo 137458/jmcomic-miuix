@@ -2,9 +2,9 @@ package com.jm3.app.miuix.ui
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.net.Uri
+import androidx.core.graphics.createBitmap
+import androidx.core.net.toUri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -202,11 +201,11 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             alpha = { 1f - heroProgress.value },
         ) {
-            LazyColumn(
+            TrackedLazyColumn(
                 state = listState,
+                contentPadding = innerPadding,
                 // 大屏把更新内容收进可读宽度并居中，背景特效仍铺满整屏
                 modifier = Modifier.fillMaxSize().readableWidth(),
-                contentPadding = innerPadding,
             ) {
                 item(key = "hero") {
                     UpdateHero(
@@ -636,7 +635,7 @@ private fun fadeOut(progress: Float, from: Float, to: Float): Float {
 
 /** 在系统浏览器打开链接，返回是否成功拉起；失败由调用方决定提示或回退。 */
 internal fun openUpdateReleasePage(context: Context, url: String): Boolean =
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }.isSuccess
+    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }.isSuccess
 
 private fun assetSizeSuffix(size: Long): String = if (size > 0L) "（${formatUpdateSize(size)}）" else ""
 
@@ -659,7 +658,7 @@ private val AppIconCorner = 24.dp
 
 internal fun loadAppIcon(context: Context, sizePx: Int): ImageBitmap? = runCatching {
     val drawable = context.packageManager.getApplicationIcon(context.packageName)
-    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(sizePx, sizePx)
     val canvas = Canvas(bitmap)
     drawable.setBounds(0, 0, canvas.width, canvas.height)
     drawable.draw(canvas)

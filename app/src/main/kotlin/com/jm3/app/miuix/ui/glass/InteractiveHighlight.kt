@@ -21,6 +21,19 @@ import top.yukonga.miuix.kmp.blur.RuntimeShader
 import top.yukonga.miuix.kmp.blur.asBrush
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 
+internal inline fun <T> createSpotShaderOrNull(
+    supported: Boolean,
+    factory: () -> T,
+): T? = if (supported) {
+    try {
+        factory()
+    } catch (_: Throwable) {
+        null
+    }
+} else {
+    null
+}
+
 internal class InteractiveHighlight(
     private val animationScope: CoroutineScope,
     private val position: (size: Size, offset: Offset) -> Offset = { _, offset -> offset },
@@ -33,9 +46,9 @@ internal class InteractiveHighlight(
     private val positionAnimation = Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold)
     private var startPosition = Offset.Zero
 
-    // 平滑阶跃聚光点；不支持 RuntimeShader 时退化为径向渐变（线性衰减而非 S 曲线）。
+    // 平滑阶跃聚光点；不支持 RuntimeShader 或编译失败时退化为径向渐变（线性衰减而非 S 曲线）。
     private val spotShader: RuntimeShader? =
-        if (isRuntimeShaderSupported()) RuntimeShader(SPOT_SHADER) else null
+        createSpotShaderOrNull(isRuntimeShaderSupported()) { RuntimeShader(SPOT_SHADER) }
 
     val modifier: Modifier = Modifier.drawWithContent {
         val progress = pressProgressAnimation.value

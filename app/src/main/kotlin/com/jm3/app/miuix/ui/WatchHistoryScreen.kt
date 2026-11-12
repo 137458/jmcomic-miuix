@@ -6,11 +6,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,6 +72,8 @@ fun WatchHistoryScreen(
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var deletingId by remember { mutableStateOf<String?>(null) }
     var pendingDeleteItem by remember { mutableStateOf<SearchResult?>(null) }
+    val listState = rememberLazyListState()
+    var requestToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
     /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成去登录）。 */
@@ -100,9 +102,11 @@ fun WatchHistoryScreen(
         if (showLoading) state = WatchUiState.Loading
         val requested = if (replace) feed else feed.beginLoadMore()
         if (!replace) feed = requested
+        val token = if (replace) ++requestToken else requestToken
         scope.launch {
             // 启动闸门、IO 切线程与失效通知都在 AuthCall 里，这里只关心三种结局
             val outcome = deps.authCall.call { deps.gateway.watchHistory(targetPage) }
+            if (token != requestToken) return@launch
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
@@ -156,6 +160,20 @@ fun WatchHistoryScreen(
     // 分页模式切换后重新按新形态加载第一页，避免同一份状态混用两种翻页语义
     LaunchedEffect(mode) { fetch(targetPage = 1, replace = true, showLoading = true) }
 
+    if (mode != PaginationMode.CLICK && state == WatchUiState.Loaded) {
+        LoadMoreOnScroll(
+            listState = listState,
+            feed = feed,
+            onLoadMore = {
+                fetch(
+                    pagerNextPage(feed.page, feed.pageCount ?: Int.MAX_VALUE),
+                    replace = false,
+                    showLoading = false,
+                )
+            },
+        )
+    }
+
     GlassScaffold(
         topBar = {
             GlassTopAppBar(
@@ -201,10 +219,11 @@ fun WatchHistoryScreen(
                 ) {
                     // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
                     val feedColumns = LocalWideLayout.current.feedColumns
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().readableWidth(),
+                    TrackedLazyColumn(
+                        state = listState,
                         // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                         contentPadding = innerPadding,
+                        modifier = Modifier.fillMaxSize().readableWidth(),
                     ) {
                         // key 仍是作品 id：与单列时逐字一致，升级后滚动位置不丢
                         feedRowItems(

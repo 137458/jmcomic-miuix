@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -108,6 +109,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import me.saket.telephoto.zoomable.EnabledZoomGestures
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import me.saket.telephoto.zoomable.rememberZoomableState
@@ -1006,7 +1008,7 @@ private fun ReaderPages(
                     modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = innerPadding,
                 ) {
-                    items(photo.images, key = { it.index }) { image ->
+                    itemsIndexed(photo.images, key = { _, image -> image.index }) { index, image ->
                         // 布局比例优先本页已知比例、其次章节种子；请求尺寸只认解码比例，两者分开演进
                         val frame = readerPageFrame(
                             pageWidthPx = pageWidthPx,
@@ -1038,7 +1040,7 @@ private fun ReaderPages(
                                 }
                             },
                             // 长图模式按图片真实比例自适应展开无缝拼接，双击打开整屏缩放层
-                            onDoubleTap = { zoomOverlayIndex = photo.images.indexOf(image) },
+                            onDoubleTap = { zoomOverlayIndex = index },
                             onTap = { chromeVisible = !chromeVisible },
                         )
                     }
@@ -1346,13 +1348,11 @@ private fun ReaderToolbar(
     Box(
         modifier = Modifier
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .then(
-                glassSurface(
-                    backdrop = backdrop,
-                    role = GlassRole.Toolbar,
-                    tint = MiuixTheme.colorScheme.surfaceContainer,
-                    shape = remember { RoundedCornerShape(50.dp) },
-                ),
+            .glassSurface(
+                backdrop = backdrop,
+                role = GlassRole.Toolbar,
+                tint = MiuixTheme.colorScheme.surfaceContainer,
+                shape = remember { RoundedCornerShape(50.dp) },
             ),
     ) {
         // 底衬与高光由 glassSurface 画在内容之下，这里不能再盖一层半透明底色
@@ -1478,7 +1478,7 @@ private fun ReaderSpreadPage(
     Box(
         modifier = if (onHorizontalEdgeDrag != null) {
             modifier
-                .zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
+                .zoomable(state = zoomableState, gestures = EnabledZoomGestures.ZoomAndPan, onClick = tapHandler)
                 .pointerInput(zoomableState) {
                     collectHorizontalEdgeDrag(
                         contentOffsetX = { zoomableState.contentTransformation.offset.x },
@@ -1486,7 +1486,7 @@ private fun ReaderSpreadPage(
                     )
                 }
         } else {
-            modifier.zoomable(state = zoomableState, enabled = true, onClick = tapHandler)
+            modifier.zoomable(state = zoomableState, gestures = EnabledZoomGestures.ZoomAndPan, onClick = tapHandler)
         },
     ) {
         if (images.size >= 2) {
@@ -1602,12 +1602,14 @@ private fun ReaderPage(
         }
         return
     }
+    val currentOnTap by rememberUpdatedState(onTap)
+    val currentOnDoubleTap by rememberUpdatedState(onDoubleTap)
     // 需要区分双击时用 detectTapGestures 自己起手势识别，单击回调顺延到双击超时之后
     val tapModifier = when {
-        onDoubleTap != null -> Modifier.pointerInput(onTap, onDoubleTap) {
+        onDoubleTap != null -> Modifier.pointerInput(Unit) {
             detectTapGestures(
-                onTap = { onTap?.invoke() },
-                onDoubleTap = { onDoubleTap() },
+                onTap = { currentOnTap?.invoke() },
+                onDoubleTap = { currentOnDoubleTap?.invoke() },
             )
         }
         onTap != null -> Modifier.clickable(onClick = onTap)

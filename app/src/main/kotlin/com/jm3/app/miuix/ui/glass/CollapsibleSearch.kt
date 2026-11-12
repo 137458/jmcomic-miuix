@@ -265,13 +265,11 @@ fun GlassSearchInputField(
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .then(
-                    glassSurface(
-                        backdrop = LocalGlassBackdrop.current,
-                        role = GlassRole.SearchField,
-                        tint = MiuixTheme.colorScheme.surfaceContainer,
-                        shape = CircleShape,
-                    ),
+                .glassSurface(
+                    backdrop = LocalGlassBackdrop.current,
+                    role = GlassRole.SearchField,
+                    tint = MiuixTheme.colorScheme.surfaceContainer,
+                    shape = CircleShape,
                 ),
         )
         InputField(

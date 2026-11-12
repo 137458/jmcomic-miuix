@@ -3,8 +3,11 @@ package com.jm3.app.miuix.ui
 import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.model.CheckInDay
 import com.jm3.core.model.DailyCheckInStatus
+import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
+import com.jm3.core.session.StartupGate
 import com.jm3.core.settings.InMemorySettingsRepository
+import kotlinx.coroutines.Dispatchers
 import io.github.jukomu.jmcomic.api.exception.JmClientInitializationException
 import io.github.jukomu.jmcomic.api.exception.NetworkException
 import java.net.SocketTimeoutException
@@ -499,6 +502,30 @@ class CheckInLoadPolicyTest {
         assertTrue(coordinator.state.status?.isSignedOn(15) == true)
         assertEquals("2026-11-15", settings.lastCheckInDate("1001"))
         assertEquals(listOf("今日已签到"), messages)
+    }
+
+    @Test
+    fun `单次回读透传会话失效与网络异常给 AuthCall 而不吞成 Ok(null)`() = runBlocking {
+        var expiredCalls = 0
+        val gate = object : StartupGate {
+            override suspend fun awaitReady() = Unit
+            override suspend fun onSessionExpired() {
+                expiredCalls++
+            }
+        }
+        val authCall = AuthCall(gate, Dispatchers.Unconfined)
+
+        val expired = fetchDailyCheckInStatusOnce(authCall) {
+            throw IllegalStateException("請先登入會員")
+        }
+        assertSame(SessionOutcome.Expired, expired)
+        assertEquals(1, expiredCalls)
+
+        val failed = fetchDailyCheckInStatusOnce(authCall) {
+            throw SocketTimeoutException("timeout")
+        }
+        assertTrue(failed is SessionOutcome.Failed)
+        assertEquals(1, expiredCalls)
     }
 
     /** 构造签到状态：日历缺省为「昨天已签」，便于区分「当天缺条目」与「当天未签」。 */
