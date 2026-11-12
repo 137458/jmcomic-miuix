@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
@@ -161,5 +162,27 @@ class SessionCacheTest {
         cache.clear()
         assertNull(cache.checkInOf("1001"))
         assertNull(cache.checkInOf("1002"))
+    }
+
+    @Test
+    fun 标签检索缓存按规范化词与排序分格并在切换分页模式时失效() {
+        val cache = SessionCache()
+        val keyLatest = browseTagCacheKey("  全彩 ", BrowseOrder.LATEST)
+        val keyViewed = browseTagCacheKey("全彩", BrowseOrder.MOST_VIEWED)
+        assertNull(browseTagCacheKey("   \t", BrowseOrder.LATEST))
+        assertEquals(SessionListKey.BrowseTag("全彩", BrowseOrder.LATEST), keyLatest)
+        assertEquals(SessionListKey.BrowseTag("全彩", BrowseOrder.MOST_VIEWED), keyViewed)
+
+        val latestFeed = fakePage.copy(currentPage = 1).toFeed()
+        val viewedFeed = fakePage.copy(currentPage = 2).toFeed()
+        cache.remember(keyLatest!!, ListState.Loaded(latestFeed))
+        cache.remember(keyViewed!!, ListState.Loaded(viewedFeed))
+
+        assertEquals(ListState.Loaded(latestFeed), cache.stateOf(keyLatest))
+        assertEquals(ListState.Loaded(viewedFeed), cache.stateOf(keyViewed))
+
+        cache.forgetPages()
+        assertFalse(cache.hasPage(keyLatest))
+        assertEquals(ListState.Loading, cache.stateOf(keyLatest))
     }
 }

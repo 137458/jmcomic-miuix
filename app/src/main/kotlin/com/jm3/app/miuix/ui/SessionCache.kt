@@ -1,6 +1,7 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.runtime.mutableStateMapOf
+import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PagedFeed
@@ -31,7 +32,12 @@ internal sealed interface SessionListKey {
     data object HomeFeed : SessionListKey
     data object HomeSearch : SessionListKey
     data class Browse(val pageKey: BrowsePageKey) : SessionListKey
+    data class BrowseTag(val keyword: String, val order: BrowseOrder) : SessionListKey
 }
+
+/** 构造标签检索在 [SessionCache] 中的缓存键；空白检索词不入缓存。 */
+internal fun browseTagCacheKey(keyword: String?, order: BrowseOrder): SessionListKey.BrowseTag? =
+    normalizeBrowseTagKeyword(keyword)?.let { SessionListKey.BrowseTag(it, order) }
 
 /**
  * 浏览页的筛选口径。

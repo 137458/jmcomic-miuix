@@ -63,6 +63,9 @@ class AlbumHeroHost {
     private val headerCorners = mutableStateMapOf<String, Float>()
     private val lastHeaderRects = mutableMapOf<String, HeroRect>()
     private val lastHeaderCorners = mutableMapOf<String, Float>()
+    private val lastCoverRects = mutableMapOf<String, HeroRect>()
+    private val lastCoverCorners = mutableMapOf<String, Float>()
+    private val lastCoverUrls = mutableMapOf<String, String>()
     private val urls = mutableStateMapOf<String, String>()
     private val titles = mutableStateMapOf<String, String>()
     private var sequence = 0
@@ -134,6 +137,7 @@ class AlbumHeroHost {
                 urls.remove(albumId)
                 titles.remove(albumId)
             }
+            clearUnusedBackup(albumId)
         }
     }
 
@@ -213,6 +217,13 @@ class AlbumHeroHost {
         if (url != null) urls[albumId] = url
         if (title != null) titles[albumId] = title
         val resolvedUrl = url ?: urls[albumId]
+        lastCoverRects[albumId] = from
+        lastCoverCorners[albumId] = coverCorners[albumId] ?: cornerDp
+        if (resolvedUrl != null) {
+            lastCoverUrls[albumId] = resolvedUrl
+        } else {
+            lastCoverUrls.remove(albumId)
+        }
         val oldPending = state.pending
         overlayReadyFlightId = null
         headerReady.remove(albumId)
@@ -245,27 +256,28 @@ class AlbumHeroHost {
         state = state.cancelPending()
     }
 
-    /** 退栈时调用：详情头图飞回列表卡片。优先使用当前头图矩形，已被注销时降级使用最近一次测得的有效矩形。 */
+    /** 退栈时调用：详情头图飞回列表卡片。两端各自优先使用实时测量矩形，已销毁时降级为首飞/历史快照。 */
     fun startBackward(albumId: String): Boolean {
         val hRect = headerRects[albumId] ?: lastHeaderRects[albumId]
         val hCorner = headerCorners[albumId] ?: lastHeaderCorners[albumId] ?: 0f
+        val cRect = coverRects[albumId] ?: lastCoverRects[albumId]
+        val cCorner = coverCorners[albumId] ?: lastCoverCorners[albumId] ?: 0f
+        val cUrl = urls[albumId] ?: lastCoverUrls[albumId]
         val id = ++sequence
         overlayReadyFlightId = null
         state = state.startBackward(
             id = id,
             albumId = albumId,
-            url = urls[albumId],
+            url = cUrl,
             headerRect = hRect,
             headerCornerDp = hCorner,
-            coverRect = coverRects[albumId],
-            coverCornerDp = coverCorners[albumId] ?: 0f,
+            coverRect = cRect,
+            coverCornerDp = cCorner,
         )
         if (state.flight?.id == id) {
             backwardFlightId = id
             backwardProgress = 0f
         }
-        lastHeaderRects.remove(albumId)
-        lastHeaderCorners.remove(albumId)
         return state.flight != null
     }
 
@@ -282,6 +294,20 @@ class AlbumHeroHost {
     /** 反向飞行被取消、回弹回静息后由详情页调用：放回 origin，保证下一次返回仍能起飞。 */
     fun restoreOrigin(albumId: String) {
         state = state.restoreOrigin(albumId)
+    }
+
+    /** 详情页彻底离场后清理不再受 tracking 的几何与封面快照。 */
+    internal fun releaseBackup(albumId: String) {
+        clearUnusedBackup(albumId)
+    }
+
+    private fun clearUnusedBackup(albumId: String) {
+        if (albumId in state.heroOrigins) return
+        lastCoverRects.remove(albumId)
+        lastCoverCorners.remove(albumId)
+        lastCoverUrls.remove(albumId)
+        lastHeaderRects.remove(albumId)
+        lastHeaderCorners.remove(albumId)
     }
 }
 
@@ -571,8 +597,8 @@ fun AlbumDetailHeroFlightEffect(albumId: String) {
                 val hostBusy = heroHost.flight != null || heroHost.pending != null
                 when (val command = planHeroBackwardCommand(exit, popping, startFailed, ownFlightId, hostBusy)) {
                     is HeroBackwardCommand.FinishOwnFlight -> {
-                        heroHost.finishFlight(command.flightId)
                         heroHost.restoreOrigin(albumId)
+                        heroHost.finishFlight(command.flightId)
                         startFailed = false
                     }
 
@@ -602,6 +628,7 @@ fun AlbumDetailHeroFlightEffect(albumId: String) {
                 if (flight != null && flight.albumId == albumId && heroHost.isBackwardFlight(flight.id)) {
                     heroHost.finishFlight(flight.id)
                 }
+                heroHost.releaseBackup(albumId)
             }
         }
     }

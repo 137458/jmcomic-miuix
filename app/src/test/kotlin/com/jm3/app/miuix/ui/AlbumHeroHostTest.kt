@@ -440,4 +440,78 @@ class AlbumHeroHostTest {
         assertEquals(headerRect, host.flight?.from)
         assertEquals(coverRect, host.flight?.to)
     }
+
+    @Test
+    fun 主列表销毁后从阅读器返回详情再退栈仍可使用首飞快照反向飞行() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, cardCorner)
+        host.startForward(albumId, coverUrl, cardCorner)
+        host.registerHeader(albumId, coverUrl, headerRect, cardCorner)
+        host.resolvePending()
+        host.finishFlight(host.flight!!.id)
+
+        // 进入阅读器后导航栈销毁主列表与详情页；返回详情后主列表仍在栈下未挂载
+        host.unregisterCover(albumId, coverRect)
+        host.unregisterHeader(albumId, headerRect)
+        host.registerHeader(albumId, coverUrl, headerRect, cardCorner)
+
+        // 实时封面坐标已注销但外部可查询合约保持 null
+        assertNull(host.coverRect(albumId))
+
+        // 退出详情回到未曾挂回的主列表时，仍能用首飞记录的卡片矩形与圆角完成反向飞行
+        val backwardStarted = host.startBackward(albumId)
+        assertTrue(backwardStarted)
+        val flight = host.flight
+        assertNotNull(flight)
+        assertEquals(headerRect, flight.from)
+        assertEquals(coverRect, flight.to)
+        assertEquals(cardCorner, flight.cornerFromDp)
+        assertEquals(cardCorner, flight.cornerToDp)
+        assertEquals(coverUrl, flight.url)
+    }
+
+    @Test
+    fun 列表销毁后取消一次返回手势再次返回仍能反向飞行() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, cardCorner)
+        host.startForward(albumId, coverUrl, cardCorner)
+        host.registerHeader(albumId, coverUrl, headerRect, cardCorner)
+        host.resolvePending()
+        host.finishFlight(host.flight!!.id)
+        host.unregisterCover(albumId, coverRect)
+
+        assertTrue(host.startBackward(albumId))
+        val firstFlightId = host.flight!!.id
+        host.setBackwardProgress(firstFlightId, 0.3f)
+        // 先归还 origin 再结束手势（与详情页退栈效应同序）
+        host.restoreOrigin(albumId)
+        host.finishFlight(firstFlightId)
+
+        assertTrue(host.startBackward(albumId))
+        assertEquals(coverRect, host.flight?.to)
+    }
+
+    @Test
+    fun 两端均销毁后退栈仍凭首飞封面图完成反向飞行并在完成后不再重复触发() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, coverUrl, coverRect, cardCorner)
+        host.startForward(albumId, coverUrl, cardCorner)
+        host.registerHeader(albumId, coverUrl, headerRect, cardCorner)
+        host.resolvePending()
+        host.finishFlight(host.flight!!.id)
+
+        host.unregisterCover(albumId, coverRect)
+        host.unregisterHeader(albumId, headerRect)
+
+        assertNull(host.coverUrl(albumId))
+        assertTrue(host.startBackward(albumId))
+        val flight = host.flight
+        assertNotNull(flight)
+        assertEquals(coverUrl, flight.url)
+        assertEquals(headerRect, flight.from)
+        assertEquals(coverRect, flight.to)
+
+        host.finishFlight(flight.id)
+        assertFalse(host.startBackward(albumId))
+    }
 }

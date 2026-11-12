@@ -1,6 +1,13 @@
 package com.jm3.app.miuix.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -346,134 +353,146 @@ fun BrowseScreen(
         },
     ) { innerPadding ->
         // 主框架切换 tab 会重建页面，滚动容器恢复到原位置后顶栏要跟上，否则大标题压在已滚内容上
-        val activeTag = tagKeyword
-        if (activeTag != null) {
-            TagResultSection(
-                deps = deps,
-                keyword = activeTag,
-                order = order,
-                onOpenAlbum = onOpenAlbum,
-                onOpenLogin = onOpenLogin,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = innerPadding,
-            )
-        } else if (mode == BrowseMode.RANK) {
-            // 榜单：筛选条常驻玻璃顶栏，内容区只保留两列瀑布流
-            GlassPullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = { refresh(byPull = true) },
-                pullToRefreshState = refreshState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = innerPadding,
-            ) {
-                RankResultGrid(
-                    state = state,
-                    gridState = gridState,
-                    contentPadding = innerPadding,
-                    refreshing = refreshing,
-                    onRetry = ::refresh,
-                    onOpenLogin = onOpenLogin,
-                    onLoadMore = ::loadMore,
+        // 用 AnimatedContent 只在标签结果与分类/榜单之间切换时播放横向转场，从详情/阅读器返回同一标签页时不重播入场
+        AnimatedContent(
+            targetState = tagKeyword,
+            contentKey = { it != null },
+            transitionSpec = {
+                val enteringTag = targetState != null
+                val enter = slideInHorizontally { width -> if (enteringTag) width / 3 else -width / 4 } + fadeIn()
+                val exit = slideOutHorizontally { width -> if (enteringTag) -width / 4 else width / 3 } + fadeOut()
+                (enter togetherWith exit).using(SizeTransform(clip = false))
+            },
+            label = "browse-tag-transition",
+        ) { currentTag ->
+            if (currentTag != null) {
+                TagResultSection(
+                    deps = deps,
+                    keyword = currentTag,
+                    order = order,
                     onOpenAlbum = onOpenAlbum,
-                    clickPaging = clickPaging,
-                    onPageChange = ::jumpToPage,
+                    onOpenLogin = onOpenLogin,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = innerPadding,
                 )
-            }
-        } else {
-            // 列表内容穿到玻璃顶栏（顶栏 + 筛选条）下方，顶栏才能采样到真实背景
-            GlassPullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = { refresh(byPull = true) },
-                pullToRefreshState = refreshState,
-                modifier = Modifier.fillMaxSize(),
-                // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
-                contentPadding = innerPadding,
-            ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize().readableWidth(),
+            } else if (mode == BrowseMode.RANK) {
+                // 榜单：筛选条常驻玻璃顶栏，内容区只保留两列瀑布流
+                GlassPullToRefresh(
+                    isRefreshing = refreshing,
+                    onRefresh = { refresh(byPull = true) },
+                    pullToRefreshState = refreshState,
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 ) {
-                    item(key = "filters") {
-                        // 当前主分类的子分类（分类树尚未返回时为空，区域自动隐藏）
-                        val subCategories = categoryTree?.categories
-                            ?.firstOrNull { it.slug == category.apiValue }
-                            ?.children
-                            .orEmpty()
-                        val hasHotTags = mode == BrowseMode.CATEGORY && hotTags.isNotEmpty()
-                        // 主分类与排序已常驻玻璃顶栏：这里只保留随内容滚动的子分类与热门标签导航
-                        if (subCategories.isNotEmpty() || hasHotTags) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                                // 子分类横向胶囊条：取当前主分类的 children，点击按标签检索
-                                if (subCategories.isNotEmpty()) {
-                                    LazyRow(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        items(subCategories, key = { it.name }) { sub ->
-                                            MinTouchTarget(onClick = { openTag(sub.name) }) {
-                                                TextButton(
-                                                    text = sub.name,
-                                                    onClick = { openTag(sub.name) },
-                                                    minWidth = 0.dp,
-                                                    minHeight = 32.dp,
-                                                )
+                    RankResultGrid(
+                        state = state,
+                        gridState = gridState,
+                        contentPadding = innerPadding,
+                        refreshing = refreshing,
+                        onRetry = ::refresh,
+                        onOpenLogin = onOpenLogin,
+                        onLoadMore = ::loadMore,
+                        onOpenAlbum = onOpenAlbum,
+                        clickPaging = clickPaging,
+                        onPageChange = ::jumpToPage,
+                    )
+                }
+            } else {
+                // 列表内容穿到玻璃顶栏（顶栏 + 筛选条）下方，顶栏才能采样到真实背景
+                GlassPullToRefresh(
+                    isRefreshing = refreshing,
+                    onRefresh = { refresh(byPull = true) },
+                    pullToRefreshState = refreshState,
+                    modifier = Modifier.fillMaxSize(),
+                    // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
+                    contentPadding = innerPadding,
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().readableWidth(),
+                        contentPadding = innerPadding,
+                    ) {
+                        item(key = "filters") {
+                            // 当前主分类的子分类（分类树尚未返回时为空，区域自动隐藏）
+                            val subCategories = categoryTree?.categories
+                                ?.firstOrNull { it.slug == category.apiValue }
+                                ?.children
+                                .orEmpty()
+                            val hasHotTags = mode == BrowseMode.CATEGORY && hotTags.isNotEmpty()
+                            // 主分类与排序已常驻玻璃顶栏：这里只保留随内容滚动的子分类与热门标签导航
+                            if (subCategories.isNotEmpty() || hasHotTags) {
+                                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                    // 子分类横向胶囊条：取当前主分类的 children，点击按标签检索
+                                    if (subCategories.isNotEmpty()) {
+                                        LazyRow(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            items(subCategories, key = { it.name }) { sub ->
+                                                MinTouchTarget(onClick = { openTag(sub.name) }) {
+                                                    TextButton(
+                                                        text = sub.name,
+                                                        onClick = { openTag(sub.name) },
+                                                        minWidth = 0.dp,
+                                                        minHeight = 32.dp,
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                // 热门标签行：取前若干项，横向滚动，点击按标签检索；榜单页不提供标签导航
-                                if (hasHotTags) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    SmallTitle(text = "热门标签")
-                                    LazyRow(
-                                        contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        items(hotTags.take(12), key = { it }) { tag ->
-                                            MinTouchTarget(onClick = { openTag(tag) }) {
-                                                TextButton(
-                                                    text = tag,
-                                                    onClick = { openTag(tag) },
-                                                    minWidth = 0.dp,
-                                                    minHeight = 32.dp,
-                                                )
+                                    // 热门标签行：取前若干项，横向滚动，点击按标签检索；榜单页不提供标签导航
+                                    if (hasHotTags) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        SmallTitle(text = "热门标签")
+                                        LazyRow(
+                                            contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            items(hotTags.take(12), key = { it }) { tag ->
+                                                MinTouchTarget(onClick = { openTag(tag) }) {
+                                                    TextButton(
+                                                        text = tag,
+                                                        onClick = { openTag(tag) },
+                                                        minWidth = 0.dp,
+                                                        minHeight = 32.dp,
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                    when (val s = state) {
-                        is ListState.Loading -> if (!refreshing) {
-                            // 下拉刷新时顶部指示器已在转圈，列表内不再重复显示。
-                            item(key = "loading") {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    InfiniteProgressIndicator()
+                        when (val s = state) {
+                            is ListState.Loading -> if (!refreshing) {
+                                // 下拉刷新时顶部指示器已在转圈，列表内不再重复显示。
+                                item(key = "loading") {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        InfiniteProgressIndicator()
+                                    }
                                 }
                             }
-                        }
-                        is ListState.Failed -> item(key = "error") {
-                            ScreenFailureOrLogin(
-                                message = s.message,
-                                expired = s.sessionExpired,
-                                onRetry = ::refresh,
-                                onOpenLogin = onOpenLogin,
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            is ListState.Failed -> item(key = "error") {
+                                ScreenFailureOrLogin(
+                                    message = s.message,
+                                    expired = s.sessionExpired,
+                                    onRetry = ::refresh,
+                                    onOpenLogin = onOpenLogin,
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                )
+                            }
+                            is ListState.Loaded -> searchResultItems(
+                                feed = s.feed,
+                                onLoadMore = ::loadMore,
+                                onOpenAlbum = onOpenAlbum,
+                                clickPaging = clickPaging,
+                                onPageChange = ::jumpToPage,
                             )
                         }
-                        is ListState.Loaded -> searchResultItems(
-                            feed = s.feed,
-                            onLoadMore = ::loadMore,
-                            onOpenAlbum = onOpenAlbum,
-                            clickPaging = clickPaging,
-                            onPageChange = ::jumpToPage,
-                        )
                     }
                 }
             }
@@ -616,23 +635,31 @@ private fun TagResultSection(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
-    var state by remember(keyword, order) { mutableStateOf<ListState>(ListState.Loading) }
-    var requestToken by remember(keyword, order) { mutableIntStateOf(0) }
+    val normalizedKeyword = normalizeBrowseTagKeyword(keyword) ?: keyword.trim()
+    val tagKey = browseTagCacheKey(normalizedKeyword, order) ?: SessionListKey.BrowseTag(normalizedKeyword, order)
+    var state by remember(tagKey) { mutableStateOf(deps.sessionCache.stateOf(tagKey)) }
+    var requestToken by remember { mutableIntStateOf(0) }
     val pageMode = deps.preferences.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    // 从其他 tab 切回时列表已恢复滚动位置，顶栏需要补同步
+    // 从详情/阅读器退栈重建后首帧即可命中 SessionCache，与 listState 恢复的滚动下标直接对齐
+
+    fun publish(key: SessionListKey.BrowseTag, next: ListState) {
+        state = next
+        deps.sessionCache.remember(key, next)
+    }
 
     fun load() {
         requestToken++
         val token = requestToken
-        state = ListState.Loading
+        val key = tagKey
+        publish(key, ListState.Loading)
         scope.launch {
-            val next = deps.authCall.call { deps.gateway.search(keyword, 1, order, SearchScope.TAG) }
+            val next = deps.authCall.call { deps.gateway.search(key.keyword, 1, order, SearchScope.TAG) }
                 .asListState("加载失败")
             if (token != requestToken) return@launch
-            state = next
+            publish(key, next)
         }
     }
 
@@ -643,12 +670,13 @@ private fun TagResultSection(
         if (resolved == current.page) return
         requestToken++
         val token = requestToken
-        state = ListState.Loading
+        val key = tagKey
+        publish(key, ListState.Loading)
         scope.launch {
-            val next = deps.authCall.call { deps.gateway.search(keyword, resolved, order, SearchScope.TAG) }
+            val next = deps.authCall.call { deps.gateway.search(key.keyword, resolved, order, SearchScope.TAG) }
                 .asListState("加载失败")
             if (token != requestToken) return@launch
-            state = next
+            publish(key, next)
             listState.scrollToItem(0)
         }
     }
@@ -658,19 +686,23 @@ private fun TagResultSection(
         val requested = loaded.feed.beginLoadMore()
         if (requested === loaded.feed) return
         val token = requestToken
+        val key = tagKey
         state = ListState.Loaded(requested)
         scope.launch {
-            val next = deps.authCall.call { deps.gateway.search(keyword, requested.page + 1, order, SearchScope.TAG) }
+            val next = deps.authCall.call { deps.gateway.search(key.keyword, requested.page + 1, order, SearchScope.TAG) }
             if (token != requestToken) return@launch
             val updated = when (next) {
                 is SessionOutcome.Ok -> requested.appendedBy(next.value)
                 else -> requested.failLoadMore()
             }
-            state = ListState.Loaded(updated)
+            publish(key, ListState.Loaded(updated))
         }
     }
 
-    LaunchedEffect(keyword, order) { load() }
+    LaunchedEffect(tagKey) {
+        if (deps.sessionCache.hasPage(tagKey)) return@LaunchedEffect
+        load()
+    }
     PaginationModeReloadEffect(pageMode) { load() }
 
     val loaded = state as? ListState.Loaded
