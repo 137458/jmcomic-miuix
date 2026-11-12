@@ -25,6 +25,14 @@ internal interface LibraryBridge {
 
     /** 关闭库内自动重登并清掉内存密码。 */
     fun forgetCredentials(client: Any)
+
+    /**
+     * 拉取连载列表（每周更新）原始 JSON。
+     *
+     * 库自带 getSerialization(page) 漏传 type/date 且用错解析字段，这里补齐查询参数；
+     * 取不到或非 JmApiClient 时返回 null 交给调用方走原路径。
+     */
+    fun serializationJson(client: Any, type: String = "all", date: Int = 0, page: Int): String? = null
 }
 
 /**
@@ -79,6 +87,22 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
         }
     }
 
+    private val newHttpUrlBuilderMethod: java.lang.reflect.Method? by lazy {
+        member("newHttpUrlBuilder") {
+            AbstractJmClient::class.java.getDeclaredMethod("newHttpUrlBuilder").apply { isAccessible = true }
+        }
+    }
+
+    private val executeGetRequestMethod: java.lang.reflect.Method? by lazy {
+        member("executeGetRequest") {
+            io.github.jukomu.jmcomic.core.client.impl.JmApiClient::class.java.getDeclaredMethod(
+                "executeGetRequest",
+                okhttp3.HttpUrl::class.java,
+                String::class.java,
+            ).apply { isAccessible = true }
+        }
+    }
+
     override fun cookieStoreCookies(client: Any): List<CookieSnapshot> =
         runCatching {
             val manager = cookieManagerField?.get(client) as? java.net.CookieManager
@@ -120,6 +144,24 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
         quietly(TAG, "清掉库内内存密码") { encryptedPasswordField?.set(library, null) }
     }
 
+    override fun serializationJson(client: Any, type: String, date: Int, page: Int): String? {
+        val apiClient = client as? io.github.jukomu.jmcomic.core.client.impl.JmApiClient ?: return null
+        val builderMethod = newHttpUrlBuilderMethod ?: return null
+        val executeMethod = executeGetRequestMethod ?: return null
+        val url = (builderMethod.invoke(apiClient) as? okhttp3.HttpUrl.Builder ?: return null)
+            .addPathSegment("serialization")
+            .addQueryParameter("type", type)
+            .addQueryParameter("date", date.toString())
+            .addQueryParameter("page", page.toString())
+            .build()
+        val response = try {
+            executeMethod.invoke(apiClient, url, SERIALIZATION_APP_HEADER)
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            throw e.targetException ?: e
+        } as? io.github.jukomu.jmcomic.core.net.model.JmApiResponse
+        return response?.decodedData
+    }
+
     /** 用户名、允许自动重登，以及拿得到时加密后的密码；密码缺省表示只恢复身份。 */
     private fun applyLoginState(client: AbstractJmClient, username: String, password: String? = null) {
         quietly(TAG, "写入库内用户名") { cacheUsernameMethod?.invoke(client, username) }
@@ -131,5 +173,6 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
         }
     }
 
+    private const val SERIALIZATION_APP_HEADER = "18comicAPP"
     private const val TAG = "LibraryBridge"
 }

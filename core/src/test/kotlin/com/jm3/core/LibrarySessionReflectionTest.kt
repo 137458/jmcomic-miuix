@@ -111,4 +111,27 @@ class LibrarySessionReflectionTest {
         assertFalse(shouldRefresh(forgotten, sessionExpiredHint))
         assertTrue((decryptMethod.invoke(forgotten) as? String).isNullOrBlank())
     }
+
+    @Test
+    fun `连载请求所需的库内部构造与执行方法存在且可执行参数组装`() {
+        val builderMethod = AbstractJmClient::class.java
+            .getDeclaredMethod("newHttpUrlBuilder").apply { isAccessible = true }
+        val executeMethod = JmApiClient::class.java
+            .getDeclaredMethod("executeGetRequest", okhttp3.HttpUrl::class.java, String::class.java)
+            .apply { isAccessible = true }
+
+        val client = newClient()
+        val builder = builderMethod.invoke(client) as okhttp3.HttpUrl.Builder
+        val url = builder
+            .addPathSegment("serialization")
+            .addQueryParameter("type", "all")
+            .addQueryParameter("date", "0")
+            .addQueryParameter("page", "1")
+            .build()
+
+        assertEquals("all", url.queryParameter("type"))
+        assertEquals("0", url.queryParameter("date"))
+        assertEquals("1", url.queryParameter("page"))
+        assertEquals(2, executeMethod.parameterCount)
+    }
 }

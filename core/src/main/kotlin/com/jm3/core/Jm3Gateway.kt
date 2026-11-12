@@ -300,7 +300,15 @@ class Jm3GatewayImpl internal constructor(
     override fun browse(filter: BrowseFilter, page: Int): SearchPage =
         client.getCategories(filter.toSearchQuery(page)).toPage(covers())
 
-    override fun serialization(page: Int): SearchPage = client.getSerialization(page).toPage(covers())
+    override fun serialization(page: Int): SearchPage {
+        val covers = covers()
+        val rawJson = bridge.serializationJson(client, page = page)
+        return if (rawJson != null) {
+            SerializationParser.parse(rawJson, page, covers)
+        } else {
+            client.getSerialization(page).toPage(covers)
+        }
+    }
 
     override fun categoriesList(): CategoryTree = client.getCategoriesList().toCategoryTree()
 

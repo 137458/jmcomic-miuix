@@ -19,6 +19,8 @@ class LibraryBridgeRoutingTest {
         var restored: Pair<Jm3Session, Set<String>>? = null
         var primed: Pair<String, String?>? = null
         var forgotCount = 0
+        var serializationResult: String? = null
+        var serializationRequest: Triple<String, Int, Int>? = null
 
         override fun cookieStoreCookies(client: Any): List<CookieSnapshot> = cookieStoreResult
 
@@ -32,6 +34,11 @@ class LibraryBridgeRoutingTest {
 
         override fun forgetCredentials(client: Any) {
             forgotCount++
+        }
+
+        override fun serializationJson(client: Any, type: String, date: Int, page: Int): String? {
+            serializationRequest = Triple(type, date, page)
+            return serializationResult
         }
     }
 
@@ -130,5 +137,32 @@ class LibraryBridgeRoutingTest {
     @Test
     fun currentCookies在两条来源都为空时给空表() {
         assertTrue(gateway(FakeBridge()).currentCookies().isEmpty())
+    }
+
+    @Test
+    fun serialization通过bridge拉取并解析连载列表() {
+        val offlineConfig = io.github.jukomu.jmcomic.core.config.JmConfiguration.Builder()
+            .apiDomains(listOf("127.0.0.1"))
+            .timeout(java.time.Duration.ofMillis(100))
+            .retryTimes(0)
+            .domainProbeTimeoutMs(100)
+            .build()
+        val offlineContext = io.github.jukomu.jmcomic.core.net.OkHttpBuilder.build(offlineConfig)
+        val offlineClient = io.github.jukomu.jmcomic.core.client.impl.JmApiClient(
+            offlineConfig, offlineContext.client, offlineContext.cookieManager, offlineContext.domainManager,
+        )
+        val bridge = FakeBridge().apply {
+            serializationResult = """{"list":[{"id":"1233370","name":"Junk? Junk!","author":"ohrozi moseoli","category":{"id":"5","title":"韓漫"},"category_sub":{"id":"0","title":null}}],"total":238}"""
+        }
+        val gw = Jm3GatewayImpl(
+            clientProvider = { offlineClient },
+            domainControlsProvider = { FakeDomainControls(emptySet()) },
+            bridge = bridge,
+        )
+        val page = gw.serialization(page = 1)
+
+        assertEquals(Triple("all", 0, 1), bridge.serializationRequest)
+        assertEquals(listOf("1233370"), page.items.map { it.id })
+        assertEquals(238, page.totalItems)
     }
 }
