@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -34,6 +36,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
@@ -42,7 +45,6 @@ import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog as CouiDialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.scroll.couiVerticalScroll
-import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text as CouiText
@@ -53,6 +55,7 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
 import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.settings.UiSkin
@@ -63,6 +66,7 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
@@ -520,52 +524,80 @@ private fun CouiUpdateAvailableDialog(
                         .fillMaxWidth()
                         .clip(notesCardShape)
                         .background(couiDialogSurfaceColor())
-                        .border(couiDialogSurfaceBorder(), notesCardShape)
-                        .padding(DialogCardPadding),
+                        .border(couiDialogSurfaceBorder(), notesCardShape),
                 ) {
-                    Column {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         MarkdownNotes(
                             markdown = notesState.visibleMarkdown,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(DialogCardPadding),
                         )
                         if (notesExpanded || notesState.hiddenLineCount > 0) {
-                            Spacer(modifier = Modifier.height(NotesBlockSpacing))
-                            CouiText(
-                                text = if (notesExpanded) "收起说明" else "展开全部（还有 ${notesState.hiddenLineCount} 行）",
-                                kind = CouiTextKind.ItemValue,
-                                color = colors.accent,
-                                textAlign = TextAlign.Start,
+                            Box(
                                 modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(0.5.dp)
+                                    .background(colors.outlineVariant.copy(alpha = 0.65f)),
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
                                     .couiPressable(
-                                        shape = CouiCapsuleShape,
                                         spotlight = SpotlightPreset.ChipTab,
                                         minTouchTarget = CouiMinTouchTarget,
                                     ) {
                                         notesExpanded = !notesExpanded
                                     }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                            )
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                CouiText(
+                                    text = if (notesExpanded) "收起说明" else "展开全部（还有 ${notesState.hiddenLineCount} 行）",
+                                    kind = CouiTextKind.ItemValue,
+                                    color = colors.accent,
+                                    textAlign = TextAlign.Start,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Icon(
+                                    imageVector = if (notesExpanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = colors.accent,
+                                )
+                            }
                         }
                     }
                 }
             }
             if (plan.showIgnore) {
-                Spacer(modifier = Modifier.height(8.dp))
-                CouiText(
-                    text = "忽略此版本",
-                    kind = CouiTextKind.ItemValue,
-                    color = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive,
-                    textAlign = TextAlign.Start,
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .couiPressable(
-                            shape = CouiCapsuleShape,
+                            shape = notesCardShape,
+                            backgroundColor = couiDialogSurfaceColor(),
                             spotlight = SpotlightPreset.ChipTab,
+                            scaleOnPress = true,
                             minTouchTarget = CouiMinTouchTarget,
                         ) {
                             onIgnore?.invoke(release.version)
                         }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                )
+                        .border(couiDialogSurfaceBorder(), notesCardShape)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    CouiText(
+                        text = "忽略此版本",
+                        kind = CouiTextKind.ItemValue,
+                        color = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive,
+                    )
+                }
             }
         }
     }

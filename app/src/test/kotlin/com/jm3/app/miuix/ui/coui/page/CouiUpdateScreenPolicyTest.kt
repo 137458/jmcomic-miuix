@@ -3,9 +3,11 @@ package com.jm3.app.miuix.ui.coui.page
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.font.FontWeight
+import com.jm3.app.miuix.ui.coui.component.couiFloatingSurfaceEnabled
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.ReleaseInfo
+import com.jm3.core.update.UpdateChecker
 import com.jm3.core.update.UpdateFailure
 import com.jm3.core.update.UpdateOutcome
 import java.io.File
@@ -13,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -168,5 +171,46 @@ class CouiUpdateScreenPolicyTest {
             CouiUpdateActionBarMode.UP_TO_DATE,
             couiUpdateActionBarMode(UpdateOutcome.UpToDate(r, localAhead = false), UpdateDownloadState.Idle),
         )
+    }
+
+    @Test
+    fun `couiFloatingSurfaceEnabled requires API 34 and valid backdrop`() {
+        assertFalse(couiFloatingSurfaceEnabled(sdkInt = 33, hasBackdrop = true))
+        assertFalse(couiFloatingSurfaceEnabled(sdkInt = 34, hasBackdrop = false))
+        assertTrue(couiFloatingSurfaceEnabled(sdkInt = 34, hasBackdrop = true))
+        assertTrue(couiFloatingSurfaceEnabled(sdkInt = 36, hasBackdrop = true))
+    }
+
+    @Test
+    fun `couiNextPreviewVersion bumps patch across semver and non-semver strings`() {
+        assertEquals("1.1.1", couiNextPreviewVersion("1.1.0"))
+        assertEquals("2.4.10", couiNextPreviewVersion("v2.4.9"))
+        assertEquals("1.2.1", couiNextPreviewVersion("v1.2"))
+        assertEquals("dev-preview", couiNextPreviewVersion("dev"))
+        assertEquals("1.0.1", couiNextPreviewVersion(""))
+    }
+
+    @Test
+    fun `couiPreviewUpdateRelease builds expandable notes and apk fallback even when offline`() {
+        val offlinePreview = couiPreviewUpdateRelease(currentVersion = "1.1.0", remoteRelease = null)
+        assertEquals("1.1.1", offlinePreview.version)
+        assertTrue(offlinePreview.notes.lines().size >= 8)
+        assertEquals(UpdateChecker.RELEASES_PAGE_URL, offlinePreview.htmlUrl)
+        assertNotNull(offlinePreview.apk)
+
+        val shortRemote = ReleaseInfo(
+            tagName = "v1.1.0",
+            name = "1.1.0",
+            notes = "简短说明",
+            htmlUrl = "https://github.com/137458/jmcomic-miuix/releases/tag/v1.1.0",
+            publishedAt = "2026-11-10T00:00:00Z",
+            assets = emptyList(),
+        )
+        val enrichedPreview = couiPreviewUpdateRelease(currentVersion = "1.1.0", remoteRelease = shortRemote)
+        assertEquals("1.1.1", enrichedPreview.version)
+        assertTrue(enrichedPreview.notes.lines().size >= 8)
+        assertTrue(enrichedPreview.notes.contains("简短说明"))
+        assertEquals(shortRemote.htmlUrl, enrichedPreview.htmlUrl)
+        assertNotNull(enrichedPreview.apk)
     }
 }
