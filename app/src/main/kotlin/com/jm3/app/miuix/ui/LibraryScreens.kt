@@ -2,7 +2,6 @@ package com.jm3.app.miuix.ui
 
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,6 +53,8 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassSearchInputField
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
+import com.jm3.app.miuix.ui.glass.layerBackdropSource
+import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.app.miuix.ui.skin.LocalSkin
@@ -86,9 +87,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.blur.ProgressiveBlur
-import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
@@ -1012,18 +1011,12 @@ private fun WorkCard(
 /** 作者主页头部：背景（底部渐进模糊）+ 头像 + 名称。 */
 @Composable
 private fun CreatorHero(author: CreatorAuthorWorks) {
-    // 背景层作为 backdrop 供底部渐进模糊采样；API 33 以下退回纯色蒙版
-    val backdrop = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        rememberLayerBackdrop()
-    } else {
-        null
-    }
+    // 背景层作为 backdrop 供底部渐进模糊采样；能力熔断与底色注入走共享入口，API 33 以下退回纯色蒙版
+    val backdrop = rememberBlurBackdrop()
     Box(modifier = Modifier.fillMaxWidth().height(150.dp)) {
         LibraryCover(
             url = author.backgroundUrl,
-            modifier = Modifier.fillMaxSize().then(
-                if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier,
-            ),
+            modifier = Modifier.fillMaxSize().layerBackdropSource(backdrop),
             contentScale = ContentScale.Crop,
         )
         if (backdrop != null) {
