@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -140,9 +141,8 @@ class FileDownloadStoreTest {
             }
             workers.forEach { it.join() }
 
-            val stored = store.read("p", 1)
-            assertTrue(stored != null, "并发写后页文件必须存在")
-            assertEquals(first.size, stored!!.size, "并发写不得产生被截断的页文件")
+            val stored = assertNotNull(store.read("p", 1), "并发写后页文件必须存在")
+            assertEquals(first.size, stored.size, "并发写不得产生被截断的页文件")
             assertTrue(
                 stored.contentEquals(first) || stored.contentEquals(second),
                 "并发写结果必须是完整的一份内容，不能互相截断成混合字节",
@@ -233,5 +233,36 @@ class FileDownloadStoreTest {
         } finally {
             sibling.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `非正数页号在读写与存在性校验时抛出异常`() {
+        val store = store()
+        for (badIndex in listOf(0, -1, -99)) {
+            assertFailsWith<IllegalArgumentException>("exists 应拒绝页号 $badIndex") {
+                store.exists("p", badIndex)
+            }
+            assertFailsWith<IllegalArgumentException>("write 应拒绝页号 $badIndex") {
+                store.write("p", badIndex, byteArrayOf(1))
+            }
+            assertFailsWith<IllegalArgumentException>("read 应拒绝页号 $badIndex") {
+                store.read("p", badIndex)
+            }
+        }
+    }
+
+    @Test
+    fun `删除章节后清理对应的页写锁与章节读写锁`() {
+        val store = store()
+        store.write("p1", 1, byteArrayOf(1))
+        store.write("p1", 2, byteArrayOf(2))
+        store.write("p2", 1, byteArrayOf(3))
+        assertEquals(3 to 0, store.activeLockCounts(), "写入完成后 writeLocks 持有 3 页、photoLocks 空闲自动回收")
+
+        store.delete("p1")
+        assertEquals(1 to 0, store.activeLockCounts(), "删除 p1 后应清理 p1 两页对应的 writeLocks")
+
+        store.delete("p2")
+        assertEquals(0 to 0, store.activeLockCounts(), "删除全部章节后锁表应归零")
     }
 }

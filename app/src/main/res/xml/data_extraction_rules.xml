@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <!-- 排除敏感凭据/会话与设置 DataStore，以及大体积离线下载目录（保留轻量历史数据库 jm3.db） -->
         <exclude domain="file" path="datastore/jm3_session.preferences_pb" />
         <exclude domain="file" path="datastore/jm3_settings.preferences_pb" />
         <exclude domain="file" path="datastore/" />
+        <exclude domain="file" path="downloads/" />
     </cloud-backup>
     <device-transfer>
+        <!-- 换机迁移同样排除凭据 DataStore 与大体积离线图片目录 files/downloads/；保留轻量历史库 jm3.db -->
         <exclude domain="file" path="datastore/jm3_session.preferences_pb" />
         <exclude domain="file" path="datastore/jm3_settings.preferences_pb" />
         <exclude domain="file" path="datastore/" />
+        <exclude domain="file" path="downloads/" />
     </device-transfer>
 </data-extraction-rules>

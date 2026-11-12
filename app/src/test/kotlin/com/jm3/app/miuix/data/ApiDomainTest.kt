@@ -107,4 +107,33 @@ class ApiDomainTest {
         assertTrue(createdThreads.isNotEmpty())
         scope.cancel()
     }
+
+    @Test
+    fun `已初始化默认网关切到自定义线路时关闭旧默认网关且切回默认时重建实例`() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val closedLabels = mutableListOf<String>()
+        val created = mutableListOf<Pair<String, Jm3Gateway>>()
+        var seq = 0
+        val domain = ApiDomain(fakeContext(), scope) { domains, _, _ ->
+            seq++
+            val label = if (domains.isEmpty()) "default-$seq" else domains.joinToString(",") + "-$seq"
+            fakeGateway { closedLabels += label }.also { created += label to it }
+        }
+
+        // 冷启动先触发默认网关初始化
+        val initialDefault = domain.gateway
+        assertEquals(1, created.size)
+
+        // 切到自定义线路：必须关闭已初始化的默认网关
+        domain.applyDomains(listOf("custom.example.com")) {}
+        assertEquals(listOf("default-1"), closedLabels, "切换自定义线路后必须关闭旧默认网关")
+
+        // 切回默认（空表）：必须重建默认网关实例，而非复用已被关闭的陈旧默认实例
+        domain.applyDomains(emptyList()) {}
+        val restoredDefault = domain.gateway
+        assertTrue(restoredDefault !== initialDefault, "切回默认线路必须重建新实例而非复用陈旧 defaultGateway")
+        assertEquals(listOf("default-1", "custom.example.com-2"), closedLabels)
+        assertEquals(3, created.size)
+        scope.cancel()
+    }
 }

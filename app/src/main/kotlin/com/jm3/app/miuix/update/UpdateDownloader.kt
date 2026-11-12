@@ -1,14 +1,15 @@
 package com.jm3.app.miuix.update
 
 import android.os.SystemClock
+import android.util.Log
+import com.jm3.app.miuix.UserMessageIOException
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.formatUpdateSize
 import com.jm3.core.update.ApkDigest
 import com.jm3.core.update.DigestCheck
-import com.jm3.app.miuix.failureCopy
 import com.jm3.core.update.ReleaseAsset
 import com.jm3.core.update.UpdateProgress
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -103,6 +104,8 @@ class UpdateDownloader(
 ) {
 
     companion object {
+        private const val TAG = "UpdateDownloader"
+
         /** 下载目录名：必须与 res/xml/update_file_paths.xml 里暴露的 cache-path 一致 */
         const val DOWNLOAD_DIR_NAME = "update"
 
@@ -216,7 +219,7 @@ class UpdateDownloader(
             // launch 到真正执行之间用户可能已经取消或重新开始，过期任务直接退出
             if (generation.get() != token) return
             if (!directory.exists() && !directory.mkdirs()) {
-                throw IOException("无法创建下载目录")
+                throw UserMessageIOException("无法创建下载目录")
             }
             // 历史进程遗留的半成品先清掉；检查当前代际与活跃集合后再删除，绝不误删新任务文件
             cleanupStalePartials(directory, token)
@@ -236,6 +239,20 @@ class UpdateDownloader(
 
             // 已被取消或被新任务取代：结果作废，partial 交给 finally 清理，正式文件一律不碰
             if (generation.get() != token) return
+
+            if (result.downloaded <= 0L) {
+                publish(
+                    token,
+                    UpdateDownloadState.Failed(
+                        if (total > 0L) {
+                            "安装包不完整（已下载 ${formatUpdateSize(result.downloaded)} / 应为 ${formatUpdateSize(total)}）"
+                        } else {
+                            "未接收到安装包数据，请重试"
+                        },
+                    ),
+                )
+                return
+            }
 
             if (total > 0L && result.downloaded != total) {
                 publish(
@@ -269,7 +286,8 @@ class UpdateDownloader(
             publish(token, UpdateDownloadState.Idle)
             throw cancelled
         } catch (error: Exception) {
-            // 原文只进日志，屏上给可读中文；无法归类时退回"下载失败"
+            Log.w(TAG, "更新包下载失败", error)
+            // 原文只进日志，屏上给可读中文；显式业务异常保留中文提示，其余无法归类异常退回"下载失败"
             publish(token, UpdateDownloadState.Failed(failureCopy(error, "下载失败")))
         } finally {
             runCatching { partial.delete() }
@@ -318,14 +336,14 @@ class UpdateDownloader(
                 val code = connection.responseCode
                 val location = connection.getHeaderField("Location")
                 if (code in 300..399 && !location.isNullOrBlank()) {
-                    if (hops >= MAX_REDIRECTS) throw IOException("重定向次数过多（HTTP $code）")
+                    if (hops >= MAX_REDIRECTS) throw UserMessageIOException("重定向次数过多（HTTP $code）")
                     hops++
                     currentUrl = resolveHttpsRedirect(currentUrl, location)
                     continue
                 }
                 if (code !in 200..299) {
                     runCatching { connection.errorStream?.close() }
-                    throw IOException("HTTP $code")
+                    throw UserMessageIOException("下载请求失败（HTTP $code）")
                 }
                 handoff = true
                 return connection
@@ -339,11 +357,11 @@ class UpdateDownloader(
         val uri = try {
             URI(raw)
         } catch (e: URISyntaxException) {
-            throw IOException("无效的下载地址", e)
+            throw UserMessageIOException("无效的下载地址", e)
         }
         val scheme = uri.scheme?.lowercase()
         if (scheme != "https" || uri.host.isNullOrBlank()) {
-            throw IOException("仅支持 HTTPS 下载地址")
+            throw UserMessageIOException("仅支持 HTTPS 下载地址")
         }
         return uri.toString()
     }
@@ -352,7 +370,7 @@ class UpdateDownloader(
         val resolved = try {
             URI(baseUrl).resolve(location).toString()
         } catch (e: IllegalArgumentException) {
-            throw IOException("无效的重定向地址", e)
+            throw UserMessageIOException("无效的重定向地址", e)
         }
         return validateHttpsUrl(resolved)
     }

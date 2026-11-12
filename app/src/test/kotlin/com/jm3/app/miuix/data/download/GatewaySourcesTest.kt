@@ -145,4 +145,24 @@ class GatewaySourcesTest {
             resolver.resolve("p"),
         )
     }
+
+    @Test
+    fun `evict与clearCache清理对应章节页列表缓存`() = runTest {
+        val source = FakePhotoSource({ pages(it) })
+        val fetcher = GatewayPageFetcher { source }
+
+        fetcher.pages("p")
+        fetcher.pages("q")
+        assertEquals(2, source.photoCalls)
+
+        fetcher.evict("p")
+        assertNull(fetcher.pagesJsonOrNull("p"))
+        assertEquals(true, fetcher.pagesJsonOrNull("q") != null)
+        fetcher.pages("p")
+        assertEquals(3, source.photoCalls, "evict 后再次读取应重新请求网关")
+
+        fetcher.clearCache()
+        assertNull(fetcher.pagesJsonOrNull("p"))
+        assertNull(fetcher.pagesJsonOrNull("q"))
+    }
 }

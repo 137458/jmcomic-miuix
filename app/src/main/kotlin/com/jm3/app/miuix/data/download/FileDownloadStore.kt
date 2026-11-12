@@ -21,13 +21,47 @@ class FileDownloadStore(private val root: File) : DownloadStore {
     /** 同页写锁：Windows 上两个 REPLACE_EXISTING 并发替换同一目标会互相失败，必须串行。 */
     private val writeLocks = ConcurrentHashMap<String, Any>()
 
-    /** 按 photoId 划分的读写锁：允许同章节不同页并行落盘，同时保证 deleteRecursively 与写/读完全互斥。 */
-    private val photoLocks = ConcurrentHashMap<String, ReentrantReadWriteLock>()
+    /** 按 photoId 划分的引用计数读写锁：空闲或删除后自动清理，同时保证 deleteRecursively 与写/读完全互斥。 */
+    private class RefCountedLock {
+        val rw = ReentrantReadWriteLock()
+        var refs = 0
+    }
+
+    private val photoLocks = HashMap<String, RefCountedLock>()
 
     private val canonicalRootPath by lazy { root.canonicalFile.toPath() }
 
-    private fun photoLock(photoId: String): ReentrantReadWriteLock =
-        photoLocks.computeIfAbsent(photoId) { ReentrantReadWriteLock() }
+    private fun acquirePhotoLock(photoId: String): RefCountedLock = synchronized(photoLocks) {
+        photoLocks.getOrPut(photoId) { RefCountedLock() }.also { it.refs++ }
+    }
+
+    private fun releasePhotoLock(photoId: String, entry: RefCountedLock) = synchronized(photoLocks) {
+        entry.refs--
+        if (entry.refs == 0 && photoLocks[photoId] === entry) {
+            photoLocks.remove(photoId)
+        }
+    }
+
+    private inline fun <T> withPhotoReadLock(photoId: String, block: () -> T): T {
+        val entry = acquirePhotoLock(photoId)
+        try {
+            return entry.rw.read(block)
+        } finally {
+            releasePhotoLock(photoId, entry)
+        }
+    }
+
+    private inline fun <T> withPhotoWriteLock(photoId: String, block: () -> T): T {
+        val entry = acquirePhotoLock(photoId)
+        try {
+            return entry.rw.write(block)
+        } finally {
+            releasePhotoLock(photoId, entry)
+        }
+    }
+
+    internal fun activeLockCounts(): Pair<Int, Int> =
+        writeLocks.size to synchronized(photoLocks) { photoLocks.size }
 
     /**
      * 解析并校验章节目录，确保 [photoId] 只能落在 [root] 的直接子目录下，杜绝路径穿越与根目录误删。
@@ -44,17 +78,20 @@ class FileDownloadStore(private val root: File) : DownloadStore {
         return candidate
     }
 
-    private fun file(photoId: String, index: Int) = File(dir(photoId), "%05d.jpg".format(index))
+    private fun file(photoId: String, index: Int): File {
+        require(index >= 1) { "非法的页号：$index" }
+        return File(dir(photoId), "%05d.jpg".format(index))
+    }
 
     override fun exists(photoId: String, index: Int): Boolean {
         val target = file(photoId, index)
-        return photoLock(photoId).read { target.isFile }
+        return withPhotoReadLock(photoId) { target.isFile }
     }
 
     override fun write(photoId: String, index: Int, bytes: ByteArray) {
-        val chapterDir = dir(photoId)
-        val target = File(chapterDir, "%05d.jpg".format(index))
-        photoLock(photoId).read {
+        val target = file(photoId, index)
+        val chapterDir = target.parentFile ?: dir(photoId)
+        withPhotoReadLock(photoId) {
             chapterDir.mkdirs()
             // 同一页的并发写串行化：暂停后立即续传时新旧 worker 可能同时落到同一页
             val lock = writeLocks.computeIfAbsent(target.path) { Any() }
@@ -79,19 +116,21 @@ class FileDownloadStore(private val root: File) : DownloadStore {
 
     override fun read(photoId: String, index: Int): ByteArray? {
         val f = file(photoId, index)
-        return photoLock(photoId).read { if (f.isFile) f.readBytes() else null }
+        return withPhotoReadLock(photoId) { if (f.isFile) f.readBytes() else null }
     }
 
     override fun delete(photoId: String) {
         val chapterDir = dir(photoId)
-        photoLock(photoId).write {
+        withPhotoWriteLock(photoId) {
             chapterDir.deleteRecursively()
+            val prefix = chapterDir.path + File.separator
+            writeLocks.keys.removeIf { it.startsWith(prefix) }
         }
     }
 
     override fun files(photoId: String): List<Int> {
         val chapterDir = dir(photoId)
-        return photoLock(photoId).read {
+        return withPhotoReadLock(photoId) {
             chapterDir.listFiles { f -> f.isFile }
                 ?.mapNotNull { it.nameWithoutExtension.toIntOrNull() }
                 ?.sorted()

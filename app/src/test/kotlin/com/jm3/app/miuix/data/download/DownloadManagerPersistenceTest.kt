@@ -352,4 +352,74 @@ class DownloadManagerPersistenceTest {
         queue.shutdown()
         testScope.cancel()
     }
+
+    @Test
+    fun `collect在锁外拿到旧快照后遇到remove和clearAll不会复活已删记录且会驱逐页缓存`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val testScope = CoroutineScope(dispatcher)
+        val store = FakeLedgerStore()
+        val fileStore = FakeDownloadStore()
+        val evicted = mutableListOf<String>()
+        var clearedCount = 0
+        var blockCollect = false
+        val collectPaused = CompletableDeferred<Unit>()
+        val releaseCollect = CompletableDeferred<Unit>()
+        val fetchGate = CompletableDeferred<Unit>()
+
+        val queue = DownloadQueue(
+            fetcher = PageFetcher { _, _ ->
+                fetchGate.await()
+                ByteArray(1)
+            },
+            store = fileStore,
+            resolver = { ResolvedChapter("a1", "Chap", 2) },
+            maxConcurrent = 1,
+        )
+        val manager = DownloadManager(
+            queue = queue,
+            fileStore = fileStore,
+            ledger = DownloadLedger(store = store),
+            appScope = testScope,
+            onEvictPages = { evicted += it },
+            onClearPages = { clearedCount++ },
+            beforeRecordLock = {
+                if (blockCollect) {
+                    blockCollect = false
+                    collectPaused.complete(Unit)
+                    releaseCollect.await()
+                }
+            },
+        )
+
+        manager.ensureStarted()
+        advanceUntilIdle()
+
+        // 下一轮 collect 在拿到快照后、进入 ledgerLock 前被暂停
+        blockCollect = true
+        manager.enqueueChapter("p1", "a1", "Chap 1")
+        runCurrent()
+        collectPaused.await()
+
+        // 趁 collect 带着含 p1 的旧快照等待锁时，完成 remove("p1")
+        manager.remove("p1")
+        assertEquals(listOf("p1"), evicted)
+        assertNull(store.entries["p1"])
+
+        // 放行 collect：锁内重读 queue.updates.value 后不得把已删的 p1 写回台账
+        releaseCollect.complete(Unit)
+        advanceUntilIdle()
+        assertNull(store.entries["p1"], "collect 锁内重读快照后不得复活已删除任务")
+
+        // clearAll 同样触发清空页缓存
+        manager.enqueueChapter("p2", "a1", "Chap 2")
+        runCurrent()
+        manager.clearAll()
+        fetchGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, clearedCount)
+        assertNull(store.entries["p2"])
+
+        queue.shutdown()
+        testScope.cancel()
+    }
 }

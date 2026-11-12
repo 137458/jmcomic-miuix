@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalCoroutinesApi::class)
+
 package com.jm3.app.miuix.data.download
 
 import com.jm3.core.download.DownloadStatus
@@ -6,6 +8,7 @@ import com.jm3.core.download.ForegroundAction
 import com.jm3.core.download.ForegroundPolicy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest

@@ -5,11 +5,18 @@ import com.jm3.core.isSessionExpired
 import com.jm3.core.session.SessionOutcome
 import io.github.jukomu.jmcomic.api.exception.JmClientInitializationException
 import io.github.jukomu.jmcomic.api.exception.NetworkException
+import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+
+/** 明确附带用户可读中文提示的业务 IO 异常；仅此类显式异常可透传给 [failureCopy]。 */
+internal open class UserMessageIOException(
+    message: String,
+    cause: Throwable? = null,
+) : IOException(message, cause)
 
 /**
  * 失败结局的可见文案：按异常类型归类成用户能理解的几档，不把库的英文原文抛上屏。
@@ -24,12 +31,22 @@ internal fun failureCopy(failure: SessionOutcome.Failed, fallback: String): Stri
     failure.cause.hasType(SocketTimeoutException::class.java) -> "网络超时，请稍后重试"
     failure.cause.hasType(InterruptedIOException::class.java) -> "网络超时，请稍后重试"
     failure.cause.hasNetworkType() -> "网络连接失败，请检查网络后重试"
-    else -> fallback
+    else -> failure.cause.findMessage<UserMessageIOException>() ?: fallback
 }
 
 /** 只拿到异常本身的调用点（catch 分支）：装成 Failed 走同一套归类，避免第二份映射。 */
 internal fun failureCopy(cause: Throwable?, fallback: String): String =
     if (cause == null) fallback else failureCopy(SessionOutcome.Failed(cause.message, cause), fallback)
+
+private inline fun <reified T : Throwable> Throwable?.findMessage(): String? {
+    var current = this
+    val visited = HashSet<Throwable>()
+    while (current != null && visited.add(current)) {
+        if (current is T) return current.message?.takeIf { it.isNotBlank() }
+        current = current.cause
+    }
+    return null
+}
 
 /** 沿异常链找类型：库常把底层 IOException 包在自己的异常里，只看顶层的类型会漏判。 */
 private fun Throwable?.hasType(type: Class<*>): Boolean {

@@ -278,6 +278,68 @@ class UpdateDownloaderTest {
         assertNoPartials()
     }
 
+    @Test
+    fun `业务异常保留明确中文错误提示而非一律抹平为下载失败`() {
+        // 1. 非 HTTPS 校验
+        val nonHttps = UpdateDownloader(scope, dir) { FakeConnection(PAYLOAD.inputStream(), PAYLOAD.size.toLong()) }
+        nonHttps.start(asset().copy(downloadUrl = "http://example.com/jm3.apk"))
+        val nonHttpsFailed = awaitState<UpdateDownloadState.Failed>(nonHttps)
+        awaitDownloadIdle()
+        assertTrue("HTTPS" in nonHttpsFailed.message, "非 HTTPS 应保留明确提示，实际=${nonHttpsFailed.message}")
+
+        // 2. HTTP 非 2xx 状态码
+        val httpError = UpdateDownloader(scope, dir) { url ->
+            object : HttpURLConnection(URL(url)) {
+                override fun connect() {}
+                override fun disconnect() {}
+                override fun usingProxy(): Boolean = false
+                override fun getResponseCode(): Int = 404
+                override fun getInputStream(): InputStream = PAYLOAD.inputStream()
+            }
+        }
+        httpError.start(asset())
+        val httpFailed = awaitState<UpdateDownloadState.Failed>(httpError)
+        awaitDownloadIdle()
+        assertTrue("404" in httpFailed.message, "HTTP 状态码失败应保留状态码提示，实际=${httpFailed.message}")
+
+        // 3. 重定向次数过多
+        val tooManyRedirects = UpdateDownloader(scope, dir) { url ->
+            object : HttpURLConnection(URL(url)) {
+                override fun connect() {}
+                override fun disconnect() {}
+                override fun usingProxy(): Boolean = false
+                override fun getResponseCode(): Int = 302
+                override fun getHeaderField(name: String?): String? =
+                    if (name.equals("Location", ignoreCase = true)) "https://example.com/next.apk" else null
+                override fun getInputStream(): InputStream = PAYLOAD.inputStream()
+            }
+        }
+        tooManyRedirects.start(asset())
+        val redirectFailed = awaitState<UpdateDownloadState.Failed>(tooManyRedirects)
+        awaitDownloadIdle()
+        assertTrue("重定向" in redirectFailed.message, "重定向过多应保留提示，实际=${redirectFailed.message}")
+    }
+
+    @Test
+    fun `分块传输且未读到任何字节时判定为下载失败`() {
+        val downloader = UpdateDownloader(scope, dir) {
+            FakeConnection(ByteArray(0).inputStream(), contentLength = -1L)
+        }
+
+        downloader.start(asset(digest = null).copy(size = 0L))
+
+        val terminal = runBlocking {
+            withTimeout(WAIT_TIMEOUT_MS) {
+                downloader.state.first { it is UpdateDownloadState.Done || it is UpdateDownloadState.Failed }
+            }
+        }
+        awaitDownloadIdle()
+        assertTrue(terminal is UpdateDownloadState.Failed, "0 字节响应必须判失败，实际=$terminal")
+        assertTrue(terminal.message.isNotBlank())
+        assertTrue(!File(dir, "jm3.apk").exists(), "0 字节空响应不得落盘为正式安装包")
+        assertNoPartials()
+    }
+
     /**
      * 等到本测试作用域里的下载协程全部收尾。
      *

@@ -26,6 +26,16 @@ class GatewayPageFetcher(private val gatewayProvider: () -> PhotoSource) : PageF
         return runCatching { encodePhotoPages(photoId, pages) }.getOrNull()
     }
 
+    /** 清理单个章节的页列表缓存（删除/取消章节时调用）。 */
+    fun evict(photoId: String) {
+        pagesCache.remove(photoId)
+    }
+
+    /** 清空全部会话内页列表缓存（清空全部下载时调用）。 */
+    fun clearCache() {
+        pagesCache.clear()
+    }
+
     override suspend fun fetch(photoId: String, index: Int): ByteArray {
         // index 为 1 起页号，页列表下标 0 起，统一经 PageNumbers 换算。
         val image = pages(photoId).firstOrNull { it.index == PageNumbers.imageIndex(index) }

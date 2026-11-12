@@ -18,6 +18,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import coil3.ImageLoader
@@ -53,8 +54,10 @@ import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.ui.SettingsScreen
 import com.jm3.app.miuix.ui.ShelfScreen
 import com.jm3.app.miuix.ui.TasksScreen
+import com.jm3.app.miuix.ui.UpdateAvailableDialog
 import com.jm3.app.miuix.ui.UpdateScreen
-import com.jm3.app.miuix.ui.UpdateStartupPrompt
+import com.jm3.app.miuix.ui.loadCurrentVersion
+import com.jm3.app.miuix.ui.openUpdateReleasePage
 import com.jm3.app.miuix.ui.TrackingScreen
 import com.jm3.app.miuix.ui.WatchHistoryScreen
 import com.jm3.app.miuix.ui.WeekScreen
@@ -87,6 +90,7 @@ import com.jm3.app.miuix.ui.coui.page.CouiUpdateScreen
 import com.jm3.app.miuix.ui.coui.page.CouiWatchHistoryScreen
 import com.jm3.app.miuix.ui.coui.page.CouiWeekScreen
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
 import com.jm3.app.miuix.ui.route.SkinRoute
 import com.jm3.app.miuix.ui.route.SkinWindowBackdrop
@@ -109,6 +113,9 @@ import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
 import com.jm3.core.model.SearchScope
+import com.jm3.core.update.ReleaseInfo
+import com.jm3.core.update.UpdateCenter
+import com.jm3.core.update.UpdatePromptState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -486,6 +493,9 @@ fun Jm3App() {
         )
     }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val currentVersion = remember(context) { loadCurrentVersion(context) }
+    var startupRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
     // colorSchemeMode 是 val 不可赋值：主题切换通过重建 controller 完成。
     var themeModeName by rememberSaveable { mutableStateOf(ThemeMode.SYSTEM.name) }
     val themeMode = remember(themeModeName) {
@@ -566,6 +576,23 @@ fun Jm3App() {
             Jm3Log.warn("Jm3App", "启动读盘失败（" + failure.javaClass.name + "），改用默认设置")
         }
         deps.account.restore()
+    }
+
+    // 进程级只发起一次启动期更新检查：提升到顶层后，进出 Route.Update 或切皮肤不会重建并重复请求 GitHub。
+    LaunchedEffect(Unit) {
+        if (!deps.updates.claimStartupUpdateCheck()) return@LaunchedEffect
+        val pending = UpdateCenter().promptForStartup(
+            autoCheckEnabled = deps.settings.autoCheckUpdate(),
+            localVersion = currentVersion,
+            prompt = UpdatePromptState(
+                ignoredVersion = deps.settings.ignoredUpdateVersion(),
+                promptedVersion = deps.updates.promptedVersion,
+            ),
+        ) ?: return@LaunchedEffect
+        deps.updates.promptedVersion = pending.version
+        if (backStack.lastOrNull() != Route.Update) {
+            startupRelease = pending
+        }
     }
 
     // 窗口宽高变化（折叠展开、分屏、旋转）会重建这份布局参数，各页随之重新判定列数与分栏
@@ -1283,21 +1310,42 @@ fun Jm3App() {
                         }
                     }
                     AlbumHeroOverlay(host = heroHost, modifier = Modifier.fillMaxSize())
-                    // 更新页自身也会检查并弹窗，停留在更新页时不再叠加启动期提示；
+                    // 更新页自身也会检查并弹窗，停留在更新页时收起启动期提示；
                     // 弹窗在路由外组合，ColorOS 下须先包进 CouiTheme，颜色与深浅标记才和当前皮肤同步。
-                    if (backStack.lastOrNull() != Route.Update) {
-                        if (uiSkin == UiSkin.COLOROS) {
-                            CouiTheme {
-                                UpdateStartupPrompt(
-                                    deps = deps,
-                                    onOpenUpdatePage = { backStack.add(Route.Update) },
-                                )
-                            }
-                        } else {
-                            UpdateStartupPrompt(
-                                deps = deps,
-                                onOpenUpdatePage = { backStack.add(Route.Update) },
+                    val isOnUpdateRoute = backStack.lastOrNull() == Route.Update
+                    val pendingStartup = rememberRetainedTarget(
+                        if (isOnUpdateRoute) null else startupRelease,
+                    )
+                    if (pendingStartup != null) {
+                        val showStartupDialog = !isOnUpdateRoute && startupRelease != null
+                        val startupDialog: @Composable () -> Unit = {
+                            UpdateAvailableDialog(
+                                show = showStartupDialog,
+                                currentVersion = currentVersion,
+                                release = pendingStartup,
+                                onDismiss = { startupRelease = null },
+                                onDownload = {
+                                    startupRelease = null
+                                    pendingStartup.apk?.let { asset -> deps.updateDownloader.start(asset) }
+                                    backStack.add(Route.Update)
+                                },
+                                onOpenRelease = {
+                                    startupRelease = null
+                                    if (!openUpdateReleasePage(context, pendingStartup.htmlUrl)) {
+                                        backStack.add(Route.Update)
+                                    }
+                                },
+                                onIgnore = { version ->
+                                    startupRelease = null
+                                    scope.launch { deps.settings.setIgnoredUpdateVersion(version) }
+                                },
+                                onCancelDownload = { deps.updateDownloader.cancel() },
                             )
+                        }
+                        if (uiSkin == UiSkin.COLOROS) {
+                            CouiTheme { startupDialog() }
+                        } else {
+                            startupDialog()
                         }
                     }
                 }

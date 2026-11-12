@@ -10,6 +10,7 @@ import javax.crypto.SecretKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 class CredentialStoreTest {
 
@@ -67,5 +68,56 @@ class CredentialStoreTest {
 
         assertFailsWith<IllegalStateException> { cipher.encrypt("user:pass") }
         assertEquals(0, ops.regenerateCount)
+    }
+
+    @Test
+    fun `并发加密遇到失效密钥时只重建一次且双方密文均可解密`() {
+        val initialKey = aesKey()
+        val bothInCipherInit = java.util.concurrent.CountDownLatch(2)
+        val concurrentOps = object : CredentialKeyOps {
+            @Volatile
+            var current: SecretKey = initialKey
+            val regenerations = java.util.concurrent.atomic.AtomicInteger(0)
+
+            override fun getOrCreateKey(): SecretKey = current
+            override fun regenerateKey(): SecretKey {
+                regenerations.incrementAndGet()
+                current = aesKey()
+                return current
+            }
+
+            override fun encodeBase64(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
+            override fun decodeBase64(text: String): ByteArray = Base64.getDecoder().decode(text)
+        }
+        val concurrentCipher = KeystoreCredentialCipher(concurrentOps) {
+            val real = Cipher.getInstance("AES/GCM/NoPadding")
+            if (concurrentOps.regenerations.get() == 0) {
+                bothInCipherInit.countDown()
+                // 未持锁时两线程会同时卡到这里并双双判定密钥失效；持锁后仅首线程进入，次线程等待重建完成
+                bothInCipherInit.await(80, java.util.concurrent.TimeUnit.MILLISECONDS)
+                throw InvalidKeyException("expired key")
+            }
+            real
+        }
+
+        val startBarrier = java.util.concurrent.CyclicBarrier(2)
+        val results = arrayOfNulls<String>(2)
+        val errors = java.util.Collections.synchronizedList(mutableListOf<Throwable>())
+        val threads = (0..1).map { idx ->
+            Thread {
+                try {
+                    startBarrier.await()
+                    results[idx] = concurrentCipher.encrypt("secret-$idx")
+                } catch (t: Throwable) {
+                    errors += t
+                }
+            }.apply { start() }
+        }
+        threads.forEach { it.join() }
+
+        assertEquals(emptyList(), errors)
+        assertEquals(1, concurrentOps.regenerations.get(), "并发遇到失效密钥时只能重建一次密钥，不能互相覆盖")
+        assertEquals("secret-0", concurrentCipher.decrypt(assertNotNull(results[0])))
+        assertEquals("secret-1", concurrentCipher.decrypt(assertNotNull(results[1])))
     }
 }

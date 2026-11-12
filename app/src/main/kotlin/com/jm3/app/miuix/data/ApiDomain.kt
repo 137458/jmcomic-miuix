@@ -41,20 +41,28 @@ class ApiDomain internal constructor(
     /** 线路池缓存文件：网关装配早于首屏请求，所以启动时同步读一次，见 [warmUp]。 */
     private val domainPoolCache = FileDomainPoolCache(File(appContext.filesDir, "api_domain_pool.txt"))
 
-    /** 线路切换后的网关实例；组合内读取可感知切换并重组。 */
+    private val defaultGatewayLock = Any()
+
+    /** 冷启动未走过 applyDomains 时惰性创建的默认网关；切线或切回默认时统一纳入关闭与重建生命周期。 */
+    @Volatile
+    private var fallbackGateway: Jm3Gateway? = null
+
+    /** 线路切换后的活跃网关实例；组合内读取可感知切换并重组。 */
     private var gatewayOverride by mutableStateOf<Jm3Gateway?>(null)
 
     /** 上次刷新落盘的线路池：网关装配在首屏请求之前同步执行，所以启动时先读一次。 */
     @Volatile
     private var cachedDomainPool: List<String> = emptyList()
 
-    private val defaultGateway: Jm3Gateway by lazy {
-        gatewayFactory(emptyList(), cachedDomainPool, ::rememberDomainPool)
-    }
-
-    /** 当前生效网关：线路覆盖优先，否则库默认解析。 */
+    /** 当前生效网关：线路覆盖优先，否则惰性创建默认网关。 */
     internal val gateway: Jm3Gateway
-        get() = gatewayOverride ?: defaultGateway
+        get() = gatewayOverride ?: synchronized(defaultGatewayLock) {
+            gatewayOverride ?: fallbackGateway ?: gatewayFactory(
+                emptyList(),
+                cachedDomainPool,
+                ::rememberDomainPool,
+            ).also { fallbackGateway = it }
+        }
 
     /** 已生效的自定义线路（空表 = 库默认解析）。重建网关等于让库重跑一遍初始化，线路没变就必须跳过。 */
     @Volatile
@@ -71,19 +79,19 @@ class ApiDomain internal constructor(
     suspend fun applyDomains(apiDomains: List<String>, onSwitched: suspend () -> Unit) {
         domainSwitchLock.withLock {
             val requested = Domains.normalize(apiDomains)
-            // 启动时默认就是空表且未切过线路：直接沿用 defaultGateway，不再多建一个网关。
+            // 启动时默认就是空表且未切过线路：直接沿用已初始化的默认网关，不再多建一个网关。
             if (requested == appliedDomains) return@withLock
-            val previous = gatewayOverride
-            val next = if (requested.isEmpty()) {
-                null
-            } else {
-                withContext(Dispatchers.IO) {
-                    gatewayFactory(requested, cachedDomainPool, ::rememberDomainPool)
-                }
+            val next = withContext(Dispatchers.IO) {
+                gatewayFactory(requested, cachedDomainPool, ::rememberDomainPool)
             }
-            appliedDomains = requested
-            Snapshot.withMutableSnapshot {
-                gatewayOverride = next
+            val previous = synchronized(defaultGatewayLock) {
+                val active = gatewayOverride ?: fallbackGateway
+                fallbackGateway = null
+                appliedDomains = requested
+                Snapshot.withMutableSnapshot {
+                    gatewayOverride = next
+                }
+                active
             }
             // 旧网关在迁移完成后再于 IO 线程释放（异常/取消路径同样释放），避免未迁移完就被关闭或阻塞主线程
             try {

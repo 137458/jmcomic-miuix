@@ -21,12 +21,30 @@ import kotlinx.coroutines.withContext
  *
  * 落盘策略与记录组装都在 [DownloadLedger]（:core，可测）；本类只剩"接线 + 文件删除 + 状态查询"。
  */
-class DownloadManager(
+class DownloadManager internal constructor(
     val queue: DownloadQueue,
     private val fileStore: DownloadStore,
     private val ledger: DownloadLedger,
     private val appScope: CoroutineScope,
+    private val onEvictPages: (String) -> Unit = {},
+    private val onClearPages: () -> Unit = {},
+    private val beforeRecordLock: suspend () -> Unit = {},
 ) {
+
+    constructor(
+        queue: DownloadQueue,
+        fileStore: DownloadStore,
+        ledger: DownloadLedger,
+        appScope: CoroutineScope,
+    ) : this(
+        queue = queue,
+        fileStore = fileStore,
+        ledger = ledger,
+        appScope = appScope,
+        onEvictPages = {},
+        onClearPages = {},
+        beforeRecordLock = {},
+    )
 
     private val started = AtomicBoolean(false)
 
@@ -42,9 +60,12 @@ class DownloadManager(
                 runCatchingSuspending { ledger.recoverInterruptedRecords() }
             }
             queue.start(appScope)
-            queue.updates.collect { tasks ->
+            queue.updates.collect {
+                beforeRecordLock()
                 ledgerLock.withLock {
-                    runCatchingSuspending { ledger.record(tasks.values) }
+                    // 在锁内重读最新队列快照，避免等待锁期间已被 remove/clearAll 删除的任务由旧快照写回复活。
+                    val latest = queue.updates.value.values
+                    runCatchingSuspending { ledger.record(latest) }
                 }
             }
         }
@@ -98,6 +119,7 @@ class DownloadManager(
                 fileStore.delete(photoId)
                 ledger.delete(photoId)
             }
+            onEvictPages(photoId)
         }
     }
 
@@ -116,6 +138,7 @@ class DownloadManager(
                     ledger.delete(photoId)
                 }
             }
+            onClearPages()
         }
     }
 

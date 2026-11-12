@@ -2,6 +2,7 @@ package com.jm3.app.miuix
 
 import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.session.SessionOutcome
+import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import kotlin.test.Test
@@ -24,6 +25,12 @@ class FailureCopyTest {
     @Test
     fun `无法归类的异常回落到调用方兜底文案`() {
         assertEquals("加载失败", failureCopy(RuntimeException("boom"), "加载失败"))
+        assertEquals("加载失败", failureCopy(IOException("raw english error"), "加载失败"))
         assertEquals("加载失败", failureCopy(null as Throwable?, "加载失败"))
+    }
+
+    @Test
+    fun `显式业务IO异常保留可读中文提示`() {
+        assertEquals("仅支持 HTTPS 下载地址", failureCopy(UserMessageIOException("仅支持 HTTPS 下载地址"), "下载失败"))
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import com.jm3.app.miuix.update.ApkInstaller
 import com.jm3.app.miuix.update.UpdateDownloader
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -23,6 +24,15 @@ class UpdateDomain(context: Context, appScope: CoroutineScope) {
      * 走「忽略此版本」的持久记录。也正因如此，启动期与更新页在同一个会话里不会对同一版本弹两次。
      */
     var promptedVersion: String? = null
+
+    private val startupCheckClaimed = AtomicBoolean(false)
+
+    /**
+     * 认领进程内唯一的启动期自动更新检查名额。
+     *
+     * 仅首次调用返回 true，防止从检查更新页返回主界面、皮肤切换或 Activity 重建时重复发起 GitHub 请求。
+     */
+    fun claimStartupUpdateCheck(): Boolean = startupCheckClaimed.compareAndSet(false, true)
 
     /** 更新下载器：同一进程只允许一个实例，否则两个入口各自维护进度。 */
     val downloader: UpdateDownloader by lazy {

@@ -42,13 +42,16 @@ class KeystoreCredentialCipher internal constructor(
     )
 
     override fun encrypt(plain: String): String {
-        val cipher = initEncryptCipherWithRetry()
-        val body = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
+        val plainBytes = plain.toByteArray(Charsets.UTF_8)
+        // 获取密钥、初始化、失效重建与 doFinal 必须整体纳入 keyLock，避免并发重建互相覆盖导致密文不可解。
+        val (iv, body) = synchronized(keyLock) {
+            encryptWithRetryLocked(plainBytes)
+        }
         // GCM 的 IV 每次都要随机且随密文一起存：首字节记长度，后面依次是 IV 与密文
-        val combined = ByteArray(1 + cipher.iv.size + body.size)
-        combined[0] = cipher.iv.size.toByte()
-        cipher.iv.copyInto(combined, destinationOffset = 1)
-        body.copyInto(combined, destinationOffset = 1 + cipher.iv.size)
+        val combined = ByteArray(1 + iv.size + body.size)
+        combined[0] = iv.size.toByte()
+        iv.copyInto(combined, destinationOffset = 1)
+        body.copyInto(combined, destinationOffset = 1 + iv.size)
         return keyOps.encodeBase64(combined)
     }
 
@@ -60,10 +63,13 @@ class KeystoreCredentialCipher internal constructor(
         require(ivSize in 1 until combined.size) { "凭据密文损坏：IV 长度 $ivSize 超出密文长度 " + combined.size }
         val iv = combined.copyOfRange(1, 1 + ivSize)
         val body = combined.copyOfRange(1 + ivSize, combined.size)
-        val cipher = cipherFactory().apply {
-            init(Cipher.DECRYPT_MODE, synchronized(keyLock) { keyOps.getOrCreateKey() }, GCMParameterSpec(GCM_TAG_BITS, iv))
+        val plainBytes = synchronized(keyLock) {
+            val cipher = cipherFactory().apply {
+                init(Cipher.DECRYPT_MODE, keyOps.getOrCreateKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
+            }
+            cipher.doFinal(body)
         }
-        String(cipher.doFinal(body), Charsets.UTF_8)
+        String(plainBytes, Charsets.UTF_8)
     } catch (e: Exception) {
         // 上层只会把解不开的密文清掉，这条日志是事后区分「密钥没了」与「密文损坏」的唯一线索；
         // 只记密文长度与异常，不记密文本体与明文。
@@ -71,16 +77,20 @@ class KeystoreCredentialCipher internal constructor(
         throw e
     }
 
-    /** 密钥已在 Keystore 中存在但被系统判定失效时，删旧重建并重试一次加密初始化。 */
-    private fun initEncryptCipherWithRetry(): Cipher {
-        val key = synchronized(keyLock) { keyOps.getOrCreateKey() }
+    /** 在 [keyLock] 内执行加密：密钥失效时删旧重建并重试一次，覆盖 init 与 doFinal 两段。 */
+    private fun encryptWithRetryLocked(plainBytes: ByteArray): Pair<ByteArray, ByteArray> {
+        val key = keyOps.getOrCreateKey()
         return try {
-            cipherFactory().apply { init(Cipher.ENCRYPT_MODE, key) }
+            val cipher = cipherFactory().apply { init(Cipher.ENCRYPT_MODE, key) }
+            val body = cipher.doFinal(plainBytes)
+            cipher.iv to body
         } catch (e: Exception) {
             if (!isRecoverableKeyFailure(e)) throw e
             Log.w(TAG, "Keystore 凭据密钥已失效，删除后重建并重试加密", e)
-            val regenerated = synchronized(keyLock) { keyOps.regenerateKey() }
-            cipherFactory().apply { init(Cipher.ENCRYPT_MODE, regenerated) }
+            val regenerated = keyOps.regenerateKey()
+            val retryCipher = cipherFactory().apply { init(Cipher.ENCRYPT_MODE, regenerated) }
+            val body = retryCipher.doFinal(plainBytes)
+            retryCipher.iv to body
         }
     }
 

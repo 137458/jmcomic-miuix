@@ -11,13 +11,16 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import com.jm3.app.miuix.Jm3Graph
 import com.jm3.app.miuix.R
+import com.jm3.core.download.DownloadPresentation
 import com.jm3.core.download.DownloadTask
 import com.jm3.core.download.ForegroundAction
 import com.jm3.core.download.ForegroundPolicy
 import com.jm3.core.download.present
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -36,17 +39,21 @@ import kotlinx.coroutines.launch
  */
 class DownloadService : Service() {
 
+    override fun onCreate() {
+        super.onCreate()
+        appContext = applicationContext
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        appContext = applicationContext
         val presentation = present(currentTasks())
         if (presentation == null) {
             // 竞态：startForegroundService 之后任务已清空/已完成。
             // Android 12+（minSdk 31）仍要求在 stopSelf 前先调用 startForeground，否则会抛出 ForegroundServiceDidNotStartInTimeException。
             startForegroundSafely(DownloadNotifier.buildStopping(this))
-            synchronized(policyLock) {
-                policy.onServiceStopped()
-            }
+            coordinator.stopAndCancel()
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf(startId)
             return START_NOT_STICKY
@@ -63,11 +70,8 @@ class DownloadService : Service() {
     }
 
     override fun onDestroy() {
-        synchronized(policyLock) {
-            policy.onServiceStopped()
-            flushJob?.cancel()
-            flushJob = null
-        }
+        appContext = applicationContext
+        coordinator.stopAndCancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
@@ -87,19 +91,16 @@ class DownloadService : Service() {
     }
 
     private fun handleTimeout() {
+        appContext = applicationContext
         runCatching { Jm3Graph.downloads.manager.pauseActive() }
             .onFailure { e ->
                 // 暂停失败也要继续退场：先把失败留痕，否则通知消失了却没人知道任务没停。
                 Log.w(TAG, "超时暂停在途任务失败", e)
             }
-        DownloadNotifier.cancel(this)
+        // 在 policyLock 内原子置停、取消 flushJob 并撤销通知，防止在途补发把 ongoing 通知重新投递回通知栏。
+        coordinator.stopAndCancel()
         // 前台通知会随退场一起消失：不留一条可见提示，用户只会看到通知无声消失、以为下载完成。
         DownloadNotifier.notifyPaused(this, getString(R.string.notification_download_paused_text))
-        synchronized(policyLock) {
-            policy.onServiceStopped()
-            flushJob?.cancel()
-            flushJob = null
-        }
         stopSelf()
     }
 
@@ -130,15 +131,37 @@ class DownloadService : Service() {
         /** 同一批任务内的拉起重试窗口：策略的退避判定与这里的到点补评估共用同一个值。 */
         private const val START_RETRY_INTERVAL_MS = ForegroundPolicy.DEFAULT_START_RETRY_INTERVAL_MS
 
-        /** 前台策略与 flushJob 共享同一把锁，保证主线程生命周期回调与后台队列协程串行访问。 */
+        /** 前台策略与 flushJob/通知投递共享同一把锁，保证主线程生命周期回调与后台队列协程串行访问。 */
         private val policyLock = Any()
 
         /** 前台服务的全部决策状态：进程内一份，随 Activity 重建而保持。 */
         private val policy = ForegroundPolicy(startRetryIntervalMs = START_RETRY_INTERVAL_MS)
 
-        /** 节流窗口末尾的补发任务：保证进度条最终能停在真实值上。 */
         @Volatile
-        private var flushJob: Job? = null
+        private var appContext: Context? = null
+
+        private val coordinator: ForegroundNotificationCoordinator by lazy {
+            ForegroundNotificationCoordinator(
+                policy = policy,
+                lock = policyLock,
+                scope = Jm3Graph.appScope,
+                latestTasks = ::currentTasks,
+                postNotification = { presentation ->
+                    val app = appContext ?: return@ForegroundNotificationCoordinator
+                    if (!DownloadNotifier.canPostNotifications(app)) return@ForegroundNotificationCoordinator
+                    try {
+                        NotificationManagerCompat.from(app)
+                            .notify(DownloadNotifier.NOTIFICATION_ID, DownloadNotifier.build(app, presentation))
+                    } catch (e: SecurityException) {
+                        // 权限在检查与投递之间被撤销：跳过本次进度刷新，服务继续运行
+                        Log.w(TAG, "进度通知投递被拒", e)
+                    }
+                },
+                cancelNotification = {
+                    appContext?.let(DownloadNotifier::cancel)
+                },
+            )
+        }
 
         /**
          * 注册「活动任务数 → 前台服务生命周期」观察者，进程内调用一次即可
@@ -147,6 +170,7 @@ class DownloadService : Service() {
         fun attach(context: Context) {
             if (!attached.compareAndSet(false, true)) return
             val app = context.applicationContext
+            appContext = app
             // 队列更新只是快照来源：决策与执行都交给 runner，它自己负责拉起被拒后的到点补评估。
             val runner = ForegroundRunner(
                 policy = policy,
@@ -164,6 +188,7 @@ class DownloadService : Service() {
 
         /** 拉起前台服务；被系统拒绝时返回 false，由 [ForegroundRunner] 排一次到点补评估。 */
         fun start(context: Context): Boolean {
+            appContext = context.applicationContext
             val intent = Intent(context, DownloadService::class.java).setAction(ACTION_START)
             // minSdk 31：统一走 startForegroundService，由 onStartCommand 在 5s 内 startForeground。
             return runCatching { context.startForegroundService(intent) }
@@ -179,10 +204,8 @@ class DownloadService : Service() {
         }
 
         fun stop(context: Context) {
-            synchronized(policyLock) {
-                flushJob?.cancel()
-                flushJob = null
-            }
+            appContext = context.applicationContext
+            coordinator.stopAndCancel()
             runCatching { context.stopService(Intent(context, DownloadService::class.java)) }
         }
 
@@ -191,47 +214,76 @@ class DownloadService : Service() {
             Jm3Graph.downloads.manager.queue.updates.value
 
         /** 执行一条动作；返回值只对 [ForegroundAction.Start] 有意义（拉起是否被系统接受）。 */
-        private fun perform(app: Context, action: ForegroundAction): Boolean = when (action) {
-            ForegroundAction.Start -> start(app)
-            ForegroundAction.Stop -> {
-                stop(app)
-                true
-            }
-            is ForegroundAction.Publish -> {
-                publish(app, action.tasks)
-                true
-            }
-            is ForegroundAction.ScheduleFlush -> {
-                scheduleFlush(app, action.delayMs)
-                true
-            }
-        }
-
-        private fun scheduleFlush(app: Context, delayMs: Long) {
-            synchronized(policyLock) {
-                if (flushJob?.isActive == true) return
-                flushJob = Jm3Graph.appScope.launch {
-                    delay(delayMs)
-                    val due = synchronized(policyLock) {
-                        flushJob = null
-                        policy.onFlushDue(currentTasks())
-                    }
-                    if (due is ForegroundAction.Publish) publish(app, due.tasks)
+        private fun perform(app: Context, action: ForegroundAction): Boolean {
+            appContext = app
+            return when (action) {
+                ForegroundAction.Start -> start(app)
+                ForegroundAction.Stop -> {
+                    stop(app)
+                    true
+                }
+                is ForegroundAction.Publish -> {
+                    coordinator.publish(action.tasks)
+                    true
+                }
+                is ForegroundAction.ScheduleFlush -> {
+                    coordinator.scheduleFlush(action.delayMs)
+                    true
                 }
             }
         }
+    }
+}
 
-        private fun publish(app: Context, tasks: Map<String, DownloadTask>) {
-            // 通知被关闭时服务照常运行，只是不再发可见进度。
-            if (!DownloadNotifier.canPostNotifications(app)) return
-            val presentation = present(tasks) ?: return
-            try {
-                NotificationManagerCompat.from(app)
-                    .notify(DownloadNotifier.NOTIFICATION_ID, DownloadNotifier.build(app, presentation))
-            } catch (e: SecurityException) {
-                // 权限在检查与投递之间被撤销：跳过本次进度刷新，服务继续运行
-                Log.w(TAG, "进度通知投递被拒", e)
+/**
+ * 前台通知节流补发与停服撤销协调器：把「检查运行态 + 投递通知 / 停止 + 取消补发 + 撤通知」
+ * 收敛到同一把 [lock] 内，杜绝停服或 6 小时超时后补发协程将 ongoing 通知（ID 1001）重新投递到通知栏。
+ */
+internal class ForegroundNotificationCoordinator(
+    private val policy: ForegroundPolicy,
+    private val lock: Any,
+    private val scope: CoroutineScope,
+    private val latestTasks: () -> Map<String, DownloadTask>,
+    private val postNotification: (DownloadPresentation) -> Unit,
+    private val cancelNotification: () -> Unit,
+) {
+    private var flushJob: Job? = null
+
+    fun scheduleFlush(delayMs: Long) {
+        synchronized(lock) {
+            if (flushJob?.isActive == true) return
+            flushJob = scope.launch {
+                delay(delayMs)
+                synchronized(lock) {
+                    if (!coroutineContext.isActive) return@synchronized
+                    flushJob = null
+                    val due = policy.onFlushDue(latestTasks())
+                    if (due is ForegroundAction.Publish) {
+                        publishLocked(due.tasks)
+                    }
+                }
             }
         }
+    }
+
+    fun publish(tasks: Map<String, DownloadTask>) {
+        synchronized(lock) {
+            publishLocked(tasks)
+        }
+    }
+
+    fun stopAndCancel() {
+        synchronized(lock) {
+            policy.onServiceStopped()
+            flushJob?.cancel()
+            flushJob = null
+            cancelNotification()
+        }
+    }
+
+    private fun publishLocked(tasks: Map<String, DownloadTask>) {
+        if (!policy.isRunning) return
+        val presentation = present(tasks) ?: return
+        postNotification(presentation)
     }
 }

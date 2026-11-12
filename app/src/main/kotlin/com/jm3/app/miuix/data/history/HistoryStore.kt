@@ -9,6 +9,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import androidx.room.Upsert
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -114,6 +115,23 @@ interface DownloadDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIfAbsent(entry: DownloadEntity): Long
 
+    /** 原子进度写：先尝试只更新元数据列（保留 pagesJson），若行尚不存在再补插。 */
+    @Transaction
+    suspend fun upsertProgress(entry: DownloadEntity) {
+        val updated = updateProgress(
+            photoId = entry.photoId,
+            albumId = entry.albumId,
+            title = entry.title,
+            total = entry.total,
+            donePages = entry.donePages,
+            status = entry.status,
+            updatedAt = entry.updatedAt,
+        )
+        if (updated == 0) {
+            insertIfAbsent(entry)
+        }
+    }
+
     @Query("DELETE FROM downloads WHERE photoId = :photoId")
     suspend fun delete(photoId: String)
 }
@@ -145,6 +163,7 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/** 当前未配置 room.schemaLocation，保持 exportSchema = false；改表结构须同步升版本并提供显式 Migration。 */
 @Database(entities = [HistoryEntity::class, DownloadEntity::class], version = 3, exportSchema = false)
 abstract class HistoryDb : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
@@ -194,21 +213,8 @@ class RoomDownloadLedgerStore(
     override suspend fun put(write: DownloadLedgerWrite) {
         val record = write.record
         when (write) {
-            is DownloadLedgerWrite.Progress -> {
-                val updated = dao.updateProgress(
-                    photoId = record.photoId,
-                    albumId = record.albumId,
-                    title = record.title,
-                    total = record.total,
-                    donePages = record.donePages,
-                    status = record.status.name,
-                    updatedAt = record.updatedAt,
-                )
-                // 首见任务还没有行：补插一条无页列表的记录，后续完成写再补上页列表。
-                if (updated == 0) {
-                    dao.insertIfAbsent(record.toEntity(updatedAt = record.updatedAt, pagesJson = null))
-                }
-            }
+            is DownloadLedgerWrite.Progress ->
+                dao.upsertProgress(record.toEntity(updatedAt = record.updatedAt, pagesJson = null))
 
             is DownloadLedgerWrite.Completed ->
                 dao.upsert(record.toEntity(updatedAt = record.updatedAt, pagesJson = write.pagesJson))

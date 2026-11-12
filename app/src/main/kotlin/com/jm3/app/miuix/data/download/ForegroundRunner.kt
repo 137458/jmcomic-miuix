@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
  * - 补评估到点后重读 [latestTasks]，不拿失败那一刻的旧快照做决策。
  *
  * 排期字段由 [lock] 串行化：观察者协程与补评估协程都挂在进程级 IO 作用域上，可能并发进入。
+ * 锁顺序恒为外部 [lock] → [ForegroundPolicy] 内锁，后者不反向回调外部，无死锁环路。
  */
 internal class ForegroundRunner(
     private val policy: ForegroundPolicy,

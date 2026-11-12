@@ -48,6 +48,8 @@ class DownloadDomain(
             fileStore = files,
             ledger = DownloadLedger(store = library.ledgerStore, pagesJsonOf = pageSource::pagesJsonOrNull),
             appScope = appScope,
+            onEvictPages = pageSource::evict,
+            onClearPages = pageSource::clearCache,
         )
     }
 }
