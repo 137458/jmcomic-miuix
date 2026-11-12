@@ -12,10 +12,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,22 +42,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.itos.coui.backdrop.CouiBackdrop
+import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.backdrop.rememberCouiBackdrop
+import com.itos.coui.dialog.CouiDialogDefaults
+import com.itos.coui.effect.CouiContourStyle
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.CouiPageDefaults
 import com.itos.coui.layout.Divider
@@ -77,11 +79,11 @@ import com.itos.coui.topappbar.LargeTopAppBar
 import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.InlineCodeText
 import com.jm3.app.miuix.ui.UpdateAvailableDialog
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCircleActionButton
-import com.jm3.app.miuix.ui.coui.component.CouiCustomStyledText
 import com.jm3.app.miuix.ui.coui.component.CouiHeaderCapsuleAction
 import com.jm3.app.miuix.ui.coui.component.CouiInstallProgressButton
 import com.jm3.app.miuix.ui.coui.component.CouiLibraryNavBarMinSdk
@@ -89,10 +91,12 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiContourSurface
 import com.jm3.app.miuix.ui.coui.component.couiFloatingSurfaceEnabled
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiSwitchRow
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
 import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
@@ -525,27 +529,44 @@ private fun UpdateHeroCard(
         0f
     }
 
-    val borderBrush = Brush.verticalGradient(
-        colors = if (dark) {
-            listOf(Color.White.copy(alpha = 0.24f), Color.White.copy(alpha = 0.06f))
-        } else {
-            listOf(Color.White.copy(alpha = 0.65f), Color.White.copy(alpha = 0.18f))
-        },
-    )
+    val errorColor = CouiDialogDefaults.themeColors(dark).destructive
+    val statusTint = if (hasFailed) errorColor else scheme.accent
+    val heroBackdrop = if (couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, hasBackdrop = true)) {
+        rememberCouiBackdrop(drawSource = {
+            drawRect(scheme.card)
+            drawContent()
+        })
+    } else {
+        null
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = CouiPageDefaults.horizontalMargin)
             .padding(top = CouiPageDefaults.categoryTopSpacing)
-            .clip(CouiPageDefaults.shape)
-            .border(1.dp, borderBrush, CouiPageDefaults.shape),
+            .clip(CouiPageDefaults.shape),
     ) {
         UpdateHeroBackdrop(
+            cardColor = scheme.card,
+            statusTint = statusTint,
             dark = dark,
-            accentTint = if (hasFailed) MiuixTheme.colorScheme.error else scheme.accent,
-            hasFailed = hasFailed,
+            backdrop = heroBackdrop,
             modifier = Modifier.matchParentSize(),
+        )
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .couiContourSurface(
+                    shape = CouiPageDefaults.shape,
+                    surfaceColor = Color.Transparent,
+                    cornerRadius = 24.dp,
+                    cornerWeight = 3f,
+                    style = CouiContourStyle.Dialog,
+                    dark = dark,
+                    emphasized = isAvailable || hasFailed,
+                    fallbackBorderColor = scheme.outlineVariant.copy(alpha = if (dark) 0.36f else 0.22f),
+                ),
         )
         Column(
             modifier = Modifier
@@ -559,8 +580,7 @@ private fun UpdateHeroCard(
                     modifier = Modifier
                         .size(HeroIconContainerSize)
                         .clip(HeroIconContainerShape)
-                        .background(Color.White.copy(alpha = if (dark) 0.14f else 0.22f))
-                        .border(0.5.dp, Color.White.copy(alpha = 0.36f), HeroIconContainerShape),
+                        .background(scheme.onSurface.copy(alpha = if (dark) 0.08f else 0.04f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(
@@ -574,8 +594,7 @@ private fun UpdateHeroCard(
             Row(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
-                    .background(Color.White.copy(alpha = if (dark) 0.14f else 0.20f))
-                    .border(0.5.dp, Color.White.copy(alpha = 0.34f), CouiCapsuleShape)
+                    .background(statusTint.copy(alpha = if (dark) 0.18f else 0.11f))
                     .padding(horizontal = 12.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -586,12 +605,12 @@ private fun UpdateHeroCard(
                     modifier = Modifier
                         .size(15.dp)
                         .graphicsLayer { rotationZ = spinAngle },
-                    tint = Color.White,
+                    tint = statusTint,
                 )
                 Text(
                     text = "$appName Release",
                     kind = CouiTextKind.GroupFooter,
-                    color = Color.White,
+                    color = statusTint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -600,7 +619,7 @@ private fun UpdateHeroCard(
             BasicText(
                 text = headlineText,
                 style = rememberCouiTextStyle(CouiTextKind.HomeTitle).copy(
-                    color = Color.White,
+                    color = scheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                 ),
@@ -611,14 +630,13 @@ private fun UpdateHeroCard(
             Box(
                 modifier = Modifier
                     .clip(CouiCapsuleShape)
-                    .background(Color.White.copy(alpha = if (dark) 0.15f else 0.22f))
-                    .border(0.5.dp, Color.White.copy(alpha = 0.38f), CouiCapsuleShape)
+                    .background(scheme.onSurface.copy(alpha = if (dark) 0.08f else 0.05f))
                     .padding(horizontal = 14.dp, vertical = 5.dp),
             ) {
                 Text(
                     text = versionLine,
                     kind = CouiTextKind.ItemValue,
-                    color = Color.White,
+                    color = scheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -628,7 +646,7 @@ private fun UpdateHeroCard(
                 Text(
                     text = subtitleText,
                     kind = CouiTextKind.ItemSummary,
-                    color = Color.White.copy(alpha = 0.88f),
+                    color = scheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -639,7 +657,7 @@ private fun UpdateHeroCard(
                 Text(
                     text = apkAsset.name,
                     kind = CouiTextKind.GroupFooter,
-                    color = Color.White.copy(alpha = 0.74f),
+                    color = scheme.onSurfaceVariant.copy(alpha = 0.84f),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -650,14 +668,13 @@ private fun UpdateHeroCard(
                 Box(
                     modifier = Modifier
                         .clip(CouiCapsuleShape)
-                        .background(Color.White.copy(alpha = if (dark) 0.14f else 0.20f))
-                        .border(0.5.dp, Color.White.copy(alpha = 0.30f), CouiCapsuleShape)
+                        .background(scheme.accent.copy(alpha = if (dark) 0.16f else 0.10f))
                         .padding(horizontal = 12.dp, vertical = 5.dp),
                 ) {
                     Text(
                         text = updateDialogDownloadDetail(downloadState),
                         kind = CouiTextKind.GroupFooter,
-                        color = Color.White,
+                        color = scheme.accent,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -666,19 +683,25 @@ private fun UpdateHeroCard(
                 Spacer(modifier = Modifier.height(12.dp))
                 CouiBodyText(
                     text = downloadState.message,
-                    color = Color(0xFFFFD8D6),
+                    color = errorColor,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                HeroFrostedLinkButton(
+                CouiHeaderCapsuleAction(
                     text = "用浏览器下载",
+                    trailingIcon = CouiIcons.Forward,
+                    tinted = true,
+                    backdrop = heroBackdrop,
                     onClick = { onOpenRelease(updateBrowserFallbackUrl(state.release)) },
                 )
             } else if (hasFailed) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HeroFrostedLinkButton(
+                CouiHeaderCapsuleAction(
                     text = "在浏览器打开 Releases 页",
+                    trailingIcon = CouiIcons.Forward,
+                    tinted = true,
+                    backdrop = heroBackdrop,
                     onClick = { onOpenRelease(UpdateChecker.RELEASES_PAGE_URL) },
                 )
             }
@@ -686,139 +709,33 @@ private fun UpdateHeroCard(
     }
 }
 
-/** 流体曲线光感玻璃底纹：以代码矢量层模拟 ColorOS / OShin 更新顶图的暖橙向钴蓝折射弧面。 */
+/** COUI 顶部状态卡底纹：基于主题卡片底色叠加柔和的状态色径向微光，并为前景胶囊按钮提供同源采样背景。 */
 @Composable
 private fun UpdateHeroBackdrop(
+    cardColor: Color,
+    statusTint: Color,
     dark: Boolean,
-    accentTint: Color,
-    hasFailed: Boolean,
+    backdrop: CouiBackdrop?,
     modifier: Modifier = Modifier,
 ) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val baseStart = when {
-            hasFailed && dark -> Color(0xFF4A1816)
-            hasFailed -> Color(0xFFB3382C)
-            dark -> Color(0xFF3E1822)
-            else -> Color(0xFFD63B24)
-        }
-        val baseEnd = when {
-            hasFailed && dark -> Color(0xFF1A2236)
-            hasFailed -> Color(0xFF5D2D4E)
-            dark -> Color(0xFF0E295E)
-            else -> Color(0xFF1F6FEB)
-        }
-        drawRect(
-            brush = Brush.linearGradient(
-                colors = listOf(baseStart, baseEnd),
-                start = Offset(0f, 0f),
-                end = Offset(w, h),
-            ),
-        )
-        // 左侧暖橙光晕与右侧冷蓝光晕交叠
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    if (dark) Color(0x99DF5A2B) else Color(0xCCFF7A3D),
-                    Color.Transparent,
-                ),
-                center = Offset(w * 0.14f, h * 0.65f),
-                radius = w * 0.62f,
-            ),
-            radius = w * 0.62f,
-            center = Offset(w * 0.14f, h * 0.65f),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    accentTint.copy(alpha = if (dark) 0.55f else 0.72f),
-                    Color.Transparent,
-                ),
-                center = Offset(w * 0.88f, h * 0.35f),
-                radius = w * 0.65f,
-            ),
-            radius = w * 0.65f,
-            center = Offset(w * 0.88f, h * 0.35f),
-        )
-        // 叠层透镜弧面及高光描边
-        val arc1Center = Offset(w * 0.72f, h * 0.18f)
-        val arc1Radius = maxOf(w, h) * 0.56f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = if (dark) 0.10f else 0.22f),
-                    Color.Transparent,
-                ),
-                center = arc1Center,
-                radius = arc1Radius,
-            ),
-            radius = arc1Radius,
-            center = arc1Center,
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = if (dark) 0.22f else 0.42f),
-            radius = arc1Radius,
-            center = arc1Center,
-            style = Stroke(width = 1.2.dp.toPx()),
-        )
-        val arc2Center = Offset(w * 0.68f, h * 1.05f)
-        val arc2Radius = maxOf(w, h) * 0.52f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = if (dark) 0.08f else 0.18f),
-                    Color.Transparent,
-                ),
-                center = arc2Center,
-                radius = arc2Radius,
-            ),
-            radius = arc2Radius,
-            center = arc2Center,
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = if (dark) 0.16f else 0.32f),
-            radius = arc2Radius,
-            center = arc2Center,
-            style = Stroke(width = 1.dp.toPx()),
-        )
-    }
-}
-
-@Composable
-private fun HeroFrostedLinkButton(
-    text: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .couiPressable(
-                shape = CouiCapsuleShape,
-                backgroundColor = Color.White.copy(alpha = 0.20f),
-                spotlight = SpotlightPreset.ChipTab,
-                scaleOnPress = true,
-                minTouchTarget = CouiMinTouchTarget,
-                onClick = onClick,
-            )
-            .border(0.5.dp, Color.White.copy(alpha = 0.42f), CouiCapsuleShape)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            text = text,
-            kind = CouiTextKind.ItemValue,
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Icon(
-            imageVector = CouiIcons.Forward,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-            tint = Color.White,
-        )
-    }
+    val backdropModifier = if (backdrop != null) Modifier.couiBackdrop(backdrop) else Modifier
+    Box(
+        modifier = modifier
+            .then(backdropModifier)
+            .background(cardColor)
+            .drawBehind {
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            statusTint.copy(alpha = if (dark) 0.15f else 0.08f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(size.width * 0.5f, 0f),
+                        radius = maxOf(size.width, size.height) * 0.85f,
+                    ),
+                )
+            },
+    )
 }
 
 /**
@@ -935,13 +852,18 @@ private fun UpdateNotesGroup(
 ) {
     val scheme = CouiKitTheme.colorScheme
     val blocks = remember(release.notes) { MarkdownBlocks.parse(release.notes) }
-    val collapsible = blocks.size > CHANGELOG_PREVIEW_BLOCK_LIMIT
+    val collapsible = couiChangelogCollapsible(blocks.size)
+    var userToggled by rememberSaveable(release.tagName) { mutableStateOf(false) }
     var expanded by rememberSaveable(release.tagName) {
         mutableStateOf(couiChangelogDefaultExpanded(state, blocks.size))
     }
     LaunchedEffect(state, release.tagName) {
-        expanded = couiChangelogDefaultExpanded(state, blocks.size)
+        if (!userToggled) {
+            expanded = couiChangelogDefaultExpanded(state, blocks.size)
+        }
     }
+    val previewLimit = couiChangelogPreviewLimit(blocks.size, expanded)
+    val hiddenCount = couiChangelogCollapsedHiddenCount(blocks.size)
 
     Group(
         title = title,
@@ -970,10 +892,12 @@ private fun UpdateNotesGroup(
                 text = release.name.ifBlank { "版本特性说明" },
                 kind = CouiTextKind.ItemTitle,
             )
-            UpdateNotes(
-                markdown = release.notes,
-                previewLimit = if (collapsible && !expanded) CHANGELOG_PREVIEW_BLOCK_LIMIT else null,
-            )
+            if (previewLimit != 0) {
+                UpdateNotes(
+                    markdown = release.notes,
+                    previewLimit = previewLimit,
+                )
+            }
         }
         if (collapsible) {
             Divider()
@@ -988,7 +912,11 @@ private fun UpdateNotesGroup(
                 summary = if (!expanded) {
                     {
                         Text(
-                            text = "还有 ${blocks.size - CHANGELOG_PREVIEW_BLOCK_LIMIT} 段内容未展开",
+                            text = if (previewLimit == 0) {
+                                "共 ${blocks.size} 段内容已收起"
+                            } else {
+                                "还有 $hiddenCount 段内容未展开"
+                            },
                             kind = CouiTextKind.GroupFooter,
                             color = scheme.onSurfaceVariant,
                         )
@@ -1004,13 +932,16 @@ private fun UpdateNotesGroup(
                         tint = scheme.accent,
                     )
                 },
-                onClick = { expanded = !expanded },
+                onClick = {
+                    userToggled = true
+                    expanded = !expanded
+                },
             )
         }
     }
 }
 
-/** 更新说明正文：按块与行内 Markdown 解析，超链接可点击打开、代码与粗体保留语义着色。 */
+/** 更新说明正文：按块与行内 Markdown 解析，超链接可点击打开、行内代码以圆角胶囊渲染。 */
 @Composable
 private fun UpdateNotes(
     markdown: String,
@@ -1023,15 +954,15 @@ private fun UpdateNotes(
         return
     }
     val visibleBlocks = if (previewLimit != null) blocks.take(previewLimit) else blocks
+    val bodyStyle = rememberCouiBodyTextStyle()
     visibleBlocks.forEach { block ->
         when (block) {
             is MarkdownBlock.Heading -> {
                 val styled = rememberCouiNotesInline(block.text)
                 val kind = if (block.level <= 2) CouiTextKind.ItemTitle else CouiTextKind.Search
-                CouiCustomStyledText(
+                CouiNotesInlineText(
                     text = styled,
                     style = rememberCouiTextStyle(kind),
-                    textAlign = TextAlign.Start,
                 )
             }
             is MarkdownBlock.Bullet -> NotesLine(prefix = "·", text = block.text)
@@ -1042,23 +973,49 @@ private fun UpdateNotes(
                     .height(CouiPageDefaults.dividerHeight)
                     .background(scheme.outlineVariant),
             )
-            is MarkdownBlock.Paragraph -> CouiBodyText(text = rememberCouiNotesInline(block.text))
+            is MarkdownBlock.Paragraph -> CouiNotesInlineText(
+                text = rememberCouiNotesInline(block.text),
+                style = bodyStyle,
+            )
         }
     }
 }
 
 @Composable
 private fun NotesLine(prefix: String, text: String) {
+    val scheme = CouiKitTheme.colorScheme
     val styled = rememberCouiNotesInline(text)
+    val bodyStyle = rememberCouiBodyTextStyle()
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(modifier = Modifier.width(NotesPrefixMinWidth)) {
-            CouiBodyText(text = prefix)
+            CouiBodyText(text = prefix, color = scheme.onSurfaceVariant)
         }
-        CouiBodyText(
+        CouiNotesInlineText(
             text = styled,
+            style = bodyStyle,
             modifier = Modifier.weight(1f),
         )
     }
+}
+
+@Composable
+private fun CouiNotesInlineText(
+    text: AnnotatedString,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val dark = CouiKitTheme.isDark
+    val scheme = CouiKitTheme.colorScheme
+    InlineCodeText(
+        text = text,
+        style = style,
+        color = scheme.onSurface,
+        codeColor = scheme.onSurface.copy(alpha = 0.90f),
+        pillBackground = scheme.onSurface.copy(alpha = if (dark) 0.14f else 0.065f),
+        pillBorder = scheme.outlineVariant.copy(alpha = if (dark) 0.50f else 0.42f),
+        modifier = modifier,
+        textAlign = TextAlign.Start,
+    )
 }
 
 @Composable
@@ -1319,6 +1276,21 @@ internal fun couiChangelogDefaultExpanded(
     is UpdateOutcome.UpToDate -> blockCount <= CHANGELOG_PREVIEW_BLOCK_LIMIT
     else -> false
 }
+
+internal fun couiChangelogCollapsible(blockCount: Int): Boolean =
+    blockCount > 0
+
+internal fun couiChangelogPreviewLimit(
+    blockCount: Int,
+    expanded: Boolean,
+): Int? = when {
+    expanded -> null
+    blockCount > CHANGELOG_PREVIEW_BLOCK_LIMIT -> 2
+    else -> 0
+}
+
+internal fun couiChangelogCollapsedHiddenCount(blockCount: Int): Int =
+    (blockCount - (couiChangelogPreviewLimit(blockCount, expanded = false) ?: blockCount)).coerceAtLeast(0)
 
 internal fun couiUpdateButtonLabel(
     state: UpdateOutcome?,

@@ -79,6 +79,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.takeOrElse
@@ -119,6 +120,8 @@ import com.itos.coui.backdrop.couiBackdrop
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
+import com.itos.coui.effect.CouiContour
+import com.itos.coui.effect.CouiContourStyle
 import com.itos.coui.effect.CouiFloatingMaterial
 import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.effect.CouiFloatingShadow
@@ -642,6 +645,7 @@ fun CouiHeaderCapsuleAction(
     modifier: Modifier = Modifier,
     trailingIcon: ImageVector? = null,
     tinted: Boolean = true,
+    backdrop: CouiBackdrop? = null,
 ) {
     val dark = CouiTheme.isDark
     val colors = CouiTheme.colorSchemeFor(dark)
@@ -656,36 +660,125 @@ fun CouiHeaderCapsuleAction(
         else -> colors.onSurface.copy(alpha = 0.08f)
     }
     val fgColor = if (tinted) colors.accent else colors.onSurfaceVariant
+
+    val renderer = remember(backdrop != null) {
+        if (couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null)) {
+            runCatching { CouiFloatingRenderer.standalone() }.getOrNull()
+        } else {
+            null
+        }
+    }
+    if (couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null) && backdrop != null && renderer != null) {
+        if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
+            val density = LocalDensity.current
+            val contourGlow = LocalCouiContourGlowEnabled.current
+            val extensionPx = with(density) { 4.dp.roundToPx() }
+            val material = remember(dark, extensionPx) {
+                CouiTopAppBarButtonDefaults.systemMaterial(dark = dark, capsule = true).copy(
+                    blurRadius = 25f,
+                    extension = extensionPx,
+                )
+            }
+            val shadow = remember(dark, density.density, contourGlow) {
+                CouiTopAppBarButtonDefaults.shadow(
+                    dark = dark,
+                    capsule = true,
+                    density = density.density,
+                    contour = contourGlow,
+                )
+            }
+            CouiFloatingInteractiveBox(
+                backdrop = backdrop,
+                renderer = renderer,
+                material = material,
+                shadow = shadow,
+                shape = CouiCapsuleShape,
+                cornerWeight = 2f,
+                spotlightPreset = SpotlightPreset.ChipTab,
+                interactive = true,
+                onClick = onClick,
+                modifier = modifier.heightIn(min = 28.dp),
+                matchParentSizeContent = false,
+            ) {
+                CouiHeaderCapsuleActionContent(
+                    text = text,
+                    trailingIcon = trailingIcon,
+                    fgColor = fgColor,
+                )
+            }
+            return
+        }
+    }
+
     Row(
         modifier = modifier
             .heightIn(min = 28.dp)
             .couiPressable(
                 shape = CouiCapsuleShape,
-                backgroundColor = bgColor,
                 spotlight = SpotlightPreset.ChipTab,
                 scaleOnPress = true,
                 onClick = onClick,
             )
-            .border(0.5.dp, borderColor, CouiCapsuleShape)
+            .couiContourSurface(
+                shape = CouiCapsuleShape,
+                surfaceColor = bgColor,
+                cornerRadius = 999.dp,
+                cornerWeight = 2f,
+                dark = dark,
+                emphasized = tinted,
+                fallbackBorderColor = borderColor,
+            )
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(
+        CouiHeaderCapsuleActionLabel(
             text = text,
-            kind = CouiTextKind.GroupFooter,
-            color = fgColor,
-            maxLines = 1,
-            textAlign = TextAlign.Center,
+            trailingIcon = trailingIcon,
+            fgColor = fgColor,
         )
-        if (trailingIcon != null) {
-            Icon(
-                imageVector = trailingIcon,
-                contentDescription = null,
-                modifier = Modifier.size(13.dp),
-                tint = fgColor,
-            )
-        }
+    }
+}
+
+@Composable
+private fun CouiHeaderCapsuleActionContent(
+    text: String,
+    trailingIcon: ImageVector?,
+    fgColor: Color,
+) {
+    Row(
+        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        CouiHeaderCapsuleActionLabel(
+            text = text,
+            trailingIcon = trailingIcon,
+            fgColor = fgColor,
+        )
+    }
+}
+
+@Composable
+private fun CouiHeaderCapsuleActionLabel(
+    text: String,
+    trailingIcon: ImageVector?,
+    fgColor: Color,
+) {
+    Text(
+        text = text,
+        kind = CouiTextKind.GroupFooter,
+        color = fgColor,
+        maxLines = 1,
+        textAlign = TextAlign.Center,
+    )
+    if (trailingIcon != null) {
+        Icon(
+            imageVector = trailingIcon,
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+            tint = fgColor,
+        )
     }
 }
 
@@ -1895,6 +1988,139 @@ private const val CouiIndeterminateAnimMs = 1200
 internal fun couiFloatingSurfaceEnabled(sdkInt: Int, hasBackdrop: Boolean): Boolean =
     sdkInt >= CouiLibraryNavBarMinSdk && hasBackdrop
 
+internal fun couiContourSurfaceEnabled(sdkInt: Int): Boolean =
+    sdkInt >= Build.VERSION_CODES.TIRAMISU
+
+/**
+ * COUI 原厂凝光轮廓材质修饰符：
+ * - API 33+ 通过 [CouiContour] 运行时着色器在底色上叠加柔光边缘与内高光（同 `DialogButton`）；
+ * - API 31–32 退化为纯底色（按需叠加极细描边）。
+ */
+@Composable
+internal fun Modifier.couiContourSurface(
+    shape: Shape,
+    surfaceColor: Color,
+    cornerRadius: Dp,
+    cornerWeight: Float = 2f,
+    style: CouiContourStyle = CouiContourStyle.Button,
+    dark: Boolean = CouiTheme.isDark,
+    emphasized: Boolean = false,
+    edgeAlpha: Float = when {
+        emphasized -> if (dark) 0.24f else 0.16f
+        dark -> 0.14f
+        else -> 0.05f
+    },
+    innerGlowAlpha: Float = when {
+        emphasized -> if (dark) 0.10f else 0.06f
+        dark -> 0.04f
+        else -> 0.02f
+    },
+    edgeWidthDp: Float = if (emphasized) 2.5f else 2.2f,
+    fallbackBorderColor: Color = Color.Transparent,
+): Modifier {
+    if (!couiContourSurfaceEnabled(Build.VERSION.SDK_INT)) {
+        return this
+            .clip(shape)
+            .background(surfaceColor)
+            .then(
+                if (fallbackBorderColor.alpha > 0f) {
+                    Modifier.border(0.5.dp, fallbackBorderColor, shape)
+                } else {
+                    Modifier
+                },
+            )
+    }
+
+    val contourGlow = LocalCouiContourGlowEnabled.current
+    val contour = remember(contourGlow, style) {
+        if (contourGlow) CouiContour(floating = false, style = style) else null
+    }
+    val shaderPaint = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
+    val density = LocalDensity.current.density
+    val cornerRadiusPx = with(LocalDensity.current) { cornerRadius.toPx() }
+
+    return this
+        .clip(shape)
+        .drawWithContent {
+            drawRect(surfaceColor)
+            if (contour != null && size.width > 0f && size.height > 0f) {
+                val resolvedRadius = minOf(cornerRadiusPx, size.minDimension / 2f)
+                val resolvedWeight = if (style == CouiContourStyle.Button && size.width == size.height) {
+                    2f
+                } else {
+                    cornerWeight
+                }
+                shaderPaint.shader = contour.shader(
+                    size = size,
+                    density = density,
+                    radiusPx = resolvedRadius,
+                    cornerWeight = resolvedWeight,
+                    surfaceColor = Color.Transparent,
+                    innerGlowAlpha = innerGlowAlpha,
+                    lineAlpha = edgeAlpha,
+                    effectAlpha = 1f,
+                    lineWidthPx = edgeWidthDp * density,
+                )
+                drawContext.canvas.nativeCanvas.drawRect(0f, 0f, size.width, size.height, shaderPaint)
+            }
+            drawContent()
+        }
+}
+
+/**
+ * 与 COUI 原生 `DialogButton(Secondary)` 等价的弹窗辅助按钮：
+ * 沿用 COUI 次级按键表面色、胶囊圆角、`CouiDialogDefaults.buttonHeight` 与 [CouiContour] 凝光轮廓材质。
+ */
+@Composable
+internal fun CouiDialogSecondaryButton(
+    text: String,
+    contentColor: Color,
+    hasMaterial: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val dark = CouiTheme.isDark
+    val colors = CouiTheme.colorSchemeFor(dark)
+    val surfaceColor = when {
+        hasMaterial && dark -> Color(0x33FFFFFF)
+        hasMaterial -> Color(0xA6FFFFFF)
+        dark -> Color(0xFF353535)
+        else -> Color(0xFFEDEDEB)
+    }
+    Box(
+        modifier = modifier
+            .heightIn(min = CouiDialogDefaults.buttonHeight)
+            .couiPressable(
+                shape = CouiCapsuleShape,
+                spotlight = SpotlightPreset.ChipTab,
+                scaleOnPress = true,
+                minTouchTarget = CouiMinTouchTarget,
+                onClick = onClick,
+            )
+            .couiContourSurface(
+                shape = CouiCapsuleShape,
+                surfaceColor = surfaceColor,
+                cornerRadius = 999.dp,
+                cornerWeight = 2f,
+                style = CouiContourStyle.Button,
+                dark = dark,
+                emphasized = false,
+                innerGlowAlpha = if (dark) 0.01f else 0.05f,
+                fallbackBorderColor = colors.onSurface.copy(alpha = if (dark) 0.14f else 0.08f),
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            kind = CouiTextKind.ItemValue,
+            color = contentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 /**
  * COUI 胶囊水平进度条：确定进度平滑补间填充，[progress] 为 null 时显示连续滑移的不定态光带。
  */
@@ -1964,7 +2190,7 @@ internal fun CouiLinearProgressBar(
  */
 @RequiresApi(CouiLibraryNavBarMinSdk)
 @Composable
-private fun CouiFloatingInteractiveBox(
+internal fun CouiFloatingInteractiveBox(
     backdrop: CouiBackdrop,
     renderer: CouiFloatingRenderer,
     material: CouiFloatingMaterial,
@@ -1975,6 +2201,7 @@ private fun CouiFloatingInteractiveBox(
     interactive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    matchParentSizeContent: Boolean = true,
     content: @Composable BoxScope.(dark: Boolean) -> Unit,
 ) {
     val dark = CouiTheme.isDark
@@ -2047,7 +2274,7 @@ private fun CouiFloatingInteractiveBox(
     ) {
         Box(
             modifier = Modifier
-                .matchParentSize()
+                .then(if (matchParentSizeContent) Modifier.matchParentSize() else Modifier)
                 .graphicsLayer {
                     translationX = motion.translationX.value
                     translationY = motion.translationY.value
@@ -2063,21 +2290,6 @@ private fun CouiFloatingInteractiveBox(
         }
     }
 }
-
-/** COUI 中性悬浮毛玻璃胶囊材质（与底栏/顶栏胶囊同族，按 [extensionPx] 外扩折射采样）。 */
-private fun couiNeutralCapsuleGlassMaterial(dark: Boolean, extensionPx: Int): CouiFloatingMaterial = CouiFloatingMaterial(
-    firstColor = Color(if (dark) 0x80666666 else 0xA3666666),
-    firstBlendMode = if (dark) BlendMode.OVERLAY else BlendMode.COLOR_DODGE,
-    secondColor = Color(if (dark) 0xB3262626 else 0x88F0F0F0),
-    secondBlendMode = BlendMode.LUMINOSITY,
-    blurRadius = 25f,
-    strokeType = 1,
-    extension = extensionPx,
-    edgeAlpha = if (dark) 0.8f else 0.35f,
-    edgeWidthDp = 2.2f,
-    innerGlowAlpha = if (dark) 0.04f else 0.14f,
-    lightColor = Color.White,
-)
 
 /**
  * 进度按钮共享前景内容：下载中绘制确定态双遍裁剪反白或不定态流光，常规态居中展示标签。
@@ -2249,21 +2461,18 @@ internal fun CouiInstallProgressButton(
             val extensionPx = with(density) { 4.dp.roundToPx() }
             val material = remember(isProgressActive, enabled, dark, scheme.accent, extensionPx) {
                 if (interactive) {
-                    CouiFloatingMaterial(
-                        firstColor = scheme.accent.copy(alpha = if (dark) 0.80f else 0.84f),
-                        firstBlendMode = BlendMode.SRC_OVER,
-                        secondColor = Color(if (dark) 0x26FFFFFF else 0x2EFFFFFF),
-                        secondBlendMode = BlendMode.OVERLAY,
-                        blurRadius = 25f,
-                        strokeType = 1,
-                        extension = extensionPx,
-                        edgeAlpha = if (dark) 0.72f else 0.45f,
-                        edgeWidthDp = 2.4f,
-                        innerGlowAlpha = if (dark) 0.14f else 0.28f,
-                        lightColor = Color.White,
-                    )
+                    CouiFabDefaults.material(color = scheme.accent, dark = dark).let { base ->
+                        base.copy(
+                            firstColor = base.firstColor.copy(alpha = if (dark) 0.84f else 0.88f),
+                            blurRadius = 20f,
+                            extension = extensionPx,
+                        )
+                    }
                 } else {
-                    couiNeutralCapsuleGlassMaterial(dark = dark, extensionPx = extensionPx)
+                    CouiTopAppBarButtonDefaults.systemMaterial(dark = dark, capsule = true).copy(
+                        blurRadius = 25f,
+                        extension = extensionPx,
+                    )
                 }
             }
             val shadow = remember(interactive, dark, scheme.accent, density.density, contourGlow) {
@@ -2314,7 +2523,6 @@ internal fun CouiInstallProgressButton(
                 if (interactive) {
                     Modifier.couiPressable(
                         shape = CouiCapsuleShape,
-                        backgroundColor = trackBg,
                         spotlight = SpotlightPreset.OpaqueMedium1,
                         enabled = true,
                         scaleOnPress = true,
@@ -2323,9 +2531,15 @@ internal fun CouiInstallProgressButton(
                     )
                 } else {
                     Modifier
-                        .clip(CouiCapsuleShape)
-                        .background(trackBg)
                 },
+            )
+            .couiContourSurface(
+                shape = CouiCapsuleShape,
+                surfaceColor = trackBg,
+                cornerRadius = 999.dp,
+                cornerWeight = 2f,
+                dark = dark,
+                emphasized = interactive,
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -2412,14 +2626,21 @@ internal fun CouiCircleActionButton(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
-                backgroundColor = scheme.container,
                 spotlight = SpotlightPreset.OpaqueSmall2,
                 scaleOnPress = true,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
             .size(48.dp)
-            .border(0.5.dp, borderColor, CircleShape),
+            .couiContourSurface(
+                shape = CircleShape,
+                surfaceColor = scheme.container,
+                cornerRadius = 999.dp,
+                cornerWeight = 2f,
+                dark = dark,
+                emphasized = false,
+                fallbackBorderColor = borderColor,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

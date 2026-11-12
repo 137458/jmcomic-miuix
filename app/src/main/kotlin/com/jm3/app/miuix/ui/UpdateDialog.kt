@@ -1,7 +1,6 @@
 package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,10 +27,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,16 +44,19 @@ import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
 import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.Dialog as CouiDialog
+import com.itos.coui.effect.CouiContourStyle
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text as CouiText
+import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.jm3.app.miuix.ui.coui.component.CouiDialogSecondaryButton
 import com.jm3.app.miuix.ui.coui.component.CouiLinearProgressBar
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.couiContourSurface
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
-import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
 import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
@@ -106,29 +110,102 @@ private val DialogCardPadding = PaddingValues(horizontal = 16.dp, vertical = 8.d
  *
  * @param markdown Release 说明原文，空串表示该版本没写说明
  */
+internal data class MarkdownNotesStyle(
+    val textColor: Color,
+    val secondaryColor: Color,
+    val codeColor: Color,
+    val linkColor: Color,
+    val pillBackground: Color,
+    val pillBorder: Color,
+    val dividerColor: Color,
+    val heading1Style: TextStyle,
+    val heading2Style: TextStyle,
+    val heading3Style: TextStyle,
+    val bodyStyle: TextStyle,
+    val emptyStyle: TextStyle,
+)
+
 @Composable
-internal fun MarkdownNotes(markdown: String, modifier: Modifier = Modifier) {
+internal fun rememberMiuixMarkdownNotesStyle(): MarkdownNotesStyle {
+    val colors = MiuixTheme.colorScheme
+    val styles = MiuixTheme.textStyles
+    val dark = colors.surface.luminance() < 0.5f
+    return MarkdownNotesStyle(
+        textColor = colors.onSurface,
+        secondaryColor = colors.onSurfaceVariantSummary,
+        codeColor = colors.onSurface.copy(alpha = 0.90f),
+        linkColor = colors.primary,
+        pillBackground = colors.onSurface.copy(alpha = if (dark) 0.14f else 0.065f),
+        pillBorder = colors.outline.copy(alpha = if (dark) 0.45f else 0.35f),
+        dividerColor = colors.outline.copy(alpha = 0.4f),
+        heading1Style = styles.title4.copy(fontWeight = FontWeight.Bold),
+        heading2Style = styles.body1.copy(fontWeight = FontWeight.Bold),
+        heading3Style = styles.body2.copy(fontWeight = FontWeight.Bold),
+        bodyStyle = styles.body2,
+        emptyStyle = styles.footnote2,
+    )
+}
+
+@Composable
+private fun rememberCouiMarkdownNotesStyle(): MarkdownNotesStyle {
+    val dark = CouiKitTheme.isDark
+    val colors = CouiKitTheme.colorScheme
+    val itemTitle = rememberCouiTextStyle(CouiTextKind.ItemTitle)
+    val searchBody = rememberCouiTextStyle(CouiTextKind.Search)
+    val summary = rememberCouiTextStyle(CouiTextKind.ItemSummary)
+    val footer = rememberCouiTextStyle(CouiTextKind.GroupFooter)
+    return MarkdownNotesStyle(
+        textColor = colors.onSurface,
+        secondaryColor = colors.onSurfaceVariant,
+        codeColor = colors.onSurface.copy(alpha = 0.90f),
+        linkColor = colors.accent,
+        pillBackground = colors.onSurface.copy(alpha = if (dark) 0.14f else 0.065f),
+        pillBorder = colors.outlineVariant.copy(alpha = if (dark) 0.50f else 0.42f),
+        dividerColor = colors.outlineVariant.copy(alpha = 0.65f),
+        heading1Style = itemTitle.copy(fontWeight = FontWeight.Bold),
+        heading2Style = searchBody.copy(fontWeight = FontWeight.Bold),
+        heading3Style = summary.copy(fontWeight = FontWeight.Bold),
+        bodyStyle = summary,
+        emptyStyle = footer,
+    )
+}
+
+@Composable
+internal fun MarkdownNotes(
+    markdown: String,
+    modifier: Modifier = Modifier,
+    notesStyle: MarkdownNotesStyle = rememberMiuixMarkdownNotesStyle(),
+) {
     // 解析结果按原文缓存：进度刷新、滚动都会触发重组，没必要每次都重新切块
     val blocks = remember(markdown) { MarkdownBlocks.parse(markdown) }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(NotesBlockSpacing)) {
         if (blocks.isEmpty()) {
             Text(
                 text = "该版本未提供更新说明。",
-                style = MiuixTheme.textStyles.footnote2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                style = notesStyle.emptyStyle,
+                color = notesStyle.secondaryColor,
             )
             return@Column
         }
         blocks.forEach { block ->
             when (block) {
-                is MarkdownBlock.Heading -> NotesHeading(heading = block)
-                is MarkdownBlock.Bullet -> NotesListItem(prefix = "·", text = block.text)
-                is MarkdownBlock.Ordered -> NotesListItem(prefix = "${block.number}.", text = block.text)
-                MarkdownBlock.Divider -> HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                is MarkdownBlock.Paragraph -> Text(
-                    text = rememberNotesInline(text = block.text),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurface,
+                is MarkdownBlock.Heading -> NotesHeading(heading = block, notesStyle = notesStyle)
+                is MarkdownBlock.Bullet -> NotesListItem(prefix = "·", text = block.text, notesStyle = notesStyle)
+                is MarkdownBlock.Ordered -> NotesListItem(prefix = "${block.number}.", text = block.text, notesStyle = notesStyle)
+                MarkdownBlock.Divider -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .height(0.5.dp)
+                        .background(notesStyle.dividerColor),
+                )
+                is MarkdownBlock.Paragraph -> InlineCodeText(
+                    text = rememberNotesInline(text = block.text, notesStyle = notesStyle),
+                    style = notesStyle.bodyStyle,
+                    color = notesStyle.textColor,
+                    codeColor = notesStyle.codeColor,
+                    pillBackground = notesStyle.pillBackground,
+                    pillBorder = notesStyle.pillBorder,
                 )
             }
         }
@@ -137,46 +214,51 @@ internal fun MarkdownNotes(markdown: String, modifier: Modifier = Modifier) {
 
 /**
  * 标题按层级映射字号。
- *
- * 取舍：Miuix 0.9.4 的 textStyles 只到 title4，没有 title5，三级标题若继续沿用标题档位就要
- * 手写字号；这里 1 级用 title4、2 级用 body1 加粗、3 级及更深用 body2 加粗，靠字重与字号
- * 两档区分层级，既不再造一套字号，也不会出现"三级标题和正文同字号且分不出层级"。
  */
 @Composable
-private fun NotesHeading(heading: MarkdownBlock.Heading) {
+private fun NotesHeading(
+    heading: MarkdownBlock.Heading,
+    notesStyle: MarkdownNotesStyle,
+) {
     val style = when {
-        heading.level <= 1 -> MiuixTheme.textStyles.title4
-        heading.level == 2 -> MiuixTheme.textStyles.body1
-        else -> MiuixTheme.textStyles.body2
+        heading.level <= 1 -> notesStyle.heading1Style
+        heading.level == 2 -> notesStyle.heading2Style
+        else -> notesStyle.heading3Style
     }
-    Text(
-        text = rememberNotesInline(text = heading.text),
+    InlineCodeText(
+        text = rememberNotesInline(text = heading.text, notesStyle = notesStyle),
         style = style,
-        fontWeight = FontWeight.Bold,
-        color = MiuixTheme.colorScheme.onSurface,
+        color = notesStyle.textColor,
+        codeColor = notesStyle.codeColor,
+        pillBackground = notesStyle.pillBackground,
+        pillBorder = notesStyle.pillBorder,
         modifier = Modifier.padding(top = NotesHeadingTopSpacing),
     )
 }
 
 /**
  * 列表项：符号列定宽 + 正文自适应。
- *
- * 符号列定宽而不是把 "·" 拼进正文，是为了让多行文本的换行位置对齐到同一列；
- * 否则长条目换行后会顶到符号下方，列表的层级感就没了。
  */
 @Composable
-private fun NotesListItem(prefix: String, text: String) {
+private fun NotesListItem(
+    prefix: String,
+    text: String,
+    notesStyle: MarkdownNotesStyle,
+) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(NotesPrefixGap)) {
         Text(
             text = prefix,
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            style = notesStyle.bodyStyle,
+            color = notesStyle.secondaryColor,
             modifier = Modifier.widthIn(min = NotesPrefixMinWidth),
         )
-        Text(
-            text = rememberNotesInline(text = text),
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurface,
+        InlineCodeText(
+            text = rememberNotesInline(text = text, notesStyle = notesStyle),
+            style = notesStyle.bodyStyle,
+            color = notesStyle.textColor,
+            codeColor = notesStyle.codeColor,
+            pillBackground = notesStyle.pillBackground,
+            pillBorder = notesStyle.pillBorder,
             modifier = Modifier.weight(1f),
         )
     }
@@ -184,18 +266,16 @@ private fun NotesListItem(prefix: String, text: String) {
 
 /** 行内标记解析结果的缓存；配色参与 key，主题切换后重新扫描。 */
 @Composable
-private fun rememberNotesInline(text: String): AnnotatedString {
-    val codeColor = MiuixTheme.colorScheme.primary
-    val linkColor = MiuixTheme.colorScheme.primary
-    val codeBackground = MiuixTheme.colorScheme.surfaceContainerHigh
-    return remember(text, codeColor, linkColor, codeBackground) {
-        parseInlineNotes(
-            text = text,
-            codeColor = codeColor,
-            linkColor = linkColor,
-            codeBackground = codeBackground,
-        )
-    }
+private fun rememberNotesInline(
+    text: String,
+    notesStyle: MarkdownNotesStyle,
+): AnnotatedString = remember(text, notesStyle.codeColor, notesStyle.linkColor, notesStyle.pillBackground) {
+    parseInlineNotes(
+        text = text,
+        codeColor = notesStyle.codeColor,
+        linkColor = notesStyle.linkColor,
+        codeBackground = notesStyle.pillBackground,
+    )
 }
 
 /**
@@ -273,6 +353,8 @@ internal fun parseInlineNotes(
         if (text[index] == CodeMark) {
             val closing = text.indexOf(CodeMark, index + 1)
             if (closing > index + 1) {
+                val codeText = text.substring(index + 1, closing)
+                val codeStart = builder.length
                 builder.pushStyle(
                     SpanStyle(
                         fontFamily = FontFamily.Monospace,
@@ -280,8 +362,14 @@ internal fun parseInlineNotes(
                         background = codeBackground,
                     ),
                 )
-                builder.append(text.substring(index + 1, closing))
+                builder.append(codeText)
                 builder.pop()
+                builder.addStringAnnotation(
+                    tag = INLINE_CODE_TAG,
+                    annotation = codeText,
+                    start = codeStart,
+                    end = builder.length,
+                )
                 index = closing + 1
             } else {
                 builder.append(CodeMark)
@@ -446,21 +534,23 @@ private fun CouiUpdateAvailableDialog(
     }
     var notesExpanded by remember(show, release.tagName) { mutableStateOf(false) }
     val notesState = remember(release.notes, notesExpanded) {
-        updateDialogNotesState(release.notes, notesExpanded, UPDATE_NOTES_PREVIEW_LINES)
+        updateDialogNotesState(release.notes, notesExpanded, COUI_UPDATE_NOTES_PREVIEW_LINES)
     }
     val downloading = downloadState is UpdateDownloadState.Downloading
-    val scrollState = rememberScrollState()
-    val hasContentAbove by remember { derivedStateOf { scrollState.value > 0 } }
-    val hasContentBelow by remember { derivedStateOf { scrollState.maxValue > scrollState.value } }
-    val skin = LocalSkin.current
-    val notesCardShape = remember(skin.shapes.cardCorner) { CouiShape(skin.shapes.cardCorner, 3f) }
+    val dark = CouiKitTheme.isDark
     val colors = CouiKitTheme.colorScheme
+    val dialogMaterial = couiDialogMaterial()
+    val hasMaterial = dialogMaterial != null
+    val horizontalPadding = CouiDialogDefaults.contentPadding
+    val notesCardShape = remember { CouiShape(18.dp, 3f) }
+    val couiNotesStyle = rememberCouiMarkdownNotesStyle()
 
     CouiDialog(
         visible = show,
         title = "发现新版本",
-        dark = CouiKitTheme.isDark,
-        material = couiDialogMaterial(),
+        message = plan.summary.takeIf { it.isNotBlank() },
+        dark = dark,
+        material = dialogMaterial,
         onDismissRequest = onDismiss,
         confirmAction = CouiDialogAction(
             text = plan.primaryText,
@@ -485,31 +575,18 @@ private fun CouiUpdateAvailableDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = DialogBodyMaxHeight)
-                .verticalEdgeFade(
-                    top = hasContentAbove,
-                    bottom = hasContentBelow,
-                    fade = DialogBodyFade,
-                )
-                .couiVerticalScroll(scrollState),
+                .padding(horizontal = horizontalPadding),
         ) {
-            if (plan.summary.isNotBlank()) {
-                CouiText(
-                    text = plan.summary,
-                    kind = CouiTextKind.ItemSummary,
-                    color = colors.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
             if (plan.showProgress) {
                 CouiText(
                     text = plan.progressDetail.orEmpty(),
                     kind = CouiTextKind.ItemSummary,
                     color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 CouiLinearProgressBar(progress = plan.progressFraction)
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
             if (plan.hasNotes) {
                 CouiText(
@@ -517,39 +594,61 @@ private fun CouiUpdateAvailableDialog(
                     kind = CouiTextKind.GroupTitle,
                     color = colors.onSurfaceVariant,
                     textAlign = TextAlign.Start,
-                    modifier = Modifier.padding(vertical = 6.dp),
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
+                val notesScrollState = rememberScrollState()
+                val hasNotesAbove by remember { derivedStateOf { notesScrollState.value > 0 } }
+                val hasNotesBelow by remember { derivedStateOf { notesScrollState.maxValue > notesScrollState.value } }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(notesCardShape)
-                        .background(couiDialogSurfaceColor())
-                        .border(couiDialogSurfaceBorder(), notesCardShape),
+                        .couiContourSurface(
+                            shape = notesCardShape,
+                            surfaceColor = couiDialogSurfaceColor(),
+                            cornerRadius = 18.dp,
+                            cornerWeight = 3f,
+                            style = CouiContourStyle.Dialog,
+                            dark = dark,
+                            emphasized = false,
+                            fallbackBorderColor = colors.onSurface.copy(alpha = if (dark) 0.14f else 0.08f),
+                        ),
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        MarkdownNotes(
-                            markdown = notesState.visibleMarkdown,
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(DialogCardPadding),
-                        )
+                                .then(if (notesExpanded) Modifier.heightIn(max = 220.dp) else Modifier)
+                                .verticalEdgeFade(
+                                    top = hasNotesAbove,
+                                    bottom = hasNotesBelow,
+                                    fade = DialogBodyFade,
+                                )
+                                .couiVerticalScroll(notesScrollState),
+                        ) {
+                            MarkdownNotes(
+                                markdown = notesState.visibleMarkdown,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                notesStyle = couiNotesStyle,
+                            )
+                        }
                         if (notesExpanded || notesState.hiddenLineCount > 0) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(0.5.dp)
-                                    .background(colors.outlineVariant.copy(alpha = 0.65f)),
+                                    .background(colors.outlineVariant.copy(alpha = 0.55f)),
                             )
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .heightIn(min = 44.dp)
                                     .couiPressable(
                                         spotlight = SpotlightPreset.ChipTab,
-                                        minTouchTarget = CouiMinTouchTarget,
-                                    ) {
-                                        notesExpanded = !notesExpanded
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        onClick = { notesExpanded = !notesExpanded },
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
@@ -574,30 +673,17 @@ private fun CouiUpdateAvailableDialog(
                 }
             }
             if (plan.showIgnore) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .couiPressable(
-                            shape = notesCardShape,
-                            backgroundColor = couiDialogSurfaceColor(),
-                            spotlight = SpotlightPreset.ChipTab,
-                            scaleOnPress = true,
-                            minTouchTarget = CouiMinTouchTarget,
-                        ) {
-                            onIgnore?.invoke(release.version)
-                        }
-                        .border(couiDialogSurfaceBorder(), notesCardShape)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    CouiText(
-                        text = "忽略此版本",
-                        kind = CouiTextKind.ItemValue,
-                        color = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive,
-                    )
-                }
+                Spacer(modifier = Modifier.height(12.dp))
+                CouiDialogSecondaryButton(
+                    text = "忽略此版本",
+                    contentColor = CouiDialogDefaults.themeColors(dark).destructive,
+                    hasMaterial = hasMaterial,
+                    onClick = { onIgnore?.invoke(release.version) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (plan.showProgress || plan.hasNotes || plan.showIgnore) {
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }

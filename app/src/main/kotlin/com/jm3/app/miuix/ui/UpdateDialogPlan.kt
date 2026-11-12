@@ -7,6 +7,7 @@ import com.jm3.core.update.UpdateProgress
 
 /** 折叠态只展示前几行，展开后整段说明放进弹窗自己的滚动区。 */
 internal const val UPDATE_NOTES_PREVIEW_LINES = 12
+internal const val COUI_UPDATE_NOTES_PREVIEW_LINES = 2
 
 /**
  * 弹窗的一次快照：Miuix 组件只按这份数据铺像素，不自己判断版本或下载态。
