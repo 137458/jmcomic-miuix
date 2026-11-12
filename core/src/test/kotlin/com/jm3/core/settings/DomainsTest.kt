@@ -36,6 +36,14 @@ class DomainsTest {
 
     @Test
     fun 全部非法输入返回空表() {
-        assertEquals(emptyList(), Domains.normalize(listOf("  ", "https://", "")))
+        assertEquals(emptyList(), Domains.normalize(listOf("  ", "https://", "", "...")))
+    }
+
+    @Test
+    fun 去除大小写协议头和端口与前导点() {
+        assertEquals(
+            listOf("a.example", "b.example"),
+            Domains.normalize(listOf("HTTPS://a.example:443/api", ".b.example/")),
+        )
     }
 }

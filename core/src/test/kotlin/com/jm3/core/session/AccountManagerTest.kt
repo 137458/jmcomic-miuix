@@ -7,13 +7,16 @@ import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.Jm3User
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -751,7 +754,7 @@ class AccountManagerTest {
         }
 
         // 恢复还没开始时等待者必须挂着：放行太早，冷启动第一波鉴权请求会带着空 Cookie 出去
-        delay(50)
+        yield()
         assertFalse(released, "恢复尚未开始，闸门就已经放行")
 
         account.restore()
@@ -773,5 +776,152 @@ class AccountManagerTest {
         // 没有保存凭据 → 静默重登不可能成功 → 会话必须被清掉，界面才不会继续按已登录渲染
         assertNull(account.user.value)
         assertEquals(1, store.clearCount)
+    }
+
+    @Test
+    fun `logout 与 persistSession 并发时不会把旧会话写回存储`() = runBlocking {
+        val session = Jm3Session(
+            user = testUser(),
+            cookies = listOf(CookieSnapshot("AVS", "old", "18comic.vip", "/")),
+        )
+        val freshCookies = listOf(CookieSnapshot("AVS", "new", "18comic.vip", "/"))
+        val cookiesReadStarted = CompletableDeferred<Unit>()
+        val releaseCookiesRead = CountDownLatch(1)
+        val store = FakeSessionStore(stored = session)
+        val gateway = fakeGateway(
+            onCurrentCookies = {
+                cookiesReadStarted.complete(Unit)
+                releaseCookiesRead.await()
+                freshCookies
+            },
+        )
+        val account = account(store = store, gateway = { gateway })
+        account.restore()
+
+        val persisting = launch { account.persistSession() }
+        cookiesReadStarted.await()
+
+        account.logout()
+        releaseCookiesRead.countDown()
+        persisting.join()
+
+        assertNull(account.user.value)
+        assertNull(store.stored)
+    }
+
+    @Test
+    fun `markSessionExpired 续期失败期间若并发 login 成功则不得清空新会话`() = runBlocking {
+        val stale = Jm3Session(user = testUser(), cookies = emptyList())
+        val fresh = Jm3Session(user = testUser().copy(username = "new_user"), cookies = emptyList())
+        val gateEnabled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val loadStarted = CompletableDeferred<Unit>()
+        val releaseLoad = CompletableDeferred<Unit>()
+        val store = FakeSessionStore(stored = stale)
+        val credentials = object : CredentialStorage {
+            override suspend fun load(): SavedCredentials? {
+                if (gateEnabled.get()) {
+                    loadStarted.complete(Unit)
+                    releaseLoad.await()
+                }
+                return null
+            }
+            override suspend fun save(credentials: SavedCredentials) = Unit
+            override suspend fun clear() = Unit
+        }
+        val gateway = fakeGateway(onLogin = { _, _ -> fresh })
+        val account = account(store = store, credentials = credentials, gateway = { gateway })
+        account.restore()
+        gateEnabled.set(true)
+
+        val expiring = launch { account.markSessionExpired() }
+        loadStarted.await()
+        assertNull(account.login("new_user", "pw"))
+        releaseLoad.complete(Unit)
+        expiring.join()
+
+        assertEquals(fresh.user, account.user.value)
+        assertEquals(fresh, store.stored)
+    }
+
+    @Test
+    fun `并发调用 restore 时同一网关只注入一次`() = runBlocking {
+        val session = Jm3Session(user = testUser(), cookies = emptyList())
+        val injectStarted = CompletableDeferred<Unit>()
+        val releaseInject = CountDownLatch(1)
+        var injections = 0
+        val gateway = fakeGateway {
+            injections++
+            injectStarted.complete(Unit)
+            releaseInject.await()
+        }
+        val account = account(store = FakeSessionStore(stored = session), gateway = { gateway })
+
+        val first = launch { account.restore() }
+        injectStarted.await()
+        val second = launch { account.restore() }
+        yield()
+        releaseInject.countDown()
+        first.join()
+        second.join()
+
+        assertEquals(1, injections)
+    }
+
+    @Test
+    fun `restore 与 logout 并发时最终保持未登录且存储为空`() = runBlocking {
+        val session = Jm3Session(user = testUser(), cookies = emptyList())
+        val loadStarted = CompletableDeferred<Unit>()
+        val releaseLoad = CompletableDeferred<Unit>()
+        val store = object : SessionStorage {
+            var stored: Jm3Session? = session
+            override suspend fun load(): Jm3Session? {
+                loadStarted.complete(Unit)
+                releaseLoad.await()
+                return stored
+            }
+            override suspend fun save(session: Jm3Session) { stored = session }
+            override suspend fun clear() { stored = null }
+            override suspend fun renewFailureCount(): Int = 0
+            override suspend fun setRenewFailureCount(count: Int) = Unit
+        }
+        val account = account(store = store, gateway = { fakeGateway() })
+
+        val restoring = launch { account.restore() }
+        loadStarted.await()
+        val loggingOut = launch { account.logout() }
+        releaseLoad.complete(Unit)
+        restoring.join()
+        loggingOut.join()
+
+        assertNull(account.user.value)
+        assertNull(store.stored)
+    }
+
+    @Test
+    fun `renewSession 在 IO 线程加载凭据而非调用线程`() = runBlocking {
+        val callerThread = Thread.currentThread()
+        var loadThread: Thread? = null
+        val store = FakeSessionStore(stored = Jm3Session(user = testUser(), cookies = emptyList()))
+        val credentials = object : CredentialStorage {
+            override suspend fun load(): SavedCredentials? {
+                loadThread = Thread.currentThread()
+                return null
+            }
+            override suspend fun save(credentials: SavedCredentials) = Unit
+            override suspend fun clear() = Unit
+        }
+        val singleDispatcher = Executors.newSingleThreadExecutor { r -> Thread(r, "test-caller") }.asCoroutineDispatcher()
+        try {
+            val account = account(store = store, credentials = credentials, gateway = { fakeGateway() })
+            account.restore()
+            loadThread = null
+            runBlocking(singleDispatcher) {
+                val calledFrom = Thread.currentThread()
+                account.markSessionExpired()
+                assertTrue(loadThread != null && loadThread !== calledFrom && loadThread !== callerThread)
+            }
+        } finally {
+            singleDispatcher.close()
+        }
     }
 }

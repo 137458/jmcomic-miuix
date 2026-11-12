@@ -1,6 +1,8 @@
 package com.jm3.core.session
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -112,5 +114,69 @@ class UnreadBadgeTest {
 
         assertEquals(2, badge.count.value)
         assertEquals(1, loader.calls, "列表已加载时按本地已读状态覆盖，不再发请求")
+    }
+
+    @Test
+    fun 在途refresh不得覆盖之后的sync计数() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        val badge = UnreadBadge {
+            started.complete(Unit)
+            gate.await()
+            SessionOutcome.Ok(9)
+        }
+
+        val job = launch { badge.refresh(loggedIn = true) }
+        started.await()
+        badge.sync(2)
+        gate.complete(Unit)
+        job.join()
+
+        assertEquals(2, badge.count.value)
+    }
+
+    @Test
+    fun 在途refresh不得覆盖登出后的归零状态() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        val badge = UnreadBadge {
+            started.complete(Unit)
+            gate.await()
+            SessionOutcome.Ok(7)
+        }
+        badge.sync(4)
+
+        val job = launch { badge.refresh(loggedIn = true) }
+        started.await()
+        badge.refresh(loggedIn = false)
+        gate.complete(Unit)
+        job.join()
+
+        assertEquals(0, badge.count.value)
+    }
+
+    @Test
+    fun 并发refresh时旧请求不得覆盖较新请求的结果() = runBlocking {
+        val firstStarted = CompletableDeferred<Unit>()
+        val firstGate = CompletableDeferred<Unit>()
+        var calls = 0
+        val badge = UnreadBadge {
+            if (calls++ == 0) {
+                firstStarted.complete(Unit)
+                firstGate.await()
+                SessionOutcome.Ok(9)
+            } else {
+                SessionOutcome.Ok(3)
+            }
+        }
+
+        val first = launch { badge.refresh(loggedIn = true) }
+        firstStarted.await()
+        badge.refresh(loggedIn = true)
+        assertEquals(3, badge.count.value)
+        firstGate.complete(Unit)
+        first.join()
+
+        assertEquals(3, badge.count.value)
     }
 }

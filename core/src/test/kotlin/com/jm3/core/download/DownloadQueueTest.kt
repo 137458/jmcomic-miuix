@@ -534,4 +534,46 @@ class DownloadQueueTest {
         queue.shutdown()
         advanceUntilIdle()
     }
+
+    @Test
+    fun `resolver 挂起期间被暂停并续传后 旧 worker 不得覆盖新 run 元数据`() = runTest {
+        val staleStarted = CompletableDeferred<Unit>()
+        val staleRelease = CompletableDeferred<Unit>()
+        var resolveCalls = 0
+        val resolver = TaskResolver { _ ->
+            if (resolveCalls++ == 0) {
+                staleStarted.complete(Unit)
+                staleRelease.await()
+                ResolvedChapter(albumId = "old-album", title = "old-title", total = 1)
+            } else {
+                ResolvedChapter(albumId = "new-album", title = "new-title", total = 2)
+            }
+        }
+        val queue = DownloadQueue(FakeFetcher(), FakeStore(), resolver = resolver, maxConcurrent = 2)
+        queue.start(this)
+        queue.enqueue(DownloadTask(photoId = "p1", albumId = "", title = "", total = 0))
+        runCurrent()
+        staleStarted.await()
+
+        queue.pause("p1")
+        queue.resume("p1")
+        runCurrent()
+        val afterNewRun = queue.updates.value.getValue("p1")
+        assertEquals(DONE, afterNewRun.status)
+        assertEquals("new-album", afterNewRun.albumId)
+        assertEquals("new-title", afterNewRun.title)
+        assertEquals(2, afterNewRun.total)
+
+        staleRelease.complete(Unit)
+        advanceUntilIdle()
+
+        val finalTask = queue.updates.value.getValue("p1")
+        assertEquals(DONE, finalTask.status)
+        assertEquals("new-album", finalTask.albumId)
+        assertEquals("new-title", finalTask.title)
+        assertEquals(2, finalTask.total)
+
+        queue.shutdown()
+        advanceUntilIdle()
+    }
 }

@@ -170,7 +170,7 @@ class DownloadQueue(
                 failWith(current, runId)
                 return
             }
-            current = update(current.photoId) { live ->
+            current = updateIfCurrent(current.photoId, runId) { live ->
                 live.copy(
                     albumId = resolved.albumId.ifBlank { live.albumId },
                     title = resolved.title.ifBlank { live.title },
@@ -192,9 +192,8 @@ class DownloadQueue(
                 store.write(current.photoId, pageIndex, bytes)
             }
             // 取这一页的间隙代际可能已被换掉（暂停后续传、取消后重排、重置）：
-            // 旧 worker 只负责把已取到的字节落盘，禁止再改写新 run 的游标。
-            if (!isCurrent(current.photoId, runId)) return
-            current = update(current.photoId) { it.copy(index = pageIndex) } ?: return
+            // 旧 worker 只负责把已取到的字节落盘，并在同一把锁内校验代际后才推进游标。
+            current = updateIfCurrent(current.photoId, runId) { it.copy(index = pageIndex) } ?: return
         }
         completeIfRunning(current.photoId, runId)
     }
@@ -234,13 +233,17 @@ class DownloadQueue(
         }
     }
 
-    /** 锁内按 photoId 应用变换；任务已不存在返回 null。status 以 Map 中现值为准，避免覆盖并发转移。 */
-    private fun update(photoId: String, transform: (DownloadTask) -> DownloadTask): DownloadTask? =
-        synchronized(stateLock) {
-            val live = tasks[photoId] ?: return null
-            val next = transform(live)
-            tasks = tasks + (photoId to next)
-            _updates.value = tasks
-            next
-        }
+    /** 锁内校验仍在 RUNNING 且仍属本 runId 后才应用变换；过期代际返回 null，避免覆盖并发暂停或新 run。 */
+    private fun updateIfCurrent(
+        photoId: String,
+        runId: Long,
+        transform: (DownloadTask) -> DownloadTask,
+    ): DownloadTask? = synchronized(stateLock) {
+        val live = tasks[photoId] ?: return null
+        if (live.status != DownloadStatus.RUNNING || runIds[photoId] != runId) return null
+        val next = transform(live)
+        tasks = tasks + (photoId to next)
+        _updates.value = tasks
+        next
+    }
 }

@@ -165,4 +165,43 @@ class LibraryBridgeRoutingTest {
         assertEquals(listOf("1233370"), page.items.map { it.id })
         assertEquals(238, page.totalItems)
     }
+
+    @Suppress("unused")
+    private class BrokenSerializationTarget {
+        fun brokenBuilder(): okhttp3.HttpUrl.Builder = throw IllegalStateException("builder failed")
+    }
+
+    @Test
+    fun `invokeSerializationBuilder 捕获 InvocationTargetException 与 IllegalAccessException 并记录警告`() {
+        val originalSink = Jm3Log.sink
+        val warnings = mutableListOf<String>()
+        Jm3Log.sink = { tag, message, _ -> warnings += "$tag:$message" }
+        try {
+            val target = BrokenSerializationTarget()
+            val throwingMethod = BrokenSerializationTarget::class.java.getDeclaredMethod("brokenBuilder")
+            assertNull(ReflectiveLibraryBridge.invokeSerializationBuilder(throwingMethod, target))
+
+            val inaccessibleMethod = Any::class.java.getDeclaredMethod("clone")
+            assertNull(ReflectiveLibraryBridge.invokeSerializationBuilder(inaccessibleMethod, Any()))
+            assertEquals(2, warnings.size)
+            assertTrue(warnings[0].contains("newHttpUrlBuilder") && warnings[0].contains("IllegalStateException"))
+            assertTrue(warnings[1].contains("newHttpUrlBuilder") && warnings[1].contains("IllegalAccessException"))
+        } finally {
+            Jm3Log.sink = originalSink
+        }
+    }
+
+    @Test
+    fun `网关 close 会触发 onClose 清理回调`() {
+        var closed = 0
+        val client = libraryClient()
+        val gw = Jm3GatewayImpl(
+            clientProvider = { client },
+            domainControlsProvider = { FakeDomainControls(emptySet()) },
+            bridge = FakeBridge(),
+            onClose = { closed++ },
+        )
+        gw.close()
+        assertEquals(1, closed)
+    }
 }

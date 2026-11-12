@@ -7,6 +7,7 @@ import com.jm3.core.model.CookieSnapshot
 import com.jm3.core.model.Jm3Session
 import com.jm3.core.model.Jm3User
 import com.jm3.core.runCatchingSuspending
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,9 +59,11 @@ class AccountManager(
     @Volatile
     private var renewedGateway: SessionAuth? = null
 
-    /** 会话代次：每落地一次登录会话自增。并发续期靠它判断「别人已经续上了，不必再登一次」。 */
-    @Volatile
-    private var sessionEpoch = 0
+    /** 会话代次：每落地一次登录会话或登出时原子自增。并发续期靠它判断「别人已经改过会话，不必再登或误清」。 */
+    private val sessionEpoch = AtomicInteger(0)
+
+    /** 启动恢复与登出的互斥锁：避免恢复读旧快照与登出清状态交叉复活会话。 */
+    private val restoreLock = Mutex()
 
     /** 会话存储的读改写锁：后台回写与登出/登录落地不能交叉写同一个键。 */
     private val storeLock = Mutex()
@@ -85,19 +88,21 @@ class AccountManager(
      * 这里直接静默重登：用户重启应用后仍是登录态，不必再输一次密码。
      */
     suspend fun restore() {
-        val gateway = gatewayProvider()
-        if (_restored.value && injectedGateway === gateway) return
-        try {
-            val session = loadSession()
-            if (session != null) {
-                if (_user.value == null) _user.value = session.user
-                if (injectedGateway !== gateway) inject(gateway, session)
-            } else if (renewedGateway !== gateway) {
-                renewSession()
+        restoreLock.withLock {
+            val gateway = gatewayProvider()
+            if (_restored.value && injectedGateway === gateway) return
+            try {
+                val session = loadSession()
+                if (session != null) {
+                    if (_user.value == null) _user.value = session.user
+                    if (injectedGateway !== gateway) inject(gateway, session)
+                } else if (injectedGateway !== gateway && renewedGateway !== gateway) {
+                    renewSession()
+                }
+            } finally {
+                // 无论成功失败都必须放行等待者，否则读取异常会让所有鉴权页面永久停在加载中
+                openStartupGate()
             }
-        } finally {
-            // 无论成功失败都必须放行等待者，否则读取异常会让所有鉴权页面永久停在加载中
-            openStartupGate()
         }
     }
 
@@ -181,20 +186,26 @@ class AccountManager(
         }
 
     suspend fun logout() {
-        val gateway = gatewayProvider()
-        withContext(Dispatchers.IO) {
-            runCatchingSuspending { gateway.logout() }
-            // 用户主动登出就是不想再自动登录：凭据与网关内存里的密码一起清掉
-            credentialLock.withLock {
-                runCatchingSuspending { credentials.clear() }
-                // 计数跟着凭据一起清：已经没有密码可续期，攒着的失败次数不该算到下次登录头上
-                runCatchingSuspending { store.setRenewFailureCount(0) }
+        restoreLock.withLock {
+            val gateway = gatewayProvider()
+            withContext(Dispatchers.IO) {
+                runCatchingSuspending { gateway.logout() }
+                // 用户主动登出就是不想再自动登录：凭据与网关内存里的密码一起清掉
+                credentialLock.withLock {
+                    runCatchingSuspending { credentials.clear() }
+                    // 计数跟着凭据一起清：已经没有密码可续期，攒着的失败次数不该算到下次登录头上
+                    runCatchingSuspending { store.setRenewFailureCount(0) }
+                }
+                gateway.forgetCredentials()
+                storeLock.withLock {
+                    sessionEpoch.incrementAndGet()
+                    _user.value = null
+                    injectedGateway = null
+                    renewedGateway = null
+                    runCatchingSuspending { store.clear() }
+                }
             }
-            gateway.forgetCredentials()
-            storeLock.withLock { runCatchingSuspending { store.clear() } }
         }
-        _user.value = null
-        injectedGateway = null
     }
 
     /**
@@ -215,10 +226,14 @@ class AccountManager(
             loadSession()?.let { inject(gateway, it) }
             return
         }
+        val epochBefore = sessionEpoch.get()
         if (renewSession()) return
-        storeLock.withLock { runCatchingSuspending { store.clear() } }
-        _user.value = null
-        injectedGateway = null
+        storeLock.withLock {
+            if (sessionEpoch.get() != epochBefore) return
+            runCatchingSuspending { store.clear() }
+            _user.value = null
+            injectedGateway = null
+        }
     }
 
     /**
@@ -227,19 +242,22 @@ class AccountManager(
      * 多个请求同时撞上失效时只登一次：拿锁前记下会话代次，抢到锁后发现已经有人续期过就直接认账。
      */
     private suspend fun renewSession(): Boolean {
-        val epochBefore = sessionEpoch
+        val epochBefore = sessionEpoch.get()
         return renewLock.withLock {
-            if (sessionEpoch != epochBefore) return@withLock true
-            val saved = loadCredentials() ?: return@withLock false
-            val gateway = gatewayProvider()
-            renewedGateway = gateway
-            withContext(Dispatchers.IO) {
-                runCatchingSuspending { gateway.login(saved.username, saved.password) }
+            if (sessionEpoch.get() != epochBefore) return@withLock true
+            val attempt = withContext(Dispatchers.IO) {
+                val saved = loadCredentials() ?: return@withContext null
+                val gateway = gatewayProvider()
+                renewedGateway = gateway
+                gateway to runCatchingSuspending { gateway.login(saved.username, saved.password) }
             }
+            if (attempt == null) return@withLock sessionEpoch.get() != epochBefore
+            val (gateway, result) = attempt
+            result
                 .onSuccess { session -> adopt(session, gateway) }
                 .onFailure { recordRenewFailure() }
                 // 失败的是这一次续期：期间用户可能已经手工登录成功，那这次失败就不能再被当成「会话作废」
-                .isSuccess || sessionEpoch != epochBefore
+                .isSuccess || sessionEpoch.get() != epochBefore
         }
     }
 
@@ -291,12 +309,14 @@ class AccountManager(
 
     /** 登录态落地：会话落盘、用户态刷新、当前网关视为已注入。 */
     private suspend fun adopt(session: Jm3Session, gateway: SessionAuth) {
-        _user.value = session.user
-        injectedGateway = gateway
-        openStartupGate()
-        sessionEpoch++
-        // 会话落盘后冷启动优先用 Cookie 恢复，不必每次都拿密码去登录一次
-        storeLock.withLock { runCatchingSuspending { store.save(session) } }
+        storeLock.withLock {
+            _user.value = session.user
+            injectedGateway = gateway
+            openStartupGate()
+            sessionEpoch.incrementAndGet()
+            // 会话落盘后冷启动优先用 Cookie 恢复，不必每次都拿密码去登录一次
+            runCatchingSuspending { store.save(session) }
+        }
         resetRenewFailures()
     }
 

@@ -1,9 +1,11 @@
 package com.jm3.core.update
 
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -103,5 +105,13 @@ class UpdateCheckerTest {
         val result = assertIs<UpdateCheckResult.Failed>(checker.check("1.0.0"))
         assertEquals(UpdateFailure.MISSING_FIELD, result.failure)
         assertTrue(result.detail.contains("tag_name"), result.detail)
+    }
+
+    @Test
+    fun 取消异常原样抛出而不被吞成网络错误() = runTest {
+        val checker = UpdateChecker { throw CancellationException("cancelled") }
+        assertFailsWith<CancellationException> {
+            checker.check("1.0.0")
+        }
     }
 }

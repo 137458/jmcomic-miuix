@@ -148,7 +148,7 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
         val apiClient = client as? io.github.jukomu.jmcomic.core.client.impl.JmApiClient ?: return null
         val builderMethod = newHttpUrlBuilderMethod ?: return null
         val executeMethod = executeGetRequestMethod ?: return null
-        val url = (builderMethod.invoke(apiClient) as? okhttp3.HttpUrl.Builder ?: return null)
+        val url = (invokeSerializationBuilder(builderMethod, apiClient) ?: return null)
             .addPathSegment("serialization")
             .addQueryParameter("type", type)
             .addQueryParameter("date", date.toString())
@@ -158,8 +158,25 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
             executeMethod.invoke(apiClient, url, SERIALIZATION_APP_HEADER)
         } catch (e: java.lang.reflect.InvocationTargetException) {
             throw e.targetException ?: e
+        } catch (e: IllegalAccessException) {
+            Jm3Log.warn(TAG, "调用库内反射成员 executeGetRequest 失败（${e.javaClass.name}），相关能力降级")
+            return null
         } as? io.github.jukomu.jmcomic.core.net.model.JmApiResponse
         return response?.decodedData
+    }
+
+    internal fun invokeSerializationBuilder(
+        builderMethod: java.lang.reflect.Method,
+        client: Any,
+    ): okhttp3.HttpUrl.Builder? = try {
+        builderMethod.invoke(client) as? okhttp3.HttpUrl.Builder
+    } catch (e: java.lang.reflect.InvocationTargetException) {
+        val cause = e.targetException ?: e
+        Jm3Log.warn(TAG, "调用库内反射成员 newHttpUrlBuilder 失败（${cause.javaClass.name}），相关能力降级")
+        null
+    } catch (e: IllegalAccessException) {
+        Jm3Log.warn(TAG, "调用库内反射成员 newHttpUrlBuilder 失败（${e.javaClass.name}），相关能力降级")
+        null
     }
 
     /** 用户名、允许自动重登，以及拿得到时加密后的密码；密码缺省表示只恢复身份。 */

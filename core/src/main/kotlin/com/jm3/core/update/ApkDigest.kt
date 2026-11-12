@@ -2,7 +2,6 @@ package com.jm3.core.update
 
 import java.io.File
 import java.security.MessageDigest
-import java.util.HexFormat
 
 /**
  * 安装包摘要校验结论。
@@ -78,5 +77,13 @@ object ApkDigest {
     fun mismatchMessage(expected: String, actual: String): String =
         "安装包校验失败：SHA-256 不匹配（期望 ${expected.take(12)}…，实际 ${actual.take(12)}…）"
 
-    private fun ByteArray.toLowerHex(): String = HexFormat.of().formatHex(this)
+    private fun ByteArray.toLowerHex(): String = buildString(size * 2) {
+        for (byte in this@toLowerHex) {
+            val value = byte.toInt() and 0xFF
+            append(HEX_DIGITS[value ushr 4])
+            append(HEX_DIGITS[value and 0x0F])
+        }
+    }
+
+    private const val HEX_DIGITS = "0123456789abcdef"
 }

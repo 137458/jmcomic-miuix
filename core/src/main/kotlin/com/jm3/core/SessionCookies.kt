@@ -6,18 +6,7 @@ import com.jm3.core.model.CookieSnapshot
  * 清洗域名：去除协议头、端口、路径和前导点，确保符合 OkHttp Cookie/HttpUrl 规范。
  * 例如：".18comic.vip" -> "18comic.vip", "https://18comic.vip/api" -> "18comic.vip"。
  */
-internal fun sanitizeDomain(domain: String): String {
-    var d = domain.trim()
-    if (d.startsWith("https://", ignoreCase = true)) {
-        d = d.substring(8)
-    } else if (d.startsWith("http://", ignoreCase = true)) {
-        d = d.substring(7)
-    }
-    d = d.substringBefore('/')
-    d = d.substringBefore(':')
-    d = d.trimStart('.')
-    return d.trim()
-}
+internal fun sanitizeDomain(domain: String): String = CoverLocator.hostOf(domain)
 
 /**
  * 将 [CookieSnapshot] 安全转换为 [okhttp3.Cookie]。

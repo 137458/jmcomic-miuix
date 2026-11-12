@@ -4,6 +4,8 @@ import com.jm3.core.settings.Domains
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
 import io.github.jukomu.jmcomic.core.net.OkHttpBuilder
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 按线路表构建网关。
@@ -37,32 +39,43 @@ object GatewayFactory {
     ): Jm3Gateway {
         val custom = Domains.normalize(apiDomains)
         val pool = startupDomainPool(custom, Domains.normalize(cachedDomains))
-        return Jm3GatewayImpl.production {
-            val builder = JmConfiguration.Builder()
-                .domainProbeTimeoutMs(DOMAIN_PROBE_TIMEOUT_MS)
-                .retryTimes(RETRY_TIMES)
-            if (custom.isNotEmpty()) builder.apiDomains(custom)
-            val config = builder.build()
-            val context = OkHttpBuilder.build(config)
-            if (pool.isEmpty()) {
-                // 首次安装且没填自定义线路：没有可预置的池，只能走库的初始化链
-                // （拉分发服务器线路表 → 全域名探活 → setting，一次性约 3.5s），
-                // 跑完记住这次的池，下次冷启动就能零等待。
-                val client = JmApiClient(config, context.client, context.cookieManager, context.domainManager)
-                client.initializeAsync().whenComplete { _, _ ->
-                    persistDomainPool(client, custom, onPoolRefreshed)
+        val closed = AtomicBoolean(false)
+        val cancelRefresh = AtomicReference<(() -> Unit)?>(null)
+        return Jm3GatewayImpl.production(
+            clientProvider = {
+                val builder = JmConfiguration.Builder()
+                    .domainProbeTimeoutMs(DOMAIN_PROBE_TIMEOUT_MS)
+                    .retryTimes(RETRY_TIMES)
+                if (custom.isNotEmpty()) builder.apiDomains(custom)
+                val config = builder.build()
+                val context = OkHttpBuilder.build(config)
+                if (pool.isEmpty()) {
+                    // 首次安装且没填自定义线路：没有可预置的池，只能走库的初始化链
+                    // （拉分发服务器线路表 → 全域名探活 → setting，一次性约 3.5s），
+                    // 跑完记住这次的池，下次冷启动就能零等待。
+                    val client = JmApiClient(config, context.client, context.cookieManager, context.domainManager)
+                    client.initializeAsync().whenComplete { _, _ ->
+                        if (!closed.get()) persistDomainPool(client, custom, onPoolRefreshed)
+                    }
+                    client
+                } else {
+                    // 库的 newApiClient 会立刻异步跑整条初始化，而请求侧的域名裁决
+                    // （RetryAndDomainRedirectInterceptor → getBestDomain）要 blockUntilInitialized 等它跑完，
+                    // 首屏因此固定多等 3.5-4.2s。这里自己装配客户端：先预置已知可用池并放行，
+                    // 线路表的刷新推到首屏之后。
+                    primeDomainManager(context.domainManager, pool)
+                    val client = JmApiClient(config, context.client, context.cookieManager, context.domainManager)
+                    if (!closed.get()) {
+                        val cancel = refreshDomainPoolInBackground(client, custom, onPoolRefreshed)
+                        if (closed.get()) cancel() else cancelRefresh.set(cancel)
+                    }
+                    client
                 }
-                client
-            } else {
-                // 库的 newApiClient 会立刻异步跑整条初始化，而请求侧的域名裁决
-                // （RetryAndDomainRedirectInterceptor → getBestDomain）要 blockUntilInitialized 等它跑完，
-                // 首屏因此固定多等 3.5-4.2s。这里自己装配客户端：先预置已知可用池并放行，
-                // 线路表的刷新推到首屏之后。
-                primeDomainManager(context.domainManager, pool)
-                val client = JmApiClient(config, context.client, context.cookieManager, context.domainManager)
-                refreshDomainPoolInBackground(client, custom, onPoolRefreshed)
-                client
-            }
-        }
+            },
+            onClose = {
+                closed.set(true)
+                cancelRefresh.getAndSet(null)?.invoke()
+            },
+        )
     }
 }

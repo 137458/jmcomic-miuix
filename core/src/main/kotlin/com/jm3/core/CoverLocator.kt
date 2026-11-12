@@ -35,11 +35,22 @@ value class CoverLocator private constructor(val host: String) {
             return if (host.isEmpty()) Unready else CoverLocator(host)
         }
 
-        /** 只取域名：去首尾空白、去协议头、去路径、去尾部斜杠。 */
+        /** 只取域名：去首尾空白、去协议头、去路径/查询/锚点/端口、去前导点。 */
         fun hostOf(raw: String?): String {
-            val text = raw?.trim().orEmpty()
+            var text = raw?.trim().orEmpty()
             if (text.isEmpty()) return ""
-            return text.removePrefix(HTTPS).removePrefix(HTTP).substringBefore('/').trimEnd('/')
+            if (text.startsWith(HTTPS, ignoreCase = true)) {
+                text = text.substring(HTTPS.length)
+            } else if (text.startsWith(HTTP, ignoreCase = true)) {
+                text = text.substring(HTTP.length)
+            }
+            return text
+                .substringBefore('/')
+                .substringBefore('?')
+                .substringBefore('#')
+                .substringBefore(':')
+                .trimStart('.')
+                .trim()
         }
     }
 }

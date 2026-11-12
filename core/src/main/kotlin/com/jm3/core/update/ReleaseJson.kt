@@ -39,7 +39,12 @@ object ReleaseJson {
         val obj = element as? JsonObject
             ?: throw UpdateParseException.Malformed("顶层不是 JSON 对象")
 
-        fun field(name: String): String = (obj[name] as? JsonPrimitive)?.contentOrNull.orEmpty()
+        fun field(name: String): String =
+            (obj[name] as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+                .orEmpty()
 
         val tagName = field("tag_name")
         if (tagName.isEmpty()) throw UpdateParseException.MissingField("tag_name")

@@ -207,4 +207,32 @@ class ReleaseJsonTest {
         assertEquals(4, release.assets.size)
         assertEquals(listOf(0L, 0L, 0L, 0L), release.assets.map { it.size })
     }
+
+    @Test
+    fun 必需字段为非字符串或纯空白时抛缺字段异常() {
+        for (bad in listOf("123", "true", "\"   \"")) {
+            val missingTag = assertFailsWith<UpdateParseException.MissingField> {
+                ReleaseJson.parse("""{"tag_name":$bad,"html_url":"https://example.com/r"}""")
+            }
+            assertEquals("tag_name", missingTag.field)
+
+            val missingUrl = assertFailsWith<UpdateParseException.MissingField> {
+                ReleaseJson.parse("""{"tag_name":"v1.0.0","html_url":$bad}""")
+            }
+            assertEquals("html_url", missingUrl.field)
+        }
+        assertFailsWith<UpdateParseException.MissingField> {
+            ReleaseJson.parse("""{"tag_name":123,"html_url":"https://example.com/r"}""")
+        }
+    }
+
+    @Test
+    fun 可选字段为非字符串或纯空白时按空串处理() {
+        val release = ReleaseJson.parse(
+            """{"tag_name":"v1.0.0","html_url":"https://example.com/r","name":123,"body":true,"published_at":"   "}""",
+        )
+        assertEquals("", release.name)
+        assertEquals("", release.notes)
+        assertEquals("", release.publishedAt)
+    }
 }

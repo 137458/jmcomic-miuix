@@ -19,7 +19,12 @@ internal object SerializationParser {
     /** 每页兜底条数，与网页端/接口常见分页一致；第 1 页实际不足 total 时优先用当页条数推算。 */
     private const val FALLBACK_PAGE_SIZE = 30
 
-    fun parse(json: String, page: Int, covers: CoverResolver = CoverResolver.Unready): SearchPage {
+    fun parse(
+        json: String,
+        page: Int,
+        covers: CoverResolver = CoverResolver.Unready,
+        knownPageSize: Int? = null,
+    ): SearchPage {
         try {
             val root = JsonParser.parseString(json).asJsonObject
             val error = root.stringOrNull("error")?.trim()?.takeIf { it.isNotEmpty() }
@@ -33,17 +38,14 @@ internal object SerializationParser {
                 if (!element.isJsonObject) return@mapNotNull null
                 parseItem(element.asJsonObject, covers)
             }
-            val pageSize = if (page == 1 && items.isNotEmpty() && items.size < totalItems) {
-                items.size
-            } else {
-                FALLBACK_PAGE_SIZE
-            }
+            val pageSize = inferPageSize(page, items.size, totalItems, knownPageSize)
             val totalPages = when {
                 totalItems <= 0 && items.isEmpty() -> 0
                 items.isEmpty() -> page
                 totalItems <= 0 -> page
                 page == 1 && items.size >= totalItems -> 1
-                else -> maxOf(page, (totalItems + pageSize - 1) / pageSize)
+                knownPageSize != null && knownPageSize > 0 && items.size < knownPageSize -> page
+                else -> maxOf(page, ((totalItems.toLong() + pageSize - 1) / pageSize).toInt())
             }
             return SearchPage(
                 currentPage = page,
@@ -56,6 +58,25 @@ internal object SerializationParser {
         } catch (e: Exception) {
             throw ParseResponseException("Failed to parse serialization API JSON", e)
         }
+    }
+
+    private fun inferPageSize(page: Int, itemCount: Int, totalItems: Int, knownPageSize: Int?): Int {
+        if (knownPageSize != null && knownPageSize > 0) {
+            return if (itemCount > knownPageSize && page.toLong() * itemCount < totalItems) {
+                itemCount
+            } else {
+                knownPageSize
+            }
+        }
+        if (page == 1 && itemCount in 1 until totalItems) return itemCount
+        if (page >= 2 && itemCount in 1 until totalItems) {
+            val isFallbackLastPage = itemCount < FALLBACK_PAGE_SIZE &&
+                (page - 1).toLong() * FALLBACK_PAGE_SIZE + itemCount == totalItems.toLong()
+            if (!isFallbackLastPage && page.toLong() * itemCount < totalItems) {
+                return itemCount
+            }
+        }
+        return FALLBACK_PAGE_SIZE
     }
 
     private fun parseItem(obj: JsonObject, covers: CoverResolver): SearchResult? {

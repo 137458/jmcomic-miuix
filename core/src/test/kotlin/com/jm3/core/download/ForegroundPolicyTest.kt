@@ -194,4 +194,39 @@ class ForegroundPolicyTest {
         )
         assertFalse(policy.isRunning)
     }
+
+    @Test
+    fun `多线程并发读写状态时不抛出异常且最终归零`() {
+        val policy = policy(progressIntervalMs = 0L, startRetryIntervalMs = 0L)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+        val start = java.util.concurrent.CountDownLatch(1)
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        try {
+            val futures = (0 until 4).map { worker ->
+                pool.submit {
+                    runCatching {
+                        start.await()
+                        repeat(100) { iter ->
+                            when ((worker + iter) % 5) {
+                                0 -> policy.onTasks(mapOf("a" to task("a", DownloadStatus.RUNNING, index = iter % 10)))
+                                1 -> policy.onServiceForeground()
+                                2 -> policy.onFlushDue(mapOf("a" to task("a", DownloadStatus.RUNNING, index = iter % 10)))
+                                3 -> policy.onStartFailed()
+                                4 -> policy.onServiceStopped()
+                            }
+                        }
+                    }.onFailure { errors += it }
+                }
+            }
+            start.countDown()
+            futures.forEach { it.get() }
+            assertEquals(emptyList(), errors)
+            policy.onServiceForeground()
+            assertTrue(policy.isRunning)
+            assertEquals(listOf(ForegroundAction.Stop), policy.onTasks(emptyMap()))
+            assertFalse(policy.isRunning)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
 }

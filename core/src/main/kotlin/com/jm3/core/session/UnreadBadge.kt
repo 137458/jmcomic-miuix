@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class UnreadBadge(private val load: suspend () -> SessionOutcome<Int>) {
 
+    private val lock = Any()
+    private var epoch = 0L
     private val state = MutableStateFlow(0)
 
     /** 当前未读数；界面直接 collect。 */
@@ -24,17 +26,28 @@ class UnreadBadge(private val load: suspend () -> SessionOutcome<Int>) {
     /** 重新统计：未登录归零且不读网络；拉取失败保留上次值。 */
     suspend fun refresh(loggedIn: Boolean) {
         if (!loggedIn) {
-            state.value = 0
+            synchronized(lock) {
+                epoch++
+                state.value = 0
+            }
             return
         }
+        val requestEpoch = synchronized(lock) { ++epoch }
         runCatchingSuspending { load() }.onSuccess { outcome ->
             // 只有拿到值才覆盖：失效与失败都保留上次计数，否则底栏角标会闪一下又归零
-            if (outcome is SessionOutcome.Ok) state.value = outcome.value
+            if (outcome is SessionOutcome.Ok) {
+                synchronized(lock) {
+                    if (epoch == requestEpoch) state.value = outcome.value
+                }
+            }
         }
     }
 
     /** 以刚拉到的列表为准覆盖计数：同一次请求里读到的已读状态比上一次的远端旧值可靠。 */
     fun sync(count: Int) {
-        state.value = count
+        synchronized(lock) {
+            epoch++
+            state.value = count
+        }
     }
 }

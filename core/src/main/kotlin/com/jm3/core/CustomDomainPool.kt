@@ -9,6 +9,7 @@ import java.lang.reflect.Method
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 启动域名池：自定义线路优先，其次是上次刷新落盘的池；跨组去重保序。
@@ -19,13 +20,26 @@ import java.util.concurrent.TimeUnit
 internal fun startupDomainPool(custom: List<String>, cached: List<String>): List<String> =
     Domains.normalize(custom + cached)
 
-/** 库没有公开替换域名池的入口，只能读私有字段；字段名变更时惰性失败而非拖垮类初始化。 */
-private val domainManagerField: Field by lazy {
-    AbstractJmClient::class.java.getDeclaredField("domainManager").apply { isAccessible = true }
+/** 库没有公开替换域名池的入口，只能读私有字段；字段名变更时惰性失败并降级，而非抛异常拖垮调用方。 */
+internal fun findDeclaredField(clazz: Class<*>, name: String): Field? =
+    runCatching {
+        clazz.getDeclaredField(name).apply { isAccessible = true }
+    }.getOrElse { failure ->
+        Jm3Log.warn(TAG, "库内反射成员 $name 取不到（${failure.javaClass.name}），相关能力降级")
+        null
+    }
+
+private val domainManagerField: Field? by lazy {
+    findDeclaredField(AbstractJmClient::class.java, "domainManager")
 }
 
-internal fun domainManagerOf(client: AbstractJmClient): JmDomainManager =
-    domainManagerField.get(client) as JmDomainManager
+internal fun domainManagerOf(client: AbstractJmClient): JmDomainManager? =
+    runCatching {
+        domainManagerField?.get(client) as? JmDomainManager
+    }.getOrElse { failure ->
+        Jm3Log.warn(TAG, "库内反射成员 domainManager 读取失败（${failure.javaClass.name}），相关能力降级")
+        null
+    }
 
 /**
  * 库只在 protected 的 createDomainProbe 上暴露探活器；成员名变更时降级为「不刷新线路池」并留一条事实日志。
@@ -73,14 +87,16 @@ internal fun refreshDomainPoolInBackground(
     onPoolRefreshed: (List<String>) -> Unit = {},
     fetchOfficial: () -> List<String> = { officialApiDomains() },
     delayMs: Long = DOMAIN_REFRESH_DELAY_MS,
-) {
+): () -> Unit {
     val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "jm3-domain-refresh").apply { isDaemon = true }
     }
-    scheduler.schedule({
+    val cancelled = AtomicBoolean(false)
+    val future = scheduler.schedule({
         try {
+            if (cancelled.get() || Thread.currentThread().isInterrupted) return@schedule
             runCatching {
-                val manager = domainManagerOf(client)
+                val manager = domainManagerOf(client) ?: return@runCatching
                 // 探活器取不到时整段刷新跳过：与原先反射失败被 runCatching 吞掉的效果一致，现有池保持不动。
                 val pool = domainProbeOf(client)?.let { probe ->
                     refreshDomainPool(
@@ -90,12 +106,17 @@ internal fun refreshDomainPoolInBackground(
                         probe = { candidate -> probeDomainPool(candidate, probe) },
                     )
                 }
-                if (pool != null) onPoolRefreshed(pool)
+                if (pool != null && !cancelled.get()) onPoolRefreshed(pool)
             }
         } finally {
             scheduler.shutdown()
         }
     }, delayMs, TimeUnit.MILLISECONDS)
+    return {
+        cancelled.set(true)
+        future.cancel(true)
+        scheduler.shutdownNow()
+    }
 }
 
 /**
@@ -149,7 +170,8 @@ internal fun persistDomainPool(
     onPoolRefreshed: (List<String>) -> Unit,
 ) {
     runCatching {
-        val pool = Domains.normalize(custom + domainManagerOf(client).domains.toList())
+        val manager = domainManagerOf(client) ?: return
+        val pool = Domains.normalize(custom + manager.domains.toList())
         if (pool.isNotEmpty()) onPoolRefreshed(pool)
     }
 }

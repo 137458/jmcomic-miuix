@@ -68,4 +68,60 @@ class SerializationPageTest {
         }
         assertEquals(true, ex.message?.contains("參數錯誤") == true)
     }
+
+    @Test
+    fun `第 2 页每页 20 条时不回退为 30 导致总页数少算`() {
+        val itemsJson = (1..20).joinToString(",") { i ->
+            """{"id":"${3000 + i}","name":"作品$i"}"""
+        }
+        val json = """{"list":[$itemsJson],"total":45}"""
+
+        val page = SerializationParser.parse(json, page = 2)
+
+        assertEquals(2, page.currentPage)
+        assertEquals(45, page.totalItems)
+        assertEquals(3, page.totalPages)
+    }
+
+    @Test
+    fun `第 8 页为 30 条分页的最后不满页时仍保持 8 页`() {
+        val itemsJson = (1..28).joinToString(",") { i ->
+            """{"id":"${4000 + i}","name":"作品$i"}"""
+        }
+        val json = """{"list":[$itemsJson],"total":238}"""
+
+        val page = SerializationParser.parse(json, page = 8)
+
+        assertEquals(8, page.currentPage)
+        assertEquals(238, page.totalItems)
+        assertEquals(8, page.totalPages)
+    }
+
+    @Test
+    fun `传入已知每页条数时第 2 页沿用第 1 页分页口径`() {
+        val itemsJson = (1..20).joinToString(",") { i ->
+            """{"id":"${5000 + i}","name":"作品$i"}"""
+        }
+        val json = """{"list":[$itemsJson],"total":50}"""
+
+        val page = SerializationParser.parse(json, page = 2, knownPageSize = 20)
+
+        assertEquals(2, page.currentPage)
+        assertEquals(50, page.totalItems)
+        assertEquals(3, page.totalPages)
+    }
+
+    @Test
+    fun `传入已知每页条数且本页不满页时总页数为当前页`() {
+        val itemsJson = (1..10).joinToString(",") { i ->
+            """{"id":"${6000 + i}","name":"作品$i"}"""
+        }
+        val json = """{"list":[$itemsJson],"total":50}"""
+
+        val page = SerializationParser.parse(json, page = 3, knownPageSize = 20)
+
+        assertEquals(3, page.currentPage)
+        assertEquals(50, page.totalItems)
+        assertEquals(3, page.totalPages)
+    }
 }

@@ -2,7 +2,8 @@ package com.jm3.core.update
 
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -37,6 +38,8 @@ class UpdateChecker(
                 UpdateFailure.NETWORK,
                 error.message ?: error.javaClass.simpleName,
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             return@withContext UpdateCheckResult.Failed(
                 UpdateFailure.NETWORK,
@@ -86,7 +89,7 @@ class UpdateChecker(
  * GitHub API 要求非空 User-Agent，缺失会直接 403，所以必须显式设置。
  */
 private fun fetchReleaseText(url: String): String {
-    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+    val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
         requestMethod = "GET"
         connectTimeout = CONNECT_TIMEOUT_MS
         readTimeout = READ_TIMEOUT_MS

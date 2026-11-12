@@ -248,11 +248,15 @@ class Jm3GatewayImpl internal constructor(
     private val clientProvider: () -> JmApiClient,
     private val domainControlsProvider: () -> DomainControls,
     private val bridge: LibraryBridge = ReflectiveLibraryBridge,
+    private val onClose: () -> Unit = {},
 ) : Jm3Gateway {
 
     private val client: JmApiClient by lazy(clientProvider)
 
     private val domainControls: DomainControls by lazy(domainControlsProvider)
+
+    @Volatile
+    private var serializationPageSize: Int? = null
 
     companion object {
         private const val TAG = "Jm3Gateway"
@@ -264,7 +268,13 @@ class Jm3GatewayImpl internal constructor(
          * （分发服务器请求 + 全域名探活）。两边各调一次会让一个网关里躺着两个客户端、
          * 冷启动凭空翻倍，所以这里只求值一次并共用。
          */
-        fun production(clientProvider: () -> JmApiClient): Jm3GatewayImpl {
+        fun production(clientProvider: () -> JmApiClient): Jm3GatewayImpl =
+            production(clientProvider = clientProvider, onClose = {})
+
+        internal fun production(
+            clientProvider: () -> JmApiClient,
+            onClose: () -> Unit,
+        ): Jm3GatewayImpl {
             val lazyClient = lazy(clientProvider)
             return Jm3GatewayImpl(
                 clientProvider = { lazyClient.value },
@@ -274,6 +284,7 @@ class Jm3GatewayImpl internal constructor(
                         ?: error("jmcomic v1.1.12 的 JmApiClient 必须派生自 AbstractJmClient，域名能力不可用")
                     LibraryDomainControls(library)
                 },
+                onClose = onClose,
             )
         }
 
@@ -304,7 +315,16 @@ class Jm3GatewayImpl internal constructor(
         val covers = covers()
         val rawJson = bridge.serializationJson(client, page = page)
         return if (rawJson != null) {
-            SerializationParser.parse(rawJson, page, covers)
+            val parsed = SerializationParser.parse(
+                json = rawJson,
+                page = page,
+                covers = covers,
+                knownPageSize = if (page <= 1) null else serializationPageSize,
+            )
+            if (page == 1 && parsed.items.isNotEmpty() && parsed.items.size < parsed.totalItems) {
+                serializationPageSize = parsed.items.size
+            }
+            parsed
         } else {
             client.getSerialization(page).toPage(covers)
         }
@@ -481,7 +501,10 @@ class Jm3GatewayImpl internal constructor(
 
     override fun reprobeDomains() = domainControls.reprobeDomains()
 
-    override fun close() = domainControls.close()
+    override fun close() {
+        onClose()
+        domainControls.close()
+    }
 
     override fun toggleFavorite(albumId: String, folderId: String) =
         client.toggleAlbumFavorite(albumId, folderId)
@@ -602,7 +625,7 @@ private class LibraryDomainControls(private val client: AbstractJmClient) : Doma
 
     override fun usedDomain(): String? = client.usedDomain
 
-    override fun domainsReady(): Boolean = runCatching { domainManagerOf(client).isInitialized }.getOrDefault(false)
+    override fun domainsReady(): Boolean = runCatching { domainManagerOf(client)?.isInitialized == true }.getOrDefault(false)
 
     /** 候选域名取库的线路表；初始化未完成时会阻塞到探活结束，调用方须在 IO 线程。 */
     override fun candidateDomains(): Set<String> = runCatching {

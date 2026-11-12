@@ -339,4 +339,10 @@ class MappersTest {
         assertEquals("220980", got.scrambleId())
         assertEquals("00001.jpg", got.filename())
     }
+
+    @Test
+    fun htmlToText_不对已转义实体做二次反转义() {
+        assertEquals("&lt;b&gt;test&lt;/b&gt;", htmlToText("&amp;lt;b&amp;gt;test&amp;lt;/b&amp;gt;"))
+        assertEquals("&amp; &nbsp; &quot; &#39;", htmlToText("&amp;amp; &amp;nbsp; &amp;quot; &amp;#39;"))
+    }
 }

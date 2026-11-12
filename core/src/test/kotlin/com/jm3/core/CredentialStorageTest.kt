@@ -51,12 +51,13 @@ class CredentialStorageTest {
     }
 
     @Test
-    fun `明文不是合法凭据 JSON 时读回空`() = runBlocking {
+    fun `明文不是合法凭据 JSON 时读回空并清掉坏密文`() = runBlocking {
         val blobStore = InMemoryCredentialBlobStore()
         val store = EncryptedCredentialStore(blobStore, ReversingCipher())
         blobStore.writeCredentialBlob("随便一段文本".reversed())
 
         assertNull(store.load())
+        assertNull(blobStore.readCredentialBlob(), "解出来不是合法 JSON 时也应当就地清掉坏密文")
     }
 
     @Test

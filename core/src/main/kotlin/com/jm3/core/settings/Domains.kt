@@ -14,8 +14,6 @@ object Domains {
 
     fun normalize(raw: List<String>): List<String> =
         raw.asSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
             .map { CoverLocator.hostOf(it) }
             .filter { it.isNotEmpty() }
             .distinct()

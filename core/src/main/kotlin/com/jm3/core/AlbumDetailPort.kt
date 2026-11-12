@@ -9,7 +9,7 @@ import com.jm3.core.model.FolderOperation
 /**
  * 作品详情页需要的网关能力。
  *
- * 详情页只用到 [Jm3Gateway] 61 个方法里的 10 个，页面状态持有者依赖这一小块，
+ * 详情页只用到 [Jm3Gateway] 63 个方法里的 10 个，页面状态持有者依赖这一小块，
  * 测试可以直接手写实现，不必反射伪造整个网关。全部为阻塞调用。
  */
 interface AlbumDetailPort {

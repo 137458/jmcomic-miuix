@@ -117,4 +117,42 @@ class CustomDomainPoolTest {
         assertNull(pool)
         assertEquals(listOf("old.example"), manager.domains)
     }
+
+    @Test
+    fun `反射字段不存在时降级返回 null 并记录成员名与异常类`() {
+        val originalSink = Jm3Log.sink
+        val warnings = mutableListOf<String>()
+        Jm3Log.sink = { tag, message, _ -> warnings += "$tag:$message" }
+        try {
+            val field = findDeclaredField(Any::class.java, "domainManager")
+            assertNull(field)
+            assertEquals(1, warnings.size)
+            assertEquals(true, warnings.single().contains("domainManager"))
+            assertEquals(true, warnings.single().contains("NoSuchFieldException"))
+        } finally {
+            Jm3Log.sink = originalSink
+        }
+    }
+
+    @Test
+    fun `取消后台线路池刷新句柄后不再拉取官方线路`() {
+        var fetched = false
+        val config = io.github.jukomu.jmcomic.core.config.JmConfiguration.Builder().build()
+        val context = io.github.jukomu.jmcomic.core.net.OkHttpBuilder.build(config)
+        val client = io.github.jukomu.jmcomic.core.client.impl.JmApiClient(
+            config, context.client, context.cookieManager, context.domainManager,
+        )
+        val cancel = refreshDomainPoolInBackground(
+            client = client,
+            custom = emptyList(),
+            fetchOfficial = {
+                fetched = true
+                listOf("a.example")
+            },
+            delayMs = 200L,
+        )
+        cancel()
+        Thread.sleep(300L)
+        assertEquals(false, fetched)
+    }
 }

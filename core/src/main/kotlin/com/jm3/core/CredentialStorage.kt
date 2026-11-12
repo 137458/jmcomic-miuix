@@ -102,7 +102,12 @@ class EncryptedCredentialStore(
             clear()
             return null
         }
-        return CredentialCodec.decode(plain)
+        val credentials = CredentialCodec.decode(plain)
+        if (credentials == null) {
+            clear()
+            return null
+        }
+        return credentials
     }
 
     override suspend fun save(credentials: SavedCredentials) {

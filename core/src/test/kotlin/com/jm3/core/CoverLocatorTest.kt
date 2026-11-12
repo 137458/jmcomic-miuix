@@ -19,6 +19,9 @@ class CoverLocatorTest {
     @Test
     fun 域名两边留的协议头与尾部斜杠都去掉() {
         assertEquals("www.example.com", CoverLocator.hostOf(" https://www.example.com// "))
+        assertEquals("www.example.com", CoverLocator.hostOf("HTTPS://www.example.com:443/api"))
+        assertEquals("18comic.vip", CoverLocator.hostOf("  .18comic.vip/  "))
+        assertEquals("", CoverLocator.hostOf("..."))
     }
 
     @Test

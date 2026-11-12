@@ -5,7 +5,7 @@ import io.github.jukomu.jmcomic.core.constant.JmConstants
 import io.github.jukomu.jmcomic.core.crypto.JmCryptoTool
 import io.github.jukomu.jmcomic.core.parser.ApiParser
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -63,7 +63,7 @@ internal fun officialApiDomains(
 
 /** 取线路表的纯文本响应；非 200 或 IO 失败都当这一路不可用。 */
 private fun httpGetText(url: String): String? {
-    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+    val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
         requestMethod = "GET"
         connectTimeout = DOMAIN_TABLE_TIMEOUT_MS.toInt()
         readTimeout = DOMAIN_TABLE_TIMEOUT_MS.toInt()

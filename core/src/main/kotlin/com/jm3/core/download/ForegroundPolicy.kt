@@ -33,19 +33,13 @@ class ForegroundPolicy(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
+    private val lock = Any()
     private val throttle = DownloadThrottle(progressIntervalMs)
 
-    /**
-     * 服务是否已进入前台（由服务实例回写）。
-     *
-     * 回写发生在主线程、读取发生在订阅队列的协程，因此这两个字段用 @Volatile 保证可见性；
-     * [onTasks] 本身只允许由一个协程串行调用，不承担并发写入。
-     */
-    @Volatile
+    /** 服务是否已进入前台（由服务实例回写）。 */
     private var running = false
 
     /** 上次已知的活动任务数，用于去重：静止状态不重复 start/stop。 */
-    @Volatile
     private var lastActiveCount = -1
 
     /** 上次拉起尝试的时间：只用于压同一次任务数变化内的抖动。 */
@@ -56,23 +50,26 @@ class ForegroundPolicy(
      *
      * 只记录失败时间、不依赖「下一次任务数变化」，否则队列静止时服务会一直起不来。
      */
-    @Volatile
     private var lastStartFailedAt = 0L
 
     /** 上一次活动任务快照：用来识别终态跃迁。 */
     private var previous: Map<String, DownloadTask> = emptyMap()
 
-    val isRunning: Boolean get() = running
+    val isRunning: Boolean get() = synchronized(lock) { running }
 
     /** 服务已进前台（onStartCommand 里 startForeground 成功）。 */
     fun onServiceForeground() {
-        running = true
-        lastStartFailedAt = 0L
+        synchronized(lock) {
+            running = true
+            lastStartFailedAt = 0L
+        }
     }
 
     /** 服务已退出前台（onDestroy、启动失败或超时退场）。 */
     fun onServiceStopped() {
-        running = false
+        synchronized(lock) {
+            running = false
+        }
     }
 
     /**
@@ -83,8 +80,10 @@ class ForegroundPolicy(
      * 只要退避窗口（[startRetryIntervalMs]）已过就重新尝试。
      */
     fun onStartFailed() {
-        lastActiveCount = -1
-        lastStartFailedAt = clock()
+        synchronized(lock) {
+            lastActiveCount = -1
+            lastStartFailedAt = clock()
+        }
     }
 
     /**
@@ -92,7 +91,7 @@ class ForegroundPolicy(
      *
      * 顺序即执行顺序：先拉起/停止，再决定这一轮的通知怎么发。
      */
-    fun onTasks(tasks: Map<String, DownloadTask>): List<ForegroundAction> {
+    fun onTasks(tasks: Map<String, DownloadTask>): List<ForegroundAction> = synchronized(lock) {
         val actions = ArrayList<ForegroundAction>(2)
         val active = tasks.activeDownloadCount()
         val countChanged = active != lastActiveCount
@@ -113,12 +112,13 @@ class ForegroundPolicy(
             actions += ForegroundAction.Stop
         }
         previous = tasks
-        return actions
+        actions
     }
 
     /** 补发窗口到期：服务还在前台才发，否则这条进度已经没有意义。 */
-    fun onFlushDue(tasks: Map<String, DownloadTask>): ForegroundAction? =
+    fun onFlushDue(tasks: Map<String, DownloadTask>): ForegroundAction? = synchronized(lock) {
         if (running) ForegroundAction.Publish(tasks) else null
+    }
 
     /** 活动数变化才拉起；上一次拉起失败的话，退避窗口过后按时间补一次。 */
     private fun shouldStart(countChanged: Boolean): Boolean {
