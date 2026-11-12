@@ -712,6 +712,7 @@ internal fun CouiBrowseScreen(
                     // 榜单模式仍就地保留每周连载更新（与其余列表统一为独立浮岛行卡）与续页脚
                     couiWeeklySection(
                         feed = weekly,
+                        columns = feedColumns,
                         loading = weeklyIsLoading,
                         failure = weeklyFail,
                         onRetry = { loadWeekly() },
@@ -1254,6 +1255,7 @@ private fun CouiBrowseRowSlot(
 
 private fun LazyListScope.couiWeeklySection(
     feed: PagedFeed<SearchResult>,
+    columns: Int,
     loading: Boolean,
     failure: ScreenLoadPlan?,
     onRetry: () -> Unit,
@@ -1285,10 +1287,14 @@ private fun LazyListScope.couiWeeklySection(
     item(key = "coui-browse-weekly-title") {
         CouiGroupTitle(title = "每周连载更新")
     }
-    itemsIndexed(
-        items = feed.items,
-        key = { index, result -> "coui-weekly-row-${result.id}-$index" },
-    ) { _, result ->
+    // 与其余行卡段同一套大屏分列：单列时 key 逐字不变，手机断点行为不动
+    feedRowItems(
+        count = feed.items.size,
+        columns = columns,
+        keyPrefix = "coui-weekly-row-",
+        keyOf = { index -> feed.items[index].id + "-" + index },
+    ) { index ->
+        val result = feed.items[index]
         CouiBrowseRowSlot(
             result = result,
             rank = null,
