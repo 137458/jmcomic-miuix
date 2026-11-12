@@ -70,6 +70,7 @@ import com.jm3.app.miuix.ui.coui.page.CouiFavoritesScreen
 import com.jm3.app.miuix.ui.coui.page.CouiForumScreen
 import com.jm3.app.miuix.ui.coui.page.CouiHistoryScreen
 import com.jm3.app.miuix.ui.coui.page.CouiLibraryScreen
+import com.jm3.app.miuix.ui.coui.page.CouiLoginScreen
 import com.jm3.app.miuix.ui.coui.page.CouiMainScreen
 import com.jm3.app.miuix.ui.coui.page.CouiNotificationsScreen
 import com.jm3.app.miuix.ui.coui.page.CouiNovelDetailScreen
@@ -662,7 +663,11 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
-                            LoginScreen(account = deps.account, onBack = { backStack.removeLastOrNull() })
+                            SkinRoute(
+                                uiSkin = uiSkin,
+                                hyperOs = { LoginScreen(account = deps.account, onBack = { backStack.removeLastOrNull() }) },
+                                colorOs = { CouiLoginScreen(account = deps.account, onBack = { backStack.removeLastOrNull() }) },
+                            )
                         }
                         entry<Route.Favorites>(
                             transition = subPageTransition,

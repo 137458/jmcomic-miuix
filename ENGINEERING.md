@@ -13,7 +13,7 @@
 开始任何功能或重构前，先回答以下三问：
 
 1. **分层归属**：能进 `:core` 的逻辑禁止写进 `:app`；能写成纯函数的判定禁止藏在 Composable 内。`:core` 为纯 JVM 模块（`core/build.gradle.kts:1-4`），严禁引入 Android 类型。
-2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 154 个测试类（`:core` 73 个、`:app` 81 个）。无法测试说明分层有误，须先拆层。
+2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 164 个测试类（`:core` 73 个、`:app` 91 个）。无法测试说明分层有误，须先拆层。
 3. **红线冲击**：核对是否破坏单一网关、单一状态真源、双皮肤组件隔离、阅读器手势优先级及 Release 混淆签名规则。
 
 ---
@@ -22,40 +22,40 @@
 
 ### 1.1 进程组装根与六大域
 
-进程内唯一的组装根为 `Jm3Graph`（`app/src/main/kotlin/com/jm3/app/miuix/Jm3App.kt:140`），装配入口在 `init(context)`（`:181`）。组装根仅负责按启动顺序装配六个业务域，并提供 `@Deprecated` 单行委托属性：
+进程内唯一的组装根为 `Jm3Graph`（`app/src/main/kotlin/com/jm3/app/miuix/Jm3App.kt:153`），由 `Jm3Application`（`:139`，在 `app/src/main/AndroidManifest.xml:17` 注册）与 `MainActivity` 统一经 `init(context)`（`:197`）加锁（`initLock` `:185`）幂等初始化。组装根仅负责按启动顺序装配六个业务域，并提供 `@Deprecated` 单行委托属性：
 
-- `ApiDomain`（`data/ApiDomain.kt:23`）：管理网关实例、线路池缓存与线路切换锁。会话迁移由 `SessionDomain.applyDomains`（`data/SessionDomain.kt:43`）挂接。
+- `ApiDomain`（`data/ApiDomain.kt:27`）：管理网关实例、线路池缓存与线路切换锁。会话迁移由 `SessionDomain.applyDomains`（`data/SessionDomain.kt:43`）挂接。
 - `SessionDomain`（`data/SessionDomain.kt:16`）：管理账号、带启动闸门的 `AuthCall`、未读角标与凭据存储。
 - `SettingsDomain`（`data/SettingsDomain.kt:19`）：管理设置仓库与全局分页模式状态。
-- `LibraryDomain`（`data/LibraryDomain.kt:17`）：管理唯一 Room 数据库 `jm3.db`（`:23`），提供历史仓库与下载台账存储。
-- `DownloadDomain`（`data/DownloadDomain.kt:20`）：管理页文件存储、下载队列、台账与 `DownloadManager` 门面。
+- `LibraryDomain`（`data/LibraryDomain.kt:18`）：管理唯一 Room 数据库 `jm3.db`（`:24`），提供历史仓库与下载台账存储。
+- `DownloadDomain`（`data/DownloadDomain.kt:21`）：管理页文件存储、下载队列、台账与 `DownloadManager` 门面。
 - `UpdateDomain`（`data/UpdateDomain.kt:15`）：管理 `UpdateDownloader` 唯一实例与安装包安装出口。
 
 **硬性禁令**：
 
 - 同一域内类型禁止在其他位置重复实例化。
 - 屏幕统一经 `ScreenDeps`（`app/src/main/kotlin/com/jm3/app/miuix/ScreenDeps.kt:26`）接收注入依赖，禁止在屏幕内直读 `Jm3Graph.<成员>`。
-- `Jm3Graph` 委托属性仅允许 `MainActivity` 与 `DownloadService` 等进程级入口调用，且禁止在委托内写编排逻辑。
+- `Jm3Graph` 委托属性仅允许 `Jm3Application`、`MainActivity` 与 `DownloadService` 等进程级入口调用，且禁止在委托内写编排逻辑。
 
 ### 1.2 协程作用域与界面编排
 
-- 唯一长期协程作用域为 `appScope`（`Jm3App.kt:143`，`SupervisorJob() + Dispatchers.IO`）。禁止使用 `GlobalScope`。
-- 现有用途限于装配注入、`ScreenDeps.appScope`、`ApiDomain`、`UpdateDomain`（`:29`）、`DownloadManager`（`:26`）、`DownloadService`（`:136`）、`MainActivity.onStop`（`:66`）与 `ReaderScreen` 退出补记页码（`:628`）。新增使用点必须说明为何无法挂载至 `rememberCoroutineScope`。
+- 唯一长期协程作用域为 `appScope`（`Jm3App.kt:156`，`SupervisorJob() + Dispatchers.IO`）。禁止使用 `GlobalScope`。
+- 现有用途限于装配注入、`ScreenDeps.appScope`、`ApiDomain`（`:29`）、`UpdateDomain`（`:29`）、`DownloadManager`（`:28`）、`DownloadService`（`:153`、`:160`、`:213`）、`MainActivity.onStop`（`:79`）、`ReaderScreen` 退出补记页码（`:630`）与 `CouiReaderScreen` 退出补记页码（`ui/coui/page/CouiReaderScreen.kt:691`）。新增使用点必须说明为何无法挂载至 `rememberCoroutineScope`。
 - 本仓库不引入 `ViewModel`。屏幕数据状态使用 `remember` 与 `LaunchedEffect` 编排，状态复杂时抽离纯 Kotlin 状态容器（如 `AlbumDetailStateHolder`）。
 - 网关调用一律经 `AuthCall.call`（`core/src/main/kotlin/com/jm3/core/session/AuthCall.kt:32`）。禁止在屏幕内自写 `withContext(Dispatchers.IO)` 调网关，禁止跳过启动闸门与统一失效回调。
 
 ### 1.3 持久化与单真源
 
 - 下载任务状态唯一真源为 `DownloadQueue.updates`（`core/src/main/kotlin/com/jm3/core/download/DownloadQueue.kt:30`）。UI 禁止另建进度表或在界面层累加页数。
-- 设置项与会话仅经 DataStore 读写，禁止另开 `SharedPreferences`。库名分别为 `jm3_settings`（`data/SettingsStore.kt:15`）与 `jm3_session`（`data/SessionStore.kt:13`）。
-- 会话内容须经 `SessionCodec` 单键 JSON 读写；自动登录密文统一存为 `jm3_settings` 下的 `credentials_blob` 键（`SettingsStore.kt:18`）。
+- 设置项与会话仅经 DataStore 读写，禁止另开 `SharedPreferences`。库名分别为 `jm3_settings`（`data/SettingsStore.kt:19`）与 `jm3_session`（`data/SessionStore.kt:17`），均配置 `ReplaceFileCorruptionHandler` 损坏自清，并在 `AndroidManifest.xml:23` 经 `res/xml/data_extraction_rules.xml` 排除云备份与设备迁移。
+- 会话内容须经 `SessionCodec` 单键 JSON 读写；自动登录密文统一存为 `jm3_settings` 下的 `credentials_blob` 键（`SettingsStore.kt:27`）。
 - 持久化契约先在 `:core` 定义接口与 `InMemory` 实现，再在 `:app` 落地实现：
   - 设置：`SettingsRepository` / `InMemorySettingsRepository`（`core/src/main/kotlin/com/jm3/core/settings/SettingsRepository.kt:23`、`:52`）。
   - 下载：`DownloadLedger`（`core/src/main/kotlin/com/jm3/core/download/DownloadLedger.kt:60`）、`DownloadRecord`（`DownloadRecord.kt:4`）、`DownloadStore`（`DownloadStore.kt:9`）。
   - 历史：`HistoryRepository` / `InMemoryHistoryRepository`（`core/src/main/kotlin/com/jm3/core/history/HistoryRepository.kt:13`、`:37`）。
-  - 凭据：`CredentialStorage`、`CredentialCipher`、`EncryptedCredentialStore`（`core/src/main/kotlin/com/jm3/core/CredentialStorage.kt:16`、`:69`、`:92`），Android 侧密钥由 `KeystoreCredentialCipher`（`data/CredentialStore.kt:24`）提供。
-  - 例外：`DomainPoolCache`（`core/src/main/kotlin/com/jm3/core/settings/DomainPoolCache.kt:9`、Android 实现见 `data/DomainPoolCache.kt:13`）因冷启动网关装配在首屏前同步执行，采用阻塞文件缓存而非 DataStore。
-- Room 数据库 `jm3.db` 仅包含 `history` 与 `downloads` 两张表（`data/history/HistoryStore.kt:22`、`:57`、`version = 2`、`:127`）。改表必须提供 `Migration` 并升版本，禁止 `fallbackToDestructiveMigration`。
+  - 凭据：`CredentialStorage`、`CredentialCipher`、`EncryptedCredentialStore`（`core/src/main/kotlin/com/jm3/core/CredentialStorage.kt:16`、`:69`、`:92`），Android 侧密钥由 `KeystoreCredentialCipher`（`data/CredentialStore.kt:34`）提供（支持 Keystore 密钥失效时自动重建重试）。
+  - 例外：`DomainPoolCache`（`core/src/main/kotlin/com/jm3/core/settings/DomainPoolCache.kt:9`、Android 原子写盘实现 `FileDomainPoolCache` 见 `data/DomainPoolCache.kt:16`）因冷启动网关装配在首屏前同步执行，采用阻塞文件缓存而非 DataStore。
+- Room 数据库 `jm3.db` 仅包含 `history` 与 `downloads` 两张表（`data/history/HistoryStore.kt:30`、`:70`、`version = 3`、`:148`），通过 `MIGRATION_2_3`（`:140`）为 `history` 建立 `albumId`、`updatedAt` 索引并为 `downloads` 建立 `updatedAt` 索引。改表必须提供 `Migration` 并升版本，禁止 `fallbackToDestructiveMigration`。
 
 ---
 
@@ -66,14 +66,14 @@
 - 网络唯一入口为 `Jm3Gateway`（`core/src/main/kotlin/com/jm3/core/Jm3Gateway.kt:47`），继承自 `SessionAuth`（`SessionAuth.kt:14`）与 `PhotoSource`（`download/PhotoSource.kt:14`）。所有方法均为阻塞调用，须运行在 IO 调度器上。
 - `AccountManager` 仅依赖 `SessionAuth` 的 6 个鉴权方法；下载取页组件仅依赖 `PhotoSource` 的 `photo`（`:17`）与 `imageBytes`（`:20`）。禁止测试造全宽假网关。
 - 协议库（`io.github.jukomu.jmcomic`）只允许出现在 `:core`，通过 `api(libs.jmcomic.api)`（`core/build.gradle.kts:18`）暴露。禁止在 `:app` 内直接实例化底层协议客户端。
-- `java.lang.reflect` 全仓仅允许出现在 `LibraryBridge`（`core/src/main/kotlin/com/jm3/core/LibraryBridge.kt:15`、`:43`）与 `CustomDomainPool`（`CustomDomainPool.kt:24`、`:37`）。合法反射成员白名单共 8 个：
-  - `LibraryBridge`（6 个）：`cookieManager`、`cacheUsername`、`autoLoginRefreshAllowed`、`loginHost`、`encryptPasswordInMemory`、`encryptedPassword`。
+- `java.lang.reflect` 全仓仅允许出现在 `LibraryBridge`（`core/src/main/kotlin/com/jm3/core/LibraryBridge.kt:15`、`:43`）与 `CustomDomainPool`（`CustomDomainPool.kt:32`、`:49`）。合法反射成员白名单共 10 个：
+  - `LibraryBridge`（8 个）：`cookieManager`、`cacheUsername`、`autoLoginRefreshAllowed`、`loginHost`、`encryptPasswordInMemory`、`encryptedPassword`、`newHttpUrlBuilder`、`executeGetRequest`。
   - `CustomDomainPool`（2 个）：`domainManager`、`createDomainProbe`。
 - 反射成员缺失时须按契约降级，并通过 `Jm3Log.warn` 记录成员名与异常类名，禁止打印 Cookie 或密码值。
 
 ### 2.2 线路切换与域名来源
 
-- 网关实例切换走 `ApiDomain.gatewayOverride`（`data/ApiDomain.kt:31`）与 `GatewayFactory`（`core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:15`）。域名清洗一律经 `Domains`（`core/src/main/kotlin/com/jm3/core/settings/Domains.kt:6`），禁止在屏幕硬编码 URL。
+- 网关实例切换走 `ApiDomain.gatewayOverride`（`data/ApiDomain.kt:45`）与 `GatewayFactory`（`core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:17`）。域名清洗一律经 `Domains`（`core/src/main/kotlin/com/jm3/core/settings/Domains.kt:6`），禁止在屏幕硬编码 URL。
 - 启动期域名仅来自自定义线路与上次刷新落盘的 `DomainPoolCache`。官方线路表在 `DomainTable.kt` 运行时拉取解密；仅当两者皆空（如首次安装）时回退至库内初始化链并在完成后落盘。
 
 ### 2.3 图片缓存与超采样链路
@@ -92,11 +92,11 @@
 
 ## 三、错误处理与协程规范
 
-1. **禁止吞掉 `CancellationException`**：参考 `DownloadQueue.kt:155-157` 与 `:218-219`。挂起调用收成 `Result` 时一律使用 `runCatchingSuspending`（`core/src/main/kotlin/com/jm3/core/Cancellation.kt:11`），禁止直接使用 `runCatching { suspendCall() }`。
+1. **禁止吞掉 `CancellationException`**：参考 `DownloadQueue.kt:155-157` 与 `:217-219`。挂起调用收成 `Result` 时一律使用 `runCatchingSuspending`（`core/src/main/kotlin/com/jm3/core/Cancellation.kt:11`），禁止直接使用 `runCatching { suspendCall() }`。
 2. **单任务失败隔离**：下载 worker 捕获普通异常后仅标记当前任务失败，禁止因单个任务异常中断整个队列循环（`DownloadQueue.kt:158`）。
 3. **状态机硬断言**：非法状态转移使用 `check` 显式抛出，例如 `DownloadTask.kt:48` 的 `check(status.canTransitionTo(next))`，禁止以条件跳过掩盖状态错乱。
-4. **用户错误可重试**：全屏错误态统一复用 `ErrorScreen`（`ui/Common.kt:306`），列表加载脚部统一复用 `LoadMoreFooter`（`:416`）。COUI 皮肤对应复用 `CouiErrorGroup`（`ui/coui/component/CouiAppComponents.kt:870`）与 `CouiLoadMoreFooter`（`:902`）。禁止屏幕自造错误布局。
-5. **跟手动画取消**：阅读器翻页与复位动画统一调用 `springAnimateToPage`（`ui/ReaderScreen.kt:536`、`:560`），避免另起协程争夺滚动状态。
+4. **用户错误可重试**：全屏错误态统一复用 `ErrorScreen`（`ui/Common.kt:306`），列表加载脚部统一复用 `LoadMoreFooter`（`:416`）。COUI 皮肤对应复用 `CouiErrorGroup`（`ui/coui/component/CouiAppComponents.kt:872`）与 `CouiLoadMoreFooter`（`:904`）。禁止屏幕自造错误布局。
+5. **跟手动画取消**：阅读器翻页与复位动画统一调用 `springAnimateToPage`（`ui/ReaderScreen.kt:538`、`:562`），避免另起协程争夺滚动状态。
 6. **文案与日志事实性**：日志只输出任务标识、文件路径或异常类型，不夹带私密数据；用户提示统一使用简体中文与全角标点。
 
 ---
@@ -105,7 +105,7 @@
 
 1. **单一版本真源**：版本号集中定义于 `gradle/libs.versions.toml`。模块 `build.gradle.kts` 内禁止出现字面版本号。新增依赖须同步核对许可证与 R8 规则。
 2. **单向模块依赖**：仅允许 `:app` 依赖 `:core`（`app/build.gradle.kts:82`），禁止反向依赖。`:core` 保持 Java 17（`core/build.gradle.kts:13-14`），`:app` 使用 Java 21（`app/build.gradle.kts:66-67`）。
-3. **SDK 坐标矩阵**：当前固定 `compileSdkVersion("android-37.0")`（`app/build.gradle.kts:21`）、`minSdk = 31`（`:26`）、`targetSdk = 36`（`:27`）。上述下限受 `COUI-Kit 0.0.1-alpha10` 元数据强制约束，调整前必须先核对依赖矩阵。
+3. **SDK 坐标与传输安全矩阵**：当前固定 `compileSdkVersion("android-37.0")`（`app/build.gradle.kts:21`）、`minSdk = 31`（`:26`）、`targetSdk = 36`（`:27`）。上述下限受 `COUI-Kit 0.0.1-alpha10` 元数据强制约束，调整前必须先核对依赖矩阵。`AndroidManifest.xml:25` 声明 `android:usesCleartextTraffic="false"` 禁用明文 HTTP 流量，应用内更新下载拒绝非 HTTPS 与 3xx 降级重定向，并通过 `data_extraction_rules.xml`（`AndroidManifest.xml:23`）排除敏感 DataStore 备份迁移。
 4. **Release 混淆与压缩**：`release` 构建强制开启 `isMinifyEnabled` 与 `isShrinkResources`（`app/build.gradle.kts:45-46`），规则维护于 `app/proguard-rules.pro`。新增反射式依赖必须实测 Release 包。
 5. **签名安全边界**：Release 签名从 `local.properties` 读取四键，缺失时自动回退至调试签名（`app/build.gradle.kts:12-17`、`:49`）。密钥、口令与 Cookie 严禁入库。
 6. **Gradle 执行纪律**：Windows 下固定使用 `.\gradlew.bat`，禁止传入 `--offline` 参数。同一工作树同时只允许运行一个 Gradle 构建进程，并行任务须串行化构建。
@@ -126,29 +126,29 @@
 
 - HyperOS 侧三态与基础组件统一复用 `ui/Common.kt`：`LoadingScreen`（`:292`）、`ErrorScreen`（`:306`）、`EmptyState`（`:366`）、`CenteredEmptyState`（`:386`）、`LoadMoreFooter`（`:416`）、`PagerBar`（`:620`）、`TrackedLazyColumn`（`:508`）、`rememberSelectionHaptic`（`:769`）与 `CoverSkeletonState`（`:864`）。
 - 长列表一律使用 `TrackedLazyColumn`，由其内部统一承载 `ListScrollBar` 并共享 `contentPadding`，禁止在页面层自拼滚动条。
-- COUI 侧统一复用 `CouiAppComponents.kt` 中的 `CouiAppScaffold`（`:194`）、`Modifier.couiPressable`（`:319`）、`CouiLoadingGroup`（`:487`）、`CouiEmptyGroup`（`:502`）、`CouiErrorGroup`（`:870`）与 `CouiLoadMoreFooter`（`:902`）。COUI 页面由 `CouiAppScaffold` 统一留出底栏净空，禁止页面硬编码底部占位高度。
+- COUI 侧统一复用 `CouiAppComponents.kt` 中的 `CouiAppScaffold`（`:194`）、`Modifier.couiPressable`（`:319`）、`CouiLoadingGroup`（`:487`）、`CouiEmptyGroup`（`:502`）、`CouiErrorGroup`（`:872`）与 `CouiLoadMoreFooter`（`:904`）。COUI 页面由 `CouiAppScaffold` 统一留出底栏净空，禁止页面硬编码底部占位高度。
 - Miuix `0.9.4` 实测基线：`CardDefaults.InsideMargin` 默认为 `0 dp`，弹窗水平内边距为 `24 dp`，调用方勿叠加重复水平边距；圆角裁切与描边优先使用 `squircleClip`、`squircleBorder` 与 `squircleSurface`。
 
 ### 5.3 阅读器手势与解码管线
 
 - **手势状态机**（`ui/ReaderScreen.kt`、`ui/ReaderZoomLogic.kt`）：
   - 缩放态仅由当前页通过 `isPageZoomed`（`ReaderZoomLogic.kt:13`）回写，翻页后自动复位。
-  - 横向 `HorizontalPager` 挂载 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ReaderScreen.kt:927`），确保放大平移时不触发翻页。
+  - 横向 `HorizontalPager` 挂载 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ReaderScreen.kt:929`、`CouiReaderScreen.kt:986`），确保放大平移时不触发翻页。
   - 放大贴边翻页在 `PointerEventPass.Initial` 采集原始位移，交由 `EdgeDragTracker`（`ReaderZoomLogic.kt:58`）与 `decideEdgePageTurn`（`:23`）判定，复核通过后执行 `springAnimateToPage`。
   - 纯常量（`ZOOMED_THRESHOLD = 0.02f`、`EDGE_PAGE_DISTANCE_RATIO = 0.18f`、`CONTENT_PIN_TOLERANCE_PX = 24f`、`EDGE_CONFIRM_DELAY_MS = 120L`、`EDGE_CONFIRM_MOVE_PX = 8f`）集中于 `ReaderZoomLogic.kt:4-49`，禁止散落回 Composable。
 - **比例与解码**（`ui/ReaderPageLogic.kt`、`ui/ReaderImages.kt`）：
   - 布局比例与解码请求尺寸由 `readerPageFrame`（`ReaderPageLogic.kt:108`）同源算出，展示与预取共用同一换算，确保内存缓存键一致。
-  - 像素预算派生自 `ReaderImageQuality.STANDARD.maxDecodePixels`（4,000,000 px，`ReaderPreferences.kt:4-8`），单边上限 `MAX_PAGE_DECODE_EDGE_PX = 8192`（`ReaderPageLogic.kt:33`）。
+  - 像素预算派生自 `ReaderImageQuality.STANDARD.maxDecodePixels`（4,000,000 px，`ReaderPreferences.kt:6`），单边上限 `MAX_PAGE_DECODE_EDGE_PX = 8192`（`ReaderPageLogic.kt:33`）。
   - 统一通过 `configureReaderDefaults()`（`ReaderImages.kt:223-225`）指定 `Bitmap.Config.RGB_565` 解码，4 MP 标准档单页位图内存约 `8 MB`（较 `ARGB_8888` 降低 50%）。
   - 比例回填走 `readerPageBackfill`（`ReaderPageLogic.kt:155`）：`pageRatios` 无条件更新，`decodeRatios` 仅在 `isBoxLimited`（`:126`）为真时回填。
-  - 纵向长图模式不做就地缩放，双击打开全屏缩放覆盖层（`zoomOverlayIndex`，`ReaderScreen.kt:414`）；章节种子仅接受不窄于 `MIN_SEED_ASPECT_RATIO = 0.5f`（`ReaderPageLogic.kt:40`）的常规页比例。
+  - 纵向长图模式不做就地缩放，双击打开全屏缩放覆盖层（`zoomOverlayIndex`，`ReaderScreen.kt:416`）；章节种子仅接受不窄于 `MIN_SEED_ASPECT_RATIO = 0.5f`（`ReaderPageLogic.kt:40`）的常规页比例。
 - **页码真源**：页码、跳页冻结与可见页回写统一收口于 `ReaderPagePlan`（`core/src/main/kotlin/com/jm3/core/reader/ReaderPagePlan.kt:17`、`jumpTo` `:53`、`settleJump` `:65`、`visiblePage` `:74`）。
 
 ### 5.4 动效、共享元素与大屏窗口
 
-- **封面骨架与微光**：骨架屏仅挂载于 `AlbumCoverImage`（`ui/AlbumHero.kt:384`），外部卡片不再重复套用骨架修饰符。
-- **edge-to-edge 与音量键**：`MainActivity.kt:25` 开启沉浸式，`MainActivity.kt:72-74` 将音量键分发给 `ReaderVolumeKeys`（`ReaderScreen.kt:154`）。长图缩放覆盖层打开时须消费并返回 `false` 屏蔽翻页，销毁时须校验回调归属后再置空。
-- **共享元素飞行**：列表侧挂 `.albumHeroCover`（`AlbumHero.kt:537`）、详情侧挂 `.albumHeroHeader`（`:639`），圆角读取 `LocalSkin.current.shapes.cardCorner`，行卡缩略图 `HERO_THUMB_CORNER_DP = 8f`（`:424`）、角标 `HERO_BADGE_CORNER_DP = 6f`（`:427`）。详情路由转场固定为纯 alpha 渐变（`albumDetailTransitionFor`，`Jm3App.kt:396`），禁止改为水平位移动画。
+- **封面骨架与微光**：骨架屏仅挂载于 `AlbumCoverImage`（`ui/AlbumHero.kt:385`），外部卡片不再重复套用骨架修饰符。
+- **edge-to-edge 与音量键**：`MainActivity.kt:27` 开启沉浸式，`MainActivity.kt:83-85` 将音量键分发给 `ReaderVolumeKeys`（`ReaderScreen.kt:156`）。长图缩放覆盖层打开时须消费并返回 `false` 屏蔽翻页，销毁时须校验回调归属后再置空。
+- **共享元素飞行**：列表侧挂 `.albumHeroCover`（`AlbumHero.kt:538`）、详情侧挂 `.albumHeroHeader`（`:642`），圆角读取 `LocalSkin.current.shapes.cardCorner`，行卡缩略图 `HERO_THUMB_CORNER_DP = 8f`（`:425`）、角标 `HERO_BADGE_CORNER_DP = 6f`（`:428`）。详情路由转场固定为纯 alpha 渐变（`albumDetailTransitionFor`，`Jm3App.kt:415`），禁止改为水平位移动画。
 - **窗口断点与大屏策略**：窗口尺寸统一读取 `rememberWindowDpSize()`（`ui/AdaptiveLayout.kt:76`），整数断点使用 `Dp.toLayoutDpInt()`（`:83`）向下取整，禁止使用 `Configuration.screenWidthDp`。大屏布局阈值集中于 `WideLayoutPolicy`（`core/src/main/kotlin/com/jm3/core/layout/WideLayoutPolicy.kt:22`）：中屏 `600 dp`（`:25`）、大屏 `840 dp`（`:28`），详情双栏、行卡两列、网格列数与侧栏宽高双条件（`:139-145`）均从此处派生。
 
 ---
@@ -175,21 +175,21 @@
 
 测试基线（2026-11-12 实跑 `:core:test` 与 `:app:testDebugUnitTest`，以 `build/test-results/**/TEST-*.xml` 为准）：
 
-- **`:core`**：73 个测试类 / 656 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`）。
-- **`:app`**：81 个测试类 / 605 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`）。
-- **全仓合计**：154 个测试类 / 1,261 个测试用例，全部通过，0 失败、0 跳过。
+- **`:core`**：73 个测试类 / 679 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`）。
+- **`:app`**：91 个测试类 / 636 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`）。
+- **全仓合计**：164 个测试类 / 1,315 个测试用例，全部通过，0 失败、0 跳过。
 
-典型纯逻辑边界测试规模：`AccountManagerTest`（31）、`AlbumHeroLogicTest`（31）、`ReaderPageLogicTest`（31）、`MappersTest`（28）、`CheckInLoadPolicyTest`（28）、`ReaderProgressCodecTest`（27）、`AlbumHeroHostTest`（26）、`CouiWorkCardLayoutTest`（26）、`ReaderZoomLogicTest`（22）、`DownloadQueueTest`（20）。
+典型纯逻辑边界测试规模：`AccountManagerTest`（36）、`AlbumHeroLogicTest`（31）、`ReaderPageLogicTest`（31）、`MappersTest`（29）、`CheckInLoadPolicyTest`（29）、`ReaderProgressCodecTest`（27）、`AlbumHeroHostTest`（26）、`CouiWorkCardLayoutTest`（26）、`ReaderZoomLogicTest`（22）、`DownloadQueueTest`（21）。
 
 ### 6.4 核心边界测试清单
 
 新增或修改以下能力时，对应测试类必须同步覆盖并保持绿灯：
 
-- **下载状态机与队列**：`DownloadTask` 非法状态转移抛出异常 → `DownloadTaskTest`；同话去重、失败重入、并发上限 2 与取消不耗重试 → `DownloadQueueTest` / `DownloadContractTest`；断点恢复与台账分离写 → `DownloadRecoveryTest` / `DownloadLedgerTest`。
-- **下载文件与前台策略**：页文件原子替换且失败不留 `.tmp` → `FileDownloadStoreTest`（14）；窄接口取页契约 → `GatewaySourcesTest`；页码清单编解码 → `DownloadPagesCodecTest`；通知文案与条目呈现 → `DownloadPresentationTest` / `DownloadStatusSemanticsTest` / `DownloadRowTest` / `DownloadRowTextTest`；前台策略与退避 → `ForegroundPolicyTest` / `ForegroundRunnerTest`。
-- **分页、封面与协议映射**：1 基页码换算 → `PageNumbersTest`；翻页计算 → `PagingBehaviorTest`；去重与触底距离 → `PagedFeedTest`（17）、`SearchPagesTest`、`CommentPagesTest`；分割还原 → `ScrambleTest`；封面三态与缓存键互逆 → `CoverResolverTest`（13）、`CoverLocatorTest`；域名清洗 → `DomainsTest`；章节分组与标签 → `ChapterGroupsTest`、`ChapterLabelsTest`、`NotificationBodyTest`。
-- **会话、凭据与更新**：会话编解码 → `SessionCodecTest`；加密凭据落盘与坏数据自清 → `CredentialStorageTest`；取消异常重抛 → `CancellationTest`；反射字段契约与降级路由 → `LibrarySessionReflectionTest`、`LibraryBridgeRoutingTest`；静默重登与 3 次失败清凭据 → `AccountManagerTest`（31）；启动闸门与失效通知 → `AuthCallTest`；未读角标保留 → `UnreadBadgeTest`；版本等价与设置归一 → `VersionTextTest`、`UpdateSettingsTest`、`SettingsRepositoryTest`、`SettingsNormalizationTest`、`SettingsKeyStoreAdapterTest`。
-- **阅读器、转场、布局与皮肤**：缩放与边缘翻页 → `ReaderZoomLogicTest`（22）；页框比例与解码上限 → `ReaderPageLogicTest`（31）、`ReaderPageBackfillTest`（8）；页码计划与跳页冻结 → `ReaderPagePlanTest`（12）；进度编解码 → `ReaderProgressCodecTest`（27）；预取步进 → `ReaderPrefetchTest`；共享元素几何、宿主状态机与缓存尺寸 → `AlbumHeroLogicTest`（31）、`AlbumHeroHostTest`（26）、`AlbumHeroStateMachineTest`（13）、`AlbumHeroCoverSizeTest`（4）；详情状态容器 → `AlbumDetailStateHolderTest`（16）；结局翻译 → `ScreenLoadPlanTest`、`ListOutcomeTest`、`NovelActionNoticeTest`；玻璃表面计划 → `GlassSurfaceTest`；COUI 阅读器逻辑 → `CouiReaderLogicTest`（13）；大屏与底栏导航策略 → `WideLayoutPolicyTest`（15）、`BottomBarPreferencesTest`（9）、`WideScreenNavigationTest`（8）。
+- **下载状态机与队列**：`DownloadTask` 非法状态转移抛出异常 → `DownloadTaskTest`；同话去重、失败重入、并发上限 2 与取消不耗重试 → `DownloadQueueTest`（21） / `DownloadContractTest`；断点恢复与台账分离写 → `DownloadRecoveryTest` / `DownloadLedgerTest` / `DownloadManagerPersistenceTest`。
+- **下载文件与前台策略**：页文件原子替换、路径校验且失败不留 `.tmp` → `FileDownloadStoreTest`（15）；窄接口取页契约 → `GatewaySourcesTest`；页码清单编解码 → `DownloadPagesCodecTest`；通知文案与条目呈现 → `DownloadPresentationTest` / `DownloadStatusSemanticsTest` / `DownloadRowTest` / `DownloadRowTextTest`；前台策略与退避 → `ForegroundPolicyTest` / `ForegroundRunnerTest`。
+- **分页、封面与协议映射**：1 基页码换算 → `PageNumbersTest`；翻页计算 → `PagingBehaviorTest`；去重与触底距离 → `PagedFeedTest`（17）、`SearchPagesTest`、`CommentPagesTest`、`SerializationPageTest`；分割还原 → `ScrambleTest`；封面三态与缓存键互逆 → `CoverResolverTest`（13）、`CoverLocatorTest`；域名清洗与线路切换缓存 → `DomainsTest`、`CustomDomainPoolTest`、`DomainPoolCacheTest`、`ApiDomainTest`；章节分组与标签 → `ChapterGroupsTest`、`ChapterLabelsTest`、`NotificationBodyTest`。
+- **会话、凭据与更新**：会话编解码 → `SessionCodecTest`；加密凭据落盘、坏数据自清与 Keystore 密钥重建 → `CredentialStorageTest`、`CredentialStoreTest`；取消异常重抛 → `CancellationTest`；反射字段契约与降级路由 → `LibrarySessionReflectionTest`、`LibraryBridgeRoutingTest`；静默重登、并发竞态与 3 次失败清凭据 → `AccountManagerTest`（36）；启动闸门与失效通知 → `AuthCallTest`；未读角标保留与纪元保护 → `UnreadBadgeTest`；版本等价、更新下载校验与设置归一 → `VersionTextTest`、`UpdateCheckerTest`、`UpdateDownloaderTest`、`ReleaseJsonTest`、`UpdateSettingsTest`、`SettingsRepositoryTest`、`SettingsNormalizationTest`、`SettingsKeyStoreAdapterTest`。
+- **阅读器、转场、布局与皮肤**：缩放与边缘翻页 → `ReaderZoomLogicTest`（22）；页框比例与解码上限 → `ReaderPageLogicTest`（31）、`ReaderPageBackfillTest`（8）；页码计划与跳页冻结 → `ReaderPagePlanTest`（12）；进度编解码 → `ReaderProgressCodecTest`（27）；预取步进 → `ReaderPrefetchTest`；共享元素几何、宿主状态机与缓存尺寸 → `AlbumHeroLogicTest`（31）、`AlbumHeroHostTest`（26）、`AlbumHeroStateMachineTest`（13）、`AlbumHeroCoverSizeTest`（4）；详情状态容器 → `AlbumDetailStateHolderTest`（16）；结局翻译与签到策略 → `ScreenLoadPlanTest`、`ListOutcomeTest`、`NovelActionNoticeTest`、`CheckInLoadPolicyTest`（29）；玻璃表面与高光计划 → `GlassSurfaceTest`、`InteractiveHighlightTest`；COUI 组件、字阶、通知滑动与阅读器逻辑 → `CouiPageStateTest`、`CouiTypographyTest`、`CouiForumRepliesTest`、`CouiHistoryGroupingTest`、`CouiNotificationsSwipeTest`、`CouiNovelDetailChaptersTest`、`CouiReaderLogicTest`（13）；大屏与底栏导航策略 → `WideLayoutPolicyTest`（15）、`BottomBarPreferencesTest`（9）、`WideScreenNavigationTest`（8）。
 
 ---
 
@@ -204,8 +204,8 @@
 5. **阅读器图片强制走磁盘快照**：`telephoto` 分块超采样依赖 `FileImageSource` 的 `diskCacheKey`。禁止将内存 `okio.Buffer` 作为常规路径返回；缓存键统一由 `ReaderKeyer.keyOf` 生成。
 6. **下载前台服务只管前台态与通知**：队列调度留在 `DownloadQueue`，生命周期决策由纯类 `ForegroundPolicy` 产出，防抖与拉起失败退避由 `ForegroundRunner` 驱动，不引入 `WorkManager`。
 7. **通知节流 `300 ms` 与配额退避**：常规进度按 `300 ms` 节流，终态立即刷新。`dataSync` 6 小时配额耗尽后暂停在途任务并留存可见通知，不做保活；系统拒绝拉起前台服务后按 `5 s` 退避重试一次。
-8. **许可证隔离规范**：仅允许复制 `Apache-2.0`、`MIT` 或 `ISC` 源码并保留 SPDX 标注；`GPL-3.0`/`AGPL-3.0` 项目仅采思路、自行重写。仓库主体为 `MIT`，其中 `app/src/main/kotlin/com/jm3/app/miuix/ui/` 下共 59 个文件带 `Apache-2.0` 头（含 `glass/` 14 个、`coui/` 33 个、`ui/` 与 `route/` 12 个），`CouiIcons.kt` 带 `ISC` 头，`COUI-Kit` 按 `MPL-2.0` 依赖接入（详情见 `NOTICE`）。
-9. **提升型持续通知按 API 36.1 判定**：`setRequestPromotedOngoing` 仅存在于 Android 16.1（API 36.1），必须先判 `SDK_INT >= 36` 再判 `SDK_INT_FULL >= BAKLAVA_1`（`DownloadNotifier.kt:207`），避免 Android 16.0 触发 `NoSuchMethodError`。
+8. **许可证隔离规范**：仅允许复制 `Apache-2.0`、`MIT` 或 `ISC` 源码并保留 SPDX 标注；`GPL-3.0`/`AGPL-3.0` 项目仅采思路、自行重写。仓库主体为 `MIT`，其中 `app/src/main/kotlin/com/jm3/app/miuix/ui/` 下共 60 个文件带 `Apache-2.0` 头（含 `glass/` 14 个、`coui/` 34 个、`ui/` 与 `route/` 12 个），`CouiIcons.kt` 带 `ISC` 头，`COUI-Kit` 按 `MPL-2.0` 依赖接入（详情见 `NOTICE`）。
+9. **提升型持续通知按 API 36.1 判定**：`setRequestPromotedOngoing` 仅存在于 Android 16.1（API 36.1），必须先判 `SDK_INT >= 36` 再判 `SDK_INT_FULL >= BAKLAVA_1`（`DownloadNotifier.kt:216`、`:228`），避免 Android 16.0 触发 `NoSuchMethodError`。
 10. **共享元素采用自绘覆盖层**：因 `miuix-nav 0.9.4` 转场无 `AnimatedVisibilityScope`，采用 `onGloballyPositioned` 登记起止矩形并在 `AlbumHeroOverlay` 插值绘制，使用缩略图地址与 `crossfade(false)`。拿不到起止矩形时退化为普通转场。
 11. **静默重登连续失败 3 次清凭据**：`AccountManager` 持久化 `renewFailureCount`，连续 3 次失败后清除已存加密凭据，避免每次冷启动重复无效登录；任一次重登成功立即归零，兼容短暂断网。
 12. **`:core` 日志单一出口 `Jm3Log`**：`:core` 不引入 Android 日志依赖，反射成员缺失时统一经 `Jm3Log` 输出成员名与异常类名，`:app` 在初始化时桥接至 `android.util.Log.w`。
@@ -216,7 +216,7 @@
 17. **章节分组以首章 ID 为身份**：`ChapterGroups` 按原始正序每 10 章切分一次，倒序展示仅反转组序与组内条目，避免切排序后折叠展开态错位。
 18. **下载状态语义枚举与展示分离**：活动/终态/重排判定直接挂于 `DownloadStatus` 枚举，书架行与通知栏展示形状分别由纯函数 `presentRow` 与 `present` 生成。
 19. **封面三态模型 `Cover`**：`Cover` 区分 `Ready`、`Unready` 与 `None`（分别对应有址、域名未就绪、无封面），`CoverResolver` 与 `coverCacheKeyText` 互逆校验。列表 DTO 现阶段仍透传可空地址。
-20. **协议反射收口于 `LibraryBridge`**：除 `CustomDomainPool` 所需的 2 个域名管理成员外，其余 6 个协议内部状态反射全部收口至 `ReflectiveLibraryBridge`；取页测试隔离至两方法的 `PhotoSource`。
+20. **协议反射收口于 `LibraryBridge`**：除 `CustomDomainPool` 所需的 2 个域名管理成员外，其余 8 个协议内部状态反射全部收口至 `ReflectiveLibraryBridge`；取页测试隔离至两方法的 `PhotoSource`。
 21. **组装根只做装配**：`Jm3Graph` 仅负责六大域按序初始化，页面全面通过 `ScreenDeps` 单容器获取依赖，禁止半注入半全局的混合签名。
 22. **版本号比对出口唯一化**：版本号规范化、解析与等价判断统一使用 `VersionText`（`core/update/VersionText.kt:11`），设置项去空处理明确命名为 `VersionSettingText`（`SettingsRules.kt:59`）。
 23. **下载页落盘原子替换**：`FileDownloadStore` 先写入 `.tmp` 临时文件并加锁执行 `Files.move(..., REPLACE_EXISTING)`，异常时清理 `.tmp`，满足跨平台重下覆盖契约。
@@ -233,6 +233,6 @@
 3. **放大边缘翻页暂不做跟手拖拽**：跟手拖拽需重构 `HorizontalPager` 滚动源，改动面大于当前收益，维持松手判定后弹性翻页方案。
 4. **运行验证缺口**：
    - 已真机验证项：已在小米 15（`targetSdk 36`）实测阅读器缩放与边缘翻页、双击整屏缩放覆盖层、`dataSync` 前台服务与进度通知（含提升型通知分支）。
-   - 未真机验证项：全仓目前主要依赖编译、154 个测试类（1,261 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
+   - 未真机验证项：全仓目前主要依赖编译、164 个测试类（1,315 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
 5. **COUI 皮肤暂不实现下拉刷新**：当前 `COUI-Kit` 未提供下拉刷新容器，COUI 页面刷新入口统一由错误态重试与页面操作按钮承担，不在页面层手拼手势容器。
 6. **小说列表不做分页**：上游小说列表接口一次返回全量数据且无分页参数，屏幕按全量渲染，不强套 `PagedFeed`。

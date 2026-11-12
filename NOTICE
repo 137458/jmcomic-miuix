@@ -6,10 +6,10 @@
 
 ### Apache License 2.0 标注文件
 
-`app/src/main/kotlin/com/jm3/app/miuix/ui/` 目录下共 59 个文件保留 `// SPDX-License-Identifier: Apache-2.0` 文件头，按 Apache License 2.0 分发：
+`app/src/main/kotlin/com/jm3/app/miuix/ui/` 目录下共 60 个文件保留 `// SPDX-License-Identifier: Apache-2.0` 文件头，按 Apache License 2.0 分发：
 
 - `glass/` 目录（14 个）：`BackdropSupport.kt`、`CombinedBackdrop.kt`、`DampedDragAnimation.kt`、`FloatingBottomBar.kt`、`FloatingBottomBarItems.kt`、`FloatingBottomBarLayers.kt`、`GlassFloatingActionBar.kt`、`GlassPullToRefresh.kt`、`GlassScaffold.kt`、`GlassSurface.kt`、`InnerShadow.kt`、`InteractiveHighlight.kt`、`Lens.kt`、`Vibrancy.kt`。
-- `coui/` 目录（33 个）：包含 `component/` 下 6 个文件、`page/` 下 26 个文件与 `theme/` 下 1 个文件（不含无标注的自研排版与阅读器文件）。
+- `coui/` 目录（34 个）：包含 `component/` 下 6 个文件、`page/` 下 27 个文件与 `theme/` 下 1 个文件（不含无标注的自研排版与阅读器文件）。
 - `ui/` 根级与 `route/` 目录（12 个）：`GlassCapsule.kt`、`GlassChipRow.kt`、`GlassSnackbar.kt`、`InlineCodePresentation.kt`、`MiuixDockedNavigationBar.kt`、`NotesViewport.kt`、`NovelChapterLogic.kt`、`ReaderSettingsSection.kt`、`ReaderSettingsState.kt`、`StatePersistence.kt`、`TabPagerState.kt` 与 `route/AppRouteScreens.kt`。
 
 Apache License 2.0 全文见 <https://www.apache.org/licenses/LICENSE-2.0>。
