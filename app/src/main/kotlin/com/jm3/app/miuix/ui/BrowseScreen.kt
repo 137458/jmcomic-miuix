@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -115,7 +116,8 @@ fun BrowseScreen(
     var weeklyLoading by remember { mutableStateOf(true) }
     var weeklyFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     // 子分类/标签点击后的检索词；非空时页面切换为标签结果，返回即恢复分类浏览。
-    var tagKeyword by remember { mutableStateOf<String?>(null) }
+    var tagKeyword by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = tagKeyword != null) { tagKeyword = null }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showWeeklySheet by rememberSaveable { mutableStateOf(false) }
 
@@ -193,7 +195,7 @@ fun BrowseScreen(
 
     // 子分类/标签没有独立的筛选参数，统一按标签检索展示结果。
     fun openTag(keyword: String) {
-        if (keyword.isNotBlank()) tagKeyword = keyword
+        normalizeBrowseTagKeyword(keyword)?.let { tagKeyword = it }
     }
 
     fun loadMoreWeekly() {
@@ -794,3 +796,15 @@ private fun RankResultGrid(
         }
     }
 }
+
+/** 规范化分类页标签检索词：空白串视作无激活标签。 */
+internal fun normalizeBrowseTagKeyword(keyword: String?): String? =
+    keyword?.trim()?.takeIf { it.isNotEmpty() }
+
+/** 从栈销毁重建恢复标签页时，仅在标签有效且尚无内容/未在加载/未失败时触发补拉。 */
+internal fun shouldReloadRestoredTag(
+    tagKeyword: String?,
+    itemCount: Int,
+    loading: Boolean,
+    hasFailure: Boolean,
+): Boolean = normalizeBrowseTagKeyword(tagKeyword) != null && itemCount == 0 && !loading && !hasFailure

@@ -209,8 +209,8 @@ internal fun CouiBrowseScreen(
     // 热门标签：与子分类一起构成结果列表之前的标签导航；拿不到就整块隐藏
     var hotTags by remember { mutableStateOf(emptyList<String>()) }
 
-    // 标签检索是本页的临时视图：返回分类浏览即丢弃，所以不参与状态恢复
-    var tagKeyword by remember { mutableStateOf<String?>(null) }
+    // 激活标签保留在 Saveable 状态中：进入作品详情再开阅读器导致主页面销毁重建后仍停留在标签结果
+    var tagKeyword by rememberSaveable { mutableStateOf<String?>(null) }
     var tagFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
     var tagLoading by remember { mutableStateOf(false) }
     var tagFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
@@ -390,6 +390,13 @@ internal fun CouiBrowseScreen(
         if (trimmed.isEmpty()) return
         tagKeyword = trimmed
         loadTag(trimmed)
+    }
+
+    LaunchedEffect(tagKeyword) {
+        val active = com.jm3.app.miuix.ui.normalizeBrowseTagKeyword(tagKeyword) ?: return@LaunchedEffect
+        if (com.jm3.app.miuix.ui.shouldReloadRestoredTag(active, tagFeed.items.size, tagLoading, tagFailure != null)) {
+            loadTag(active)
+        }
     }
 
     LaunchedEffect(pageKey) {
