@@ -25,6 +25,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.TrackingItem
 import com.jm3.core.paging.PageSlice
@@ -132,10 +133,20 @@ fun TrackingScreen(
     val uid = user?.uid
     LaunchedEffect(uid) {
         if (uid == null) {
-            if (feed.items.isEmpty() && state is TrackingUiState.Loading) {
-                loadFirstPage()
-            }
+            requestToken++
+            feed = PagedFeed()
+            pageSizeHint = 0
+            loadedUid = null
+            refreshing = false
+            pageBusy = false
+            removingId = null
+            loadFirstPage()
         } else if (state !is TrackingUiState.Loaded || loadedUid != uid) {
+            if (loadedUid != null && loadedUid != uid) {
+                feed = PagedFeed()
+                pageSizeHint = 0
+                removingId = null
+            }
             loadedUid = uid
             loadFirstPage()
         }
@@ -240,7 +251,7 @@ fun TrackingScreen(
                             }
                             SessionOutcome.Expired -> applyFailure(undoOutcome)
                             is SessionOutcome.Failed -> {
-                                snackbarHostState.showSnackbar("撤销失败：" + undoOutcome.messageOr("请稍后重试"))
+                                snackbarHostState.showSnackbar("撤销失败：" + failureCopy(undoOutcome, "请稍后重试"))
                             }
                         }
                     }
@@ -249,7 +260,7 @@ fun TrackingScreen(
                 SessionOutcome.Expired -> applyFailure(outcome)
 
                 is SessionOutcome.Failed -> {
-                    snackbarHostState.showSnackbar("操作失败：" + outcome.messageOr("请稍后重试"))
+                    snackbarHostState.showSnackbar("操作失败：" + failureCopy(outcome, "请稍后重试"))
                 }
             }
         }

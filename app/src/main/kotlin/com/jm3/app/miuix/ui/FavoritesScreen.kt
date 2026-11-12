@@ -122,6 +122,7 @@ fun FavoritesScreen(
     var requestToken by remember { mutableIntStateOf(0) }
     var tagsRequestToken by remember { mutableIntStateOf(0) }
     var loadedUid by remember { mutableStateOf<String?>(null) }
+    var loadedTagsUid by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成「去登录」）。 */
@@ -273,7 +274,7 @@ fun FavoritesScreen(
                     onOpenLogin()
                 }
 
-                is SessionOutcome.Failed -> folderError = failureCopy(outcome.cause, "操作失败")
+                is SessionOutcome.Failed -> folderError = failureCopy(outcome, "操作失败")
             }
         }
     }
@@ -310,7 +311,7 @@ fun FavoritesScreen(
                     onOpenLogin()
                 }
 
-                is SessionOutcome.Failed -> moveError = failureCopy(outcome.cause, "移动失败")
+                is SessionOutcome.Failed -> moveError = failureCopy(outcome, "移动失败")
             }
         }
     }
@@ -320,16 +321,16 @@ fun FavoritesScreen(
         // 绑定发起请求时的用户与代次，避免登出/换号/重复加载后把旧结果写回界面
         val uid = user?.uid ?: return
         val token = ++tagsRequestToken
+        tagsError = null
+        tags = null
         scope.launch {
-            tagsError = null
-            tags = null
             val outcome = deps.authCall.call { deps.gateway.tagsFavorite() }
             if (token != tagsRequestToken || user?.uid != uid) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> tags = outcome.value
                 // 会话失效后用户会置空，标签页自动回落到上面的未登录引导，不必再留错误文案
                 SessionOutcome.Expired -> Unit
-                is SessionOutcome.Failed -> tagsError = failureCopy(outcome.cause, "标签收藏加载失败")
+                is SessionOutcome.Failed -> tagsError = failureCopy(outcome, "标签收藏加载失败")
             }
         }
     }
@@ -364,7 +365,7 @@ fun FavoritesScreen(
                     onOpenLogin()
                 }
 
-                is SessionOutcome.Failed -> tagError = failureCopy(outcome.cause, "添加标签失败")
+                is SessionOutcome.Failed -> tagError = failureCopy(outcome, "添加标签失败")
             }
         }
     }
@@ -389,7 +390,7 @@ fun FavoritesScreen(
                     onOpenLogin()
                 }
 
-                is SessionOutcome.Failed -> tagError = failureCopy(outcome.cause, "删除标签失败")
+                is SessionOutcome.Failed -> tagError = failureCopy(outcome, "删除标签失败")
             }
         }
     }
@@ -397,10 +398,28 @@ fun FavoritesScreen(
     val uid = user?.uid
     LaunchedEffect(uid) {
         if (uid == null) {
-            if (feed == null && failure == null) {
-                loadFirstPage()
-            }
+            requestToken++
+            tagsRequestToken++
+            feed = null
+            failure = null
+            loadedUid = null
+            folders = emptyMap()
+            folderId = 0
+            tags = null
+            tagsError = null
+            loadedTagsUid = null
+            loadFirstPage()
         } else if (feed == null || failure != null || loadedUid != uid) {
+            if (loadedUid != uid) {
+                tagsRequestToken++
+                tags = null
+                tagsError = null
+                loadedTagsUid = null
+                if (loadedUid != null) {
+                    folders = emptyMap()
+                    folderId = 0
+                }
+            }
             loadedUid = uid
             loadFirstPage()
         }
@@ -410,11 +429,14 @@ fun FavoritesScreen(
 
     // 首次切到标签页才加载；登录态变化时清空旧数据，避免登出后残留
     LaunchedEffect(tabIndex, user?.uid) {
-        if (user == null) {
+        val currentUid = user?.uid
+        if (currentUid == null) {
             tagsRequestToken++
             tags = null
             tagsError = null
-        } else if (tabIndex == 1 && tags == null && tagsError == null) {
+            loadedTagsUid = null
+        } else if (tabIndex == 1 && ((tags == null && tagsError == null) || loadedTagsUid != currentUid)) {
+            loadedTagsUid = currentUid
             loadTags()
         }
     }

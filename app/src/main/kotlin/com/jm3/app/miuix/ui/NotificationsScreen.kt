@@ -100,8 +100,10 @@ fun NotificationsScreen(
         selectedTab = tabIndex,
         pageCount = NotificationTab.entries.size,
         onTabSelected = { next ->
-            selectionHaptic()
-            tabValue = NotificationTab.entries[next].name
+            NotificationTab.entries.getOrNull(next)?.let {
+                selectionHaptic()
+                tabValue = it.name
+            }
         },
         useMiuixSpring = true,
     )
@@ -148,11 +150,14 @@ fun NotificationsScreen(
     /** 已读/未读可双向切换：原版格子上的读信图标同样按当前状态取反。 */
     fun toggleRead(item: NotificationItem) {
         if (markingId != null) return
+        val uidAtStart = user?.uid
+        val tokenAtStart = requestToken
         markingId = item.id
         scope.launch {
             val target = !item.read
             val outcome = deps.authCall.call { deps.gateway.markNotification(item.id, target) }
             markingId = null
+            if (user?.uid != uidAtStart || tokenAtStart != requestToken) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
                     val updated = page?.items
@@ -166,7 +171,7 @@ fun NotificationsScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "标记失败").message.orEmpty(),
                 )
 
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("标记失败：" + failureCopy(outcome.cause, "请稍后重试"))
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("标记失败：" + failureCopy(outcome, "请稍后重试"))
             }
         }
     }
@@ -174,10 +179,23 @@ fun NotificationsScreen(
     val uid = user?.uid
     LaunchedEffect(uid) {
         if (uid == null) {
-            if (page == null && !sessionExpired && error == null) {
-                load()
-            }
+            requestToken++
+            page = null
+            error = null
+            sessionExpired = false
+            loading = false
+            refreshing = false
+            markingId = null
+            expandedIds = emptySet()
+            loadedUid = null
+            load()
         } else if (page == null || sessionExpired || error != null || loadedUid != uid) {
+            if (loadedUid != null && loadedUid != uid) {
+                page = null
+                error = null
+                sessionExpired = false
+                expandedIds = emptySet()
+            }
             loadedUid = uid
             load()
         }
@@ -205,8 +223,10 @@ fun NotificationsScreen(
                     tabs = tabLabels,
                     selectedTabIndex = tabIndex,
                     onTabSelected = {
-                        selectionHaptic()
-                        tabValue = NotificationTab.entries[it].name
+                        NotificationTab.entries.getOrNull(it)?.let { selected ->
+                            selectionHaptic()
+                            tabValue = selected.name
+                        }
                     },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 )

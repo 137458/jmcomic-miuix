@@ -58,6 +58,7 @@ import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.coroutineScope
@@ -176,6 +177,7 @@ fun HomeScreen(
     fun runSearch(text: String, byTag: Boolean, sort: BrowseOrder) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
+        refreshing = false
         activeQuery = trimmed
         searchByTag = byTag
         orderValue = sort.apiValue
@@ -192,6 +194,7 @@ fun HomeScreen(
     }
 
     fun clearSearch() {
+        refreshing = false
         query = ""
         activeQuery = ""
         results = null
@@ -235,26 +238,25 @@ fun HomeScreen(
     }
 
     fun refresh(byPull: Boolean = false) {
-        if (byPull) refreshing = true
+        refreshing = byPull
         listToken++
         val token = listToken
         scope.launch {
             if (searching) {
-                rememberResults(ListState.Loading)
                 val text = activeQuery
                 val byTag = searchByTag
                 val next = deps.authCall.call { requestSearch(1, byTag, text, order) }
                 if (token == listToken) {
                     rememberResults(next.asListState("网络错误"))
+                    refreshing = false
                 }
             } else {
                 val next = deps.authCall.call { deps.gateway.latest(1) }
                 if (token == listToken) {
                     rememberFeed(next.asListState("加载失败"))
+                    refreshing = false
                 }
             }
-            // 刷新协程结束即复位指示器；即使期间切换了搜索，也不能让顶部一直转圈
-            refreshing = false
         }
     }
 
@@ -294,7 +296,10 @@ fun HomeScreen(
     /** 点击分页：用目标页整页替换当前列表，成功后回到列表顶部。 */
     fun jumpToPage(target: Int) {
         val current = activeFeed() ?: return
-        if (target < 1 || target > (current.pageCount ?: 1)) return
+        val resolved = pagerTargetPage(current.page, target, current.pageCount)
+        if (resolved == current.page) return
+        if (current.pageCount == null && resolved > current.page && !current.hasMore) return
+        refreshing = false
         val text = activeQuery
         val byTag = searchByTag
         val nextOrder = order
@@ -307,8 +312,8 @@ fun HomeScreen(
         }
         scope.launch {
             val next = deps.authCall.call {
-                if (searching) requestSearch(target, byTag, text, nextOrder)
-                else deps.gateway.latest(target)
+                if (searching) requestSearch(resolved, byTag, text, nextOrder)
+                else deps.gateway.latest(resolved)
             }
             if (token != listToken) return@launch
             val mapped = next.asListState("网络错误")
@@ -352,9 +357,16 @@ fun HomeScreen(
         }
     }
 
-    // 分页模式切换后清掉已追加内容并回到第 1 页重取，避免两种翻页语义混用。
+    // 分页模式切换后清掉已追加内容并回到第 1 页重取，避免两种翻页语义混用；非激活列表同步复位。
     PaginationModeReloadEffect(mode) {
-        if (searching) rememberResults(ListState.Loading) else rememberFeed(ListState.Loading)
+        if (searching) {
+            rememberResults(ListState.Loading)
+            rememberFeed(ListState.Loading)
+        } else {
+            rememberFeed(ListState.Loading)
+            results = null
+            sessionCache.forget(SessionListKey.HomeSearch)
+        }
         refresh()
     }
 
@@ -480,8 +492,10 @@ fun HomeScreen(
                         tabs = BrowseOrder.entries.map { it.label },
                         selectedTabIndex = BrowseOrder.entries.indexOf(order),
                         onTabSelected = {
-                            selectionHaptic()
-                            runSearch(activeQuery, searchByTag, BrowseOrder.entries[it])
+                            BrowseOrder.entries.getOrNull(it)?.let { selected ->
+                                selectionHaptic()
+                                runSearch(activeQuery, searchByTag, selected)
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     )

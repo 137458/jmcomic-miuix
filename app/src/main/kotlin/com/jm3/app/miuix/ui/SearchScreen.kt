@@ -32,6 +32,7 @@ import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -92,7 +93,7 @@ fun SearchScreen(
         deps.gateway.search(query, page, sort, scope, time)
 
     fun loadFirstPage(byPull: Boolean = false) {
-        if (byPull) refreshing = true
+        refreshing = byPull
         requestToken++
         val token = requestToken
         // 下拉刷新时保留当前结果，避免列表在刷新指示器下方整屏消失
@@ -126,12 +127,15 @@ fun SearchScreen(
     /** 点击分页：整页替换并回到列表顶部。 */
     fun jumpToPage(target: Int) {
         val loaded = state as? SearchUiState.Loaded ?: return
-        if (target < 1 || target > (loaded.feed.pageCount ?: 1)) return
+        val resolved = pagerTargetPage(loaded.feed.page, target, loaded.feed.pageCount)
+        if (resolved == loaded.feed.page) return
+        if (loaded.feed.pageCount == null && resolved > loaded.feed.page && !loaded.feed.hasMore) return
+        refreshing = false
         requestToken++
         val token = requestToken
         state = SearchUiState.Loading
         coroutineScope.launch {
-            val next = deps.authCall.call { fetch(target, order) }
+            val next = deps.authCall.call { fetch(resolved, order) }
             if (token != requestToken) return@launch
             state = searchStateOf(next, "搜索失败")
             if (state is SearchUiState.Loaded) listState.scrollToItem(0)
@@ -158,8 +162,10 @@ fun SearchScreen(
                     tabs = BrowseOrder.entries.map { it.label },
                     selectedTabIndex = BrowseOrder.entries.indexOf(order),
                     onTabSelected = {
-                        selectionHaptic()
-                        orderValue = BrowseOrder.entries[it].apiValue
+                        BrowseOrder.entries.getOrNull(it)?.let { selected ->
+                            selectionHaptic()
+                            orderValue = selected.apiValue
+                        }
                     },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 )
@@ -168,8 +174,10 @@ fun SearchScreen(
                     tabs = BrowseTime.entries.map { it.label },
                     selectedTabIndex = BrowseTime.entries.indexOf(time),
                     onTabSelected = {
-                        selectionHaptic()
-                        timeValue = BrowseTime.entries[it].apiValue
+                        BrowseTime.entries.getOrNull(it)?.let { selected ->
+                            selectionHaptic()
+                            timeValue = selected.apiValue
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -216,7 +224,7 @@ fun SearchScreen(
                     }
                     is SearchUiState.Failed -> item(key = "error") {
                         ScreenFailureOrLogin(
-                            message = "搜索失败：${s.message}",
+                            message = s.message,
                             expired = s.sessionExpired,
                             onRetry = { loadFirstPage() },
                             onOpenLogin = onOpenLogin,

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,7 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.SearchResult
@@ -63,6 +65,7 @@ fun WatchHistoryScreen(
     onOpenLogin: () -> Unit = {},
 ) {
     val mode = deps.preferences.paginationMode
+    val user by deps.account.user.collectAsState()
     val skin = LocalSkin.current
     // 当前页码、是否还有下一页、追加在途与追加失败都由 PagedFeed 记；
     // 追加失败时 hasMore 保持原值，所以页脚一定留着重试入口，不会被误画成「已经到底」
@@ -151,14 +154,18 @@ fun WatchHistoryScreen(
                 }
 
                 is SessionOutcome.Failed -> {
-                    snackbarHostState.showSnackbar("删除失败：" + outcome.messageOr("请稍后重试"))
+                    snackbarHostState.showSnackbar("删除失败：" + failureCopy(outcome, "请稍后重试"))
                 }
             }
         }
     }
 
-    // 分页模式切换后重新按新形态加载第一页，避免同一份状态混用两种翻页语义
-    LaunchedEffect(mode) { fetch(targetPage = 1, replace = true, showLoading = true) }
+    // 分页模式或登录账号切换后重新加载第一页，避免残留旧账号或旧分页语义的列表
+    LaunchedEffect(mode, user?.uid) {
+        refreshing = false
+        feed = PagedFeed()
+        fetch(targetPage = 1, replace = true, showLoading = true)
+    }
 
     if (mode != PaginationMode.CLICK && state == WatchUiState.Loaded) {
         LoadMoreOnScroll(
@@ -200,31 +207,32 @@ fun WatchHistoryScreen(
                     modifier = Modifier.padding(innerPadding),
                 )
             }
-            WatchUiState.Loaded -> if (feed.items.isEmpty()) {
-                CenteredEmptyState(
-                    title = "暂无观看记录",
-                    hint = "阅读作品后会同步到账号云端",
-                    modifier = Modifier.padding(innerPadding),
-                )
-            } else {
-                GlassPullToRefresh(
-                    isRefreshing = refreshing,
-                    onRefresh = {
-                        refreshing = true
-                        fetch(targetPage = 1, replace = true, showLoading = false)
-                    },
-                    pullToRefreshState = refreshState,
-                    modifier = Modifier.fillMaxSize(),
+            WatchUiState.Loaded -> GlassPullToRefresh(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    refreshing = true
+                    fetch(targetPage = 1, replace = true, showLoading = false)
+                },
+                pullToRefreshState = refreshState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = innerPadding,
+            ) {
+                // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
+                val feedColumns = LocalWideLayout.current.feedColumns
+                TrackedLazyColumn(
+                    state = listState,
+                    // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
                     contentPadding = innerPadding,
+                    modifier = Modifier.fillMaxSize().readableWidth(),
                 ) {
-                    // 大屏行卡两列：列数由 WideLayout.feedColumns 判定，手机断点仍是单列
-                    val feedColumns = LocalWideLayout.current.feedColumns
-                    TrackedLazyColumn(
-                        state = listState,
-                        // 列表内容滚到玻璃顶栏下方，顶栏才能采样到真实背景
-                        contentPadding = innerPadding,
-                        modifier = Modifier.fillMaxSize().readableWidth(),
-                    ) {
+                    if (feed.items.isEmpty()) {
+                        item(key = "empty") {
+                            EmptyState(
+                                title = "暂无观看记录",
+                                hint = "阅读作品后会同步到账号云端",
+                            )
+                        }
+                    } else {
                         // key 仍是作品 id：与单列时逐字一致，升级后滚动位置不丢
                         feedRowItems(
                             count = feed.items.size,
