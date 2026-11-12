@@ -233,8 +233,14 @@ fun CouiAppScaffold(
         },
         floatingActionButton = floatingActionButton?.let { fab ->
             // FAB 与正文同处限宽内容列：不跟着收窄时它贴在大屏窗口右下角，看着像脱离了页面。
+            // 包裹盒必须撑满槽位：各页在 BoxScope 里用 align(BottomEnd) 定位，
+            // 盒子一旦收缩成 FAB 大小，align 就退化到盒子左上角，FAB 会跑到页面左边。
             {
-                Box(modifier = Modifier.alignToReadableContent()) { fab() }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alignToReadableContent(),
+                ) { fab() }
             }
         },
         content = { innerPadding ->
