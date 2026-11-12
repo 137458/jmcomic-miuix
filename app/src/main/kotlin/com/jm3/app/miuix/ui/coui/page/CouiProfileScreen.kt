@@ -66,6 +66,7 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ProfileDraftPolicy
 import com.jm3.app.miuix.ui.ScreenLoadPhase
@@ -225,7 +226,7 @@ fun CouiProfileScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "保存失败").message.orEmpty(),
                 )
                 is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "保存失败：" + outcome.messageOr(CouiStrings.RetryLater),
+                    "保存失败：" + failureCopy(outcome, CouiStrings.RetryLater),
                 )
             }
         }

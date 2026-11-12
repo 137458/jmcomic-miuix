@@ -196,7 +196,7 @@ internal fun CouiTasksScreen(
             val failure = when (outcome) {
                 is SessionOutcome.Ok -> outcome.value
                 is SessionOutcome.Expired -> "登录已失效，请重新登录"
-                is SessionOutcome.Failed -> failureCopy(outcome.cause, CouiStrings.RetryLater)
+                is SessionOutcome.Failed -> failureCopy(outcome, CouiStrings.RetryLater)
             }
             if (failure == null) {
                 // 佩戴成功：称号记内容文本，勋章记 id，两者互斥

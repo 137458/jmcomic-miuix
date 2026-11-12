@@ -898,7 +898,7 @@ fun CouiErrorGroup(
  * 分页脚：滚动到底时报告续页状态。
  *
  * error 非空时给可点的「重新加载」行；loading 与 endReached 只报进度与到底；
- * 三者皆否表示还有下一页但尚未触发加载，此时只留一条提示文案，不做可点行。
+ * 还有下一页且尚未触发加载时，若传入 [onLoadMore] 则给出可点的「加载更多」行，否则仅留提示文案。
  */
 @Composable
 fun CouiLoadMoreFooter(
@@ -906,6 +906,7 @@ fun CouiLoadMoreFooter(
     error: String?,
     endReached: Boolean,
     modifier: Modifier = Modifier,
+    onLoadMore: (() -> Unit)? = null,
     onRetry: () -> Unit,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
@@ -943,6 +944,15 @@ fun CouiLoadMoreFooter(
             )
         }
 
+        onLoadMore != null -> Group(modifier = modifier) {
+            Item(
+                title = {
+                    CouiBodyText(text = "加载更多", textAlign = TextAlign.Start)
+                },
+                onClick = onLoadMore,
+            )
+        }
+
         else -> Footer(modifier = modifier, text = "继续上滑自动加载下一页")
     }
 }
@@ -957,6 +967,7 @@ fun CouiLoadMoreFooter(
     feed: PagedFeed<*>,
     modifier: Modifier = Modifier,
     errorMessage: String = CouiStrings.LoadMoreFailedRetry,
+    onLoadMore: (() -> Unit)? = null,
     onRetry: () -> Unit,
 ) {
     CouiLoadMoreFooter(
@@ -964,6 +975,7 @@ fun CouiLoadMoreFooter(
         error = if (feed.loadMoreFailed) errorMessage else null,
         endReached = !feed.hasMore,
         modifier = modifier,
+        onLoadMore = onLoadMore,
         onRetry = onRetry,
     )
 }

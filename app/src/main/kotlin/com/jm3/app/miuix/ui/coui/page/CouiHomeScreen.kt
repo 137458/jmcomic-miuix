@@ -346,7 +346,7 @@ fun CouiHomeScreen(
 
     fun jumpToPage(target: Int) {
         val current = activeFeed() ?: return
-        if (target < 1 || target > (current.pageCount ?: 1)) return
+        if (!couiCanJumpFeedPage(current, target)) return
         val text = activeQuery
         val byTag = searchByTag
         val nextOrder = order
@@ -443,6 +443,8 @@ fun CouiHomeScreen(
         }
     }
     val feedRowStart = 1 + tracks.size + 1
+    // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+    val feedColumns = LocalWideLayout.current.feedColumns
 
     // 虚拟化后没有单一滚动位置可读，改看可见项：采集在 CouiFeedPrefetchEffect，
     // 本页只交 feed 与结果行起点；请求幂等仍由 beginLoadMore 保证。
@@ -450,6 +452,7 @@ fun CouiHomeScreen(
         feed = activeFeed(),
         rowStart = feedRowStart,
         listState = lazyState,
+        columns = feedColumns,
         enabled = !clickPaging,
         onPrefetch = ::loadMore,
     )
@@ -537,8 +540,6 @@ fun CouiHomeScreen(
             }
         }
         val feedState = if (searching) results else feed
-        // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
-        val feedColumns = LocalWideLayout.current.feedColumns
         // 大屏按 LocalWideLayout 的断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding，
         // 页面不再自写宽度常量；窄屏该内衬为 0，行为与旧页一致
         LazyColumn(

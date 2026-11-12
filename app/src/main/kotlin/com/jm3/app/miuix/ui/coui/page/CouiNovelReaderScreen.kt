@@ -47,7 +47,6 @@ import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.layout.Divider
-import com.itos.coui.layout.Item
 import com.itos.coui.picker.WheelPicker
 import com.itos.coui.scroll.couiVerticalScroll
 import com.itos.coui.shape.CouiCapsuleShape
@@ -132,17 +131,17 @@ private fun CouiNovelReaderContent(
 ) {
     val authCall = deps.authCall
     val user by deps.account.user.collectAsState()
-    var detail by remember { mutableStateOf<NovelDetail?>(null) }
-    var chapter by remember { mutableStateOf<NovelChapter?>(null) }
+    var detail by remember(novelId) { mutableStateOf<NovelDetail?>(null) }
+    var chapter by remember(novelId) { mutableStateOf<NovelChapter?>(null) }
     var currentId by rememberSaveable(novelId) { mutableStateOf(initialChapterId) }
     var fontSize by remember { mutableIntStateOf(SettingsRepository.DEFAULT_NOVEL_FONT_SIZE) }
     var lang by rememberSaveable(novelId) { mutableStateOf(SettingsRepository.DEFAULT_NOVEL_LANG) }
     var volumeKeyPaging by remember { mutableStateOf(true) }
     var keepScreenOn by remember { mutableStateOf(true) }
     var readerBrightness by remember { mutableIntStateOf(ReaderPreferences.FOLLOW_SYSTEM_BRIGHTNESS) }
-    var loading by remember { mutableStateOf(true) }
-    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-    var favorited by remember { mutableStateOf(false) }
+    var loading by remember(novelId) { mutableStateOf(true) }
+    var failure by remember(novelId) { mutableStateOf<ScreenLoadPlan?>(null) }
+    var favorited by remember(novelId) { mutableStateOf(false) }
     var chromeVisible by rememberSaveable(novelId) { mutableStateOf(true) }
     var modalState by rememberSaveable(novelId, stateSaver = CouiReaderModalStateSaver) {
         mutableStateOf(CouiReaderModalState())
@@ -155,11 +154,11 @@ private fun CouiNovelReaderContent(
         targetKey = replyTarget?.id,
         resetKey = novelId,
     )
-    var replyBusy by remember { mutableStateOf(false) }
+    var replyBusy by remember(novelId) { mutableStateOf(false) }
     var replyNotice by remember(novelId) { mutableStateOf<String?>(null) }
     var commentsNotice by remember(novelId) { mutableStateOf<String?>(null) }
     var commentsRefreshKey by remember(novelId) { mutableIntStateOf(0) }
-    var loadToken by remember { mutableIntStateOf(0) }
+    var loadToken by remember(novelId) { mutableIntStateOf(0) }
     var lastResetChapterId by rememberSaveable(novelId) { mutableStateOf<String?>(null) }
     var lastVolumeAt by remember { mutableLongStateOf(0L) }
     var viewportHeightPx by remember { mutableIntStateOf(0) }
@@ -856,38 +855,12 @@ private fun NovelCommentsPanel(
                     }
                 }
                 item(key = "novel-comments-footer") {
-                    when {
-                        feed.loadingMore -> CouiLoadMoreFooter(
-                            loading = true,
-                            error = null,
-                            endReached = false,
-                            onRetry = {},
-                        )
-
-                        feed.loadMoreFailed -> CouiLoadMoreFooter(
-                            loading = false,
-                            error = "下一页加载失败",
-                            endReached = false,
-                            onRetry = { load(feed.page + 1, replace = false, showLoading = false) },
-                        )
-
-                        feed.hasMore -> Item(
-                            title = {
-                                CouiBodyText(
-                                    text = "加载更多",
-                                    textAlign = TextAlign.Start,
-                                )
-                            },
-                            onClick = { load(feed.page + 1, replace = false, showLoading = false) },
-                        )
-
-                        else -> CouiLoadMoreFooter(
-                            loading = false,
-                            error = null,
-                            endReached = true,
-                            onRetry = {},
-                        )
-                    }
+                    CouiLoadMoreFooter(
+                        feed = feed,
+                        errorMessage = "下一页加载失败",
+                        onLoadMore = { load(feed.page + 1, replace = false, showLoading = false) },
+                        onRetry = { load(feed.page + 1, replace = false, showLoading = false) },
+                    )
                 }
             }
         }

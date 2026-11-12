@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,10 +34,10 @@ import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
-import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.authorNames
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
@@ -99,6 +100,7 @@ fun CouiWatchHistoryScreen(
 ) {
     CouiTheme {
         val scope = rememberCoroutineScope()
+        val user by deps.account.user.collectAsState()
         val mode = deps.preferences.paginationMode
         val clickPaging = mode == PaginationMode.CLICK
         val gridState = rememberLazyGridState()
@@ -187,15 +189,17 @@ fun CouiWatchHistoryScreen(
                     }
 
                     is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                        "删除失败：" + outcome.messageOr(CouiStrings.RetryLater),
+                        "删除失败：" + failureCopy(outcome, CouiStrings.RetryLater),
                     )
                 }
             }
         }
 
-        LaunchedEffect(Unit) { fetch(1, replace = true, showLoading = true) }
-        // 翻页模式切换后当前页语义变了，回到第一页重新取，避免页脚停在旧页码
-        PaginationModeReloadEffect(mode) { fetch(1, replace = true, showLoading = false) }
+        // 账号变化或翻页模式切换时重置到第一页重拉，避免跨账号残影与页码语义错乱
+        LaunchedEffect(user?.uid, mode) {
+            feed = PagedFeed()
+            fetch(1, replace = true, showLoading = true)
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiScreenScaffold(

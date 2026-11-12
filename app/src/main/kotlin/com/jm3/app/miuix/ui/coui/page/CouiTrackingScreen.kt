@@ -243,7 +243,7 @@ internal fun CouiTrackingScreen(
                                 planLoad(undoOutcome, hasContent = false, failureMessage = "撤销失败").message.orEmpty(),
                             )
                             is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                                "撤销失败：" + failureCopy(undoOutcome.cause, CouiStrings.RetryLater),
+                                "撤销失败：" + failureCopy(undoOutcome, CouiStrings.RetryLater),
                             )
                         }
                     }
@@ -252,7 +252,7 @@ internal fun CouiTrackingScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "操作失败").message.orEmpty(),
                 )
                 is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "操作失败：" + failureCopy(outcome.cause, CouiStrings.RetryLater),
+                    "操作失败：" + failureCopy(outcome, CouiStrings.RetryLater),
                 )
             }
         }
@@ -260,11 +260,14 @@ internal fun CouiTrackingScreen(
 
     LaunchedEffect(user?.uid) { loadFirstPage() }
     PaginationModeReloadEffect(mode) { loadFirstPage() }
+    // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+    val feedColumns = LocalWideLayout.current.feedColumns
     // 只有滚动分页才预取：点击分页下提前拉下一页会让页码与内容对不上
     CouiFeedPrefetchEffect(
         feed = feed,
-        rowStart = 0,
+        rowStart = if (feed.items.isNotEmpty()) 1 else 0,
         listState = listState,
+        columns = feedColumns,
         enabled = !clickPaging,
         onPrefetch = { loadMore() },
     )
@@ -297,8 +300,6 @@ internal fun CouiTrackingScreen(
                     )
                 },
             ) { innerPadding ->
-                // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
-                val feedColumns = LocalWideLayout.current.feedColumns
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()

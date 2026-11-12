@@ -253,7 +253,7 @@ private fun CouiAlbumDetailScreenBody(
     val user by account.user.collectAsState()
     val scope = rememberCoroutineScope()
     // 预览图与阅读页共用同一套图片加载器（含同一份缓存），避免再建第二个 loader
-    val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles)
+    val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles, authCall)
 
     var uiSnapshot by rememberSaveable(albumId, stateSaver = AlbumDetailUiSnapshotSaver) {
         mutableStateOf(AlbumDetailUiSnapshot())
@@ -1533,7 +1533,7 @@ private fun CouiReplyDialog(
     ) {
         BasicTextField(
             value = replyText,
-            onValueChange = { replyText = it },
+            onValueChange = { replyText = couiClampCommentInput(it) },
             textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
             cursorBrush = SolidColor(scheme.accent),
             modifier = Modifier

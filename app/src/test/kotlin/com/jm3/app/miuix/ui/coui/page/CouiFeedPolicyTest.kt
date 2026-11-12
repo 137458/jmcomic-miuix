@@ -175,4 +175,52 @@ class CouiFeedPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun `双列模式按行数与折算后的行级预取距离判定触底`() {
+        // 20 条在双列下只有 10 行（下标 0..9），rowStart = 2 时末行可见下标为 11。
+        // 行高折算出 prefetchDistance = 5（单列项数），双列按 ceil(5 / 2) = 3 行预取，阈值行下标 10 - 3 = 7（可见下标 9）。
+        val feed = PagedFeed(items = List(20) { it }, page = 1, hasMore = true)
+        assertFalse(feed.shouldPrefetchRow(lastVisibleIndex = 8, rowStart = 2, prefetchDistance = 5, columns = 2))
+        assertTrue(feed.shouldPrefetchRow(lastVisibleIndex = 9, rowStart = 2, prefetchDistance = 5, columns = 2))
+        assertTrue(feed.shouldPrefetchRow(lastVisibleIndex = 11, rowStart = 2, prefetchDistance = 5, columns = 2))
+
+        // 奇数条向上取整成行数：21 条双列共 11 行（0..10），rowStart = 1（如追踪页带副标题），
+        // distance = 2 -> ceil(2 / 2) = 1 行，仅看第 10 行（可见下标 11）触发，第 9 行（可见下标 10）不触发。
+        val oddFeed = PagedFeed(items = List(21) { it }, page = 1, hasMore = true)
+        assertFalse(oddFeed.shouldPrefetchRow(lastVisibleIndex = 10, rowStart = 1, prefetchDistance = 2, columns = 2))
+        assertTrue(oddFeed.shouldPrefetchRow(lastVisibleIndex = 11, rowStart = 1, prefetchDistance = 2, columns = 2))
+    }
+
+    @Test
+    fun `榜单模式双列周更按行数计入主列表头项`() {
+        // 5 条周更在双列下占 3 行（ceil(5 / 2) = 3），不再按 5 项累加
+        assertEquals(
+            7,
+            couiBrowseHeadCount(
+                isCategoryMode = false,
+                hasTagNav = false,
+                hasWeeklyPaging = true,
+                weeklyItemCount = 5,
+                hasWeeklyFooter = false,
+                columns = 2,
+            ),
+        )
+    }
+
+    @Test
+    fun `总页数未知但仍有下一页时允许跳往下一页`() {
+        val unknownTotalWithMore = PagedFeed(items = List(20) { it }, page = 1, pageCount = null, hasMore = true)
+        assertTrue(couiCanJumpFeedPage(unknownTotalWithMore, target = 2))
+        assertFalse(couiCanJumpFeedPage(unknownTotalWithMore, target = 1))
+        assertFalse(couiCanJumpFeedPage(unknownTotalWithMore, target = 0))
+
+        val unknownTotalEnd = PagedFeed(items = List(20) { it }, page = 2, pageCount = null, hasMore = false)
+        assertTrue(couiCanJumpFeedPage(unknownTotalEnd, target = 1))
+        assertFalse(couiCanJumpFeedPage(unknownTotalEnd, target = 3))
+
+        val knownTotal = PagedFeed(items = List(20) { it }, page = 2, pageCount = 3, hasMore = true)
+        assertTrue(couiCanJumpFeedPage(knownTotal, target = 3))
+        assertFalse(couiCanJumpFeedPage(knownTotal, target = 4))
+    }
 }

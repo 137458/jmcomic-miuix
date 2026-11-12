@@ -1,6 +1,9 @@
 package com.jm3.app.miuix.ui.coui.page
 
+import com.jm3.core.model.Chapter
 import com.jm3.core.model.NovelChapterMeta
+import com.jm3.core.model.PageImage
+import com.jm3.core.model.PhotoPages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -240,5 +243,46 @@ class CouiReaderLogicTest {
         assertEquals(0x28 / 255f, bottomPlainDark.shadowAlpha)
         assertEquals(4.9f, bottomPlainDark.causticBottomDp)
         assertTrue(bottomPlainDark.smoothCorner)
+    }
+
+    @Test
+    fun 离线读取页按下载记录和详情回填作品ID与标题() {
+        val offline = PhotoPages(
+            photoId = "p1",
+            albumId = "",
+            title = "",
+            images = listOf(PageImage("p1", "p1", 1, "00001.webp", "https://example.com/1.webp")),
+        )
+
+        val resolvedFromSaved = resolveCouiLoadedPhoto(
+            photo = offline,
+            savedAlbumId = "a100",
+            savedTitle = "缓存标题",
+            detailTitle = "详情标题",
+        )
+        assertEquals("a100", resolvedFromSaved.albumId)
+        assertEquals("缓存标题", resolvedFromSaved.title)
+
+        val resolvedFromDetail = resolveCouiLoadedPhoto(
+            photo = offline,
+            savedAlbumId = "a100",
+            savedTitle = " ",
+            detailTitle = "详情标题",
+        )
+        assertEquals("a100", resolvedFromDetail.albumId)
+        assertEquals("详情标题", resolvedFromDetail.title)
+    }
+
+    @Test
+    fun 阅读器章节按sortOrder升序排列() {
+        val raw = listOf(
+            Chapter(id = "c3", title = "第3话", sortOrder = 3),
+            Chapter(id = "c1", title = "第1话", sortOrder = 1),
+            Chapter(id = "c2", title = "第2话", sortOrder = 2),
+        )
+
+        val sorted = sortCouiReaderChapters(raw)
+
+        assertEquals(listOf("c1", "c2", "c3"), sorted.map { it.id })
     }
 }

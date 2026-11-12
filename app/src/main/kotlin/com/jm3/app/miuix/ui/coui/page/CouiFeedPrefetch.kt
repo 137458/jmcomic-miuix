@@ -61,15 +61,17 @@ internal fun CouiFeedPrefetchEffect(
     feed: PagedFeed<*>?,
     rowStart: Int,
     listState: LazyListState,
+    columns: Int = 1,
     enabled: Boolean = true,
     restartKey: Any? = Unit,
     onPrefetch: () -> Unit,
 ) {
     val latestFeed by rememberUpdatedState(feed)
     val latestRowStart by rememberUpdatedState(rowStart)
+    val latestColumns by rememberUpdatedState(columns)
     val latestOnPrefetch by rememberUpdatedState(onPrefetch)
     CouiPrefetchEffect(listState = listState, enabled = enabled, restartKey = restartKey) { lastIndex, _, distance ->
         val current = latestFeed ?: return@CouiPrefetchEffect
-        if (current.shouldPrefetchRow(lastIndex, latestRowStart, distance)) latestOnPrefetch()
+        if (current.shouldPrefetchRow(lastIndex, latestRowStart, distance, latestColumns)) latestOnPrefetch()
     }
 }

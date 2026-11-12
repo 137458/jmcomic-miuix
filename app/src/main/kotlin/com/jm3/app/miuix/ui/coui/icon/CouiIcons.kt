@@ -10,39 +10,46 @@
  * 将每个 SVG 路径命令（M/L/H/V/C/S/Q/T/A/Z，含相对命令换算为绝对坐标）逐一转换为
  * PathBuilder 调用，不包含任何手写近似形状。重新生成优于直接修改。
  *
- * 属性名 -> Lucide slug：
- *   Home       -> house
- *   Category   -> layout-grid
- *   Rank       -> trophy
- *   Mine       -> user-round
- *   Back       -> chevron-left
- *   Forward    -> chevron-right
- *   Close      -> x
- *   Download   -> download
- *   Star       -> star
- *   History    -> history
- *   Shuffle    -> shuffle
- *   Refresh    -> refresh-cw
- *   Settings   -> settings
- *   Share      -> share
- *   Comment    -> message-circle
- *   Check      -> check
- *   Folder     -> folder
- *   Book       -> book-open
- *   Clock      -> clock
- *   Info       -> info
- *   LogOut     -> log-out
- *   Lock       -> lock
- *   Plus       -> plus
- *   Minus      -> minus
- *   Sort       -> arrow-up-down
- *   List       -> list
- *   Bell       -> bell
- *   Copy       -> copy
+ * 属性名 -> Lucide slug（共 35 个图标）：
+ *   Home          -> house
+ *   Category      -> layout-grid
+ *   Rank          -> trophy
+ *   Mine          -> user-round
+ *   Back          -> chevron-left
+ *   Forward       -> chevron-right
+ *   Close         -> x
+ *   Download      -> download
+ *   Star          -> star
+ *   History       -> history
+ *   Shuffle       -> shuffle
+ *   Refresh       -> refresh-cw
+ *   Settings      -> settings
+ *   Share         -> share
+ *   Comment       -> message-circle
+ *   Check         -> check
+ *   Folder        -> folder
+ *   Book          -> book-open
+ *   Clock         -> clock
+ *   Info          -> info
+ *   LogOut        -> log-out
+ *   Plus          -> plus
+ *   Minus         -> minus
+ *   Sort          -> arrow-up-down
+ *   List          -> list
+ *   Lock          -> lock
+ *   Bell          -> bell
+ *   Search        -> search
+ *   Heart         -> heart
+ *   ChevronsUpDown -> chevrons-up-down
+ *   ChevronDown   -> chevron-down
+ *   ChevronUp     -> chevron-up
+ *   Calendar      -> calendar
+ *   CalendarCheck -> calendar-check
+ *   Copy          -> copy
  *
- * 缺失/替代说明：请求的 40 个 slug 全部解析成功，无替代项。
- * 其中 history 与 trash-2 已不在 Lucide 仓库 main 分支的 icons 目录直接提供，
- * 因此统一取自仍发布这两个文件的 lucide-static v1.70.0 包，图形与 Lucide 一致。
+ * 缺失/替代说明：请求的 35 个 slug 全部解析成功，无替代项。
+ * 其中 history 已不在 Lucide 仓库 main 分支的 icons 目录直接提供，
+ * 因此取自仍发布该文件的 lucide-static v1.70.0 包，图形与 Lucide 一致。
  *
  * 全部图标为描边（stroke 2f，round cap/join，无 fill）；本文件不生成 filled 变体。
  */
@@ -219,7 +226,7 @@ object CouiIcons {
         }
     }.build()
 
-    /** Lucide slug: `search`. */
+    /** Lucide slug: `chevron-left`. */
     val Back: ImageVector = ImageVector.Builder(
         name = "CouiIcons.Back",
         defaultWidth = 24.dp,
@@ -280,7 +287,7 @@ object CouiIcons {
         }
     }.build()
 
-    /** Lucide slug: `ellipsis`. */
+    /** Lucide slug: `download`. */
     val Download: ImageVector = ImageVector.Builder(
         name = "CouiIcons.Download",
         defaultWidth = 24.dp,
@@ -346,7 +353,7 @@ object CouiIcons {
         }
     }.build()
 
-    /** Lucide slug: `heart`. */
+    /** Lucide slug: `history`. */
     val History: ImageVector = ImageVector.Builder(
         name = "CouiIcons.History",
         defaultWidth = 24.dp,
@@ -546,7 +553,7 @@ object CouiIcons {
         }
     }.build()
 
-    /** Lucide slug: `trash-2`. */
+    /** Lucide slug: `folder`. */
     val Folder: ImageVector = ImageVector.Builder(
         name = "CouiIcons.Folder",
         defaultWidth = 24.dp,
@@ -634,7 +641,7 @@ object CouiIcons {
         }
     }.build()
 
-    /** Lucide slug: `eye`. */
+    /** Lucide slug: `info`. */
     val Info: ImageVector = ImageVector.Builder(
         name = "CouiIcons.Info",
         defaultWidth = 24.dp,

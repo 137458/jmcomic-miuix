@@ -535,7 +535,7 @@ private fun CouiCreatorFilterRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(items = listOf("") + options, key = { it.ifBlank { "coui-creator-all" } }) { option ->
-                val shape = RoundedCornerShape(16.dp)
+                val shape = RoundedCornerShape(LocalSkin.current.shapes.controlCorner)
                 Box(
                     modifier = Modifier
                         .couiPressable(
@@ -560,7 +560,7 @@ private fun CouiCreatorFilterRow(
     }
 }
 
-/** 栅格一行：固定卡宽，列数由 [LocalWideLayout] 决定，尾部用占位保证左对齐。 */
+/** 栅格一行：按列数均分宽度，列数由 [LocalWideLayout] 决定，尾部用等权占位保证左对齐。 */
 @Composable
 private fun CouiCreatorWorksRow(
     works: List<CreatorRelatedWork>,
@@ -579,14 +579,14 @@ private fun CouiCreatorWorksRow(
                 title = work.title,
                 coverUrl = work.coverUrl,
                 onClick = { onOpenWork(work.id) },
-                modifier = Modifier.width(CouiWorkCardTokens.GridWidth),
+                modifier = Modifier.weight(1f),
                 coverContentDescription = work.title,
                 subtitle = work.workDate?.takeIf { it.isNotBlank() },
                 category = work.platform?.takeIf { it.isNotBlank() },
             )
         }
-        repeat(columns - works.size) {
-            Spacer(modifier = Modifier.width(CouiWorkCardTokens.GridWidth))
+        repeat((columns - works.size).coerceAtLeast(0)) {
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

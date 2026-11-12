@@ -191,7 +191,7 @@ internal fun CouiNotificationsScreen(
                     planLoad(outcome, hasContent = false, failureMessage = "标记失败").message.orEmpty(),
                 )
                 is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "标记失败：" + failureCopy(outcome.cause, CouiStrings.RetryLater),
+                    "标记失败：" + failureCopy(outcome, CouiStrings.RetryLater),
                 )
             }
         }

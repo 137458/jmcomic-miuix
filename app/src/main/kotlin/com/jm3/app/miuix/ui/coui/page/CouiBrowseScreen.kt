@@ -134,6 +134,7 @@ import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 
@@ -198,6 +199,7 @@ internal fun CouiBrowseScreen(
     var state by remember(pageKey) { mutableStateOf(sessionCache.stateOf(listKey)) }
     // 快速切筛选时，旧响应不能覆盖新条件的结果
     var requestToken by remember { mutableIntStateOf(0) }
+    var inFlightJob by remember { mutableStateOf<Job?>(null) }
     // 单页条数：只有首页能确定，用于榜单名次跨页续号
     var pageStride by remember(pageKey) { mutableIntStateOf(0) }
 
@@ -235,6 +237,7 @@ internal fun CouiBrowseScreen(
 
     /** 列表状态与缓存一起改：只改 state 的话，切走再回来缓存还是上一份。 */
     fun publish(key: BrowsePageKey, next: ListState) {
+        if (key != pageKey) return
         state = next
         if (next is ListState.Loaded && next.feed.page == 1 && next.feed.items.isNotEmpty()) {
             pageStride = next.feed.items.size
@@ -243,12 +246,14 @@ internal fun CouiBrowseScreen(
     }
 
     fun refresh() {
+        inFlightJob?.cancel()
         requestToken++
         val token = requestToken
         val key = pageKey
+        val currentFilter = filter()
         publish(key, ListState.Loading)
-        scope.launch {
-            val next = authCall.call { gateway.browse(filter(), 1) }.asListState(CouiStrings.LoadFailed)
+        inFlightJob = scope.launch {
+            val next = authCall.call { gateway.browse(currentFilter, 1) }.asListState(CouiStrings.LoadFailed)
             if (token != requestToken) return@launch
             publish(key, next)
         }
@@ -259,12 +264,14 @@ internal fun CouiBrowseScreen(
         val current = (state as? ListState.Loaded)?.feed ?: return
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
+        inFlightJob?.cancel()
         requestToken++
         val token = requestToken
         val key = pageKey
+        val currentFilter = filter()
         publish(key, ListState.Loading)
-        scope.launch {
-            val next = authCall.call { gateway.browse(filter(), resolved) }.asListState(CouiStrings.LoadFailed)
+        inFlightJob = scope.launch {
+            val next = authCall.call { gateway.browse(currentFilter, resolved) }.asListState(CouiStrings.LoadFailed)
             if (token != requestToken) return@launch
             publish(key, next)
             // 换页后回到顶部，否则新一页会停在上一页的滚动位置
@@ -276,12 +283,14 @@ internal fun CouiBrowseScreen(
         val current = (state as? ListState.Loaded)?.feed ?: return
         val requested = current.beginLoadMore()
         if (requested === current) return
+        inFlightJob?.cancel()
         val token = requestToken
         val key = pageKey
+        val currentFilter = filter()
         // 加载中标记不进缓存：它只是瞬态，缓存只留可复用的整页结果
         state = ListState.Loaded(requested)
-        scope.launch {
-            val next = authCall.call { gateway.browse(filter(), requested.page + 1) }
+        inFlightJob = scope.launch {
+            val next = authCall.call { gateway.browse(currentFilter, requested.page + 1) }
             // 加载期间切了筛选：这批结果属于旧条件，直接丢弃
             if (token != requestToken) return@launch
             val updated = when (next) {
@@ -442,6 +451,9 @@ internal fun CouiBrowseScreen(
     }
 
     LaunchedEffect(pageKey) {
+        // 命中缓存时也要作废并取消上一个筛选的在途请求，防旧筛选请求回写覆盖当前态
+        inFlightJob?.cancel()
+        requestToken++
         // 同一口径的结果还在缓存里（切 pageKey 回来就是这种情况）：直接用，别退回 Loading 冲掉
         if (sessionCache.hasPage(SessionListKey.Browse(pageKey))) return@LaunchedEffect
         refresh()
@@ -466,12 +478,15 @@ internal fun CouiBrowseScreen(
         .orEmpty()
     val tagNavTags = if (mode == BrowseMode.CATEGORY) hotTags.take(HOT_TAG_LIMIT) else emptyList()
     val hasTagNav = subCategories.isNotEmpty() || tagNavTags.isNotEmpty()
+    // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+    val feedColumns = LocalWideLayout.current.feedColumns
     val browseHeadCount = couiBrowseHeadCount(
         isCategoryMode = mode == BrowseMode.CATEGORY,
         hasTagNav = hasTagNav,
         hasWeeklyPaging = weeklyFeed.items.isNotEmpty(),
         weeklyItemCount = weeklyFeed.items.size,
         hasWeeklyFooter = weeklyFeed.items.isNotEmpty() && weeklyFailure != null,
+        columns = feedColumns,
     )
 
     /*
@@ -484,6 +499,7 @@ internal fun CouiBrowseScreen(
         feed = if (browseTagView) tagFeed else (state as? ListState.Loaded)?.feed,
         rowStart = if (browseTagView) TAG_FEED_ROW_START else browseHeadCount,
         listState = lazyState,
+        columns = feedColumns,
         enabled = !clickPaging,
         restartKey = listKey to tagKeyword,
         onPrefetch = { if (browseTagView) loadMoreTag() else loadMore() },
@@ -574,8 +590,6 @@ internal fun CouiBrowseScreen(
             horizontalPadding = null,
             extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
         )
-        // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
-        val feedColumns = LocalWideLayout.current.feedColumns
         LazyColumn(
             state = lazyState,
             // 大屏按 LocalWideLayout 断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding

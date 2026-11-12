@@ -133,15 +133,29 @@ fun CouiLibraryScreen(
         var creatorFeed by remember { mutableStateOf(PagedFeed<CreatorMeta>()) }
         var workFeed by remember { mutableStateOf(PagedFeed<CreatorWorkMeta>()) }
         var filters by rememberSaveable { mutableStateOf(CreatorFilters()) }
-        var loadingTab by remember { mutableStateOf<Int?>(0) }
+        var creatorLoading by remember { mutableStateOf(false) }
+        var workLoading by remember { mutableStateOf(false) }
         var creatorLoadedOnce by remember { mutableStateOf(false) }
         var workLoadedOnce by remember { mutableStateOf(false) }
-        var refreshing by remember { mutableStateOf(false) }
+        var creatorRefreshing by remember { mutableStateOf(false) }
+        var workRefreshing by remember { mutableStateOf(false) }
         var creatorFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
         var workFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-        // 切 Tab/筛选/搜索时旧响应不能覆盖新结果
-        var loadToken by remember { mutableIntStateOf(0) }
+        // 双 Tab 各自维护请求代次号与最近加载的筛选键：切 Tab 不打断另一 Tab 的续页且不重复重载
+        var creatorLoadToken by remember { mutableIntStateOf(0) }
+        var workLoadToken by remember { mutableIntStateOf(0) }
+        var creatorRequestedKey by remember { mutableStateOf<String?>(null) }
+        var workRequestedKey by remember { mutableStateOf<Triple<String, String, String>?>(null) }
         var picker by remember { mutableStateOf<CouiLibraryPicker?>(null) }
+
+        fun tokenOf(tabIndex: Int): Int = if (tabIndex == 0) creatorLoadToken else workLoadToken
+        fun nextTokenOf(tabIndex: Int): Int = if (tabIndex == 0) ++creatorLoadToken else ++workLoadToken
+        fun setTabLoading(tabIndex: Int, loading: Boolean) {
+            if (tabIndex == 0) creatorLoading = loading else workLoading = loading
+        }
+        fun setTabRefreshing(tabIndex: Int, value: Boolean) {
+            if (tabIndex == 0) creatorRefreshing = value else workRefreshing = value
+        }
 
         fun applyFailure(tabIndex: Int, outcome: SessionOutcome<*>, hasContent: Boolean) {
             val plan = planLoad(outcome, hasContent = hasContent, failureMessage = CouiStrings.LoadFailed)
@@ -156,17 +170,26 @@ fun CouiLibraryScreen(
 
         fun load(targetPage: Int, append: Boolean, targetTab: Int = tab) {
             val keyword = appliedQuery
+            val workLang = lang
+            val workSource = source
             // 在不在拉、还能不能拉都交给 feed：重复触底不会再并发打同一页
             val creatorRequest = if (append && targetTab == 0) creatorFeed.beginLoadMore() else null
             val workRequest = if (append && targetTab != 0) workFeed.beginLoadMore() else null
             // 拦截必须在占用 token 之前：被拦下的重复触底若先自增 token，在途请求的结果会被丢弃，
             // feed 就永远停在 loadingMore，页脚一直转圈且再也拉不动。
             if (creatorRequest === creatorFeed || workRequest === workFeed) return
-            loadToken++
-            val token = loadToken
-            if (creatorRequest != null) creatorFeed = creatorRequest
-            if (workRequest != null) workFeed = workRequest
-            if (!append) loadingTab = targetTab
+            val token = nextTokenOf(targetTab)
+            if (creatorRequest != null) {
+                creatorFeed = creatorRequest
+            } else if (targetTab == 0 && creatorFeed.loadingMore) {
+                creatorFeed = creatorFeed.copy(loadingMore = false)
+            }
+            if (workRequest != null) {
+                workFeed = workRequest
+            } else if (targetTab != 0 && workFeed.loadingMore) {
+                workFeed = workFeed.copy(loadingMore = false)
+            }
+            if (!append) setTabLoading(targetTab, true)
             if (targetTab == 0) creatorFailure = null else workFailure = null
             val hasContent = append || if (targetTab == 0) {
                 creatorFeed.items.isNotEmpty()
@@ -174,59 +197,80 @@ fun CouiLibraryScreen(
                 workFeed.items.isNotEmpty()
             }
             scope.launch {
-                val outcome = deps.authCall.call {
-                    if (targetTab == 0) {
-                        deps.gateway.creatorAuthors(targetPage, keyword)
-                    } else {
-                        deps.gateway.creatorWorks(targetPage, keyword, lang, source)
+                try {
+                    val outcome = deps.authCall.call {
+                        if (targetTab == 0) {
+                            deps.gateway.creatorAuthors(targetPage, keyword)
+                        } else {
+                            deps.gateway.creatorWorks(targetPage, keyword, workLang, workSource)
+                        }
                     }
-                }
-                if (token != loadToken) return@launch
-                loadingTab = null
-                refreshing = false
-                when (outcome) {
-                    is SessionOutcome.Ok -> when (val value = outcome.value) {
-                        is CreatorPage -> {
-                            val slice = couiLibrarySlice(value.items, value.total, targetPage)
-                            creatorFeed = creatorRequest?.append(slice) { it.id }
-                                ?: PagedFeed<CreatorMeta>().replace(slice) { it.id }
-                            creatorLoadedOnce = true
+                    if (token != tokenOf(targetTab)) return@launch
+                    setTabLoading(targetTab, false)
+                    setTabRefreshing(targetTab, false)
+                    when (outcome) {
+                        is SessionOutcome.Ok -> when (val value = outcome.value) {
+                            is CreatorPage -> {
+                                val slice = couiLibrarySlice(value.items, value.total, targetPage)
+                                creatorFeed = creatorRequest?.append(slice) { it.id }
+                                    ?: PagedFeed<CreatorMeta>().replace(slice) { it.id }
+                                creatorLoadedOnce = true
+                            }
+
+                            is CreatorWorkPage -> {
+                                filters = value.filters
+                                val slice = couiLibrarySlice(value.items, value.total, targetPage)
+                                workFeed = workRequest?.append(slice) { it.id }
+                                    ?: PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
+                                workLoadedOnce = true
+                            }
+
+                            else -> Unit
                         }
 
-                        is CreatorWorkPage -> {
-                            filters = value.filters
-                            val slice = couiLibrarySlice(value.items, value.total, targetPage)
-                            workFeed = workRequest?.append(slice) { it.id }
-                                ?: PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
-                            workLoadedOnce = true
+                        SessionOutcome.Expired -> applyFailure(targetTab, outcome, hasContent)
+
+                        is SessionOutcome.Failed -> {
+                            applyFailure(targetTab, outcome, hasContent)
+                            // 附加页失败只影响页脚，重试入口交给页脚的「重新加载」
+                            creatorRequest?.let { creatorFeed = it.failLoadMore() }
+                            workRequest?.let { workFeed = it.failLoadMore() }
                         }
-
-                        else -> Unit
                     }
-
-                    SessionOutcome.Expired -> applyFailure(targetTab, outcome, hasContent)
-
-                    is SessionOutcome.Failed -> {
-                        applyFailure(targetTab, outcome, hasContent)
-                        // 附加页失败只影响页脚，重试入口交给页脚的「重新加载」
-                        creatorRequest?.let { creatorFeed = it.failLoadMore() }
-                        workRequest?.let { workFeed = it.failLoadMore() }
+                } finally {
+                    if (append && token != tokenOf(targetTab)) {
+                        if (targetTab == 0 && creatorFeed.loadingMore) {
+                            creatorFeed = creatorFeed.copy(loadingMore = false)
+                        } else if (targetTab != 0 && workFeed.loadingMore) {
+                            workFeed = workFeed.copy(loadingMore = false)
+                        }
                     }
                 }
             }
         }
 
-        LaunchedEffect(appliedQuery) {
-            creatorLoadedOnce = false
-            workLoadedOnce = false
-        }
-        LaunchedEffect(lang, source) {
-            workLoadedOnce = false
-        }
         LaunchedEffect(tab, appliedQuery, lang, source) {
-            load(1, append = false, targetTab = tab)
+            if (tab == 0) {
+                if (creatorRequestedKey != appliedQuery) {
+                    creatorRequestedKey = appliedQuery
+                    creatorLoadedOnce = false
+                    load(1, append = false, targetTab = 0)
+                }
+            } else {
+                val workKey = Triple(appliedQuery, lang, source)
+                if (workRequestedKey != workKey) {
+                    workRequestedKey = workKey
+                    workLoadedOnce = false
+                    load(1, append = false, targetTab = 1)
+                }
+            }
         }
-        PaginationModeReloadEffect(paginationMode) { target -> load(target, append = false, targetTab = tab) }
+        PaginationModeReloadEffect(paginationMode) { target ->
+            creatorRequestedKey = if (tab == 0) appliedQuery else null
+            workRequestedKey = if (tab != 0) Triple(appliedQuery, lang, source) else null
+            if (tab == 0) workLoadedOnce = false else creatorLoadedOnce = false
+            load(target, append = false, targetTab = tab)
+        }
 
         val scheme = CouiKitTheme.colorScheme
         val pagerState = rememberSyncedTabPagerState(
@@ -264,14 +308,15 @@ fun CouiLibraryScreen(
                     }
                 },
                 floatingActionButton = {
+                    val activeRefreshing = if (tab == 0) creatorRefreshing else workRefreshing
                     CouiFab(
                         icon = CouiIcons.Refresh,
                         contentDescription = "刷新",
                         onClick = {
-                            refreshing = true
+                            setTabRefreshing(tab, true)
                             load(1, append = false)
                         },
-                        rotationDegrees = if (refreshing) 180f else 0f,
+                        rotationDegrees = if (activeRefreshing) 180f else 0f,
                     )
                 },
             ) { innerPadding ->
@@ -285,7 +330,8 @@ fun CouiLibraryScreen(
                     val pageTotalPages = libraryPageCount(pageTotal)
                     val pageFailure = if (page == 0) creatorFailure else workFailure
                     val pageLoadedOnce = if (page == 0) creatorLoadedOnce else workLoadedOnce
-                    val pageLoading = loadingTab == page || (!pageLoadedOnce && pageFailure == null)
+                    val tabLoading = if (page == 0) creatorLoading else workLoading
+                    val pageLoading = tabLoading || (!pageLoadedOnce && pageFailure == null)
 
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),

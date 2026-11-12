@@ -71,6 +71,7 @@ import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
@@ -358,7 +359,7 @@ private fun CouiSearchFilterRow(
 @Composable
 private fun CouiSearchFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val scheme = CouiKitTheme.colorScheme
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(LocalSkin.current.shapes.controlCorner)
     Box(
         modifier = Modifier
             .couiPressable(

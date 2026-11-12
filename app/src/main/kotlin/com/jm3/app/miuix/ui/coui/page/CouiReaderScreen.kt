@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -114,6 +115,7 @@ import com.itos.coui.effect.couiFloatingSurface
 import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.layout.Divider
 import com.itos.coui.layout.Item
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.slider.Slider
 import com.itos.coui.text.CouiTextKind
@@ -162,7 +164,7 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ReaderLoadGate
 import com.jm3.app.miuix.ui.ReaderVolumeKeys
 import com.jm3.app.miuix.ui.ReaderWindowLeases
-import com.jm3.app.miuix.ui.TrackedLazyColumn
+import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.chapterSeedCandidate
 import com.jm3.app.miuix.ui.decideEdgePageTurn
 import com.jm3.app.miuix.ui.isPageZoomed
@@ -209,7 +211,6 @@ import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.zoomable
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 import top.yukonga.miuix.kmp.utils.PagerGestureNestedScrollConnection
 import top.yukonga.miuix.kmp.utils.pagerGestureOverride
 import top.yukonga.miuix.kmp.utils.springAnimateToPage
@@ -295,10 +296,17 @@ fun CouiReaderScreen(
                 val detail = (deps.authCall.call { deps.gateway.album(albumId) } as? SessionOutcome.Ok)?.value
                 // 期间又发起了新的加载：本次结局作废，不覆盖新状态
                 if (!loadGate.isLatest(token)) return
-                state = ReaderUiState.Loaded(
+                val resolvedPhoto = resolveCouiLoadedPhoto(
                     photo = photo,
-                    chapters = detail?.chapters.orEmpty(),
-                    chapterIndex = detail?.chapters?.indexOfFirst { it.id == photo.photoId } ?: -1,
+                    savedAlbumId = saved?.record?.albumId,
+                    savedTitle = saved?.record?.title,
+                    detailTitle = detail?.title,
+                )
+                val sortedChapters = sortCouiReaderChapters(detail?.chapters.orEmpty())
+                state = ReaderUiState.Loaded(
+                    photo = resolvedPhoto,
+                    chapters = sortedChapters,
+                    chapterIndex = sortedChapters.indexOfFirst { it.id == resolvedPhoto.photoId },
                     favorited = detail?.favorited == true,
                     liked = detail?.liked == true,
                 )
@@ -319,7 +327,8 @@ fun CouiReaderScreen(
     }
 
     LaunchedEffect(photoId) {
-        // 首载也要登记 Job：失败重试入口靠它取消在途加载，注释与实现才一致
+        // 首载也要先取消残留任务再登记 Job：失败重试与切页复用同一条取消链
+        loadJob?.cancel()
         loadJob = scope.launch { loadContent() }
     }
 
@@ -410,8 +419,6 @@ private fun ReaderStateScreen(
     }
 }
 
-// ScrollBar 目前在 Miuix 标记为实验 API（warning 级别），仅此处显式表态使用
-@OptIn(ExperimentalScrollBarApi::class)
 @Composable
 private fun ReaderPages(
     deps: ScreenDeps,
@@ -1058,19 +1065,21 @@ private fun ReaderPages(
                     }
                 }
             } else {
-                // 长列表与它的滚动条必须同层：TrackedLazyColumn 内部就是 Box { LazyColumn + ListScrollBar }，
-                // 顶部让出 HUD 顶栏净空（首屏内容不被顶栏挡住），底部由尾项 Spacer 让出底栏
-                TrackedLazyColumn(
+                // 竖向阅读使用 LazyColumn + LocalFloatingBarContentPadding，避免混用 Miuix 滚动条；
+                // 顶部让出 HUD 顶栏净空（首屏内容不被顶栏挡住），底部叠加浮栏与 HUD 尾项净空
+                val floatingBarPadding = LocalFloatingBarContentPadding.current
+                LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize().readableWidth(),
                     contentPadding = PaddingValues(
                         start = contentInsets.calculateLeftPadding(layoutDirection),
                         top = contentInsets.calculateTopPadding() + ReaderHudTopHeight + ReaderHudBarVerticalMargin * 2,
                         end = contentInsets.calculateRightPadding(layoutDirection),
-                        bottom = contentInsets.calculateBottomPadding(),
+                        bottom = contentInsets.calculateBottomPadding() + floatingBarPadding,
                     ),
+                    overscrollEffect = rememberCouiOverscrollEffect(),
                 ) {
-                    items(photo.images, key = { it.index }) { image ->
+                    itemsIndexed(photo.images, key = { _, image -> image.index }) { index, image ->
                         // 布局比例优先本页已知比例、其次章节种子；请求尺寸只认解码比例，两者分开演进
                         val frame = readerPageFrame(
                             pageWidthPx = pageWidthPx,
@@ -1102,7 +1111,7 @@ private fun ReaderPages(
                                 }
                             },
                             // 长图模式按图片真实比例自适应展开无缝拼接，双击打开整屏缩放层
-                            onDoubleTap = { zoomOverlayIndex = photo.images.indexOf(image) },
+                            onDoubleTap = { zoomOverlayIndex = index },
                             onTap = { chromeVisible = !chromeVisible },
                         )
                     }

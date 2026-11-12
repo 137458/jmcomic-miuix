@@ -57,7 +57,28 @@ internal fun PagedFeed<*>.shouldPrefetchRow(
     lastVisibleIndex: Int,
     rowStart: Int,
     prefetchDistance: Int,
-): Boolean = shouldLoadMore(lastVisibleIndex - rowStart, items.size, prefetchDistance)
+    columns: Int = 1,
+): Boolean {
+    val safeColumns = columns.coerceAtLeast(1)
+    val rowCount = (items.size + safeColumns - 1) / safeColumns
+    val rowDistance = if (prefetchDistance <= 0) {
+        prefetchDistance
+    } else {
+        (prefetchDistance + safeColumns - 1) / safeColumns
+    }
+    return shouldLoadMore(lastVisibleIndex - rowStart, rowCount, rowDistance)
+}
+
+/** 跳页前校验目标页是否合法：总页数未知时若 hasMore 为真也允许跳往下一页。 */
+internal fun couiCanJumpFeedPage(feed: PagedFeed<*>, target: Int): Boolean {
+    if (target < 1 || target == feed.page) return false
+    val total = feed.pageCount
+    return if (total != null && total > 0) {
+        target <= total
+    } else {
+        target < feed.page || feed.hasMore
+    }
+}
 
 /**
  * 榜单名次：第 [page] 页（1 基）第 [index] 项（0 基）在整份榜单里的序号（1 基）。
@@ -92,11 +113,14 @@ internal fun couiBrowseHeadCount(
     hasWeeklyPaging: Boolean = false,
     weeklyItemCount: Int = 0,
     hasWeeklyFooter: Boolean = false,
+    columns: Int = 1,
 ): Int = if (isCategoryMode) {
     2 + if (hasTagNav) 1 else 0
 } else {
+    val safeColumns = columns.coerceAtLeast(1)
+    val weeklyRows = (weeklyItemCount + safeColumns - 1) / safeColumns
     val weeklyCount = if (weeklyItemCount > 0) {
-        1 + weeklyItemCount + (if (hasWeeklyFooter) 1 else 0)
+        1 + weeklyRows + (if (hasWeeklyFooter) 1 else 0)
     } else {
         1
     }

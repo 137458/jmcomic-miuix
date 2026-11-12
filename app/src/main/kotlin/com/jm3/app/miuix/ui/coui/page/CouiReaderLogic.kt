@@ -3,7 +3,9 @@ package com.jm3.app.miuix.ui.coui.page
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
+import com.jm3.core.model.Chapter
 import com.jm3.core.model.NovelChapterMeta
+import com.jm3.core.model.PhotoPages
 import kotlin.math.roundToInt
 import kotlin.math.sign
 
@@ -145,6 +147,24 @@ internal fun couiNovelVolumeScrollTarget(
     val step = (viewportHeightPx * 0.8f).roundToInt().coerceAtLeast(1)
     return (clampedCurrent + step * direction.sign).coerceIn(0, ceiling)
 }
+
+/** 回填离线页缺失的 albumId 与标题，确保阅读页与历史记录不写空值。 */
+internal fun resolveCouiLoadedPhoto(
+    photo: PhotoPages,
+    savedAlbumId: String?,
+    savedTitle: String?,
+    detailTitle: String?,
+): PhotoPages {
+    val resolvedAlbumId = photo.albumId.ifBlank { savedAlbumId.orEmpty() }
+    val resolvedTitle = photo.title.ifBlank {
+        savedTitle?.takeIf { it.isNotBlank() } ?: detailTitle.orEmpty()
+    }
+    return photo.copy(albumId = resolvedAlbumId, title = resolvedTitle)
+}
+
+/** 章节列表按 sortOrder 升序归一，确保上下话与目录顺序稳定。 */
+internal fun sortCouiReaderChapters(chapters: List<Chapter>): List<Chapter> =
+    chapters.sortedBy { it.sortOrder }
 
 /** 仅当存在翻页方向且未被缩放浮层或模态弹窗遮挡时消费音量键。 */
 internal fun couiShouldHandleReaderVolumeKey(

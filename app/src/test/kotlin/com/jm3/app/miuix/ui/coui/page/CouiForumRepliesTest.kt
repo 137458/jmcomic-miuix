@@ -3,6 +3,7 @@
 package com.jm3.app.miuix.ui.coui.page
 
 import com.jm3.core.model.CommentItem
+import com.jm3.core.model.CommentPage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -53,5 +54,19 @@ class CouiForumRepliesTest {
 
         assertEquals(listOf("r1", "r1_1", "r1_1_1", "r1_1_1_1", "r2"), rows.map { it.first.id })
         assertEquals(listOf(1, 2, 2, 2, 1), rows.map { it.second })
+    }
+
+    @Test
+    fun 回复刷新合并多页评论时保留前序页条目与游标() {
+        val page1 = CommentPage(total = 25, items = listOf(comment("1"), comment("2")))
+        val page2 = CommentPage(total = 25, items = listOf(comment("2"), comment("3")))
+        val page3 = CommentPage(total = 25, items = listOf(comment("4", replies = listOf(comment("r1")))))
+
+        val merged = mergeCouiForumPages(listOf(page1, page2, page3), activePage = 3, pageSize = 10)
+
+        assertEquals(listOf("1", "2", "3", "4"), merged.items.map { it.id })
+        assertEquals(listOf("r1"), merged.items.last().replies.map { it.id })
+        assertEquals(3, merged.page)
+        assertEquals(3, merged.pageCount)
     }
 }
