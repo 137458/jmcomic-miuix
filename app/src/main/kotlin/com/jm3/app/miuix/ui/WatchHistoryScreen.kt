@@ -28,6 +28,7 @@ import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pageLooksFull
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.paging.pagerNextPage
 import com.jm3.core.session.SessionOutcome
@@ -116,7 +117,7 @@ fun WatchHistoryScreen(
                     val slice = PageSlice(
                         items = outcome.value,
                         // 接口不返回总数，用本页条数推断还有没有下一页
-                        hasMore = outcome.value.size >= WATCH_PAGE_SIZE,
+                        hasMore = pageLooksFull(outcome.value.size, WATCH_PAGE_SIZE),
                         page = targetPage,
                     )
                     feed = if (replace) {

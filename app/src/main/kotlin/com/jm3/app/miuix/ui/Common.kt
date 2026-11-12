@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImagePainter
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.shouldLoadMore
+import com.jm3.core.paging.showsPagedFooter
 import com.jm3.core.model.SearchResult
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import top.yukonga.miuix.kmp.basic.Button
@@ -560,10 +561,6 @@ private fun SearchResultCard(
     }
 }
 
-/** 多页列表底部入口可见性：总页数大于 1、仍有下一页或已翻到第 2 页起均需展示分页/加载区。 */
-internal fun shouldShowPagedFooter(feed: PagedFeed<*>): Boolean =
-    feed.items.isNotEmpty() && ((feed.pageCount ?: 1) > 1 || feed.hasMore || feed.page > 1)
-
 /**
  * 搜索/浏览共用的结果列表与加载更多入口；是否还有下一页、在不在拉、上次是否失败都由 [PagedFeed] 回答。
  *
@@ -599,7 +596,7 @@ fun LazyListScope.searchResultItems(
         )
     }
     // 单页结果（如每周必看）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
-    if (shouldShowPagedFooter(feed)) {
+    if (feed.showsPagedFooter()) {
         if (clickPaging && onPageChange != null) {
             item(key = "pager") {
                 PagerBar(
@@ -926,7 +923,7 @@ fun LazyStaggeredGridScope.rankResultGrid(
         )
     }
     // 单页结果（筛选后只有一页）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
-    if (shouldShowPagedFooter(feed)) {
+    if (feed.showsPagedFooter()) {
         if (clickPaging && onPageChange != null) {
             item(key = "rank-pager", span = StaggeredGridItemSpan.FullLine) {
                 PagerBar(

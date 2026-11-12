@@ -67,6 +67,8 @@ import com.jm3.core.model.CreatorWorkMeta
 import com.jm3.core.model.CreatorWorkPage
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.hasMorePages
+import com.jm3.core.paging.pageCountAtLeastOne
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
@@ -1151,13 +1153,12 @@ private fun LibraryFooter(
 }
 
 /** 总数 → 总页数：书库所有位置的页码换算都走这一份，避免向上取整写错一边。 */
-internal fun libraryPageCount(total: Int): Int =
-    ((total + LIBRARY_PAGE_SIZE - 1) / LIBRARY_PAGE_SIZE).coerceAtLeast(1)
+internal fun libraryPageCount(total: Int): Int = pageCountAtLeastOne(total, LIBRARY_PAGE_SIZE)
 
 /** 把书库接口的一页折算成 PagedFeed 切片：末页判据用页码，条目数不参与。 */
 private fun <T> librarySlice(items: List<T>, total: Int, page: Int): PageSlice<T> {
     val pageCount = libraryPageCount(total)
-    return PageSlice(items = items, hasMore = page < pageCount, total = total, page = page)
+    return PageSlice(items = items, hasMore = hasMorePages(page, pageCount), total = total, page = page)
 }
 
 /** 统一封面占位：缺失时保留同尺寸色块，避免网格跳动。 */

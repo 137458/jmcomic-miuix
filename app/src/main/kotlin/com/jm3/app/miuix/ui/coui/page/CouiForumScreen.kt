@@ -100,6 +100,7 @@ import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CommentSegment
 import com.jm3.core.model.ForumScope
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pageCountOf
 import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -223,11 +224,7 @@ internal fun CouiForumScreen(
                     is SessionOutcome.Ok -> {
                         val resultPage = outcome.value
                         // 评论页没有页码字段：页码与总页数由请求页和 total 补上
-                        val pageCount = if (resultPage.total > 0) {
-                            (resultPage.total + FORUM_PAGE_SIZE - 1) / FORUM_PAGE_SIZE
-                        } else {
-                            null
-                        }
+                        val pageCount = pageCountOf(resultPage.total, FORUM_PAGE_SIZE)
                         feeds[targetTab] = if (replace) {
                             PagedFeed<CommentItem>().replacedBy(resultPage)
                         } else {
@@ -751,7 +748,7 @@ internal fun mergeCouiForumPages(
         merged = merged.appendedBy(pages[index])
     }
     val last = pages.last()
-    val pageCount = if (last.total > 0) (last.total + pageSize - 1) / pageSize else null
+    val pageCount = pageCountOf(last.total, pageSize)
     return merged.copy(page = activePage.coerceAtLeast(1), pageCount = pageCount)
 }
 

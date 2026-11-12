@@ -89,6 +89,7 @@ import com.jm3.core.model.CreatorWorkMeta
 import com.jm3.core.model.CreatorWorkPage
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.hasMorePages
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
@@ -665,7 +666,7 @@ private fun <T> couiLibrarySlice(items: List<T>, total: Int, page: Int): PageSli
     val pageCount = libraryPageCount(total)
     return PageSlice(
         items = items,
-        hasMore = page < pageCount,
+        hasMore = hasMorePages(page, pageCount),
         total = total,
         page = page,
         pageCount = pageCount,

@@ -30,6 +30,8 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.core.model.TrackingItem
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.hasMoreByLoaded
+import com.jm3.core.paging.loadedThrough
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -115,7 +117,7 @@ fun TrackingScreen(
                     feed = PagedFeed<TrackingItem>().replace(
                         PageSlice(
                             items = page.items,
-                            hasMore = page.items.isNotEmpty() && page.items.size < page.total,
+                            hasMore = hasMoreByLoaded(page.items.size, page.items.size, page.total),
                             total = page.total,
                             page = 1,
                         ),
@@ -168,12 +170,11 @@ fun TrackingScreen(
                 when (outcome) {
                     is SessionOutcome.Ok -> {
                         val page = outcome.value
-                        val sizeHint = pageSizeHint.coerceAtLeast(page.items.size)
-                        val seen = (resolved - 1).coerceAtLeast(0) * sizeHint + page.items.size
+                        val loaded = loadedThrough(resolved, pageSizeHint, page.items.size)
                         feed = PagedFeed<TrackingItem>().replace(
                             PageSlice(
                                 items = page.items,
-                                hasMore = page.items.isNotEmpty() && seen < page.total,
+                                hasMore = hasMoreByLoaded(page.items.size, loaded, page.total),
                                 total = page.total,
                                 page = resolved,
                             ),
@@ -210,7 +211,7 @@ fun TrackingScreen(
                     feed = requested.append(
                         PageSlice(
                             items = next.items,
-                            hasMore = next.items.isNotEmpty() && merged.size < next.total,
+                            hasMore = hasMoreByLoaded(next.items.size, merged.size, next.total),
                             total = next.total.coerceAtLeast(requested.total ?: 0),
                             page = page,
                         ),

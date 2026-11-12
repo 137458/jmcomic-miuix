@@ -67,6 +67,7 @@ import com.jm3.app.miuix.ui.rememberDateFormatter
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pageLooksFull
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.settings.PaginationMode
@@ -145,7 +146,7 @@ fun CouiHistoryScreen(
                         feed = PagedFeed<HistoryEntry>().replace(
                             PageSlice(
                                 items = entries,
-                                hasMore = entries.size >= HISTORY_PAGE_SIZE,
+                                hasMore = pageLooksFull(entries.size, HISTORY_PAGE_SIZE),
                                 page = 1,
                             ),
                         ) { entry -> entry.photoId }
@@ -167,7 +168,7 @@ fun CouiHistoryScreen(
                             feed = PagedFeed<HistoryEntry>().replace(
                                 PageSlice(
                                     items = entries,
-                                    hasMore = entries.size >= HISTORY_PAGE_SIZE,
+                                    hasMore = pageLooksFull(entries.size, HISTORY_PAGE_SIZE),
                                     page = resolved,
                                 ),
                             ) { entry -> entry.photoId }
@@ -193,7 +194,7 @@ fun CouiHistoryScreen(
                         feed = requested.append(
                             PageSlice(
                                 items = entries,
-                                hasMore = entries.size >= HISTORY_PAGE_SIZE,
+                                hasMore = pageLooksFull(entries.size, HISTORY_PAGE_SIZE),
                                 page = nextPage,
                             ),
                         ) { entry -> entry.photoId }

@@ -42,6 +42,7 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.appendedBy
 import com.jm3.core.model.ForumScope
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pageCountOf
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
@@ -174,11 +175,7 @@ fun ForumScreen(
                     is SessionOutcome.Ok -> {
                         val resultPage = outcome.value
                         // 评论页没有页码字段：页码与总页数由请求页和 total 补上，点击分页条才有得显示
-                        val pageCount = if (resultPage.total > 0) {
-                            (resultPage.total + FORUM_PAGE_SIZE - 1) / FORUM_PAGE_SIZE
-                        } else {
-                            null
-                        }
+                        val pageCount = pageCountOf(resultPage.total, FORUM_PAGE_SIZE)
                         feeds[targetTab] = if (replace) {
                             PagedFeed<CommentItem>().replacedBy(resultPage)
                         } else {

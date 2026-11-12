@@ -74,6 +74,8 @@ import com.jm3.app.miuix.ui.restoreAt
 import com.jm3.core.model.TrackingItem
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.hasMoreByLoaded
+import com.jm3.core.paging.loadedThrough
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -146,7 +148,7 @@ internal fun CouiTrackingScreen(
                     feed = PagedFeed<TrackingItem>().replace(
                         PageSlice(
                             items = page.items,
-                            hasMore = page.items.isNotEmpty() && page.items.size < page.total,
+                            hasMore = hasMoreByLoaded(page.items.size, page.items.size, page.total),
                             total = page.total,
                             page = 1,
                         ),
@@ -170,11 +172,11 @@ internal fun CouiTrackingScreen(
                 is SessionOutcome.Ok -> {
                     val page = outcome.value
                     pageSizeHint = pageSizeHint.coerceAtLeast(page.items.size)
-                    val seen = (resolved - 1).coerceAtLeast(0) * pageSizeHint + page.items.size
+                    val loaded = loadedThrough(resolved, pageSizeHint, page.items.size)
                     feed = feed.replace(
                         PageSlice(
                             items = page.items,
-                            hasMore = page.items.isNotEmpty() && seen < page.total,
+                            hasMore = hasMoreByLoaded(page.items.size, loaded, page.total),
                             total = page.total,
                             page = resolved,
                         ),
@@ -202,7 +204,7 @@ internal fun CouiTrackingScreen(
                     feed = requested.append(
                         PageSlice(
                             items = page.items,
-                            hasMore = page.items.isNotEmpty() && merged.size < page.total,
+                            hasMore = hasMoreByLoaded(page.items.size, merged.size, page.total),
                             total = page.total.coerceAtLeast(requested.total ?: 0),
                             page = nextPage,
                         ),

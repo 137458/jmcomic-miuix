@@ -227,4 +227,37 @@ class PagedFeedTest {
 
         assertFalse(feed.shouldLoadMore(lastVisibleIndex = -1, totalItemCount = 0))
     }
+
+    @Test
+    fun 空列表不显示分页区() {
+        assertFalse(PagedFeed<SearchResult>().showsPagedFooter())
+    }
+
+    @Test
+    fun 只有一页且没有下一页时不显示分页区() {
+        val feed = PagedFeed(items = listOf(result("1")), page = 1, pageCount = null, hasMore = false)
+
+        assertFalse(feed.showsPagedFooter())
+    }
+
+    @Test
+    fun 总页数超过一页时显示分页区() {
+        val feed = PagedFeed(items = listOf(result("1")), page = 1, pageCount = 2, hasMore = true)
+
+        assertTrue(feed.showsPagedFooter())
+    }
+
+    @Test
+    fun 还有下一页时即使总页数未知也显示分页区() {
+        val feed = PagedFeed(items = listOf(result("1")), page = 1, pageCount = null, hasMore = true)
+
+        assertTrue(feed.showsPagedFooter())
+    }
+
+    @Test
+    fun 已翻过第一页时显示分页区() {
+        val feed = PagedFeed(items = listOf(result("1")), page = 2, pageCount = null, hasMore = false)
+
+        assertTrue(feed.showsPagedFooter())
+    }
 }

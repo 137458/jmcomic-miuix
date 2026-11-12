@@ -62,6 +62,7 @@ import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pageLooksFull
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -150,7 +151,7 @@ fun CouiWatchHistoryScreen(
                         val items = outcome.value
                         val slice = PageSlice(
                             items = items,
-                            hasMore = items.size >= WATCH_PAGE_SIZE,
+                            hasMore = pageLooksFull(items.size, WATCH_PAGE_SIZE),
                             page = targetPage,
                         )
                         feed = if (replace) {

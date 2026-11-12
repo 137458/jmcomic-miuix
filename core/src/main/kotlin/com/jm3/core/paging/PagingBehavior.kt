@@ -40,3 +40,39 @@ fun pagerTargetPage(currentPage: Int, requestedPage: Int, pageCount: Int?): Int 
 /** 分页模式变化时该回到第 1 页重载；模式没变则返回 null（不重载）。 */
 fun pagingModeReloadPage(previous: PaginationMode, next: PaginationMode): Int? =
     if (PaginationModePolicy.paginationModeChanged(previous, next)) 1 else null
+
+/**
+ * 服务端总数折算总页数；总数为 0 或负数表示未提供，返回 null。
+ *
+ * 评论、书库这类接口只给 total，页码与末页判据都得由总数推出来。
+ */
+fun pageCountOf(total: Int, pageSize: Int): Int? {
+    require(pageSize > 0) { "pageSize 必须为正数，实际为 $pageSize" }
+    if (total <= 0) return null
+    return (total + pageSize - 1) / pageSize
+}
+
+/** 同上，但总页数未知时按 1 页处理：界面上的分页条总要有个页数。 */
+fun pageCountAtLeastOne(total: Int, pageSize: Int): Int = pageCountOf(total, pageSize) ?: 1
+
+/** 页码判末页：请求页之后还有页即返回 true。 */
+fun hasMorePages(page: Int, pageCount: Int): Boolean = page < pageCount
+
+/** 一页是否装满：服务端不报总数的列表靠「这页装满了」推断后面可能还有。 */
+fun pageLooksFull(itemCount: Int, pageSize: Int): Boolean = itemCount >= pageSize
+
+/**
+ * 已加载到第几条：按每页条数估算，页内条数不足时以实际条数补。
+ *
+ * @param page 从 1 起的页码
+ * @param pageSizeHint 每页条数提示
+ * @param pageItemCount 这一页实际返回的条数
+ */
+fun loadedThrough(page: Int, pageSizeHint: Int, pageItemCount: Int): Int {
+    val size = pageSizeHint.coerceAtLeast(pageItemCount)
+    return (page - 1).coerceAtLeast(0) * size + pageItemCount
+}
+
+/** 按已加载条数判末页：本页为空视为到头，否则与总数比较。 */
+fun hasMoreByLoaded(pageItemCount: Int, loaded: Int, total: Int): Boolean =
+    pageItemCount > 0 && loaded < total

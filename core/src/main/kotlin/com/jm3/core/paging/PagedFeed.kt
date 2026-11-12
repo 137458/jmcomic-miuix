@@ -64,6 +64,10 @@ data class PagedFeed<T>(
         )
     }
 }
+/** 分页/加载区该不该显示：有条目，且（总页数超过 1、仍有下一页、已翻过第 1 页）三者之一。 */
+fun PagedFeed<*>.showsPagedFooter(): Boolean =
+    items.isNotEmpty() && ((pageCount ?: 1) > 1 || hasMore || page > 1)
+
 /** 触底判据的默认提前量：最后一个可见项距末尾这么多项时开始取下一页。 */
 const val PREFETCH_DISTANCE: Int = 3
 
