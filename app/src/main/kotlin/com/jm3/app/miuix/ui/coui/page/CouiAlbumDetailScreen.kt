@@ -116,6 +116,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiDetailActionTile
+import com.jm3.app.miuix.ui.coui.component.CouiDetailButtonShape
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
@@ -1449,7 +1450,7 @@ private fun CouiDialogRow(
     danger: Boolean = false,
 ) {
     val scheme = CouiKitTheme.colorScheme
-    val rowShape = CouiShape(radius = 16.dp, cornerWeight = 3f)
+    val rowShape = CouiDetailButtonShape
     Row(
         modifier = Modifier
             .fillMaxWidth()

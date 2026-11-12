@@ -205,6 +205,12 @@ val CouiMinTouchTarget = 48.dp
 /** 全 COUI 评论、回复与筛选输入区的统一圆角轮廓：比卡片更方，输入区不随皮肤随意变形。 */
 val CouiCommentFieldShape = CouiShape(radius = 16.dp, cornerWeight = 3f)
 
+/** 详情页操作按钮的统一圆角轮廓：主阅读按钮、功能瓦片与菜单行共用。 */
+internal val CouiDetailButtonShape: CouiShape = CouiCommentFieldShape
+
+/** 详情页主阅读大按钮的默认轮廓。 */
+internal val CouiPrimaryActionDefaultShape: androidx.compose.ui.graphics.Shape = CouiDetailButtonShape
+
 /**
  * 破坏性确认按钮：红底白字的主操作。
  *
@@ -445,7 +451,7 @@ fun CouiEmptyGroup(
 }
 
 /**
- * 详情页主阅读大按钮：全宽主题高亮胶囊 CTA，明确区分于下方次级功能瓦片与尾部纯文本标签。
+ * 详情页主阅读大按钮：全宽主题高亮圆角 CTA，圆角与下方次级功能瓦片统一为 16dp。
  */
 @Composable
 fun CouiPrimaryActionButton(
@@ -454,6 +460,7 @@ fun CouiPrimaryActionButton(
     leadingIcon: ImageVector? = null,
     trailingIcon: ImageVector? = null,
     enabled: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = CouiDetailButtonShape,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -468,7 +475,7 @@ fun CouiPrimaryActionButton(
         modifier = modifier
             .fillMaxWidth()
             .couiPressable(
-                shape = CouiCapsuleShape,
+                shape = shape,
                 backgroundColor = bgColor,
                 spotlight = if (enabled) SpotlightPreset.OpaqueSmall1 else null,
                 enabled = enabled,
@@ -554,7 +561,7 @@ fun CouiDetailActionTile(
         .let { m ->
             if (onClick != null) {
                 m.couiPressable(
-                    shape = CouiCommentFieldShape,
+                    shape = CouiDetailButtonShape,
                     backgroundColor = bgColor,
                     spotlight = if (enabled) SpotlightPreset.ChipTab else null,
                     enabled = enabled,
@@ -563,11 +570,11 @@ fun CouiDetailActionTile(
                 )
             } else {
                 m
-                    .clip(CouiCommentFieldShape)
+                    .clip(CouiDetailButtonShape)
                     .background(bgColor)
             }
         }
-        .border(0.5.dp, borderColor, CouiCommentFieldShape)
+        .border(0.5.dp, borderColor, CouiDetailButtonShape)
         .padding(horizontal = 6.dp, vertical = 9.dp)
     Column(
         modifier = baseModifier,
