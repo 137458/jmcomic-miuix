@@ -131,6 +131,8 @@ fun LibraryScreen(
     // 两个 Tab 各持独立代次，切换 Tab 时互不作废对方在途请求
     var creatorLoadToken by remember { mutableIntStateOf(0) }
     var workLoadToken by remember { mutableIntStateOf(0) }
+    var creatorPageBusy by remember { mutableStateOf(false) }
+    var workPageBusy by remember { mutableStateOf(false) }
     var attemptedCreatorQuery by remember { mutableStateOf<String?>(null) }
     var attemptedWorkParams by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     val paginationMode = deps.preferences.paginationMode
@@ -164,7 +166,14 @@ fun LibraryScreen(
         }
     }
 
-    fun load(targetPage: Int, append: Boolean, targetTab: Int = tab) {
+    fun load(
+        targetPage: Int,
+        append: Boolean,
+        targetTab: Int = tab,
+        showLoading: Boolean = !append && refreshingTab != targetTab,
+        pageJump: Boolean = false,
+    ) {
+        if (pageJump && ((targetTab == 0 && creatorPageBusy) || (targetTab != 0 && workPageBusy))) return
         val keyword = appliedQuery
         // 在不在拉、还能不能拉都交给 feed：重复触底不会再并发打同一页
         val creatorRequest = if (append && targetTab == 0) creatorFeed.beginLoadMore() else null
@@ -179,7 +188,12 @@ fun LibraryScreen(
         }
         if (creatorRequest != null) creatorFeed = creatorRequest
         if (workRequest != null) workFeed = workRequest
-        if (!append && refreshingTab != targetTab) {
+        if (pageJump) {
+            if (targetTab == 0) creatorPageBusy = true else workPageBusy = true
+        } else if (!append) {
+            if (targetTab == 0) creatorPageBusy = false else workPageBusy = false
+        }
+        if (showLoading) {
             if (targetTab == 0) creatorLoading = true else workLoading = true
         }
         if (targetTab == 0) creatorFailure = null else workFailure = null
@@ -190,45 +204,54 @@ fun LibraryScreen(
             workFeed.items.isNotEmpty()
         }
         scope.launch {
-            // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
-            val outcome = deps.authCall.call {
-                if (targetTab == 0) {
-                    deps.gateway.creatorAuthors(targetPage, keyword)
-                } else {
-                    deps.gateway.creatorWorks(targetPage, keyword, lang, source)
+            try {
+                // 启动闸门、IO 切线程与失效通知都在 AuthCall 里
+                val outcome = deps.authCall.call {
+                    if (targetTab == 0) {
+                        deps.gateway.creatorAuthors(targetPage, keyword)
+                    } else {
+                        deps.gateway.creatorWorks(targetPage, keyword, lang, source)
+                    }
                 }
-            }
-            val currentToken = if (targetTab == 0) creatorLoadToken else workLoadToken
-            if (token != currentToken) return@launch
-            if (targetTab == 0) creatorLoading = false else workLoading = false
-            if (refreshingTab == targetTab) refreshingTab = null
-            when (outcome) {
-                is SessionOutcome.Ok -> when (val value = outcome.value) {
-                    is CreatorPage -> {
-                        val slice = librarySlice(value.items, value.total, targetPage)
-                        creatorFeed = creatorRequest?.append(slice) { it.id }
-                            ?: PagedFeed<CreatorMeta>().replace(slice) { it.id }
-                        creatorLoadedOnce = true
+                val currentToken = if (targetTab == 0) creatorLoadToken else workLoadToken
+                if (token != currentToken) return@launch
+                if (targetTab == 0) creatorLoading = false else workLoading = false
+                if (refreshingTab == targetTab) refreshingTab = null
+                when (outcome) {
+                    is SessionOutcome.Ok -> when (val value = outcome.value) {
+                        is CreatorPage -> {
+                            val slice = librarySlice(value.items, value.total, targetPage)
+                            creatorFeed = creatorRequest?.append(slice) { it.id }
+                                ?: PagedFeed<CreatorMeta>().replace(slice) { it.id }
+                            creatorLoadedOnce = true
+                            if (pageJump) creatorListState.scrollToItem(0)
+                        }
+
+                        is CreatorWorkPage -> {
+                            filters = value.filters
+                            val slice = librarySlice(value.items, value.total, targetPage)
+                            workFeed = workRequest?.append(slice) { it.id }
+                                ?: PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
+                            workLoadedOnce = true
+                            if (pageJump) workListState.scrollToItem(0)
+                        }
+
+                        else -> Unit
                     }
 
-                    is CreatorWorkPage -> {
-                        filters = value.filters
-                        val slice = librarySlice(value.items, value.total, targetPage)
-                        workFeed = workRequest?.append(slice) { it.id }
-                            ?: PagedFeed<CreatorWorkMeta>().replace(slice) { it.id }
-                        workLoadedOnce = true
+                    SessionOutcome.Expired -> applyFailure(targetTab, outcome, hasContent)
+
+                    is SessionOutcome.Failed -> {
+                        applyFailure(targetTab, outcome, hasContent)
+                        // 附加页失败只影响页脚，重试入口交给页脚上的「加载失败，点击重试」
+                        creatorRequest?.let { creatorFeed = it.failLoadMore() }
+                        workRequest?.let { workFeed = it.failLoadMore() }
                     }
-
-                    else -> Unit
                 }
-
-                SessionOutcome.Expired -> applyFailure(targetTab, outcome, hasContent)
-
-                is SessionOutcome.Failed -> {
-                    applyFailure(targetTab, outcome, hasContent)
-                    // 附加页失败只影响页脚，重试入口交给页脚上的「加载失败，点击重试」
-                    creatorRequest?.let { creatorFeed = it.failLoadMore() }
-                    workRequest?.let { workFeed = it.failLoadMore() }
+            } finally {
+                val currentToken = if (targetTab == 0) creatorLoadToken else workLoadToken
+                if (pageJump && token == currentToken) {
+                    if (targetTab == 0) creatorPageBusy = false else workPageBusy = false
                 }
             }
         }
@@ -238,12 +261,20 @@ fun LibraryScreen(
         if (tab == 0) {
             if (attemptedCreatorQuery != appliedQuery) {
                 attemptedCreatorQuery = appliedQuery
+                // 变更检索词先清旧列表并回顶，防止加载态或失败态混显旧结果
+                creatorFeed = PagedFeed()
+                creatorLoadedOnce = false
+                creatorListState.requestScrollToItem(0)
                 load(1, append = false, targetTab = 0)
             }
         } else {
             val params = Triple(appliedQuery, lang, source)
             if (attemptedWorkParams != params) {
                 attemptedWorkParams = params
+                // 变更检索词或筛选条件先清旧列表并回顶，防止混显或误按旧内容保底
+                workFeed = PagedFeed()
+                workLoadedOnce = false
+                workListState.requestScrollToItem(0)
                 load(1, append = false, targetTab = 1)
             }
         }
@@ -251,6 +282,10 @@ fun LibraryScreen(
     PaginationModeReloadEffect(paginationMode) {
         attemptedCreatorQuery = if (tab == 0) appliedQuery else null
         attemptedWorkParams = if (tab == 1) Triple(appliedQuery, lang, source) else null
+        creatorFeed = PagedFeed()
+        workFeed = PagedFeed()
+        creatorLoadedOnce = false
+        workLoadedOnce = false
         load(1, append = false, targetTab = tab)
     }
 
@@ -439,8 +474,13 @@ fun LibraryScreen(
                                 feed = pageFeed,
                                 mode = paginationMode,
                                 totalPages = pageTotalPages,
+                                pageBusy = if (page == 0) creatorPageBusy else workPageBusy,
                                 onLoadMore = { load(pageFeed.page + 1, append = true, targetTab = page) },
-                                onPageChange = { target -> load(target, append = false, targetTab = page) },
+                                onPageChange = { target ->
+                                    if (target != pageFeed.page) {
+                                        load(target, append = false, targetTab = page, showLoading = false, pageJump = true)
+                                    }
+                                },
                             )
                         }
                     }
@@ -480,6 +520,7 @@ fun CreatorWorksScreen(
         val token = loadToken
         if (showLoading) loading = true
         failure = null
+        val hasContent = data != null
         scope.launch {
             val outcome = deps.authCall.call { deps.gateway.creatorAuthorWorks(creatorId, lang, source, 1) }
             if (token != loadToken) return@launch
@@ -487,8 +528,14 @@ fun CreatorWorksScreen(
             refreshing = false
             when (outcome) {
                 is SessionOutcome.Ok -> data = outcome.value
-                SessionOutcome.Expired -> failure = planLoad(outcome, hasContent = false, failureMessage = "")
-                is SessionOutcome.Failed -> failure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
+                SessionOutcome.Expired, is SessionOutcome.Failed -> {
+                    val plan = planLoad(outcome, hasContent = hasContent, failureMessage = "加载失败")
+                    if (plan.keepContent) {
+                        snackbarHostState.showSnackbar(plan.notice.orEmpty())
+                    } else {
+                        failure = plan
+                    }
+                }
             }
         }
     }
@@ -1086,12 +1133,18 @@ private fun LibraryFooter(
     feed: PagedFeed<*>,
     mode: PaginationMode,
     totalPages: Int,
+    pageBusy: Boolean,
     onLoadMore: () -> Unit,
     onPageChange: (Int) -> Unit,
 ) {
     if (feed.items.isEmpty()) return
     if (mode == PaginationMode.CLICK) {
-        PagerBar(page = feed.page, totalPages = totalPages, onPageChange = onPageChange)
+        PagerBar(
+            page = feed.page,
+            totalPages = totalPages,
+            enabled = !pageBusy,
+            onPageChange = onPageChange,
+        )
     } else {
         LoadMoreFooter(feed = feed, onLoadMore = onLoadMore)
     }

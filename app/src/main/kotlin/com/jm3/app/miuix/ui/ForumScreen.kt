@@ -42,6 +42,7 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.appendedBy
 import com.jm3.core.model.ForumScope
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -68,6 +69,10 @@ private const val FORUM_PAGE_SIZE = 10
 
 /** 闲聊区规则正文：折叠态只显示提要，展开态显示全文。 */
 private const val FORUM_RULES_TEXT = "禁止发布违法违规、骚扰与剧透内容；发言限 200 字，违规内容会被删除。"
+
+/** 点击分页模式是否显示翻页条：总页数大于 1、仍有下一页或当前不在第 1 页时显示。 */
+internal fun shouldShowForumPager(feed: PagedFeed<*>): Boolean =
+    (feed.pageCount ?: 0) > 1 || feed.hasMore || feed.page > 1
 
 private sealed interface ForumUiState {
     data object Loading : ForumUiState
@@ -120,6 +125,7 @@ fun ForumScreen(
     var loadToken by remember { mutableIntStateOf(0) }
     var inFlightJob by remember { mutableStateOf<Job?>(null) }
     var lastPageMode by remember { mutableStateOf(pageMode) }
+    var pageBusy by remember { mutableStateOf(false) }
 
     /** 失效与失败共用一条落点：有内容就保留列表、只标记页脚与提示，没内容才整屏。 */
     fun applyFailure(targetTab: Int, outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
@@ -144,6 +150,7 @@ fun ForumScreen(
         replace: Boolean,
         showLoading: Boolean,
         targetTab: Int = clampedScopeIndex,
+        scrollToTopOnSuccess: Boolean = false,
     ) {
         val currentFeed = feeds[targetTab] ?: PagedFeed()
         val targetScope = ForumScope.entries[targetTab]
@@ -151,6 +158,7 @@ fun ForumScreen(
         val requested = if (replace) currentFeed else currentFeed.beginLoadMore()
         if (!replace && requested === currentFeed) return
         if (showLoading) states[targetTab] = ForumUiState.Loading
+        if (!scrollToTopOnSuccess && replace) pageBusy = false
         // 追加请求要立刻进入加载态，页脚才能显示进度；置位同时充当在途守卫
         feeds[targetTab] = requested
         failedPages[targetTab] = targetPage
@@ -158,32 +166,53 @@ fun ForumScreen(
         inFlightJob?.cancel()
         val token = ++loadToken
         inFlightJob = scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.forum(targetScope, targetPage) }
-            if (token != loadToken) return@launch
-            refreshing = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val resultPage = outcome.value
-                    // 评论页没有页码字段：页码与总页数由请求页和 total 补上，点击分页条才有得显示
-                    val pageCount = if (resultPage.total > 0) {
-                        (resultPage.total + FORUM_PAGE_SIZE - 1) / FORUM_PAGE_SIZE
-                    } else {
-                        null
+            try {
+                val outcome = deps.authCall.call { deps.gateway.forum(targetScope, targetPage) }
+                if (token != loadToken) return@launch
+                refreshing = false
+                when (outcome) {
+                    is SessionOutcome.Ok -> {
+                        val resultPage = outcome.value
+                        // 评论页没有页码字段：页码与总页数由请求页和 total 补上，点击分页条才有得显示
+                        val pageCount = if (resultPage.total > 0) {
+                            (resultPage.total + FORUM_PAGE_SIZE - 1) / FORUM_PAGE_SIZE
+                        } else {
+                            null
+                        }
+                        feeds[targetTab] = if (replace) {
+                            PagedFeed<CommentItem>().replacedBy(resultPage)
+                        } else {
+                            requested.appendedBy(resultPage)
+                        }.copy(page = targetPage, pageCount = pageCount)
+                        states[targetTab] = ForumUiState.Loaded
+                        if (scrollToTopOnSuccess) listStates[targetTab].scrollToItem(0)
                     }
-                    feeds[targetTab] = if (replace) {
-                        PagedFeed<CommentItem>().replacedBy(resultPage)
-                    } else {
-                        requested.appendedBy(resultPage)
-                    }.copy(page = targetPage, pageCount = pageCount)
-                    states[targetTab] = ForumUiState.Loaded
+
+                    // 会话失效：同一张 401 不能再报成「论坛加载失败」，能做的只有去登录
+                    SessionOutcome.Expired -> applyFailure(targetTab, outcome, requested)
+
+                    is SessionOutcome.Failed -> applyFailure(targetTab, outcome, requested)
                 }
-
-                // 会话失效：同一张 401 不能再报成「论坛加载失败」，能做的只有去登录
-                SessionOutcome.Expired -> applyFailure(targetTab, outcome, requested)
-
-                is SessionOutcome.Failed -> applyFailure(targetTab, outcome, requested)
+            } finally {
+                if (token == loadToken) pageBusy = false
             }
         }
+    }
+
+    fun jumpToPage(target: Int, targetTab: Int) {
+        if (pageBusy) return
+        val currentFeed = feeds[targetTab] ?: return
+        val resolved = pagerTargetPage(currentFeed.page, target, currentFeed.pageCount)
+        if (resolved == currentFeed.page) return
+        if (resolved > currentFeed.page && currentFeed.pageCount == null && !currentFeed.hasMore) return
+        pageBusy = true
+        fetch(
+            targetPage = resolved,
+            replace = true,
+            showLoading = false,
+            targetTab = targetTab,
+            scrollToTopOnSuccess = true,
+        )
     }
 
     /** 回复楼层：闲聊帖缺少作品归属，无法定位接口实体，直接给出提示。 */
@@ -215,7 +244,7 @@ fun ForumScreen(
 
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty())
 
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("回复失败：" + failureCopy(outcome.cause, "请稍后重试"))
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("回复失败：" + failureCopy(outcome, "请稍后重试"))
             }
         }
     }
@@ -239,7 +268,7 @@ fun ForumScreen(
 
                 SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty())
 
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("发布失败：" + failureCopy(outcome.cause, "请稍后重试"))
+                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("发布失败：" + failureCopy(outcome, "请稍后重试"))
             }
         }
     }
@@ -306,7 +335,7 @@ fun ForumScreen(
             val pageState = states[pageIdx] ?: ForumUiState.Loading
             val pageFailed = failedPages[pageIdx] ?: 1
             val pageListState = listStates[pageIdx]
-            val pageTotalPages = pageFeed.pageCount ?: 1
+            val pageTotalPages = pageFeed.pageCount
             when (pageState) {
                 ForumUiState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                 is ForumUiState.Failed -> if (pageState.plan.phase == ScreenLoadPhase.Expired) {
@@ -384,18 +413,14 @@ fun ForumScreen(
                                 }
                                 item(key = "footer") {
                                     if (pageMode == PaginationMode.CLICK) {
-                                        // 只有一页时翻页条没有信息量，不占位
-                                        if (pageTotalPages > 1) {
+                                        // 只有一页且无更多页时翻页条没有信息量，不占位
+                                        if (shouldShowForumPager(pageFeed)) {
                                             PagerBar(
                                                 page = pageFeed.page,
                                                 totalPages = pageTotalPages,
-                                                // 目标页就是当前页时不重发；在途判定由 feed 自己持有
-                                                onPageChange = { target ->
-                                                    if (target != pageFeed.page) {
-                                                        scope.launch { pageListState.scrollToItem(0) }
-                                                        fetch(target, replace = true, showLoading = false, targetTab = pageIdx)
-                                                    }
-                                                },
+                                                hasMore = pageFeed.hasMore,
+                                                enabled = !pageBusy,
+                                                onPageChange = { target -> jumpToPage(target, pageIdx) },
                                             )
                                         }
                                     } else {

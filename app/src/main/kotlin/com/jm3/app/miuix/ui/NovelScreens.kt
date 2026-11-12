@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.CollapsibleSearchAction
 import com.jm3.app.miuix.ui.glass.CollapsibleSearchBar
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
@@ -70,6 +71,8 @@ import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.SettingsRepository
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
@@ -112,8 +115,41 @@ internal fun novelActionNotice(
 ): NovelActionNotice? = when (outcome) {
     is SessionOutcome.Ok -> null
     SessionOutcome.Expired -> NovelActionNotice(SessionOutcome.Expired.message, openLogin = true)
-    is SessionOutcome.Failed -> NovelActionNotice(failurePrefix + outcome.messageOr(fallback), openLogin = false)
+    is SessionOutcome.Failed -> NovelActionNotice(failurePrefix + failureCopy(outcome, fallback), openLogin = false)
 }
+
+/** 计算阅读器当前章节的上一章/下一章；未定位到当前章节时两者均为 null。 */
+internal fun novelAdjacentChapters(
+    chapters: List<NovelChapterMeta>,
+    currentId: String,
+): Pair<NovelChapterMeta?, NovelChapterMeta?> {
+    val currentIndex = chapters.indexOfFirst { it.ncid == currentId }
+    if (currentIndex < 0) return null to null
+    return chapters.getOrNull(currentIndex - 1) to chapters.getOrNull(currentIndex + 1)
+}
+
+/** 单飞防连点门禁：在途期间忽略重复点击，结束后恢复。 */
+internal class NovelReaderActionGate {
+    var busy by mutableStateOf(false)
+        private set
+
+    suspend fun run(block: suspend () -> Unit): Boolean {
+        if (busy) return false
+        busy = true
+        return try {
+            block()
+            true
+        } finally {
+            busy = false
+        }
+    }
+}
+
+/** 评论加载失败时只要列表已有旧评论就保留并弹提示，避免重刷首页时把评论区抹成整块错误态。 */
+internal fun novelCommentsKeepContentOnFailure(
+    requested: PagedFeed<*>,
+    @Suppress("UNUSED_PARAMETER") replace: Boolean,
+): Boolean = requested.items.isNotEmpty()
 
 private data class NovelPageState(
     val items: List<NovelMeta> = emptyList(),
@@ -353,11 +389,6 @@ fun NovelListScreen(
                     onRetry = { load(pageIdx, appliedQuery, showLoading = true) },
                     modifier = Modifier.padding(innerPadding),
                 )
-                pageState.items.isEmpty() -> EmptyState(
-                    title = if (appliedQuery.isBlank()) "暂无小说" else "没有找到相关小说",
-                    hint = if (appliedQuery.isBlank()) "稍后再来看看" else "换个关键词再试试",
-                    modifier = Modifier.padding(innerPadding),
-                )
                 else -> GlassPullToRefresh(
                     isRefreshing = refreshingTab == pageIdx,
                     onRefresh = {
@@ -369,21 +400,30 @@ fun NovelListScreen(
                     // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
                     contentPadding = innerPadding,
                 ) {
-                    // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过
+                    // 首项下移让出顶栏高度，滚动时内容从玻璃下方穿过；空态纳入列表以支持下拉刷新
                     TrackedLazyColumn(
                         state = listStates[pageIdx],
                         contentPadding = innerPadding,
                         modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
                     ) {
-                        items(pageState.items, key = { it.id }) { item ->
-                            NovelListRow(
-                                item = item,
-                                dateFormat = dateFormat,
-                                busy = busyId == item.id,
-                                onClick = { onOpenNovel(item.id) },
-                                onLike = { like(item) },
-                                onFavorite = { favorite(item) },
-                            )
+                        if (pageState.items.isEmpty()) {
+                            item(key = "empty") {
+                                EmptyState(
+                                    title = if (appliedQuery.isBlank()) "暂无小说" else "没有找到相关小说",
+                                    hint = if (appliedQuery.isBlank()) "稍后再来看看" else "换个关键词再试试",
+                                )
+                            }
+                        } else {
+                            items(pageState.items, key = { it.id }) { item ->
+                                NovelListRow(
+                                    item = item,
+                                    dateFormat = dateFormat,
+                                    busy = busyId == item.id,
+                                    onClick = { onOpenNovel(item.id) },
+                                    onLike = { like(item) },
+                                    onFavorite = { favorite(item) },
+                                )
+                            }
                         }
                     }
                 }
@@ -401,6 +441,7 @@ private fun NovelListRow(
     onClick: () -> Unit,
     onLike: () -> Unit,
     onFavorite: () -> Unit,
+    showActions: Boolean = true,
 ) {
     WorkRowCard(
         coverUrl = item.coverUrl,
@@ -447,20 +488,22 @@ private fun NovelListRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (busy) {
-                CircularProgressIndicator(size = 18.dp)
-            } else {
-                // 点赞不可取消：做成紧凑文字动作而不是大胶囊，避免误触
-                NovelRowAction(
-                    text = if (item.liked) "已赞" else "点赞",
-                    active = !item.liked,
-                    onClick = onLike,
-                )
-                NovelRowAction(
-                    text = if (item.favorite) "已收藏" else "收藏",
-                    active = true,
-                    onClick = onFavorite,
-                )
+            if (showActions) {
+                if (busy) {
+                    CircularProgressIndicator(size = 18.dp)
+                } else {
+                    // 点赞不可取消：做成紧凑文字动作而不是大胶囊，避免误触
+                    NovelRowAction(
+                        text = if (item.liked) "已赞" else "点赞",
+                        active = !item.liked,
+                        onClick = onLike,
+                    )
+                    NovelRowAction(
+                        text = if (item.favorite) "已收藏" else "收藏",
+                        active = true,
+                        onClick = onFavorite,
+                    )
+                }
             }
         }
     }
@@ -724,6 +767,7 @@ fun NovelDetailScreen(
                                             onClick = { onOpenNovel(related.id) },
                                             onLike = {},
                                             onFavorite = {},
+                                            showActions = false,
                                         )
                                     }
                                 }
@@ -935,10 +979,39 @@ fun NovelReaderScreen(
     var loading by remember { mutableStateOf(true) }
     var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
     var favorited by remember { mutableStateOf(false) }
+    val favoriteGate = remember(novelId) { NovelReaderActionGate() }
     var commentsOpen by remember { mutableStateOf(false) }
     var fontSheetOpen by rememberSaveable { mutableStateOf(false) }
     var loadToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+
+    suspend fun applyChapterOutcome(
+        chapterId: String,
+        token: Int,
+        showLoading: Boolean,
+        outcome: SessionOutcome<NovelChapter>,
+    ) {
+        if (token != loadToken) return
+        loading = false
+        if (outcome is SessionOutcome.Ok) {
+            chapter = outcome.value
+            currentId = chapterId
+            favorited = outcome.value.favorite
+            scope.launch { deps.settings.setNovelLastChapter(novelId, chapterId) }
+        } else {
+            // 翻到下一章失败时旧正文还在：保留正文只提示，不把正在读的章节顶掉
+            val plan = planLoad(
+                outcome = outcome,
+                hasContent = chapter != null && !showLoading,
+                failureMessage = "章节加载失败",
+            )
+            if (plan.keepContent) {
+                snackbarHostState.showSnackbar(plan.notice.orEmpty())
+            } else {
+                failure = plan
+            }
+        }
+    }
 
     fun loadChapter(chapterId: String, language: String, showLoading: Boolean) {
         loadToken++
@@ -947,50 +1020,50 @@ fun NovelReaderScreen(
         failure = null
         scope.launch {
             val outcome = authCall.call { deps.gateway.novelChapter(chapterId, language) }
-            if (token != loadToken) return@launch
-            loading = false
-            if (outcome is SessionOutcome.Ok) {
-                chapter = outcome.value
-                currentId = chapterId
-                favorited = outcome.value.favorite
-                scope.launch { deps.settings.setNovelLastChapter(novelId, chapterId) }
-            } else {
-                // 翻到下一章失败时旧正文还在：保留正文只提示，不把正在读的章节顶掉
-                val plan = planLoad(
-                    outcome = outcome,
-                    hasContent = chapter != null && !showLoading,
-                    failureMessage = "章节加载失败",
-                )
-                if (plan.keepContent) {
-                    snackbarHostState.showSnackbar(plan.notice.orEmpty())
-                } else {
-                    failure = plan
-                }
-            }
+            applyChapterOutcome(chapterId, token, showLoading, outcome)
         }
     }
 
     LaunchedEffect(novelId) {
         fontSize = deps.settings.novelFontSize()
         lang = deps.settings.novelLang()
-        // 目录只是辅助数据：普通失败保持静默（正文该能读就读），只有会话失效才提示去登录
-        when (val detailOutcome = authCall.call { deps.gateway.novelDetail(novelId) }) {
-            is SessionOutcome.Ok -> {
-                detail = detailOutcome.value
-                favorited = detailOutcome.value.favorite
+        val initialChapterId = currentId
+        val initialLang = lang
+        val token = ++loadToken
+        loading = true
+        failure = null
+        // 目录与首章正文并行拉取，避免目录请求阻塞首章首屏展示
+        coroutineScope {
+            val detailDeferred = async { authCall.call { deps.gateway.novelDetail(novelId) } }
+            val chapterDeferred = async { authCall.call { deps.gateway.novelChapter(initialChapterId, initialLang) } }
+            launch {
+                // 目录只是辅助数据：普通失败保持静默（正文该能读就读），只有会话失效才提示去登录
+                when (val detailOutcome = detailDeferred.await()) {
+                    is SessionOutcome.Ok -> {
+                        detail = detailOutcome.value
+                        if (chapter == null && !favoriteGate.busy) {
+                            favorited = detailOutcome.value.favorite
+                        }
+                    }
+
+                    SessionOutcome.Expired -> snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
+
+                    is SessionOutcome.Failed -> Unit
+                }
             }
-
-            SessionOutcome.Expired -> snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-
-            is SessionOutcome.Failed -> Unit
+            launch {
+                applyChapterOutcome(
+                    chapterId = initialChapterId,
+                    token = token,
+                    showLoading = true,
+                    outcome = chapterDeferred.await(),
+                )
+            }
         }
-        loadChapter(currentId, lang, showLoading = true)
     }
 
     val chapters = detail?.chapters.orEmpty()
-    val currentIndex = chapters.indexOfFirst { it.ncid == currentId }
-    val prevChapter = chapters.getOrNull(currentIndex - 1)
-    val nextChapter = chapters.getOrNull(currentIndex + 1)
+    val (prevChapter, nextChapter) = novelAdjacentChapters(chapters, currentId)
 
     fun goTo(target: NovelChapterMeta?) {
         if (target == null) {
@@ -1009,15 +1082,18 @@ fun NovelReaderScreen(
             onOpenLogin()
             return
         }
+        if (favoriteGate.busy) return
         scope.launch {
-            val outcome = authCall.call { deps.gateway.toggleNovelFavorite(novelId) }
-            val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
-            if (notice == null) {
-                favorited = !favorited
-                snackbarHostState.showSnackbar(if (favorited) "已加入收藏" else "已取消收藏")
-            } else {
-                snackbarHostState.showSnackbar(notice.message)
-                if (notice.openLogin) onOpenLogin()
+            favoriteGate.run {
+                val outcome = authCall.call { deps.gateway.toggleNovelFavorite(novelId) }
+                val notice = novelActionNotice(outcome, failurePrefix = "收藏失败：")
+                if (notice == null) {
+                    favorited = !favorited
+                    snackbarHostState.showSnackbar(if (favorited) "已加入收藏" else "已取消收藏")
+                } else {
+                    snackbarHostState.showSnackbar(notice.message)
+                    if (notice.openLogin) onOpenLogin()
+                }
             }
         }
     }
@@ -1240,9 +1316,10 @@ private fun NovelCommentsPanel(
     val authCall = deps.authCall
     val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
-    var feed by remember { mutableStateOf(PagedFeed<CommentItem>()) }
-    var loading by remember { mutableStateOf(true) }
-    var failure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
+    var feed by remember(novelId) { mutableStateOf(PagedFeed<CommentItem>()) }
+    var loading by remember(novelId) { mutableStateOf(true) }
+    var failure by remember(novelId) { mutableStateOf<ScreenLoadPlan?>(null) }
+    var requestToken by remember(novelId) { mutableIntStateOf(0) }
     var draft by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var replyTarget by rememberSaveable(novelId, stateSaver = CommentItemNullableSaver) {
@@ -1255,11 +1332,13 @@ private fun NovelCommentsPanel(
         // 还能不能拉、在不在拉全由 feed 判定：重复点「加载更多」不会再并发打同一页
         val requested = if (replace) feed else feed.beginLoadMore()
         if (!replace && requested === feed) return
+        val token = if (replace) ++requestToken else requestToken
         if (showLoading) loading = true
         failure = null
         feed = requested
         scope.launch {
             val outcome = authCall.call { deps.gateway.novelComments(novelId, targetPage) }
+            if (token != requestToken) return@launch
             loading = false
             if (outcome is SessionOutcome.Ok) {
                 feed = if (replace) {
@@ -1268,14 +1347,14 @@ private fun NovelCommentsPanel(
                     requested.appendedBy(outcome.value)
                 }
             } else {
-                // 翻页失败保留已加载评论并让页脚可重试；首屏失败才整块换掉
+                // 已有评论时（无论翻页还是重刷首页）保留列表只弹提示；仅首次空白加载失败才整块替换
                 val plan = planLoad(
                     outcome = outcome,
-                    hasContent = !replace && requested.items.isNotEmpty(),
+                    hasContent = novelCommentsKeepContentOnFailure(requested, replace),
                     failureMessage = "评论加载失败",
                 )
                 if (plan.keepContent) {
-                    feed = requested.failLoadMore()
+                    feed = if (replace) requested.copy(loadingMore = false) else requested.failLoadMore()
                     snackbarHostState.showSnackbar(plan.notice.orEmpty())
                 } else {
                     feed = requested.copy(loadingMore = false)
