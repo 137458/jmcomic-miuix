@@ -80,24 +80,29 @@ fun WatchHistoryScreen(
     var requestToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成去登录）。 */
+    /**
+     * 失效与失败共用一个落点：分派与提示交给 [applyLoadPlan]，这里只写本屏的两处差异。
+     *
+     * 保留内容时把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈。
+     */
     fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<SearchResult>, replace: Boolean) {
-        val plan = planLoad(
+        scope.applyLoadPlan(
             outcome = outcome,
             hasContent = !replace && inFlight.items.isNotEmpty(),
             failureMessage = "观看记录加载失败",
+            snackbarHostState = snackbarHostState,
             stalePrefix = "加载失败：",
+            onKeepContent = {
+                feed = inFlight.failLoadMore()
+            },
+            onFullScreen = { plan ->
+                feed = inFlight.copy(loadingMore = false)
+                state = WatchUiState.Failed(
+                    message = plan.message.orEmpty(),
+                    sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                )
+            },
         )
-        // 保留内容时把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈
-        feed = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else {
-            state = WatchUiState.Failed(
-                message = plan.message.orEmpty(),
-                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-            )
-        }
     }
 
     fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {

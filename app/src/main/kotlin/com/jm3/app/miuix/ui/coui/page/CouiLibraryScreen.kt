@@ -78,8 +78,8 @@ import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.libraryPageCount
-import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.core.model.CreatorFilters
@@ -158,17 +158,6 @@ fun CouiLibraryScreen(
             if (tabIndex == 0) creatorRefreshing = value else workRefreshing = value
         }
 
-        fun applyFailure(tabIndex: Int, outcome: SessionOutcome<*>, hasContent: Boolean) {
-            val plan = planLoad(outcome, hasContent = hasContent, failureMessage = CouiStrings.LoadFailed)
-            if (plan.keepContent) {
-                scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-            } else if (tabIndex == 0) {
-                creatorFailure = plan
-            } else {
-                workFailure = plan
-            }
-        }
-
         fun load(targetPage: Int, append: Boolean, targetTab: Int = tab) {
             val keyword = appliedQuery
             val workLang = lang
@@ -229,10 +218,16 @@ fun CouiLibraryScreen(
                             else -> Unit
                         }
 
-                        SessionOutcome.Expired -> applyFailure(targetTab, outcome, hasContent)
+                        SessionOutcome.Expired -> scope.applyLoadPlan(
+                            outcome, hasContent = hasContent, failureMessage = CouiStrings.LoadFailed,
+                            snackbarHostState = snackbarHostState,
+                        ) { plan -> if (targetTab == 0) creatorFailure = plan else workFailure = plan }
 
                         is SessionOutcome.Failed -> {
-                            applyFailure(targetTab, outcome, hasContent)
+                            scope.applyLoadPlan(
+                                outcome, hasContent = hasContent, failureMessage = CouiStrings.LoadFailed,
+                                snackbarHostState = snackbarHostState,
+                            ) { plan -> if (targetTab == 0) creatorFailure = plan else workFailure = plan }
                             // 附加页失败只影响页脚，重试入口交给页脚的「重新加载」
                             creatorRequest?.let { creatorFeed = it.failLoadMore() }
                             workRequest?.let { workFeed = it.failLoadMore() }

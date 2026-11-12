@@ -125,26 +125,6 @@ fun FavoritesScreen(
     var loadedTagsUid by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    /** 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏（失效换成「去登录」）。 */
-    fun applyFailure(
-        outcome: SessionOutcome<*>,
-        hasContent: Boolean,
-        failureMessage: String,
-        stalePrefix: String = "刷新失败：",
-    ) {
-        val plan = planLoad(
-            outcome = outcome,
-            hasContent = hasContent,
-            failureMessage = failureMessage,
-            stalePrefix = stalePrefix,
-        )
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else {
-            failure = plan
-        }
-    }
-
     fun loadFirstPage() {
         val targetFolderId = folderId
         val token = ++requestToken
@@ -164,9 +144,19 @@ fun FavoritesScreen(
                     feed = SearchPage(next.currentPage, next.totalPages, next.items).toFeed()
                 }
 
-                SessionOutcome.Expired -> applyFailure(outcome, hasContent = false, failureMessage = "")
+                SessionOutcome.Expired -> scope.applyLoadPlan(
+                    outcome = outcome,
+                    hasContent = false,
+                    failureMessage = "",
+                    snackbarHostState = snackbarHostState,
+                ) { failure = it }
 
-                is SessionOutcome.Failed -> applyFailure(outcome, hasContent = false, failureMessage = "收藏加载失败")
+                is SessionOutcome.Failed -> scope.applyLoadPlan(
+                    outcome = outcome,
+                    hasContent = false,
+                    failureMessage = "收藏加载失败",
+                    snackbarHostState = snackbarHostState,
+                ) { failure = it }
             }
         }
     }
@@ -192,9 +182,19 @@ fun FavoritesScreen(
                         listState.scrollToItem(0)
                     }
 
-                    SessionOutcome.Expired -> applyFailure(outcome, hasContent = true, failureMessage = "")
+                    SessionOutcome.Expired -> scope.applyLoadPlan(
+                        outcome = outcome,
+                        hasContent = true,
+                        failureMessage = "",
+                        snackbarHostState = snackbarHostState,
+                    ) { failure = it }
 
-                    is SessionOutcome.Failed -> applyFailure(outcome, hasContent = true, failureMessage = "收藏翻页失败")
+                    is SessionOutcome.Failed -> scope.applyLoadPlan(
+                        outcome = outcome,
+                        hasContent = true,
+                        failureMessage = "收藏翻页失败",
+                        snackbarHostState = snackbarHostState,
+                    ) { failure = it }
                 }
             } finally {
                 if (token == requestToken) pageBusy = false
@@ -221,17 +221,19 @@ fun FavoritesScreen(
                 }
 
                 // 刷新失败/失效都不该把已有列表清掉：保留内容只提示，没有内容才换整屏
-                SessionOutcome.Expired -> applyFailure(
-                    outcome,
+                SessionOutcome.Expired -> scope.applyLoadPlan(
+                    outcome = outcome,
                     hasContent = feed != null,
                     failureMessage = "",
-                )
+                    snackbarHostState = snackbarHostState,
+                ) { failure = it }
 
-                is SessionOutcome.Failed -> applyFailure(
-                    outcome,
+                is SessionOutcome.Failed -> scope.applyLoadPlan(
+                    outcome = outcome,
                     hasContent = feed != null,
                     failureMessage = "收藏刷新失败",
-                )
+                    snackbarHostState = snackbarHostState,
+                ) { failure = it }
             }
         }
     }
@@ -463,7 +465,12 @@ fun FavoritesScreen(
                 // 翻页撞上会话失效：已加载的列表不能顶掉，保留内容并把页脚置成可重试，只用提示告知去登录
                 SessionOutcome.Expired -> {
                     feed = requested.failLoadMore()
-                    applyFailure(outcome, hasContent = true, failureMessage = "")
+                    scope.applyLoadPlan(
+                        outcome = outcome,
+                        hasContent = true,
+                        failureMessage = "",
+                        snackbarHostState = snackbarHostState,
+                    ) { failure = it }
                 }
 
                 is SessionOutcome.Failed -> feed = requested.failLoadMore()

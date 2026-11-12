@@ -65,6 +65,7 @@ import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.formatEpochSeconds
+import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
@@ -120,22 +121,6 @@ internal fun CouiTrackingScreen(
     // 首页条数：非末页时用来估算当前已浏览的条数，决定 hasMore
     var pageSizeHint by remember { mutableIntStateOf(0) }
 
-    fun applyFailure(outcome: SessionOutcome<*>) {
-        val plan = planLoad(
-            outcome,
-            hasContent = feed.items.isNotEmpty(),
-            failureMessage = "追踪列表加载失败",
-        )
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else {
-            state = TrackingUiState.Failed(
-                message = plan.message.orEmpty(),
-                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-            )
-        }
-    }
-
     fun loadFirstPage(showLoading: Boolean = true) {
         if (showLoading) state = TrackingUiState.Loading
         scope.launch {
@@ -155,7 +140,15 @@ internal fun CouiTrackingScreen(
                     ) { it.id }
                     state = TrackingUiState.Loaded
                 }
-                else -> applyFailure(outcome)
+                else -> scope.applyLoadPlan(
+                    outcome, hasContent = feed.items.isNotEmpty(), failureMessage = "追踪列表加载失败",
+                    snackbarHostState = snackbarHostState,
+                ) { plan ->
+                    state = TrackingUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                }
             }
         }
     }
@@ -183,7 +176,15 @@ internal fun CouiTrackingScreen(
                     ) { it.id }
                     listState.scrollToItem(0)
                 }
-                else -> applyFailure(outcome)
+                else -> scope.applyLoadPlan(
+                    outcome, hasContent = feed.items.isNotEmpty(), failureMessage = "追踪列表加载失败",
+                    snackbarHostState = snackbarHostState,
+                ) { plan ->
+                    state = TrackingUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                }
             }
         }
     }

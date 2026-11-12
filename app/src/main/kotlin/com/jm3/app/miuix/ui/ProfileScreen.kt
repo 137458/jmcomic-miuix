@@ -123,23 +123,6 @@ fun ProfileScreen(
         backingFields.putAll(merged)
     }
 
-    /** 失效与失败共用一个落点：已读到资料就保留表单，只弹提示；否则整屏化，失效换成「去登录」。 */
-    fun applyFailure(outcome: SessionOutcome<*>) {
-        val plan = planLoad(
-            outcome = outcome,
-            hasContent = profile != null,
-            failureMessage = "个人资料加载失败",
-        )
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else {
-            state = ProfileUiState.Failed(
-                message = plan.message.orEmpty(),
-                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-            )
-        }
-    }
-
     fun load(showLoading: Boolean = true) {
         val token = ++requestToken
         val uid = user?.uid
@@ -157,9 +140,29 @@ fun ProfileScreen(
                     state = ProfileUiState.Loaded
                 }
 
-                SessionOutcome.Expired -> applyFailure(outcome)
+                SessionOutcome.Expired -> scope.applyLoadPlan(
+                    outcome = outcome,
+                    hasContent = profile != null,
+                    failureMessage = "个人资料加载失败",
+                    snackbarHostState = snackbarHostState,
+                ) { plan ->
+                    state = ProfileUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                }
 
-                is SessionOutcome.Failed -> applyFailure(outcome)
+                is SessionOutcome.Failed -> scope.applyLoadPlan(
+                    outcome = outcome,
+                    hasContent = profile != null,
+                    failureMessage = "个人资料加载失败",
+                    snackbarHostState = snackbarHostState,
+                ) { plan ->
+                    state = ProfileUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                }
             }
         }
     }

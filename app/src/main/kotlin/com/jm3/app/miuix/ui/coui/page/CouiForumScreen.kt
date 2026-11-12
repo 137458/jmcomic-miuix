@@ -67,6 +67,7 @@ import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
+import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
@@ -172,20 +173,22 @@ internal fun CouiForumScreen(
     var lastPageMode by remember { mutableStateOf(pageMode) }
 
     fun applyFailure(targetTab: Int, outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
-        val plan = planLoad(
+        // 保留内容时只把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈
+        scope.applyLoadPlan(
             outcome = outcome,
             hasContent = inFlight.items.isNotEmpty(),
             failureMessage = "论坛加载失败",
+            snackbarHostState = snackbarHostState,
             stalePrefix = "加载失败：",
+            onKeepContent = {
+                feeds[targetTab] = inFlight.failLoadMore()
+                states[targetTab] = ForumUiState.Loaded
+            },
+            onFullScreen = { plan ->
+                feeds[targetTab] = inFlight.copy(loadingMore = false)
+                states[targetTab] = ForumUiState.Failed(plan)
+            },
         )
-        // 保留内容时只把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈
-        feeds[targetTab] = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
-        if (plan.phase == ScreenLoadPhase.Content) {
-            states[targetTab] = ForumUiState.Loaded
-            plan.notice?.let { notice -> scope.launch { snackbarHostState.showSnackbar(notice) } }
-        } else {
-            states[targetTab] = ForumUiState.Failed(plan)
-        }
     }
 
     fun clearStaleLoadingMore(tabIndex: Int?) {

@@ -128,22 +128,27 @@ fun ForumScreen(
     var lastPageMode by remember { mutableStateOf(pageMode) }
     var pageBusy by remember { mutableStateOf(false) }
 
-    /** 失效与失败共用一条落点：有内容就保留列表、只标记页脚与提示，没内容才整屏。 */
+    /**
+     * 失效与失败共用一条落点：分派与提示交给 [applyLoadPlan]，这里只写本屏的两处差异。
+     *
+     * 保留内容时把页脚标成可重试并维持列表态；整屏失败要撤掉在途标记，否则页脚永远转圈。
+     */
     fun applyFailure(targetTab: Int, outcome: SessionOutcome<*>, inFlight: PagedFeed<CommentItem>) {
-        val plan = planLoad(
+        scope.applyLoadPlan(
             outcome = outcome,
             hasContent = inFlight.items.isNotEmpty(),
             failureMessage = "论坛加载失败",
+            snackbarHostState = snackbarHostState,
             stalePrefix = "加载失败：",
+            onKeepContent = {
+                feeds[targetTab] = inFlight.failLoadMore()
+                states[targetTab] = ForumUiState.Loaded
+            },
+            onFullScreen = { plan ->
+                feeds[targetTab] = inFlight.copy(loadingMore = false)
+                states[targetTab] = ForumUiState.Failed(plan)
+            },
         )
-        // 保留内容时只把页脚标成可重试；整屏失败要撤掉在途标记，否则页脚永远转圈
-        feeds[targetTab] = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
-        if (plan.phase == ScreenLoadPhase.Content) {
-            states[targetTab] = ForumUiState.Loaded
-            plan.notice?.let { notice -> scope.launch { snackbarHostState.showSnackbar(notice) } }
-        } else {
-            states[targetTab] = ForumUiState.Failed(plan)
-        }
     }
 
     fun fetch(

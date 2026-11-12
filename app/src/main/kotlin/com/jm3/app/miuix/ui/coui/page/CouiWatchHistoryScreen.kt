@@ -39,6 +39,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.authorNames
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -57,7 +58,6 @@ import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
-import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
@@ -115,21 +115,21 @@ fun CouiWatchHistoryScreen(
         var requestToken by remember { mutableIntStateOf(0) }
 
         fun applyFailure(outcome: SessionOutcome<*>, inFlight: PagedFeed<SearchResult>, replace: Boolean) {
-            val plan = planLoad(
+            scope.applyLoadPlan(
                 outcome = outcome,
                 hasContent = !replace && inFlight.items.isNotEmpty(),
                 failureMessage = "观看记录加载失败",
+                snackbarHostState = snackbarHostState,
                 stalePrefix = "加载失败：",
+                onKeepContent = { feed = inFlight.failLoadMore() },
+                onFullScreen = { plan ->
+                    feed = inFlight.copy(loadingMore = false)
+                    uiState = CouiWatchUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                },
             )
-            feed = if (plan.keepContent) inFlight.failLoadMore() else inFlight.copy(loadingMore = false)
-            if (plan.keepContent) {
-                scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-            } else {
-                uiState = CouiWatchUiState.Failed(
-                    message = plan.message.orEmpty(),
-                    sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-                )
-            }
         }
 
         fun fetch(targetPage: Int, replace: Boolean, showLoading: Boolean) {

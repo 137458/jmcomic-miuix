@@ -2,6 +2,9 @@ package com.jm3.app.miuix.ui
 
 import com.jm3.app.miuix.failureCopy
 import com.jm3.core.session.SessionOutcome
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 一次加载结局在屏级状态上的落点。 */
 internal enum class ScreenLoadPhase { Content, Expired, Failed }
@@ -55,6 +58,50 @@ internal fun planLoad(
         } else {
             ScreenLoadPlan(ScreenLoadPhase.Failed, message = message)
         }
+    }
+}
+
+/**
+ * 加载结局的屏级落点：保留内容就弹提示，否则整屏换成失败形态。
+ *
+ * 各列表页此前各写一份同一段分派（planLoad → Snackbar 或整屏 Failure），两套皮肤加起来
+ * 十几份，差异只在两处：整屏失败状态长什么样（[onFullScreen]），以及保留内容时是否还要
+ * 顺手改在途标记（[onKeepContent]，如翻页失败要收回 loadingMore）。
+ */
+internal fun CoroutineScope.applyLoadPlan(
+    outcome: SessionOutcome<*>,
+    hasContent: Boolean,
+    failureMessage: String,
+    snackbarHostState: SnackbarHostState,
+    stalePrefix: String = "刷新失败：",
+    onKeepContent: (ScreenLoadPlan) -> Unit = {},
+    onFullScreen: (ScreenLoadPlan) -> Unit,
+) {
+    val plan = planLoad(outcome, hasContent, failureMessage, stalePrefix)
+    if (plan.keepContent) {
+        onKeepContent(plan)
+        launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
+    } else {
+        onFullScreen(plan)
+    }
+}
+
+/** [applyLoadPlan] 的挂起版：调用方本来就在协程里（如 runBlocking 或 suspend 函数）时用。 */
+internal suspend fun applyLoadPlan(
+    outcome: SessionOutcome<*>,
+    hasContent: Boolean,
+    failureMessage: String,
+    snackbarHostState: SnackbarHostState,
+    stalePrefix: String = "刷新失败：",
+    onKeepContent: (ScreenLoadPlan) -> Unit = {},
+    onFullScreen: (ScreenLoadPlan) -> Unit,
+) {
+    val plan = planLoad(outcome, hasContent, failureMessage, stalePrefix)
+    if (plan.keepContent) {
+        onKeepContent(plan)
+        snackbarHostState.showSnackbar(plan.notice.orEmpty())
+    } else {
+        onFullScreen(plan)
     }
 }
 

@@ -89,6 +89,7 @@ import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.model.UserProfile
@@ -180,18 +181,6 @@ fun CouiProfileScreen(
         backingFields.putAll(merged)
     }
 
-    fun applyFailure(outcome: SessionOutcome<*>) {
-        val plan = planLoad(outcome, hasContent = profile != null, failureMessage = "个人资料加载失败")
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else {
-            state = ProfileUiState.Failed(
-                message = plan.message.orEmpty(),
-                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-            )
-        }
-    }
-
     fun load(showLoading: Boolean = true) {
         val uid = user?.uid
         if (uid == null) {
@@ -205,7 +194,15 @@ fun CouiProfileScreen(
                     applyProfile(outcome.value)
                     state = ProfileUiState.Loaded
                 }
-                else -> applyFailure(outcome)
+                else -> scope.applyLoadPlan(
+                    outcome, hasContent = profile != null, failureMessage = "个人资料加载失败",
+                    snackbarHostState = snackbarHostState,
+                ) { plan ->
+                    state = ProfileUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                }
             }
         }
     }

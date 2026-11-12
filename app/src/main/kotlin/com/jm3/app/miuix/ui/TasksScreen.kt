@@ -166,23 +166,6 @@ fun TasksScreen(
     // 快速切换筛选时旧响应不能覆盖新条件的结果，慢网下否则会把旧条件的结果画在当前格子位置
     val requestTokens = remember { mutableStateMapOf<Int, Int>() }
 
-    /** 失效与失败共用一个落点：已有成就格就保留，只弹提示；否则整屏化，失效换成「去登录」。 */
-    fun applyFailure(targetTypeIdx: Int, outcome: SessionOutcome<*>) {
-        val plan = planLoad(
-            outcome = outcome,
-            hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
-            failureMessage = "成就列表加载失败",
-        )
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else {
-            states[targetTypeIdx] = TasksUiState.Failed(
-                message = plan.message.orEmpty(),
-                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-            )
-        }
-    }
-
     fun load(targetTypeIdx: Int = clampedTypeIndex, showLoading: Boolean = true) {
         if (showLoading) states[targetTypeIdx] = TasksUiState.Loading
         val token = (requestTokens[targetTypeIdx] ?: 0) + 1
@@ -205,9 +188,29 @@ fun TasksScreen(
             when (outcome) {
                 is SessionOutcome.Ok -> states[targetTypeIdx] = outcome.value
 
-                SessionOutcome.Expired -> applyFailure(targetTypeIdx, outcome)
+                SessionOutcome.Expired -> scope.applyLoadPlan(
+                    outcome = outcome,
+                    hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
+                    failureMessage = "成就列表加载失败",
+                    snackbarHostState = snackbarHostState,
+                ) { plan ->
+                    states[targetTypeIdx] = TasksUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                }
 
-                is SessionOutcome.Failed -> applyFailure(targetTypeIdx, outcome)
+                is SessionOutcome.Failed -> scope.applyLoadPlan(
+                    outcome = outcome,
+                    hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
+                    failureMessage = "成就列表加载失败",
+                    snackbarHostState = snackbarHostState,
+                ) { plan ->
+                    states[targetTypeIdx] = TasksUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                }
             }
         }
     }

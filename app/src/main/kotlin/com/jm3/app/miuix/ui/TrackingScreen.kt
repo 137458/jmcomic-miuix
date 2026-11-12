@@ -81,24 +81,15 @@ fun TrackingScreen(
     val scope = rememberCoroutineScope()
 
     /**
-     * 失效与失败共用一个落点：有内容就保留列表只提示，没内容才换整屏。
+     * 整屏失败态：只有没有内容可保留时才会被 [applyLoadPlan] 回调。
      *
      * 失效时 AuthCall 已在返回结局前清掉本地会话，整屏只能去登录，重试同一个请求只会再吃一次 401。
      */
-    fun applyFailure(outcome: SessionOutcome<*>) {
-        val plan = planLoad(
-            outcome = outcome,
-            hasContent = feed.items.isNotEmpty(),
-            failureMessage = "追踪列表加载失败",
+    val fullScreenFailure: (ScreenLoadPlan) -> Unit = { plan ->
+        state = TrackingUiState.Failed(
+            message = plan.message.orEmpty(),
+            sessionExpired = plan.phase == ScreenLoadPhase.Expired,
         )
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else {
-            state = TrackingUiState.Failed(
-                message = plan.message.orEmpty(),
-                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-            )
-        }
     }
 
     fun loadFirstPage(showLoading: Boolean = true) {
@@ -125,9 +116,13 @@ fun TrackingScreen(
                     state = TrackingUiState.Loaded
                 }
 
-                SessionOutcome.Expired -> applyFailure(outcome)
+                SessionOutcome.Expired -> scope.applyLoadPlan(
+                    outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
+                )
 
-                is SessionOutcome.Failed -> applyFailure(outcome)
+                is SessionOutcome.Failed -> scope.applyLoadPlan(
+                    outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
+                )
             }
         }
     }
@@ -183,9 +178,13 @@ fun TrackingScreen(
                         listState.scrollToItem(0)
                     }
 
-                    SessionOutcome.Expired -> applyFailure(outcome)
+                    SessionOutcome.Expired -> scope.applyLoadPlan(
+                        outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
+                    )
 
-                    is SessionOutcome.Failed -> applyFailure(outcome)
+                    is SessionOutcome.Failed -> scope.applyLoadPlan(
+                        outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
+                    )
                 }
             } finally {
                 if (token == requestToken) pageBusy = false
@@ -218,7 +217,9 @@ fun TrackingScreen(
                     ) { it.id }
                 }
 
-                SessionOutcome.Expired -> applyFailure(outcome)
+                SessionOutcome.Expired -> scope.applyLoadPlan(
+                    outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
+                )
 
                 is SessionOutcome.Failed -> feed = requested.failLoadMore()
             }
@@ -250,7 +251,13 @@ fun TrackingScreen(
                                     total = feed.total?.plus(slice.removed.size),
                                 )
                             }
-                            SessionOutcome.Expired -> applyFailure(undoOutcome)
+                            SessionOutcome.Expired -> scope.applyLoadPlan(
+                                undoOutcome,
+                                feed.items.isNotEmpty(),
+                                "追踪列表加载失败",
+                                snackbarHostState,
+                                onFullScreen = fullScreenFailure,
+                            )
                             is SessionOutcome.Failed -> {
                                 snackbarHostState.showSnackbar("撤销失败：" + failureCopy(undoOutcome, "请稍后重试"))
                             }
@@ -258,7 +265,9 @@ fun TrackingScreen(
                     }
                 }
 
-                SessionOutcome.Expired -> applyFailure(outcome)
+                SessionOutcome.Expired -> scope.applyLoadPlan(
+                    outcome, feed.items.isNotEmpty(), "追踪列表加载失败", snackbarHostState, onFullScreen = fullScreenFailure,
+                )
 
                 is SessionOutcome.Failed -> {
                     snackbarHostState.showSnackbar("操作失败：" + failureCopy(outcome, "请稍后重试"))

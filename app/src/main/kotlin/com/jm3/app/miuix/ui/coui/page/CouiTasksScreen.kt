@@ -49,6 +49,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
@@ -64,7 +65,6 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
-import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
@@ -136,22 +136,6 @@ internal fun CouiTasksScreen(
         equippedBadgeId = null
     }
 
-    fun applyFailure(targetTypeIdx: Int, outcome: SessionOutcome<*>) {
-        val plan = planLoad(
-            outcome = outcome,
-            hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
-            failureMessage = "成就加载失败",
-        )
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else {
-            states[targetTypeIdx] = TasksUiState.Failed(
-                message = plan.message.orEmpty(),
-                sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-            )
-        }
-    }
-
     fun load(targetTypeIdx: Int = clampedTypeIndex, showLoading: Boolean = true) {
         val token = (requestTokens[targetTypeIdx] ?: 0) + 1
         requestTokens[targetTypeIdx] = token
@@ -176,8 +160,15 @@ internal fun CouiTasksScreen(
                     if (requestTokens[targetTypeIdx] != token || clampedFilterIndex != requestFilterIdx) return@launch
                     states[targetTypeIdx] = TasksUiState.Loaded(outcome.value, host)
                 }
-                is SessionOutcome.Expired -> applyFailure(targetTypeIdx, outcome)
-                is SessionOutcome.Failed -> applyFailure(targetTypeIdx, outcome)
+                else -> scope.applyLoadPlan(
+                    outcome, hasContent = states[targetTypeIdx] is TasksUiState.Loaded,
+                    failureMessage = "成就加载失败", snackbarHostState = snackbarHostState,
+                ) { plan ->
+                    states[targetTypeIdx] = TasksUiState.Failed(
+                        message = plan.message.orEmpty(),
+                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
+                    )
+                }
             }
         }
     }

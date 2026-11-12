@@ -156,18 +156,6 @@ fun LibraryScreen(
         useMiuixSpring = true,
     )
 
-    /** 失效与失败共用一个落点：[planLoad] 决定整屏去登录/给重试，还是有内容时只弹提示。 */
-    fun applyFailure(tabIndex: Int, outcome: SessionOutcome<*>, hasContent: Boolean) {
-        val plan = planLoad(outcome, hasContent = hasContent, failureMessage = "加载失败")
-        if (plan.keepContent) {
-            scope.launch { snackbarHostState.showSnackbar(plan.notice.orEmpty()) }
-        } else if (tabIndex == 0) {
-            creatorFailure = plan
-        } else {
-            workFailure = plan
-        }
-    }
-
     fun load(
         targetPage: Int,
         append: Boolean,
@@ -241,10 +229,20 @@ fun LibraryScreen(
                         else -> Unit
                     }
 
-                    SessionOutcome.Expired -> applyFailure(targetTab, outcome, hasContent)
+                    SessionOutcome.Expired -> scope.applyLoadPlan(
+                        outcome = outcome,
+                        hasContent = hasContent,
+                        failureMessage = "加载失败",
+                        snackbarHostState = snackbarHostState,
+                    ) { plan -> if (targetTab == 0) { creatorFailure = plan } else { workFailure = plan } }
 
                     is SessionOutcome.Failed -> {
-                        applyFailure(targetTab, outcome, hasContent)
+                        scope.applyLoadPlan(
+                            outcome = outcome,
+                            hasContent = hasContent,
+                            failureMessage = "加载失败",
+                            snackbarHostState = snackbarHostState,
+                        ) { plan -> if (targetTab == 0) { creatorFailure = plan } else { workFailure = plan } }
                         // 附加页失败只影响页脚，重试入口交给页脚上的「加载失败，点击重试」
                         creatorRequest?.let { creatorFeed = it.failLoadMore() }
                         workRequest?.let { workFeed = it.failLoadMore() }
