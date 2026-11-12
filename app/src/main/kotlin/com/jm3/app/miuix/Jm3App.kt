@@ -585,6 +585,21 @@ fun Jm3App() {
                         ),
                     ) {
                         entry<Route.Main> {
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openFavorites: () -> Unit = { backStack.add(Route.Favorites) }
+                            val openHistory: () -> Unit = { backStack.add(Route.History) }
+                            val openShelf: () -> Unit = { backStack.add(Route.Shelf) }
+                            val openSettings: () -> Unit = { backStack.add(Route.Settings) }
+                            val openWeek: () -> Unit = { backStack.add(Route.Week) }
+                            val openNotifications: () -> Unit = { backStack.add(Route.Notifications) }
+                            val openTracking: () -> Unit = { backStack.add(Route.Tracking) }
+                            val openProfile: () -> Unit = { backStack.add(Route.Profile) }
+                            val openTasks: () -> Unit = { backStack.add(Route.Tasks) }
+                            val openWatchHistory: () -> Unit = { backStack.add(Route.WatchHistory) }
+                            val openForum: () -> Unit = { backStack.add(Route.Forum) }
+                            val openNovel: () -> Unit = { backStack.add(Route.Novel) }
+                            val openLibrary: () -> Unit = { backStack.add(Route.Library) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -592,21 +607,21 @@ fun Jm3App() {
                                         deps = deps,
                                         unreadBadge = deps.session.unread,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
-                                        onOpenFavorites = { backStack.add(Route.Favorites) },
-                                        onOpenHistory = { backStack.add(Route.History) },
-                                        onOpenShelf = { backStack.add(Route.Shelf) },
-                                        onOpenSettings = { backStack.add(Route.Settings) },
-                                        onOpenWeek = { backStack.add(Route.Week) },
-                                        onOpenNotifications = { backStack.add(Route.Notifications) },
-                                        onOpenTracking = { backStack.add(Route.Tracking) },
-                                        onOpenProfile = { backStack.add(Route.Profile) },
-                                        onOpenTasks = { backStack.add(Route.Tasks) },
-                                        onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
-                                        onOpenForum = { backStack.add(Route.Forum) },
-                                        onOpenNovel = { backStack.add(Route.Novel) },
-                                        onOpenLibrary = { backStack.add(Route.Library) },
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
+                                        onOpenFavorites = openFavorites,
+                                        onOpenHistory = openHistory,
+                                        onOpenShelf = openShelf,
+                                        onOpenSettings = openSettings,
+                                        onOpenWeek = openWeek,
+                                        onOpenNotifications = openNotifications,
+                                        onOpenTracking = openTracking,
+                                        onOpenProfile = openProfile,
+                                        onOpenTasks = openTasks,
+                                        onOpenWatchHistory = openWatchHistory,
+                                        onOpenForum = openForum,
+                                        onOpenNovel = openNovel,
+                                        onOpenLibrary = openLibrary,
                                     )
                                 },
                                 colorOs = {
@@ -614,21 +629,21 @@ fun Jm3App() {
                                         deps = deps,
                                         unreadBadge = deps.session.unread,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
-                                        onOpenFavorites = { backStack.add(Route.Favorites) },
-                                        onOpenHistory = { backStack.add(Route.History) },
-                                        onOpenShelf = { backStack.add(Route.Shelf) },
-                                        onOpenSettings = { backStack.add(Route.Settings) },
-                                        onOpenWeek = { backStack.add(Route.Week) },
-                                        onOpenNotifications = { backStack.add(Route.Notifications) },
-                                        onOpenTracking = { backStack.add(Route.Tracking) },
-                                        onOpenProfile = { backStack.add(Route.Profile) },
-                                        onOpenTasks = { backStack.add(Route.Tasks) },
-                                        onOpenWatchHistory = { backStack.add(Route.WatchHistory) },
-                                        onOpenForum = { backStack.add(Route.Forum) },
-                                        onOpenNovel = { backStack.add(Route.Novel) },
-                                        onOpenLibrary = { backStack.add(Route.Library) },
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
+                                        onOpenFavorites = openFavorites,
+                                        onOpenHistory = openHistory,
+                                        onOpenShelf = openShelf,
+                                        onOpenSettings = openSettings,
+                                        onOpenWeek = openWeek,
+                                        onOpenNotifications = openNotifications,
+                                        onOpenTracking = openTracking,
+                                        onOpenProfile = openProfile,
+                                        onOpenTasks = openTasks,
+                                        onOpenWatchHistory = openWatchHistory,
+                                        onOpenForum = openForum,
+                                        onOpenNovel = openNovel,
+                                        onOpenLibrary = openLibrary,
                                     )
                                 },
                             )
@@ -637,32 +652,36 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
                             SkinRoute(
                                 uiSkin = uiSkin,
-                                hyperOs = { LoginScreen(account = deps.account, onBack = { backStack.removeLastOrNull() }) },
-                                colorOs = { CouiLoginScreen(account = deps.account, onBack = { backStack.removeLastOrNull() }) },
+                                hyperOs = { LoginScreen(account = deps.account, onBack = back) },
+                                colorOs = { CouiLoginScreen(account = deps.account, onBack = back) },
                             )
                         }
                         entry<Route.Favorites>(
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     FavoritesScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiFavoritesScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -671,22 +690,25 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openReader: (String) -> Unit = { photoId -> backStack.add(Route.Reader(photoId)) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     HistoryScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenReader = openReader,
                                     )
                                 },
                                 colorOs = {
                                     CouiHistoryScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenReader = openReader,
                                     )
                                 },
                             )
@@ -695,21 +717,15 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openReader: (String) -> Unit = { photoId -> backStack.add(Route.Reader(photoId)) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
-                                    ShelfScreen(
-                                        deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                                    )
+                                    ShelfScreen(deps = deps, onBack = back, onOpenReader = openReader)
                                 },
                                 colorOs = {
-                                    CouiShelfScreen(
-                                        deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenReader = { photoId -> backStack.add(Route.Reader(photoId)) },
-                                    )
+                                    CouiShelfScreen(deps = deps, onBack = back, onOpenReader = openReader)
                                 },
                             )
                         }
@@ -730,6 +746,7 @@ fun Jm3App() {
                                 uiSkinName = nextSkin.name
                                 scope.launch { deps.settings.setUiSkin(nextSkin) }
                             }
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -742,7 +759,7 @@ fun Jm3App() {
                                         dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
                                         uiSkin = uiSkin,
                                         onUiSkinChange = changeSkin,
-                                        onBack = { backStack.removeLastOrNull() },
+                                        onBack = back,
                                         onOpenUpdate = openUpdate,
                                         snackbarHostState = snackbarHostState,
                                     )
@@ -757,7 +774,7 @@ fun Jm3App() {
                                         dynamicColorSupported = DynamicColorPolicy.supports(uiSkin),
                                         uiSkin = uiSkin,
                                         onUiSkinChange = changeSkin,
-                                        onBack = { backStack.removeLastOrNull() },
+                                        onBack = back,
                                         onOpenUpdate = openUpdate,
                                         snackbarHostState = snackbarHostState,
                                     )
@@ -768,20 +785,14 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
-                                    UpdateScreen(
-                                        deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                    )
+                                    UpdateScreen(deps = deps, onBack = back)
                                 },
                                 colorOs = {
-                                    CouiUpdateScreen(
-                                        deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        snackbarHostState = snackbarHostState,
-                                    )
+                                    CouiUpdateScreen(deps = deps, onBack = back, snackbarHostState = snackbarHostState)
                                 },
                             )
                         }
@@ -789,22 +800,25 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     WeekScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiWeekScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -813,26 +827,29 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     NotificationsScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
                                         unreadBadge = deps.session.unread,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiNotificationsScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
+                                        onBack = back,
                                         snackbarHostState = snackbarHostState,
                                         unreadBadge = deps.session.unread,
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -841,24 +858,27 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     TrackingScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiTrackingScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -867,22 +887,24 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     TasksScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
+                                        onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiTasksScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
+                                        onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -891,22 +913,24 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     ProfileScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
+                                        onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiProfileScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
+                                        onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -915,24 +939,27 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     WatchHistoryScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiWatchHistoryScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -941,24 +968,27 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     ForumScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenAlbum = openAlbum,
                                     )
                                 },
                                 colorOs = {
                                     CouiForumScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
+                                        onOpenAlbum = openAlbum,
                                     )
                                 },
                             )
@@ -967,6 +997,13 @@ fun Jm3App() {
                             transition = albumDetailTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
+                            val openReader: (String, Int?) -> Unit = { photoId, startPage ->
+                                backStack.add(Route.Reader(photoId, startPage))
+                            }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openSearch: (String, SearchScope) -> Unit =
+                                { query, scope -> backStack.add(Route.Search(query, scope)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -975,12 +1012,10 @@ fun Jm3App() {
                                         initialTitle = route.initialTitle,
                                         initialCoverUrl = route.initialCoverUrl,
                                         onBack = popBack,
-                                        onOpenReader = { photoId, startPage ->
-                                            backStack.add(Route.Reader(photoId, startPage))
-                                        },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenReader = openReader,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenSearch = openSearch,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                         gateway = deps.gateway,
                                         authCall = deps.authCall,
@@ -997,12 +1032,10 @@ fun Jm3App() {
                                         initialTitle = route.initialTitle,
                                         initialCoverUrl = route.initialCoverUrl,
                                         onBack = popBack,
-                                        onOpenReader = { photoId, startPage ->
-                                            backStack.add(Route.Reader(photoId, startPage))
-                                        },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenReader = openReader,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenSearch = openSearch,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                         gateway = deps.gateway,
                                         authCall = deps.authCall,
@@ -1019,6 +1052,12 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openChapter: (String) -> Unit = { nextPageId ->
+                                // 同层替换：返回键回到详情页，而不是逐章回退
+                                if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(nextPageId)
+                            }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1027,12 +1066,9 @@ fun Jm3App() {
                                         photoId = route.photoId,
                                         startPage = route.startPage,
                                         settings = deps.settings,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenChapter = { nextPageId ->
-                                            // 同层替换：返回键回到详情页，而不是逐章回退
-                                            if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(nextPageId)
-                                        },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenChapter = openChapter,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                     )
                                 },
@@ -1042,12 +1078,9 @@ fun Jm3App() {
                                         photoId = route.photoId,
                                         startPage = route.startPage,
                                         settings = deps.settings,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenChapter = { nextPageId ->
-                                            // 同层替换：返回键回到详情页，而不是逐章回退
-                                            if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(nextPageId)
-                                        },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenChapter = openChapter,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                     )
                                 },
@@ -1057,23 +1090,26 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openNovel: (String) -> Unit = { novelId -> backStack.add(Route.NovelDetail(novelId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     NovelListScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenNovel = openNovel,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                     )
                                 },
                                 colorOs = {
                                     CouiNovelListScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenNovel = openNovel,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                     )
                                 },
@@ -1083,19 +1119,25 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openNovel: (String) -> Unit = { novelId -> backStack.add(Route.NovelDetail(novelId)) }
+                            val openReader: (String, String) -> Unit = { novelId, chapterId ->
+                                backStack.add(Route.NovelReader(novelId, chapterId))
+                            }
+                            val openSearch: (String, SearchScope) -> Unit =
+                                { query, scope -> backStack.add(Route.Search(query, scope)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     NovelDetailScreen(
                                         deps = deps,
                                         novelId = route.novelId,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                                        onOpenReader = { novelId, chapterId ->
-                                            backStack.add(Route.NovelReader(novelId, chapterId))
-                                        },
-                                        onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenNovel = openNovel,
+                                        onOpenReader = openReader,
+                                        onOpenSearch = openSearch,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                     )
                                 },
@@ -1103,13 +1145,11 @@ fun Jm3App() {
                                     CouiNovelDetailScreen(
                                         deps = deps,
                                         novelId = route.novelId,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenNovel = { novelId -> backStack.add(Route.NovelDetail(novelId)) },
-                                        onOpenReader = { novelId, chapterId ->
-                                            backStack.add(Route.NovelReader(novelId, chapterId))
-                                        },
-                                        onOpenSearch = { query, scope -> backStack.add(Route.Search(query, scope)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenNovel = openNovel,
+                                        onOpenReader = openReader,
+                                        onOpenSearch = openSearch,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                     )
                                 },
@@ -1119,6 +1159,8 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1126,8 +1168,8 @@ fun Jm3App() {
                                         deps = deps,
                                         novelId = route.novelId,
                                         initialChapterId = route.chapterId,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                     )
                                 },
@@ -1136,8 +1178,8 @@ fun Jm3App() {
                                         deps = deps,
                                         novelId = route.novelId,
                                         initialChapterId = route.chapterId,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenLogin = openLogin,
                                         snackbarHostState = snackbarHostState,
                                     )
                                 },
@@ -1147,26 +1189,31 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openCreator: (String) -> Unit =
+                                { creatorId -> backStack.add(Route.Creator(creatorId)) }
+                            val openWork: (String) -> Unit = { workId -> backStack.add(Route.CreatorWork(workId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     LibraryScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
-                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        onBack = back,
+                                        onOpenCreator = openCreator,
+                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiLibraryScreen(
                                         deps = deps,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
-                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        onBack = back,
+                                        onOpenCreator = openCreator,
+                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -1175,27 +1222,30 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openWork: (String) -> Unit = { workId -> backStack.add(Route.CreatorWork(workId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     CreatorWorksScreen(
                                         deps = deps,
                                         creatorId = route.creatorId,
-                                        onBack = { backStack.removeLastOrNull() },
+                                        onBack = back,
                                         onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
-                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiCreatorScreen(
                                         deps = deps,
                                         creatorId = route.creatorId,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        onBack = back,
+                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -1204,25 +1254,28 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openWork: (String) -> Unit = { workId -> backStack.add(Route.CreatorWork(workId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
                                     CreatorWorkDetailScreen(
                                         deps = deps,
                                         workId = route.workId,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
+                                        onBack = back,
+                                        onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
                                     CouiCreatorWorkScreen(
                                         deps = deps,
                                         workId = route.workId,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenWork = { workId -> backStack.add(Route.CreatorWork(workId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenWork = openWork,
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
@@ -1231,6 +1284,9 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
+                            val back: () -> Unit = { backStack.removeLastOrNull() }
+                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1238,9 +1294,9 @@ fun Jm3App() {
                                         deps = deps,
                                         query = route.query,
                                         scope = route.scope,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                                 colorOs = {
@@ -1248,9 +1304,9 @@ fun Jm3App() {
                                         deps = deps,
                                         query = route.query,
                                         scope = route.scope,
-                                        onBack = { backStack.removeLastOrNull() },
-                                        onOpenAlbum = { albumId -> backStack.add(Route.AlbumDetail(albumId)) },
-                                        onOpenLogin = { backStack.add(Route.Login) },
+                                        onBack = back,
+                                        onOpenAlbum = openAlbum,
+                                        onOpenLogin = openLogin,
                                     )
                                 },
                             )
