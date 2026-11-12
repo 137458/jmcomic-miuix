@@ -97,13 +97,14 @@ class ForegroundRunnerTest {
     @Test
     fun `到点前的新快照自己拉起后不再补一次`() = runTest {
         val policy = ForegroundPolicy(startRetryIntervalMs = retryMs, clock = { testScheduler.currentTime })
-        val tasks = mapOf("a" to task("a"))
+        val initialTasks = mapOf("a" to task("a"))
+        var currentTasks = initialTasks
         var startAttempts = 0
         val runner = ForegroundRunner(
             policy = policy,
             scope = backgroundScope,
             retryIntervalMs = retryMs,
-            latestTasks = { tasks },
+            latestTasks = { currentTasks },
             perform = { action ->
                 if (action != ForegroundAction.Start) {
                     true
@@ -115,21 +116,26 @@ class ForegroundRunnerTest {
             },
         )
         advanceTimeBy(1_000)
-        runner.onTasks(tasks)
+        runner.onTasks(currentTasks)
         assertEquals(1, startAttempts)
 
-        // 走到窗口末尾：补评估已到期但还没执行，此刻来了一批新任务。
+        // 走到窗口末尾：补评估已到期但还没执行，此刻来了新快照消费掉唯一一次补试。
         advanceTimeBy(retryMs)
-        runner.onTasks(tasks)
+        runner.onTasks(currentTasks)
         assertEquals(2, startAttempts)
 
-        // 到期的补评估已被这一轮撤销：同一批任务只拉两次，不多补一次。
+        // 到期的补评估已被这一轮撤销：同一批任务不会在当前时刻多补一次。
         runCurrent()
         assertEquals(2, startAttempts)
 
-        // 之后仍按窗口各补一次，不会因为撤销而堆出连续重试。
+        // 同一批任务按 5 秒退避仅补试一次：再过一个窗口也不会无限自旋拉起。
         advanceTimeBy(retryMs)
         runCurrent()
+        assertEquals(2, startAttempts)
+
+        // 活动任务数变化开启新批次时，允许再次拉起。
+        currentTasks = mapOf("a" to task("a"), "b" to task("b"))
+        runner.onTasks(currentTasks)
         assertEquals(3, startAttempts)
     }
 
