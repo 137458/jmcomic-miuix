@@ -1,6 +1,7 @@
 package com.jm3.core.session
 
 import com.jm3.core.CredentialStorage
+import com.jm3.core.FakeSessionAuth
 import com.jm3.core.SavedCredentials
 import com.jm3.core.SessionAuth
 import com.jm3.core.model.CookieSnapshot
@@ -47,45 +48,13 @@ class AccountManagerTest {
         onCurrentCookies: () -> List<CookieSnapshot> = { emptyList() },
         onForgetCredentials: () -> Unit = {},
         onRestoreSession: (Jm3Session) -> Unit = {},
-    ): FakeGateway = FakeGateway(
+    ): FakeSessionAuth = FakeSessionAuth(
         onLogin = onLogin,
         onPrimeCredentials = onPrimeCredentials,
         onCurrentCookies = onCurrentCookies,
         onForgetCredentials = onForgetCredentials,
         onRestoreSession = onRestoreSession,
     )
-
-    /**
-     * 手写的鉴权假实现：只实现 [SessionAuth] 这 6 个方法，行为全部由构造参数注入。
-     *
-     * 旧做法用反射代理伪造整张网关接口，按方法名字符串分派：接口改名在编译期毫无反应，只在运行时抛异常。
-     * 换成真类后，多实现一个、少实现一个都过不了编译。
-     */
-    private class FakeGateway(
-        /** 没配置时 login 直接失败：用例真走到登录就说明假网关缺桩，不能悄悄返回一个假会话。 */
-        private val onLogin: ((String, String) -> Jm3Session)? = null,
-        private val onPrimeCredentials: (SavedCredentials) -> Unit = {},
-        private val onCurrentCookies: () -> List<CookieSnapshot> = { emptyList() },
-        private val onForgetCredentials: () -> Unit = {},
-        /** 必须留在最后一个参数：多个用例用尾随 lambda 配置会话注入行为。 */
-        private val onRestoreSession: (Jm3Session) -> Unit = {},
-    ) : SessionAuth {
-
-        override fun login(username: String, password: String): Jm3Session =
-            onLogin?.invoke(username, password)
-                ?: error("该用例未配置 onLogin，FakeGateway 不应被要求登录")
-
-        /** 登出后的存储清理由 AccountManager 自己断言，这里只保证不抛异常。 */
-        override fun logout() = Unit
-
-        override fun restoreSession(session: Jm3Session) = onRestoreSession(session)
-
-        override fun primeCredentials(credentials: SavedCredentials) = onPrimeCredentials(credentials)
-
-        override fun forgetCredentials() = onForgetCredentials()
-
-        override fun currentCookies(): List<CookieSnapshot> = onCurrentCookies()
-    }
 
     /** 计数器跨线程读写（并发用例在 IO 线程里断言），所以都标 @Volatile。 */
     private class FakeCredentialStorage(@Volatile var stored: SavedCredentials? = null) : CredentialStorage {

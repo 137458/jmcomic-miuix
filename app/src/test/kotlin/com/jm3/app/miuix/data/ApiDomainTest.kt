@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.ContextWrapper
 import com.jm3.core.Jm3Gateway
 import java.io.File
-import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
@@ -40,23 +39,6 @@ class ApiDomainTest {
         }
     }
 
-    private fun fakeGateway(onClose: () -> Unit): Jm3Gateway =
-        Proxy.newProxyInstance(
-            Jm3Gateway::class.java.classLoader,
-            arrayOf(Jm3Gateway::class.java),
-        ) { _, method, _ ->
-            when (method.name) {
-                "close" -> {
-                    onClose()
-                    Unit
-                }
-                "toString" -> "FakeGateway"
-                "hashCode" -> 0
-                "equals" -> false
-                else -> error("Unexpected call: ${method.name}")
-            }
-        } as Jm3Gateway
-
     @Test
     fun `并发切换线路串行执行onSwitched且在迁移完成前不关闭旧网关`() = runTest {
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
@@ -65,7 +47,7 @@ class ApiDomainTest {
         val domain = ApiDomain(fakeContext(), scope) { domains, _, _ ->
             createdThreads += Thread.currentThread().name
             val label = domains.joinToString(",")
-            fakeGateway { closedOrder += label }
+            FakeGateway { closedOrder += label }
         }
 
         val firstSwitchedEntered = CompletableDeferred<Unit>()
@@ -117,7 +99,7 @@ class ApiDomainTest {
         val domain = ApiDomain(fakeContext(), scope) { domains, _, _ ->
             seq++
             val label = if (domains.isEmpty()) "default-$seq" else domains.joinToString(",") + "-$seq"
-            fakeGateway { closedLabels += label }.also { created += label to it }
+            FakeGateway { closedLabels += label }.also { created += label to it }
         }
 
         // 冷启动先触发默认网关初始化
