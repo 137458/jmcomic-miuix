@@ -25,8 +25,8 @@ android {
         // COUI-Kit 要求 Android 12（API 31）；浮动材质组件（底栏/FAB/ChipTab）需 API 34，低版本走兼容分支。
         minSdk = 31
         targetSdk = 36
-        versionCode = 10100
-        versionName = "1.1.0"
+        versionCode = 20000
+        versionName = "2.0.0"
     }
 
     signingConfigs {
