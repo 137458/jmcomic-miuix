@@ -13,7 +13,7 @@
 开始任何功能或重构前，先回答以下三问：
 
 1. **分层归属**：能进 `:core` 的逻辑禁止写进 `:app`；能写成纯函数的判定禁止藏在 Composable 内。`:core` 为纯 JVM 模块（`core/build.gradle.kts:1-4`），严禁引入 Android 类型。
-2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 179 个测试类（`:core` 78 个、`:app` 101 个）。无法测试说明分层有误，须先拆层。
+2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 180 个测试类（`:core` 78 个、`:app` 102 个）。无法测试说明分层有误，须先拆层。
 3. **红线冲击**：核对是否破坏单一网关、单一状态真源、双皮肤组件隔离、阅读器手势优先级及 Release 混淆签名规则。
 
 ---
@@ -44,7 +44,8 @@
 - 唯一长期协程作用域为 `appScope`（`Jm3App.kt:164`，`SupervisorJob() + Dispatchers.IO`）。禁止使用 `GlobalScope`。
 - 现有用途限于装配注入、`ScreenDeps.appScope`、`ApiDomain`（`:29`、`:119`）、`UpdateDomain`（`:16`、`:39`）、`DownloadManager`（`:28`、`:57`、`:62`）、`DownloadService`（`:147`、`:177`、`:184`）、`MainActivity.onStop`（`:79`）、`ReaderScreen` 退出补记页码（`:659`）、`CouiReaderScreen` 退出补记页码（`ui/coui/page/CouiReaderScreen.kt:699`）与设置页偏好写盘（经 `ScreenDeps.select*` 内部的 `persist`，见 `ScreenDeps.kt:187-193`；因退出设置页会取消 `rememberCoroutineScope`，导致内存状态与 DataStore 半途不一致，故须挂载至进程作用域）。新增使用点必须说明为何无法挂载至 `rememberCoroutineScope`。
 - 本仓库不引入 `ViewModel`。屏幕数据状态使用 `remember` 与 `LaunchedEffect` 编排，状态复杂时抽离纯 Kotlin 状态容器（如 `AlbumDetailStateHolder`）。
-- 路由目标只在 `AppRoutes`（`app/src/main/kotlin/com/jm3/app/miuix/ui/route/AppRoutes.kt:15`）拼装：调用方只表达语义动作（`album` `:46`、`reader` `:49`、`readerAt` `:52`、`nextChapter` 同层替换 `:55`），路由类与参数改动只落在表内，表在 `Jm3App.kt:582` 构造一次。
+- 路由目标只在 `AppRoutes`（`app/src/main/kotlin/com/jm3/app/miuix/ui/route/AppRoutes.kt:15`）拼装：构造只收两个出口 `push`（`:16`，普通压栈）与 `replaceTop`（`:17`，栈顶同层替换），对外是 25 个语义动作（`:19-69`；例 `album` `:46`、`reader` `:49`、`readerAt` `:52`、`nextChapter` 换章替换 `:55`、`search` `:69`）。表在 `Jm3App.kt:582` 构造一次（`:581-588`，`remember(backStack)`，`push` 实现为 `backStack.add`、`replaceTop` 实现为栈顶赋值）。
+- 屏幕只认识语义动作，不拼 `Route`：屏幕形参统一为 `nav: AppRoutes`（例 `ui/MainScreen.kt:92`、`ui/AlbumDetailScreen.kt:142`、`ui/coui/page/CouiMainScreen.kt:88`），`Jm3App` 的 41 个屏幕调用点一律传 `nav = nav`（`Jm3App.kt:597` 起 23 个 `entry`），`ui/MainScreen.kt:245`、`:250`、`:255`、`:261` 再把同一个 `nav` 转发给四个页签。路由改名、加参数或把二级页改成同层替换只改表内一行，屏幕侧零改动。
 - 网关调用一律经 `AuthCall.call`（`core/src/main/kotlin/com/jm3/core/session/AuthCall.kt:36`）。禁止在屏幕内自写 `withContext(Dispatchers.IO)` 调网关，禁止跳过启动闸门与统一失效回调。
 
 ### 1.3 持久化与单真源
@@ -64,7 +65,9 @@
 
 - `SessionOutcome` 至界面状态只允许经 `planLoad`（`app/src/main/kotlin/com/jm3/app/miuix/ui/ScreenLoadPlan.kt:31`）翻译为 `ScreenLoadPlan`（`ScreenLoadPlan.kt:18`，三相位 `Content` / `Expired` / `Failed` 见 `:10`）：有内容时保内容并给 `notice`（`keepContent` 置真），无内容时整屏呈现失效或错误。
 - 带副作用的落点统一调用 `applyLoadPlan`：协程作用域重载（`:71`）与挂起重载（`:90`）各持两个钩子 `onKeepContent` / `onFullScreen`，由调用方只写本屏差异；动作类提示复用 `notifyAction`（`:114`）。
-- 屏幕禁止直接引用 `LOGIN_EXPIRED_MESSAGE` 或自拼「保留内容 + Snackbar」分支。现有落点覆盖 33 个文件（例 `ui/FavoritesScreen.kt:147`、`ui/LibraryScreens.kt:231`、`ui/coui/page/CouiFavoritesScreen.kt:184`、`ui/ForumScreen.kt:137`、`ui/AlbumDetailStateHolder.kt:119`）。
+- 分页列表的取数编排唯一出口为 `SessionListLoader`（`app/src/main/kotlin/com/jm3/app/miuix/ui/list/SessionListLoader.kt:42`）：屏幕只提供三件事——取哪一页 `fetchPage`（`:46`）、条目 key `idOf`（`:44`）、保留内容时的提示 `notice`（`:47`），文案差异只留 `failureMessage`（`:45`）与 `stalePrefix`（`:48`）。状态面为 `snapshot`（`:51`，`SessionListSnapshot` `:26` 携带 `feed` / `state` / `refreshing`），便捷读口 `feed`（`:56`）、`state`（`:58`）、`refreshing`（`:60`）；动作面只有 `loadFirstPage`（`:63`）、`refresh`（`:68`）、`loadMore`（`:73`）、`goToPage`（`:90`）、`removeWhere`（`:95`）。请求代次 `requestToken`（`:54`）只增不减，旧请求返回时对不上即丢弃（`:120`）。
+- 失败落点只有一条规则（`:154`）：`hasContent = pending.items.isNotEmpty() && (!replace || pulling || keepOnFailure)`，有内容就保留并 `failLoadMore()` + `notice`（`:156-158`），无内容才整屏 `ListLoadState.Failed`（`:159-169`，`sessionExpired` 取自 `planLoad` 的 `Expired` 相位）；`goToPage` 传 `keepOnFailure = true`（`:91`），因为用户点的是「第 N 页」而不是整屏重载。现有 11 个列表屏共 13 个实例（`ui/FavoritesScreen.kt:119`、`:156`、`ui/coui/page/CouiFavoritesScreen.kt:161`、`ui/coui/page/CouiForumScreen.kt:161`、`ui/coui/page/CouiLibraryScreen.kt:138`、`:156`、`ui/coui/page/CouiTasksScreen.kt:122`、`ui/coui/page/CouiTrackingScreen.kt:111`、`ui/coui/page/CouiWatchHistoryScreen.kt:100`、`ui/ForumScreen.kt:128`、`ui/TasksScreen.kt:165`、`ui/TrackingScreen.kt:84`、`ui/WatchHistoryScreen.kt:72`）。禁止屏幕再自持代次令牌或自写 `beginLoadMore` / 失败分派顺序。
+- 屏幕禁止直接引用 `LOGIN_EXPIRED_MESSAGE` 或自拼「保留内容 + Snackbar」分支。全仓 `planLoad` / `applyLoadPlan` 出现在 26 个文件（含定义处 `ui/ScreenLoadPlan.kt`；列表类统一落点 `ui/list/SessionListLoader.kt:155`，另例 `ui/LibraryScreens.kt:230`、`ui/ProfileScreen.kt:145`、`ui/coui/page/CouiProfileScreen.kt:198`、`ui/AlbumDetailStateHolder.kt:119`）。
 
 ---
 
@@ -83,7 +86,7 @@
 ### 2.2 线路切换与域名来源
 
 - 网关实例切换走 `ApiDomain.gatewayOverride`（`data/ApiDomain.kt:51`，双检读写在 `:59`、`:88`、`:92`）与 `GatewayFactory`（`core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:17`）。域名清洗一律经 `Domains`（`core/src/main/kotlin/com/jm3/core/settings/Domains.kt:6`），禁止在屏幕硬编码 URL。
-- 线路可观测面收在 `DomainRoutes`（`Jm3Gateway.kt:54`）：只暴露 `usedDomain`（`:56`）、`domainsReady`（`:59`）、`domainLatency`（`:62`）与 `reprobeDomains`（`:65`）；网关侧四个 override 只做转发（`:513-519`），生产实现 `LibraryDomainControls`（`:641-662`）直接委托库客户端。屏幕经 `ScreenDeps.routes`（`ScreenDeps.kt:81-82`）读取，现有消费点为 `ui/SettingsScreen.kt:89`、`ui/coui/page/CouiSettingsScreen.kt:149`、`ui/TasksScreen.kt:182`、`ui/coui/page/CouiTasksScreen.kt:156` 与 `ui/CheckInLoadPolicy.kt:457`；禁止为读线路信息而持有整张网关。图片域名与封面地址另走 `ImageAddressing`（`Jm3Gateway.kt:74`，`coverUrl` `:76`、`imageHost` `:79`），屏幕经 `ScreenDeps.images`（`ScreenDeps.kt:85-86`）读取，消费点为 `ui/ShelfScreen.kt:75`、`ui/TasksScreen.kt:180`、`ui/ReaderScreen.kt:318`、`ui/coui/page/CouiShelfScreen.kt:103`、`ui/coui/page/CouiTasksScreen.kt:152` 与 `ui/coui/page/CouiReaderScreen.kt:352`；禁止只为一个封面地址而持有整张网关。
+- 线路可观测面收在 `DomainRoutes`（`Jm3Gateway.kt:54`）：只暴露 `usedDomain`（`:56`）、`domainsReady`（`:59`）、`domainLatency`（`:62`）与 `reprobeDomains`（`:65`）；网关侧四个 override 只做转发（`:513-519`），生产实现 `LibraryDomainControls`（`:641-662`）直接委托库客户端。屏幕经 `ScreenDeps.routes`（`ScreenDeps.kt:81-82`）读取，现有消费点为 `ui/SettingsScreen.kt:90`、`ui/coui/page/CouiSettingsScreen.kt:150`、`ui/TasksScreen.kt:172`、`ui/coui/page/CouiTasksScreen.kt:135` 与 `ui/CheckInLoadPolicy.kt:457`；禁止为读线路信息而持有整张网关。图片域名与封面地址另走 `ImageAddressing`（`Jm3Gateway.kt:74`，`coverUrl` `:76`、`imageHost` `:79`），屏幕经 `ScreenDeps.images`（`ScreenDeps.kt:85-86`）读取，消费点为 `ui/ShelfScreen.kt:76`、`ui/TasksScreen.kt:170`、`ui/ReaderScreen.kt:318`、`ui/coui/page/CouiShelfScreen.kt:104`、`ui/coui/page/CouiTasksScreen.kt:131` 与 `ui/coui/page/CouiReaderScreen.kt:352`；禁止只为一个封面地址而持有整张网关。
 - 启动期域名仅来自自定义线路与上次刷新落盘的 `DomainPoolCache`。官方线路表在 `DomainTable.kt` 运行时拉取解密；仅当两者皆空（如首次安装）时回退至库内初始化链并在完成后落盘。
 
 ### 2.3 图片缓存与超采样链路
@@ -167,7 +170,7 @@
 
 - **能力门槛唯一**：运行时着色器是否可用只问 `isRuntimeShaderSupported`（`app/src/main/kotlin/com/jm3/app/miuix/ui/effect/ShaderCapability.kt:44`，带 `@ChecksSdkIntAtLeast` `:43`），禁止再 import `miuix` 库内同名函数或另写 `SDK_INT` 判断。现有调用点收敛在 `ui/effect/RuntimeShaderCompat.kt:21`、`:35`、`:44`、`ui/effect/BgEffectBackground.kt:37`、`ui/glass/BackdropSupport.kt:21`、`ui/glass/FloatingBottomBar.kt:224`、`:236`、`:447`、`ui/glass/GlassScaffold.kt:135`、`ui/glass/GlassSurface.kt:250`、`ui/glass/Lens.kt:26`、`ui/glass/InteractiveHighlight.kt:55`。纯查询形态 `ShaderCapability`（`:15`）与 `resolveShaderCapability`（`:22`）供需要把「为什么不可用」展示出来的场景使用（`ShaderUnavailableReason` `:9`）。
 - **顶栏玻璃计划唯一**：顶栏磨砂由 `GlassScaffold` 内部渐进模糊承担，不画 `glassSurface`。形态只解析一次：`resolveTopBarGlass`（`ui/glass/TopBarGlass.kt:35`）返回 `TopBarGlass`（`:20`，字段 `:21-24`），`GlassScaffold.kt:132-140` 以它决定模糊层与兜底色，绘制路径不再回查角色表。顶栏 tint 常量 `TOP_BAR_BLUR_TINT_ALPHA = 0.3f`（`TopBarGlass.kt:28`）。
-- **背景采样源**：需要真实内容作模糊源的页面统一调用 `rememberBlurBackdrop()`（`ui/glass/BackdropSupport.kt:20`）并挂 `Modifier.layerBackdropSource`（`:30`），现有页面为 `ui/MainScreen.kt:172`、`ui/LibraryScreens.kt:1015`（创作者页头图，`progressiveTextureBlur` 见 `:1027`）、`ui/ReaderScreen.kt:472`（悬浮工具栏，采样源先垫主题底色避免透明区黑边）与 `GlassScaffold.kt:129`。禁止页面各自用 `graphicsLayer` 手搭采样层。
+- **背景采样源**：需要真实内容作模糊源的页面统一调用 `rememberBlurBackdrop()`（`ui/glass/BackdropSupport.kt:20`）并挂 `Modifier.layerBackdropSource`（`:30`），现有页面为 `ui/MainScreen.kt:159`（`:228` 挂采样源）、`ui/LibraryScreens.kt:1011`（创作者页头图，`:1015` 挂采样源，`progressiveTextureBlur` 见 `:1023`）、`ui/ReaderScreen.kt:472`（悬浮工具栏，采样源先垫主题底色避免透明区黑边）与 `GlassScaffold.kt:129`（`:198` 挂采样源）。禁止页面各自用 `graphicsLayer` 手搭采样层。
 
 ---
 
@@ -193,9 +196,9 @@
 
 测试基线以 `build/test-results/**/TEST-*.xml` 为准（最近一次全量执行 `:core:test` 与 `:app:testDebugUnitTest`）：
 
-- **`:core`**：78 个测试类 / 735 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`）。
-- **`:app`**：101 个测试类 / 703 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`）。
-- **全仓合计**：179 个测试类 / 1,438 个测试用例，全部通过，0 失败、0 跳过。
+- **`:core`**：78 个测试类 / 735 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`；同目录另有一个不含 `@Test` 的共用替身 `FakeSessionAuth.kt`）。
+- **`:app`**：102 个测试类 / 716 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`）。
+- **全仓合计**：180 个测试类 / 1,451 个测试用例，全部通过，0 失败、0 跳过（180 个 `TEST-*.xml` 与 1,451 个 `@Test` 逐一对齐）。
 
 典型纯逻辑边界测试规模：`AccountManagerTest`（39）、`AlbumHeroLogicTest`（31）、`ReaderPageLogicTest`（31）、`CheckInLoadPolicyTest`（31）、`MappersTest`（29）、`ReaderProgressCodecTest`（27）、`AlbumHeroHostTest`（26）、`CouiWorkCardLayoutTest`（26）、`PagedFeedTest`（22）、`ReaderZoomLogicTest`（22）、`DownloadQueueTest`（22）、`PagingBehaviorTest`（21）。
 
@@ -207,6 +210,7 @@
 - **下载文件与前台策略**：页文件原子替换、路径校验且失败不留 `.tmp` → `FileDownloadStoreTest`（17）；窄接口取页契约 → `GatewaySourcesTest`；页码清单编解码 → `DownloadPagesCodecTest`；通知文案与条目呈现 → `DownloadPresentationTest` / `DownloadStatusSemanticsTest` / `DownloadRowTest` / `DownloadRowTextTest`；前台策略与退避 → `ForegroundPolicyTest` / `ForegroundRunnerTest`。
 - **分页、封面与协议映射**：1 基页码换算 → `PageNumbersTest`；翻页计算 → `PagingBehaviorTest`（21）；去重与触底距离 → `PagedFeedTest`（22）、`SearchPagesTest`、`CommentPagesTest`、`SerializationPageTest`；分割还原 → `ScrambleTest`；封面三态与缓存键互逆 → `CoverResolverTest`（13）、`CoverLocatorTest`；域名清洗与线路切换缓存 → `DomainsTest`、`CustomDomainPoolTest`、`DomainPoolCacheTest`、`ApiDomainTest`、`GatewayFactoryTest`；章节分组与标签 → `ChapterGroupsTest`、`ChapterLabelsTest`、`NotificationBodyTest`。
 - **会话、凭据与更新**：会话编解码 → `SessionCodecTest`；加密凭据落盘、坏数据自清与 Keystore 密钥重建 → `CredentialStorageTest`、`CredentialStoreTest`；取消异常重抛 → `CancellationTest`；反射成员表、解析与降级 → `LibraryReflectionTest`（9）、`LibrarySessionReflectionTest`、`LibraryBridgeRoutingTest`；静默重登、并发竞态与 3 次失败清凭据 → `AccountManagerTest`（39）；启动闸门与失效通知 → `AuthCallTest`；未读角标保留与纪元保护 → `UnreadBadgeTest`；版本等价、更新下载校验与设置归一 → `VersionTextTest`、`UpdateCheckerTest`、`UpdateDownloaderTest`、`ReleaseJsonTest`、`UpdateSettingsTest`、`SettingsRepositoryTest`、`SettingsNormalizationTest`、`SettingsKeyStoreAdapterTest`。
+- **列表加载编排**：首屏、刷新、触底、跳页四类请求的代次丢弃与失败落点（有内容保留 + 提示、无内容整屏、`goToPage` 保留旧页） → `SessionListLoaderTest`（13）。
 - **阅读器、转场、布局与皮肤**：缩放与边缘翻页 → `ReaderZoomLogicTest`（22）；页框比例与解码上限 → `ReaderPageLogicTest`（31）、`ReaderPageBackfillTest`（8）；页码计划与跳页冻结 → `ReaderPagePlanTest`（12）；阅读器会话恢复时序（`AWAITING_LAYOUT` → `RESTORING` → `SETTLED`）与写盘闸门 → `ReaderSessionTest`（13）；进度编解码 → `ReaderProgressCodecTest`（27）；预取步进 → `ReaderPrefetchTest`；共享元素几何、宿主状态机与缓存尺寸 → `AlbumHeroLogicTest`（31）、`AlbumHeroHostTest`（26）、`AlbumHeroStateMachineTest`（13）、`AlbumHeroCoverSizeTest`（4）；详情状态容器 → `AlbumDetailStateHolderTest`（17）；加载结局翻译与两钩子分支 → `ScreenLoadPlanTest`（6）、`ListOutcomeTest`、`NovelActionNoticeTest`；结局翻译与签到策略 → `CheckInLoadPolicyTest`（31）；玻璃表面、能力门槛与顶栏分档 → `GlassSurfaceTest`、`InteractiveHighlightTest`、`ShaderCapabilityTest`（3）、`TopBarGlassTest`（5）；COUI 组件、字阶、通知滑动与阅读器逻辑 → `CouiPageStateTest`、`CouiTypographyTest`、`CouiForumRepliesTest`、`CouiHistoryGroupingTest`、`CouiNotificationsSwipeTest`、`CouiNovelDetailChaptersTest`、`CouiReaderLogicTest`（15）；大屏与底栏导航策略 → `WideLayoutPolicyTest`（15）、`BottomBarPreferencesTest`（9）、`WideScreenNavigationTest`（8）。
 
 ---
@@ -246,6 +250,8 @@
 29. **阅读器会话状态收进 `ReaderSession`**：两套皮肤共用同一状态机（`ReaderScreen.kt:428`、`CouiReaderScreen.kt:489`），恢复时序、跳页冻结、写盘闸门与预取去重只有一份；页码语义仍引用 `:core` 纯函数，不在状态容器里复制换算。
 30. **运行时能力与顶栏形态各收一处**：着色器能力只问 `isRuntimeShaderSupported`（`ShaderCapability.kt:44`），顶栏玻璃形态只经 `resolveTopBarGlass`（`TopBarGlass.kt:35`）解析一次；否则同一判断散在六个玻璃文件与绘制分支，降级档位会不一致。
 31. **测试替身按被测面收窄、越界即失败**：`:core` 用只实现 6 方法的 `FakeSessionAuth`，`:app` 需要整张网关时用 `FakeGateway`（未配置方法一律 `error`，见 `FakeGateway.kt:60`）。替身不得返回兜底值，也不得用反射代理按方法名分派。
+32. **路由目标集中在 `AppRoutes`、屏幕只表达语义**：`AppRoutes`（`AppRoutes.kt:15`）把 25 个语义动作与 `push` / `replaceTop` 两个出口封在一起，屏幕形参收成 `nav: AppRoutes`；否则 40 余个屏幕各自拼 `Route`，改一次路由要扫全仓调用点。语义动作也让「换章是同层替换」这类栈行为只在一处表达（`:55`）。
+33. **分页列表的取数编排收进 `SessionListLoader`**：请求代次、在途标记、翻页游标与失败落点只有一份（`SessionListLoader.kt:42`），屏幕只提供 `fetchPage` / `idOf` / `notice` 三个洞。此前两套皮肤十余个列表页各持一份代次令牌与 `beginLoadMore` 顺序，漏一处就会出现旧结果盖新列表或页脚常转。
 
 ---
 
@@ -256,6 +262,6 @@
 3. **放大边缘翻页暂不做跟手拖拽**：跟手拖拽需重构 `HorizontalPager` 滚动源，改动面大于当前收益，维持松手判定后弹性翻页方案。
 4. **运行验证缺口**：
    - 已真机验证项：已在小米 15（`targetSdk 36`）实测阅读器缩放与边缘翻页、双击整屏缩放覆盖层、`dataSync` 前台服务与进度通知（含提升型通知分支）。
-   - 未真机验证项：全仓目前主要依赖编译、179 个测试类（1,438 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
+   - 未真机验证项：全仓目前主要依赖编译、180 个测试类（1,451 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
 5. **COUI 皮肤暂不实现下拉刷新**：当前 `COUI-Kit` 未提供下拉刷新容器，COUI 页面刷新入口统一由错误态重试与页面操作按钮承担，不在页面层手拼手势容器。
 6. **小说列表不做分页**：上游小说列表接口一次返回全量数据且无分页参数，屏幕按全量渲染，不强套 `PagedFeed`。
