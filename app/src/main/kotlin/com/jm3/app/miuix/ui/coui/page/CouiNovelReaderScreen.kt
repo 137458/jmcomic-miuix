@@ -54,6 +54,7 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.reader.ReaderSession
 import com.jm3.app.miuix.ui.CommentItemNullableSaver
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ReaderVolumeKeys
@@ -158,7 +159,8 @@ private fun CouiNovelReaderContent(
     var replyNotice by remember(novelId) { mutableStateOf<String?>(null) }
     var commentsNotice by remember(novelId) { mutableStateOf<String?>(null) }
     var commentsRefreshKey by remember(novelId) { mutableIntStateOf(0) }
-    var loadToken by remember(novelId) { mutableIntStateOf(0) }
+    // 章节加载代际：小说屏没有页码计划与预取，用 chapterOnly 形态只借代际闸门
+    val session = remember(novelId) { ReaderSession.chapterOnly() }
     var lastResetChapterId by rememberSaveable(novelId) { mutableStateOf<String?>(null) }
     var lastVolumeAt by remember { mutableLongStateOf(0L) }
     var viewportHeightPx by remember { mutableIntStateOf(0) }
@@ -183,13 +185,12 @@ private fun CouiNovelReaderContent(
     }
 
     fun loadChapter(chapterId: String, language: String, showLoading: Boolean) {
-        loadToken++
-        val token = loadToken
+        val token = session.beginChapterLoad()
         if (showLoading) loading = true
         failure = null
         scope.launch {
             val outcome = authCall.call { deps.gateway.novelChapter(chapterId, language) }
-            if (token != loadToken) return@launch
+            if (!session.isLatestChapterLoad(token)) return@launch
             loading = false
             if (outcome is SessionOutcome.Ok) {
                 chapter = outcome.value

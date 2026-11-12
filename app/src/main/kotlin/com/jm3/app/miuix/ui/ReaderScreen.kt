@@ -73,6 +73,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.data.download.decodePhotoPages
+import com.jm3.app.miuix.reader.ReaderSession
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.runCatchingSuspending
@@ -85,14 +86,9 @@ import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
-import com.jm3.core.reader.ReaderPagePlan
 import com.jm3.core.reader.ReaderPageProgress
 import com.jm3.core.reader.ReaderSpreadPolicy
-import com.jm3.core.reader.advancePrefetch
-import com.jm3.core.reader.jumpTo
 import com.jm3.core.reader.readerProgressOnExit
-import com.jm3.core.reader.resolveInitialPage
-import com.jm3.core.reader.settleJump
 import com.jm3.core.reader.shouldClearReaderProgress
 import com.jm3.core.reader.stepPages
 import com.jm3.core.settings.ReaderImageQuality
@@ -428,19 +424,20 @@ private fun ReaderPages(
         )
         Size(fit.width, fit.height)
     }
-    // 已发起预加载的页号；翻页向前向后都只发一次。键随章节与布局基线走：
+    // 页码、预取账本与进度闸门的唯一真源；换章或页数变化才换一份
+    val session = remember(photo.photoId, photo.images.size) { ReaderSession(photo.images.size) }
     // 换话、页宽变了、切换纵横或换质量档后，按旧尺寸解的页要重新发一次，否则新尺寸永远等不到解码
-    val prefetched = remember(photo, pageWidthPx, horizontal, imageQuality, spreadActive) { mutableSetOf<Int>() }
+    LaunchedEffect(pageWidthPx, horizontal, imageQuality, spreadActive) { session.resetPrefetchLedger() }
     // 当前页是否处于放大态：放大时让出翻页手势，交给缩放层自己消费
     var pageZoomed by remember(photo) { mutableStateOf(false) }
     LaunchedEffect(pagerState.currentPage, spreadActive) { pageZoomed = false }
     // 长图模式下双击打开的整屏缩放层：存放 photo.images 下标，null 表示未打开
     var zoomOverlayIndex by remember(photo) { mutableStateOf<Int?>(null) }
     // 页码的唯一真源：顶栏、跳页器、音量键与预取都从这份计划取页码，跳页冻结也在这里
-    var pagePlan by remember(photo) { mutableStateOf(ReaderPagePlan.initial(photo.images.size)) }
+    val pagePlan by session.plan.collectAsState()
     // 阅读进度：纵横模式落定后才恢复上次页码，恢复只做一次
     var horizontalReady by remember { mutableStateOf(false) }
-    var progressRestored by remember(photo.photoId) { mutableStateOf(false) }
+    val progressRestored by session.restored.collectAsState()
     // 离开阅读器时补记当前页：状态对象在离开时仍可读
     val latestPage by rememberUpdatedState(pagePlan.currentPage)
     var showPageSheet by rememberSaveable { mutableStateOf(false) }
@@ -570,10 +567,8 @@ private fun ReaderPages(
         } else {
             page
         }
-        val next = jumpTo(pagePlan, canonical)
-        if (next == pagePlan) return
-        pagePlan = next
-        val target = next.pendingTarget ?: return
+        // 冻结与解冻都交给 session：目标页在动画前定下，落地后才放开可见页回写
+        val target = session.requestJump(canonical) ?: return
         if (horizontal) {
             val pagerTarget = if (spreadActive) {
                 ReaderSpreadPolicy.spreadIndexForPage(target, photo.images.size)
@@ -584,7 +579,7 @@ private fun ReaderPages(
                 try {
                     pagerState.springAnimateToPage(clampPagerTarget(pagerTarget, pagerPageCount))
                 } finally {
-                    pagePlan = settleJump(pagePlan, target)
+                    session.onJumpSettled(target)
                 }
             }
         } else {
@@ -592,7 +587,7 @@ private fun ReaderPages(
                 try {
                     listState.scrollToItem(target - 1)
                 } finally {
-                    pagePlan = settleJump(pagePlan, target)
+                    session.onJumpSettled(target)
                 }
             }
         }
@@ -601,13 +596,17 @@ private fun ReaderPages(
     // 恢复上次读到的页码：等纵横模式落定后再跳，避免恢复动作又被布局回写覆盖。
     // progressRestored 同时作为「已尝试恢复」的闸门，进度写入要等它翻转后才允许，
     // 否则首帧的「第 1 页」会先写掉还没读的旧进度。
-    LaunchedEffect(horizontalReady, photo.photoId) {
-        if (!horizontalReady || progressRestored) return@LaunchedEffect
-        // 先把旧进度读出来再放开写入闸门：反过来写会先落盘「第 1 页」，把要恢复的进度覆盖掉
-        val saved = settings.readerLastPage(photo.photoId)
-        progressRestored = true
+    LaunchedEffect(horizontalReady, photo.photoId, photo.images.size) {
+        if (!horizontalReady) return@LaunchedEffect
+        // 首帧布局已落定：放开恢复流程（session 内部先读旧进度、再开写盘闸门）
+        session.onLayoutReady()
+        val outcome = session.restore(
+            readSaved = { settings.readerLastPage(photo.photoId) },
+            startPage = startPage,
+        ) ?: return@LaunchedEffect
+        val saved = outcome.saved
         // 详情页预览点第 i 张时优先直达该页；起始页无效再回退历史进度
-        val target = resolveInitialPage(startPage, saved, photo.images.size) ?: return@LaunchedEffect
+        val target = outcome.targetPage ?: return@LaunchedEffect
         // 双页下提示与落点一致：显示的是目标页所在的跨页锚点，避免提示页比画面多一页
         val restoredPage = if (spreadActive) {
             ReaderSpreadPolicy.anchorPageForPage(target, photo.images.size)
@@ -641,9 +640,11 @@ private fun ReaderPages(
     // 页码一变就记进度：读到最后一页改为清掉进度键，未读完才落盘。
     // 落盘前等一下翻页停下来，避免长图连滚时把每一页都写一遍设置存储
     LaunchedEffect(pagePlan.currentPage, photo.images.size, progressRestored) {
-        if (!progressRestored || photo.images.isEmpty()) return@LaunchedEffect
+        // 闸门未开（首帧还没恢复完）或本章无页时不写盘
+        if (!session.canPersistProgress) return@LaunchedEffect
         delay(PROGRESS_SAVE_DEBOUNCE_MS)
-        persistProgress(ReaderPageProgress(page = pagePlan.currentPage, total = photo.images.size))
+        val pending = session.progressToSave() ?: return@LaunchedEffect
+        persistProgress(pending)
     }
 
     // 离开阅读器时补记当前页：此时协程作用域已取消，挂在进程作用域上才写得完。
@@ -1300,7 +1301,7 @@ private fun ReaderPages(
     }
 
     // 页码与预取共用一次订阅：纵向跟 LazyColumn、横向跟 Pager，只差请求尺寸；
-    // 该发哪几页由 advancePrefetch 统一判定（页码收敛与去重都在那里），collectLatest 让快速滚动只处理最新页
+    // 该发哪几页由 session 统一判定（内部转调 advancePrefetch，页码收敛与去重都在那里），collectLatest 让快速滚动只处理最新页
     LaunchedEffect(
         listState,
         pagerState,
@@ -1328,10 +1329,8 @@ private fun ReaderPages(
                 listState.firstVisibleItemIndex
             }
         }.collectLatest { first ->
-            val next = advancePrefetch(pagePlan, first, prefetched, ahead = prefetchPages)
-            pagePlan = next.plan
-            for (index in next.pages) {
-                prefetched += index
+            // 页码回写与「该发哪几页」由 session 判定；屏幕只按展示同源尺寸入队
+            for (index in session.onVisibleIndex(first, ahead = prefetchPages)) {
                 val page = photo.images[index]
                 val size = if (horizontal) {
                     // 左右模式整屏展示；双页时两页共用半屏尺寸与半档预算，与展示保持一致
