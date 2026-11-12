@@ -8,6 +8,7 @@ import com.jm3.core.download.DownloadStatus.RUNNING
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -235,9 +236,22 @@ class DownloadQueueTest {
         fetcher.gates.getValue(1).complete(Unit)
         advanceUntilIdle()
         assertNull(queue.updates.value["p1"])
+        assertTrue(store.writeLog.none { it.first == "p1" })
+        assertEquals(emptyList(), store.files("p1"))
  
         queue.shutdown()
         advanceUntilIdle()
+    }
+
+    @Test
+    fun `enqueue rejects non-QUEUED task`() = runTest {
+        val queue = DownloadQueue(FakeFetcher(), FakeStore())
+        for (status in listOf(RUNNING, PAUSED, DONE, FAILED)) {
+            assertFailsWith<IllegalArgumentException> {
+                queue.enqueue(DownloadTask(photoId = "bad-$status", albumId = "a", title = "t", total = 1, status = status))
+            }
+        }
+        assertTrue(queue.updates.value.isEmpty())
     }
 
     @Test

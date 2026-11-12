@@ -45,6 +45,7 @@ class DownloadQueue(
 
     /** 入队；同 photoId 已存在且未 FAILED 时拒绝并返回 false。 */
     fun enqueue(task: DownloadTask): Boolean {
+        require(task.status == DownloadStatus.QUEUED) { "入队任务初始状态必须为 QUEUED，实际为 ${task.status}" }
         val accepted = synchronized(stateLock) {
             val existing = tasks[task.photoId]
             when {
@@ -187,8 +188,10 @@ class DownloadQueue(
                     failWith(current, runId)
                     return
                 }
-                // 取数期间被暂停也不丢这一页：结果照常落盘，游标只归当前代际推进。
+                // 取数期间被暂停也不丢这一页：结果照常落盘，游标只归当前代际推进；已取消则跳过落盘避免孤儿文件。
                 // 落盘按唯一临时名写入，暂停后立即续传的新旧 worker 不会互相截断同一文件。
+                val stillPresent = synchronized(stateLock) { tasks.containsKey(current.photoId) }
+                if (!stillPresent) return
                 store.write(current.photoId, pageIndex, bytes)
             }
             // 取这一页的间隙代际可能已被换掉（暂停后续传、取消后重排、重置）：

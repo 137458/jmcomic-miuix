@@ -14,12 +14,17 @@ value class CoverLocator private constructor(val host: String) {
         return HTTPS + host + ALBUM_COVER_PATH + id + size + ".jpg"
     }
 
-    /** 图片地址；相对路径拼域名，绝对地址原样返回（域名未就绪也不影响绝对地址）。 */
+    /** 图片地址；相对路径拼域名，绝对地址与协议相对路径原样或补全 https 后返回。 */
     fun image(path: String?): String? {
         val raw = path?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        if (raw.startsWith(HTTPS) || raw.startsWith(HTTP)) return raw
+        if (raw.startsWith(HTTPS, ignoreCase = true) || raw.startsWith(HTTP, ignoreCase = true)) return raw
+        if (raw.startsWith("//")) {
+            val remainder = raw.substring(2)
+            return if (remainder.isNotEmpty() && !remainder.startsWith("/")) HTTPS + remainder else null
+        }
         if (host.isEmpty()) return null
-        return HTTPS + host + "/" + raw.trimStart('/')
+        val relative = raw.trimStart('/').takeIf { it.isNotEmpty() } ?: return null
+        return HTTPS + host + "/" + relative
     }
 
     companion object {

@@ -160,6 +160,51 @@ class ForegroundPolicyTest {
     }
 
     @Test
+    fun 被五秒限流拦截时不推进计数窗口过期后同数量仍能拉起() {
+        val policy = policy()
+        val firstBatch = mapOf("a" to task("a", DownloadStatus.RUNNING))
+        assertEquals(listOf(ForegroundAction.Start), policy.onTasks(firstBatch))
+
+        // 1 秒后新增第 2 个任务但被 5 秒限流拦截：不能误把 lastActiveCount 推进到 2
+        now += 1_000
+        val secondBatch = mapOf(
+            "a" to task("a", DownloadStatus.RUNNING),
+            "b" to task("b", DownloadStatus.QUEUED),
+        )
+        assertEquals(emptyList(), policy.onTasks(secondBatch))
+
+        // 满 5 秒后同数量（仍是 2 个）的快照到来，必须能补发出 Start
+        now += 4_000
+        assertEquals(listOf(ForegroundAction.Start), policy.onTasks(secondBatch))
+    }
+
+    @Test
+    fun 拉起被拒后仅按五秒退避补试一次禁止无限循环() {
+        val policy = policy()
+        val tasks = mapOf("a" to task("a", DownloadStatus.RUNNING))
+        assertEquals(listOf(ForegroundAction.Start), policy.onTasks(tasks))
+
+        // 第 1 次失败：5 秒退避后允许补试一次
+        policy.onStartFailed()
+        now += 5_000
+        assertEquals(listOf(ForegroundAction.Start), policy.onTasks(tasks))
+
+        // 补试仍失败：同批任务不得再按 5 秒无限自旋拉起
+        policy.onStartFailed()
+        now += 5_000
+        assertEquals(emptyList(), policy.onTasks(tasks))
+        now += 10_000
+        assertEquals(emptyList(), policy.onTasks(tasks))
+
+        // 活动任务数量变化后开启新批次，允许重新拉起
+        val expanded = mapOf(
+            "a" to task("a", DownloadStatus.RUNNING),
+            "b" to task("b", DownloadStatus.QUEUED),
+        )
+        assertEquals(listOf(ForegroundAction.Start), policy.onTasks(expanded))
+    }
+
+    @Test
     fun 补发到期且服务仍在跑时发布进度() {
         val policy = policy()
         policy.onTasks(mapOf("a" to task("a", DownloadStatus.RUNNING)))

@@ -61,6 +61,9 @@ fun CommentPage.toSlice(): PageSlice<CommentItem> = PageSlice(
 /** 用一页评论整页替换。 */
 fun PagedFeed<CommentItem>.replacedBy(page: CommentPage): PagedFeed<CommentItem> = replace(page.toSlice()) { it.id }
 
-/** 追加下一页评论：按去重后的条数与总数比较，决定还要不要继续取。 */
+/** 追加下一页评论：本页非空、确实有新增条目且仍未达总数时才继续加载，防止空页或全重复页死循环。 */
 fun PagedFeed<CommentItem>.appendedBy(page: CommentPage): PagedFeed<CommentItem> =
-    append(page.toSlice()) { it.id }.let { it.copy(hasMore = it.items.size < page.total) }
+    append(page.toSlice()) { it.id }.let { next ->
+        val grew = next.items.size > items.size
+        next.copy(hasMore = page.items.isNotEmpty() && grew && next.items.size < page.total)
+    }

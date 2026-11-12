@@ -52,6 +52,9 @@ class ForegroundPolicy(
      */
     private var lastStartFailedAt = 0L
 
+    /** 同一批任务内是否已经按退避窗口补试过一次，防止后台无限自旋。 */
+    private var retryConsumed = false
+
     /** 上一次活动任务快照：用来识别终态跃迁。 */
     private var previous: Map<String, DownloadTask> = emptyMap()
 
@@ -62,6 +65,7 @@ class ForegroundPolicy(
         synchronized(lock) {
             running = true
             lastStartFailedAt = 0L
+            retryConsumed = false
         }
     }
 
@@ -73,16 +77,13 @@ class ForegroundPolicy(
     }
 
     /**
-     * 拉起被系统拒绝：记下失败时间并回滚活动数快照。
-     *
-     * 只记失败时间不够——[onTasks] 在活动数不变时不会再发 Start；只回滚计数也不够——
-     * 若队列静止就没有下一次更新。两者一起做：下一次队列更新到来时，无论计数是否变化，
-     * 只要退避窗口（[startRetryIntervalMs]）已过就重新尝试。
+     * 拉起被系统拒绝：仅在同一批任务首次失败时记录时间，供退避窗口外补试一次。
      */
     fun onStartFailed() {
         synchronized(lock) {
-            lastActiveCount = -1
-            lastStartFailedAt = clock()
+            if (!retryConsumed) {
+                lastStartFailedAt = clock()
+            }
         }
     }
 
@@ -95,11 +96,22 @@ class ForegroundPolicy(
         val actions = ArrayList<ForegroundAction>(2)
         val active = tasks.activeDownloadCount()
         val countChanged = active != lastActiveCount
-        lastActiveCount = active
 
         if (active > 0) {
-            if (!running && shouldStart(countChanged) && canAttemptStart()) actions += ForegroundAction.Start
-            if (running) {
+            if (!running) {
+                val wantStart = shouldStart(countChanged)
+                if (wantStart && canAttemptStart()) {
+                    lastActiveCount = active
+                    lastStartFailedAt = 0L
+                    retryConsumed = !countChanged
+                    actions += ForegroundAction.Start
+                } else if (!wantStart) {
+                    lastActiveCount = active
+                }
+            } else {
+                lastActiveCount = active
+                lastStartFailedAt = 0L
+                retryConsumed = false
                 val immediate = countChanged || tasks.hasTerminalTransitionFrom(previous)
                 if (throttle.shouldEmit(clock(), immediate)) {
                     actions += ForegroundAction.Publish(tasks)
@@ -107,9 +119,14 @@ class ForegroundPolicy(
                     actions += ForegroundAction.ScheduleFlush(progressIntervalMs)
                 }
             }
-        } else if (running) {
-            running = false
-            actions += ForegroundAction.Stop
+        } else {
+            lastActiveCount = 0
+            lastStartFailedAt = 0L
+            retryConsumed = false
+            if (running) {
+                running = false
+                actions += ForegroundAction.Stop
+            }
         }
         previous = tasks
         actions

@@ -94,27 +94,33 @@ class EncryptedCredentialStore(
     private val cipher: CredentialCipher,
 ) : CredentialStorage {
 
-    override suspend fun load(): SavedCredentials? {
-        val blob = blobStore.readCredentialBlob() ?: return null
+    private val lock = Mutex()
+
+    override suspend fun load(): SavedCredentials? = lock.withLock {
+        val blob = blobStore.readCredentialBlob() ?: return@withLock null
         // 纯 CPU 调用，不涉及挂起，不存在吞取消的问题
         val plain = runCatching { cipher.decrypt(blob) }.getOrNull()
         if (plain == null) {
-            clear()
-            return null
+            blobStore.writeCredentialBlob(null)
+            return@withLock null
         }
         val credentials = CredentialCodec.decode(plain)
         if (credentials == null) {
-            clear()
-            return null
+            blobStore.writeCredentialBlob(null)
+            return@withLock null
         }
-        return credentials
+        credentials
     }
 
     override suspend fun save(credentials: SavedCredentials) {
-        blobStore.writeCredentialBlob(cipher.encrypt(CredentialCodec.encode(credentials)))
+        lock.withLock {
+            blobStore.writeCredentialBlob(cipher.encrypt(CredentialCodec.encode(credentials)))
+        }
     }
 
     override suspend fun clear() {
-        blobStore.writeCredentialBlob(null)
+        lock.withLock {
+            blobStore.writeCredentialBlob(null)
+        }
     }
 }

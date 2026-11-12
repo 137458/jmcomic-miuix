@@ -155,4 +155,48 @@ class CustomDomainPoolTest {
         Thread.sleep(300L)
         assertEquals(false, fetched)
     }
+
+    @Test
+    fun `后台刷新与落盘失败时通过 Jm3Log 记录警告而不吞异常`() {
+        val originalSink = Jm3Log.sink
+        val warnings = mutableListOf<String>()
+        Jm3Log.sink = { tag, message, _ -> warnings += "$tag:$message" }
+        try {
+            val config = io.github.jukomu.jmcomic.core.config.JmConfiguration.Builder().build()
+            val context = io.github.jukomu.jmcomic.core.net.OkHttpBuilder.build(config)
+            val client = io.github.jukomu.jmcomic.core.client.impl.JmApiClient(
+                config, context.client, context.cookieManager, context.domainManager,
+            )
+            val done = java.util.concurrent.CountDownLatch(1)
+            refreshDomainPoolInBackground(
+                client = client,
+                custom = emptyList(),
+                fetchOfficial = {
+                    try {
+                        throw IllegalStateException("official list failed")
+                    } finally {
+                        done.countDown()
+                    }
+                },
+                delayMs = 0L,
+            )
+            done.await(3, java.util.concurrent.TimeUnit.SECONDS)
+            Thread.sleep(100L)
+
+            persistDomainPool(
+                client = client,
+                custom = listOf("a.example"),
+                onPoolRefreshed = { throw IllegalArgumentException("persist failed") },
+            )
+
+            val badProbeMethod = String::class.java.getDeclaredMethod("length")
+            assertNull(domainProbeOf(client, probeMethod = badProbeMethod))
+
+            assertEquals(true, warnings.any { it.contains("createDomainProbe") && it.contains("IllegalArgumentException") })
+            assertEquals(true, warnings.any { it.contains("IllegalStateException") })
+            assertEquals(true, warnings.any { it.contains("IllegalArgumentException") })
+        } finally {
+            Jm3Log.sink = originalSink
+        }
+    }
 }

@@ -13,7 +13,7 @@ class SessionOutcomeTest {
         val outcome = sessionOutcome { "追踪列表" }
 
         assertTrue(outcome is SessionOutcome.Ok)
-        assertEquals("追踪列表", (outcome as SessionOutcome.Ok).value)
+        assertEquals("追踪列表", outcome.value)
     }
 
     @Test
@@ -35,7 +35,7 @@ class SessionOutcomeTest {
         val outcome = sessionOutcome { throw IllegalStateException("HTTP 500") }
 
         assertTrue(outcome is SessionOutcome.Failed)
-        assertEquals("HTTP 500", (outcome as SessionOutcome.Failed).message)
+        assertEquals("HTTP 500", outcome.message)
     }
 
     @Test
@@ -44,7 +44,7 @@ class SessionOutcomeTest {
         val outcome = sessionOutcome { throw error }
 
         assertTrue(outcome is SessionOutcome.Failed)
-        assertEquals(error, (outcome as SessionOutcome.Failed).cause)
+        assertEquals(error, outcome.cause)
         assertEquals(error, classify(error).let { (it as SessionOutcome.Failed).cause })
     }
 
@@ -53,7 +53,7 @@ class SessionOutcomeTest {
         val outcome = sessionOutcome { throw IllegalStateException() }
 
         assertTrue(outcome is SessionOutcome.Failed)
-        assertEquals("列表加载失败", (outcome as SessionOutcome.Failed).messageOr("列表加载失败"))
+        assertEquals("列表加载失败", outcome.messageOr("列表加载失败"))
     }
 
     @Test

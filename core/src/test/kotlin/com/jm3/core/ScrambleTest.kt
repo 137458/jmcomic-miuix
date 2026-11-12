@@ -80,4 +80,15 @@ class ScrambleTest {
             )
         }
     }
+
+    @Test
+    fun 非ASCII文件名按UTF8与LocaleROOT计算一致() {
+        val filename = "测试插图_αβ"
+        val photoId = 500_000L
+        val digest = MessageDigest.getInstance("MD5")
+            .digest((photoId.toString() + filename).toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(java.util.Locale.ROOT, it) }
+        val expectedSegments = (digest.last().code % 8) * 2 + 2
+        assertEquals(expectedSegments, Scramble.numSegments(0L, photoId, filename))
+    }
 }

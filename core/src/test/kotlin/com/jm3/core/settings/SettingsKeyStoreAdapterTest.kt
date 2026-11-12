@@ -68,4 +68,21 @@ class SettingsKeyStoreAdapterTest {
         s.setIgnoredUpdateVersion("  ")
         assertNull(s.ignoredUpdateVersion())
     }
+
+    @Test
+    fun 删除搜索历史对入参归一且清空后写入null删除键() = runTest {
+        val rawMap = mutableMapOf<String, Any>()
+        val s = DelegatingSettings(MapKeyStore(rawMap))
+        s.addSearchHistory("两个 词")
+        s.addSearchHistory("另一个")
+
+        // 含首尾空白与折行的同义词也应命中删除
+        s.removeSearchHistory(" 两个\n词 ")
+        assertEquals(listOf("另一个"), s.searchHistory())
+
+        // 删除最后一项时底层存储必须写 null（移除键）而非留空串
+        s.removeSearchHistory(" 另一个 ")
+        assertEquals(emptyList(), s.searchHistory())
+        assertNull(rawMap[SettingsKeys.SEARCH_HISTORY])
+    }
 }

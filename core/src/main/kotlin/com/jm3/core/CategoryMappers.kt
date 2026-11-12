@@ -12,7 +12,7 @@ fun JmCategoryListItem.toCategoryNode(): CategoryNode = CategoryNode(
     name = name().orEmpty(),
     slug = slug().orEmpty(),
     totalAlbums = totalAlbums()?.toIntOrNull() ?: 0,
-    children = subCategories().map { sub ->
+    children = subCategories().orEmpty().map { sub ->
         CategoryNode(
             id = sub.cid().orEmpty(),
             name = sub.name().orEmpty(),
@@ -23,8 +23,8 @@ fun JmCategoryListItem.toCategoryNode(): CategoryNode = CategoryNode(
 
 /** 分类树：一级分类 + 标签区块。 */
 fun JmCategoryList.toCategoryTree(): CategoryTree = CategoryTree(
-    categories = categories().map { it.toCategoryNode() },
-    blocks = blocks().map { block ->
+    categories = categories().orEmpty().map { it.toCategoryNode() },
+    blocks = blocks().orEmpty().map { block ->
         CategoryBlock(
             title = block.title().orEmpty(),
             tags = block.content().orEmpty(),

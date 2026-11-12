@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /** 通知列表；标题/正文缺失时降级为空串，已读态直接透传。 */
 fun JmNotificationPage.toNotificationPage(): NotificationPage = NotificationPage(
@@ -60,7 +61,7 @@ private fun JsonElement.toNotificationUpdate(): NotificationUpdate? {
 }
 
 private fun JsonObject.fieldText(key: String): String? =
-    (this[key] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+    (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
 
 /**
  * 信箱条目展示标题。追更通知按更新条数生成（对照原版 NotificationList：

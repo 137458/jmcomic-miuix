@@ -56,8 +56,16 @@ private val domainProbeMethod: Method? by lazy {
 }
 
 /** 探活器取不到时返回 null，由调用方跳过整段刷新。 */
-private fun domainProbeOf(client: AbstractJmClient): DomainProbe? =
-    domainProbeMethod?.invoke(client) as? DomainProbe
+internal fun domainProbeOf(
+    client: AbstractJmClient,
+    probeMethod: Method? = domainProbeMethod,
+): DomainProbe? =
+    runCatching {
+        probeMethod?.invoke(client) as? DomainProbe
+    }.getOrElse { failure ->
+        Jm3Log.warn(TAG, "库内反射成员 createDomainProbe 调用失败（${failure.javaClass.name}），线路池刷新降级")
+        null
+    }
 
 /** 首屏之后再补跑线路表刷新的延迟：留出首屏请求的窗口，避免探活抢首屏带宽。 */
 private const val DOMAIN_REFRESH_DELAY_MS = 3_000L
@@ -107,6 +115,10 @@ internal fun refreshDomainPoolInBackground(
                     )
                 }
                 if (pool != null && !cancelled.get()) onPoolRefreshed(pool)
+            }.onFailure { failure ->
+                if (!cancelled.get()) {
+                    Jm3Log.warn(TAG, "后台刷新线路池失败（${failure.javaClass.name}），现有线路池保持不变")
+                }
             }
         } finally {
             scheduler.shutdown()
@@ -173,6 +185,8 @@ internal fun persistDomainPool(
         val manager = domainManagerOf(client) ?: return
         val pool = Domains.normalize(custom + manager.domains.toList())
         if (pool.isNotEmpty()) onPoolRefreshed(pool)
+    }.onFailure { failure ->
+        Jm3Log.warn(TAG, "落盘线路池失败（${failure.javaClass.name}），相关能力降级")
     }
 }
 

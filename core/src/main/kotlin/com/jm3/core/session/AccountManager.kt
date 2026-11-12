@@ -190,6 +190,7 @@ class AccountManager(
             val gateway = gatewayProvider()
             withContext(Dispatchers.IO) {
                 runCatchingSuspending { gateway.logout() }
+                sessionEpoch.incrementAndGet()
                 // 用户主动登出就是不想再自动登录：凭据与网关内存里的密码一起清掉
                 credentialLock.withLock {
                     runCatchingSuspending { credentials.clear() }
@@ -223,13 +224,19 @@ class AccountManager(
     suspend fun markSessionExpired() {
         val gateway = gatewayProvider()
         if (injectedGateway !== gateway) {
-            loadSession()?.let { inject(gateway, it) }
+            restoreLock.withLock {
+                val currentGateway = gatewayProvider()
+                if (injectedGateway !== currentGateway) {
+                    loadSession()?.let { inject(currentGateway, it) }
+                }
+            }
             return
         }
         val epochBefore = sessionEpoch.get()
         if (renewSession()) return
         storeLock.withLock {
             if (sessionEpoch.get() != epochBefore) return
+            sessionEpoch.incrementAndGet()
             runCatchingSuspending { store.clear() }
             _user.value = null
             injectedGateway = null
@@ -245,17 +252,18 @@ class AccountManager(
         val epochBefore = sessionEpoch.get()
         return renewLock.withLock {
             if (sessionEpoch.get() != epochBefore) return@withLock true
+            val gateway = gatewayProvider()
+            if (renewedGateway === gateway) return@withLock false
             val attempt = withContext(Dispatchers.IO) {
                 val saved = loadCredentials() ?: return@withContext null
-                val gateway = gatewayProvider()
                 renewedGateway = gateway
                 gateway to runCatchingSuspending { gateway.login(saved.username, saved.password) }
             }
             if (attempt == null) return@withLock sessionEpoch.get() != epochBefore
-            val (gateway, result) = attempt
+            val (attemptGateway, result) = attempt
             result
-                .onSuccess { session -> adopt(session, gateway) }
-                .onFailure { recordRenewFailure() }
+                .onSuccess { session -> adopt(session, attemptGateway, expectedEpoch = epochBefore) }
+                .onFailure { recordRenewFailure(expectedEpoch = epochBefore) }
                 // 失败的是这一次续期：期间用户可能已经手工登录成功，那这次失败就不能再被当成「会话作废」
                 .isSuccess || sessionEpoch.get() != epochBefore
         }
@@ -268,9 +276,11 @@ class AccountManager(
      * 服务端那边的失败次数还会一直涨。计数必须落盘，因为一次失败之后当前会话就被清掉，
      * 要等下次冷启动才会再试一次。
      */
-    private suspend fun recordRenewFailure() {
+    private suspend fun recordRenewFailure(expectedEpoch: Int? = null) {
+        if (expectedEpoch != null && sessionEpoch.get() != expectedEpoch) return
         withContext(Dispatchers.IO) {
             credentialLock.withLock {
+                if (expectedEpoch != null && sessionEpoch.get() != expectedEpoch) return@withLock
                 // 读不出来就别猜：按 0 起算会把已有的失败次数抹平，让该清的凭据多活几轮，放弃这次计数更保守
                 val current = runCatchingSuspending { store.renewFailureCount() }.getOrNull()
                     ?: return@withLock
@@ -308,16 +318,20 @@ class AccountManager(
     }
 
     /** 登录态落地：会话落盘、用户态刷新、当前网关视为已注入。 */
-    private suspend fun adopt(session: Jm3Session, gateway: SessionAuth) {
+    private suspend fun adopt(session: Jm3Session, gateway: SessionAuth, expectedEpoch: Int? = null) {
+        var adopted = false
         storeLock.withLock {
+            if (expectedEpoch != null && sessionEpoch.get() != expectedEpoch) return@withLock
             _user.value = session.user
             injectedGateway = gateway
+            renewedGateway = null
             openStartupGate()
             sessionEpoch.incrementAndGet()
             // 会话落盘后冷启动优先用 Cookie 恢复，不必每次都拿密码去登录一次
             runCatchingSuspending { store.save(session) }
+            adopted = true
         }
-        resetRenewFailures()
+        if (adopted) resetRenewFailures()
     }
 
     /**

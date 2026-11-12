@@ -1,5 +1,7 @@
 package com.jm3.core
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -91,5 +93,46 @@ class CredentialStorageTest {
 
         assertEquals(false, text.contains("top-secret"))
         assertEquals(true, text.contains("carol"))
+    }
+
+    @Test
+    fun `并发 load 坏密文与 save 时串行化防止清掉新写入的凭据`() = runBlocking {
+        val readStarted = CompletableDeferred<Unit>()
+        val releaseRead = CompletableDeferred<Unit>()
+        var storedBlob: String? = "corrupted-blob"
+        var gateEnabled = true
+        val blobStore = object : CredentialBlobStore {
+            override suspend fun readCredentialBlob(): String? {
+                val value = storedBlob
+                if (gateEnabled) {
+                    gateEnabled = false
+                    readStarted.complete(Unit)
+                    releaseRead.await()
+                }
+                return value
+            }
+
+            override suspend fun writeCredentialBlob(blob: String?) {
+                storedBlob = blob
+            }
+        }
+        val cipher = object : CredentialCipher {
+            override fun encrypt(plain: String): String = "enc:$plain"
+            override fun decrypt(encrypted: String): String {
+                if (!encrypted.startsWith("enc:")) error("bad blob")
+                return encrypted.removePrefix("enc:")
+            }
+        }
+        val store = EncryptedCredentialStore(blobStore, cipher)
+
+        val loading = launch { store.load() }
+        readStarted.await()
+        val fresh = SavedCredentials("alice", "new-secret")
+        val saving = launch { store.save(fresh) }
+        releaseRead.complete(Unit)
+        loading.join()
+        saving.join()
+
+        assertEquals(fresh, store.load())
     }
 }

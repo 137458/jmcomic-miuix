@@ -1,7 +1,5 @@
 package com.jm3.core.settings
 
-import com.jm3.core.CoverLocator
-
 /**
  * 搜索历史规则：折行、去空白、去重前移、按上限截断。
  *
@@ -24,8 +22,10 @@ object SearchHistory {
         return (listOf(normalized) + existing.filterNot { it == normalized }).take(LIMIT)
     }
 
-    fun remove(existing: List<String>, query: String): List<String> =
-        existing.filterNot { it == query }
+    fun remove(existing: List<String>, query: String): List<String> {
+        val normalized = normalize(query) ?: return existing
+        return existing.filterNot { it == normalized }
+    }
 
     /** 解码按行存储的文本：逐行归一，空行丢弃。 */
     fun decode(raw: String?): List<String> =

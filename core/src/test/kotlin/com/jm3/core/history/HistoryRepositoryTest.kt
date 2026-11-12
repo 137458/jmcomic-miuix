@@ -87,4 +87,14 @@ class HistoryRepositoryTest {
         now = 2L; r.upsert(entry("p2"))
         assertEquals(listOf("p2"), r.page(1, 10).map { it.photoId })
     }
+
+    @Test
+    fun 非法页大小或超大页码不溢出且返回空列表() = runTest {
+        val r = repo()
+        now = 1L; r.upsert(entry("p1"))
+
+        assertTrue(r.page(1, 0).isEmpty())
+        assertTrue(r.page(1, -5).isEmpty())
+        assertTrue(r.page(Int.MAX_VALUE, 20).isEmpty())
+    }
 }

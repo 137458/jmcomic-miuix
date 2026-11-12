@@ -43,11 +43,13 @@ class InMemoryHistoryRepository(private val clock: () -> Long = System::currentT
     }
 
     override suspend fun page(page: Int, pageSize: Int): List<HistoryEntry> {
-        if (page < 1) return emptyList()
+        if (page < 1 || pageSize <= 0) return emptyList()
         val all = entries.values.sortedByDescending { it.updatedAt }
-        val from = (page - 1) * pageSize
-        if (from >= all.size) return emptyList()
-        return all.subList(from, minOf(from + pageSize, all.size))
+        val fromLong = (page.toLong() - 1L) * pageSize.toLong()
+        if (fromLong >= all.size.toLong()) return emptyList()
+        val from = fromLong.toInt()
+        val to = minOf(fromLong + pageSize.toLong(), all.size.toLong()).toInt()
+        return all.subList(from, to)
     }
 
     override suspend fun latestForAlbum(albumId: String): HistoryEntry? =

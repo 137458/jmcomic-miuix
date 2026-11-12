@@ -924,4 +924,107 @@ class AccountManagerTest {
             singleDispatcher.close()
         }
     }
+
+    @Test
+    fun `并发 401 失效风暴只记一次续期失败并清会话不误清凭据`() = runBlocking {
+        val store = FakeSessionStore(stored = Jm3Session(user = testUser(), cookies = emptyList()))
+        val credentials = FakeCredentialStorage(SavedCredentials("isczjk", "secret"))
+        val loginStarted = CompletableDeferred<Unit>()
+        val releaseLogin = CountDownLatch(1)
+        var loginCount = 0
+        val gateway = fakeGateway(
+            onLogin = { _, _ ->
+                loginCount++
+                loginStarted.complete(Unit)
+                releaseLogin.await()
+                throw RuntimeException("網路逾時")
+            },
+        )
+        val account = account(store = store, credentials = credentials, gateway = { gateway })
+        account.restore()
+
+        val first = launch { account.markSessionExpired() }
+        loginStarted.await()
+        val others = List(4) { launch { account.markSessionExpired() } }
+        releaseLogin.countDown()
+        first.join()
+        others.forEach { it.join() }
+
+        assertEquals(1, loginCount)
+        assertEquals(1, store.renewFailures)
+        assertEquals(SavedCredentials("isczjk", "secret"), credentials.stored)
+        assertEquals(0, credentials.clearCount)
+        assertNull(account.user.value)
+        assertEquals(1, store.clearCount)
+    }
+
+    @Test
+    fun `markSessionExpired 续期失败期间并发 login 成功不记新凭据失败`() = runBlocking {
+        val stale = Jm3Session(user = testUser(), cookies = emptyList())
+        val fresh = Jm3Session(user = testUser().copy(username = "new_user"), cookies = emptyList())
+        val loginStarted = CompletableDeferred<Unit>()
+        val releaseRenew = CompletableDeferred<Unit>()
+        val store = FakeSessionStore(stored = stale)
+        val credentials = FakeCredentialStorage(SavedCredentials("old_user", "old_pw"))
+        val gateway = fakeGateway(
+            onLogin = { username, _ ->
+                if (username == "old_user") {
+                    loginStarted.complete(Unit)
+                    runBlocking { releaseRenew.await() }
+                    throw RuntimeException("帳號或密碼錯誤")
+                } else {
+                    fresh
+                }
+            },
+        )
+        val account = account(store = store, credentials = credentials, gateway = { gateway })
+        account.restore()
+
+        val expiring = launch { account.markSessionExpired() }
+        loginStarted.await()
+        assertNull(account.login("new_user", "new_pw"))
+        releaseRenew.complete(Unit)
+        expiring.join()
+
+        assertEquals(0, store.renewFailures)
+        assertEquals(SavedCredentials("new_user", "new_pw"), credentials.stored)
+        assertEquals(0, credentials.clearCount)
+        assertEquals(fresh.user, account.user.value)
+    }
+
+    @Test
+    fun `markSessionExpired 补注入路径与 logout 并发时不会在登出后回注会话`() = runBlocking {
+        val session = Jm3Session(
+            user = testUser(),
+            cookies = listOf(CookieSnapshot("AVS", "token", "18comic.vip", "/")),
+        )
+        val logoutGate = CompletableDeferred<Unit>()
+        val releaseLogout = CompletableDeferred<Unit>()
+        var reinjectedAfterLogout = false
+        val firstGateway = fakeGateway()
+        var currentGateway: SessionAuth = object : SessionAuth by firstGateway {
+            override fun logout() {
+                logoutGate.complete(Unit)
+                runBlocking { releaseLogout.await() }
+            }
+        }
+        val store = FakeSessionStore(stored = session)
+        val account = account(store = store, gateway = { currentGateway })
+        account.restore()
+
+        // logout 持 restoreLock 卡在 gateway.logout() 时切到新网关，使 markSessionExpired 走补注入分支
+        val loggingOut = launch { account.logout() }
+        logoutGate.await()
+        currentGateway = fakeGateway(onRestoreSession = { reinjectedAfterLogout = true })
+
+        val expiring = launch { account.markSessionExpired() }
+        yield()
+        releaseLogout.complete(Unit)
+        loggingOut.join()
+        expiring.join()
+
+        assertFalse(reinjectedAfterLogout)
+        assertNull(account.user.value)
+        assertNull(store.stored)
+    }
 }

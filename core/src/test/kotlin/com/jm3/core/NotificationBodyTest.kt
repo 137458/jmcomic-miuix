@@ -51,6 +51,20 @@ class NotificationBodyTest {
     }
 
     @Test
+    fun updatesWithJsonNullFieldsSkipNullTitlesAndDegradeFieldsToNull() {
+        val content = """[{"comicId":null,"comicTitle":null,"updateDate":null},""" +
+            """{"comicId":null,"comicTitle":"作品戊","updateDate":null}]"""
+        assertEquals(
+            NotificationBody.Updates(
+                listOf(
+                    NotificationUpdate(comicId = null, comicTitle = "作品戊", updateDate = null),
+                ),
+            ),
+            notificationBody(content),
+        )
+    }
+
+    @Test
     fun emptyArrayBecomesEmptyUpdates() {
         assertEquals(NotificationBody.Updates(emptyList()), notificationBody(" [] "))
     }

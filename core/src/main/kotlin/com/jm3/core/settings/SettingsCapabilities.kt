@@ -113,7 +113,8 @@ interface SearchHistorySettings : SettingsKeyStore {
 
     suspend fun removeSearchHistory(query: String) {
         updateString(SettingsKeys.SEARCH_HISTORY) { raw ->
-            SearchHistory.encode(SearchHistory.remove(SearchHistory.decode(raw), query))
+            val next = SearchHistory.remove(SearchHistory.decode(raw), query)
+            if (next.isEmpty()) null else SearchHistory.encode(next)
         }
     }
 

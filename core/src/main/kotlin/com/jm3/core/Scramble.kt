@@ -1,6 +1,7 @@
 package com.jm3.core
 
 import java.security.MessageDigest
+import java.util.Locale
 
 /**
  * 禁漫图片分割数计算（与 JM 端 scramble 算法一致）。
@@ -25,5 +26,7 @@ object Scramble {
     }
 
     private fun md5Hex(s: String): String =
-        MessageDigest.getInstance("MD5").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+        MessageDigest.getInstance("MD5")
+            .digest(s.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(Locale.ROOT, it) }
 }

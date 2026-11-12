@@ -90,4 +90,14 @@ class CoverLocatorTest {
         assertNull(locator.image(null))
         assertNull(locator.image("  "))
     }
+
+    @Test
+    fun 大写协议头原样保留且协议相对路径补全为https() {
+        val locator = CoverLocator.of("cdn.example.com")
+        assertEquals("HTTPS://other.example.com/a.png", locator.image("HTTPS://other.example.com/a.png"))
+        assertEquals("Http://other.example.com/a.png", locator.image("Http://other.example.com/a.png"))
+        assertEquals("https://other.example.com/a.png", locator.image("//other.example.com/a.png"))
+        assertEquals("https://other.example.com/a.png", CoverLocator.Unready.image("//other.example.com/a.png"))
+        assertNull(locator.image("//"))
+    }
 }
