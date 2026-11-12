@@ -24,6 +24,8 @@
 
 ### 优化
 
+- 优化了 ColorOS 检查更新页排版与交互视觉：参考 OShin 软件更新页结构重构 `CouiUpdateScreen`，顶部采用暖橙至钴蓝折射玻璃弧面光感底纹卡呈现 `Release` 标识、状态大字、软件版本对照与发布元信息（含安装包大小），更新日志卡片支持按版本状态默认展开或折叠预览（长日志可通过「查看更多更新说明 > / 收起更新说明 ↑」切换），底部固定居中 40dp 留白主操作栏并配有 250ms 平滑填充的下载进度指示。
+- 优化了 ColorOS 作品详情页主按钮与功能瓦片的圆角一致性：`CouiPrimaryActionButton` 与 `CouiDetailActionTile`、`CouiDownloadMenuRow` 统一采用 `16dp`（`CouiDetailButtonShape`）圆角轮廓。
 - 优化了 ColorOS 首页推荐搜索词质感并统一了首页各分区边距：新增公共 `CouiTagCapsulePill` 与 `CouiHeaderCapsuleAction`，为热词与标签提供 0.5dp 自适应微边与深浅色对比表面并移除撑大 `FlowRow` 行距的 48dp 外扩占位；「最近更新」首行紧贴分组标题对齐至统一 8dp 节奏，加载/失败/空态切换为 `CouiGroupRow` 对齐分组标题间距，搜索头部分段控件与摘要留白同步收敛。
 - 优化了 ColorOS 作品详情页排版层级并按 ColorOS「软件更新」范式重构了更新页：作品详情 `CouiAlbumHeroCard` 优化作者胶囊、可点击复制 JM 车号与统计指标标签并增加标签区分割线，主阅读按钮与四项常用操作收拢进统一行动卡片，简介/章节标题按钮对齐胶囊风格、章节上次阅读行补齐状态胶囊与组头方向箭头；`CouiUpdateScreen` 重构为顶部版本徽标 Hero 主卡（含动态检测徽标、版本胶囊、内嵌下载进度条与单一全宽胶囊主按钮），下方顺接更新日志卡、更新设置与版本信息分组。
 - 优化了 ColorOS（COUI）分类「更多分类」弹窗、详情页主次交互与首页热词区：为「更多分类」弹窗顶部增加关键字过滤输入框、清除键、限高分区滚动容器与空态提示；将漫画与小说详情页操作区拆分为全宽主题高亮主阅读大按钮与等宽图标功能栏，区隔于尾部标签；首页推荐搜索词收拢进带右侧「展开/收起」按钮的「热门搜索」分组，设置与资料等弹窗选择行统一补充 `ChevronsUpDown` 指示图标。
@@ -83,6 +85,9 @@
 
 ### 修复
 
+- 修复了 ColorOS 更新日志超链接不可点击及裸网址未识别的问题：为 `CouiTypography` 的 `CouiBodyText` 与 `CouiCustomStyledText` 补充 `AnnotatedString` 重载并在 `CouiUpdateScreen` 的标题、条目与段落块接入 `parseInlineNotes`，同时扩展 `parseInlineNotes` 支持 `<https://...>` 与文本内裸 `http/https` 网址（自动剥离尾部中英文标点，行内代码内网址保持字面量）。
+- 修复了榜单/浏览页「每周更新」加载失败的问题：由于库内 `JmApiClient.getSerialization` 未传 `type` 与 `date` 查询参数且误按搜索页 `content` 字段解析，`GET /serialization` 返回「參數錯誤」或空列表；现通过 `LibraryBridge.serializationJson` 补传 `type=all&date=0&page=<n>` 并由 `SerializationParser` 解析 `list`、字符串/数值 `total` 与 `error` 错误分支。
+- 修复了分类标签结果页在进入详情并打开阅读器后返回直接跳回分类页的问题：导航栈深于 `opaqueDepth` 销毁主页面时 `remember` 态的 `tagKeyword` 丢失，现将在 HyperOS `BrowseScreen`（并补充系统返回键 `BackHandler`）与 ColorOS `CouiBrowseScreen` 中改为 `rememberSaveable` 保存并在重建后自动补拉空白标签结果。
 - 修复了已签到后「我的」页签到状态不显示、仅手动点击「立即签到」才刷新的问题：在 `SettingsRepository`（`jm3_settings`）按账号持久化最后确认已签到的本地日期并同步缓存至 `SessionCache`（跨午夜自动失效），抽出双皮肤共用的 `CheckInCoordinator` 在初屏与切页遭遇服务端 CDN 旧缓存时保持「今日已签到」并补齐当天进度，兼容服务端繁/简体重复签到提示，并扩展 `CheckInMappers` 支持 `MM-dd` 与带时间后缀格式的日期解析。
 - 修复了 ColorOS 浏览页「更多分类」弹窗及详情回复弹窗材质不统一的问题：剥离 `CouiMoreCategoriesDialog` 内部嵌套的不透明 `Group` 与 `CouiEmptyGroup` 卡片，通过共享的 `couiDialogSurfaceColor()`、`couiDialogSurfaceBorder()` 与玻璃质感 `CouiTagCapsulePill` 直接承接 `couiDialogMaterial()` 磨砂玻璃表面，并同步将筛选输入栏与详情回复输入框改用半透明表面与微边线。
 - 修复了 ColorOS（COUI）阅读器 HUD 渲染、弹窗材质统一性、签到图标及页面底部安全边距问题：为漫画与小说阅读器顶栏接入 `TopAppBarSurface` 顶部渐进模糊，拆分顶/底栏投影与焦散几何参数，启用前景合成 `foregroundComposition = true` 与 `4dp` 采样外扩并将内层按胶囊裁剪，消除顶栏下方白色光晕；底栏外壳、降级分段器与 5 项动作触发指示器统一改为 `CouiCapsuleShape` 等分宽胶囊槽位；剥离设置诊断与漫画/小说阅读器全部弹窗内遮挡玻璃材质的实底 `Group` 包装，全端评论/回复/过滤输入框统一圆角形状；个人页未签到状态图标由易产生歧义的对勾改为日历图标、已签到保留完成勾；全 COUI 页面统一底部安全净空口径与输入法避让。
