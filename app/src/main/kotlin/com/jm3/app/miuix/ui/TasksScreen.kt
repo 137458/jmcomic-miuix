@@ -177,7 +177,7 @@ fun TasksScreen(
         scope.launch {
             val outcome = deps.authCall.call {
                 // 勋章图与 API 同域；封面域名未就绪时退回当前 API 域名，仍为空才不展示图片
-                val host = runCatching { deps.gateway.imageHost() }
+                val host = runCatching { deps.images.imageHost() }
                     .getOrDefault("")
                     .ifBlank { runCatching { deps.routes.usedDomain() }.getOrNull().orEmpty() }
                 TasksUiState.Loaded(deps.gateway.tasks(requestType, requestFilter), host)

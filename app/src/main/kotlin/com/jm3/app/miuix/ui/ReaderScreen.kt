@@ -315,7 +315,7 @@ fun ReaderScreen(
         }
         is ReaderUiState.Loaded -> {
             LaunchedEffect(s.photo.photoId) {
-                val coverUrl = (deps.authCall.call { deps.gateway.coverUrl(s.photo.albumId) } as? SessionOutcome.Ok)?.value
+                val coverUrl = (deps.authCall.call { deps.images.coverUrl(s.photo.albumId) } as? SessionOutcome.Ok)?.value
                 runCatchingSuspending {
                     deps.history.upsert(
                         HistoryEntry(

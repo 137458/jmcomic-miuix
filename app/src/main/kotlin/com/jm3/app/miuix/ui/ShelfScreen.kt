@@ -71,8 +71,8 @@ fun ShelfScreen(
 
     // 图片域名整个屏幕只取一次：网关取域名是阻塞方法，AuthCall 负责等待会话恢复并切到 IO；
     // 取不到或会话失效时留空串，封面由 CoverLocator.cover 返回 null 退化为占位，不影响行内容与按钮
-    LaunchedEffect(deps.gateway, deps.authCall) {
-        imageHost = deps.authCall.call { deps.gateway.imageHost() }.orDegrade("")
+    LaunchedEffect(deps.images, deps.authCall) {
+        imageHost = deps.authCall.call { deps.images.imageHost() }.orDegrade("")
     }
 
     GlassScaffold(

@@ -149,7 +149,7 @@ internal fun CouiTasksScreen(
             if (refreshingTab == targetTypeIdx) refreshingTab = null
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    val host = (deps.authCall.call { deps.gateway.imageHost() } as? SessionOutcome.Ok)
+                    val host = (deps.authCall.call { deps.images.imageHost() } as? SessionOutcome.Ok)
                         ?.value
                         .orEmpty()
                         .ifBlank {

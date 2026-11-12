@@ -64,7 +64,22 @@ interface DomainRoutes {
     /** 重新探测全部域名。阻塞调用。 */
     fun reprobeDomains()
 }
-interface Jm3Gateway : SessionAuth, PhotoSource, DomainRoutes {
+
+/**
+ * 图片地址面：只关心「去哪取图」的屏幕用这一面。
+ *
+ * 与内容接口分开，是因为关心点不同：书架、任务页与阅读器只要图片域名和一个相册的封面地址，
+ * 不必认识搜索、评论、收藏这些内容方法；实现仍是同一个网关对象，消费侧却可以只依赖这一面。
+ */
+interface ImageAddressing {
+    /** 封面地址；域名未就绪等场景返回 null。 */
+    fun coverUrl(albumId: String, size: String = "_3x4"): String?
+
+    /** 图片域名（媒体与 API 同域），用于拼接勋章图等相对路径；未就绪时返回空串。阻塞调用。 */
+    fun imageHost(): String
+}
+
+interface Jm3Gateway : SessionAuth, PhotoSource, DomainRoutes, ImageAddressing {
     /** 搜索。scope 对应原版搜索类型（站内/作品/作者/标签/登场人物），time 由服务端过滤时间范围。阻塞调用。 */
     fun search(
         text: String,
@@ -116,9 +131,6 @@ interface Jm3Gateway : SessionAuth, PhotoSource, DomainRoutes {
     /** 切换连载追踪。阻塞调用。 */
     fun setTracking(albumId: String)
 
-    /** 封面地址；域名未就绪等场景返回 null。 */
-    fun coverUrl(albumId: String, size: String = "_3x4"): String?
-
     // 鉴权面（login/logout/restoreSession/primeCredentials/forgetCredentials/currentCookies）
     // 由父接口 SessionAuth 声明，见 core/src/main/kotlin/com/jm3/core/SessionAuth.kt。
 
@@ -158,9 +170,6 @@ interface Jm3Gateway : SessionAuth, PhotoSource, DomainRoutes {
      * 对应原版 POST tasks：`{ type, uid, task_id }`，称号与勋章共用同一入口。
      */
     fun claimTask(type: TaskType, uid: String, taskId: String): String?
-
-    /** 图片域名（媒体与 API 同域），用于拼接勋章图等相对路径；未就绪时返回空串。阻塞调用。 */
-    fun imageHost(): String
 
     /** 个人资料。阻塞调用。 */
     fun userProfile(uid: String): UserProfile
