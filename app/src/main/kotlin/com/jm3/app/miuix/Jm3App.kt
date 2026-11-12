@@ -92,6 +92,7 @@ import com.jm3.app.miuix.ui.coui.page.CouiWeekScreen
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.glass.LocalGlassStyle
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.route.SkinRoute
 import com.jm3.app.miuix.ui.route.SkinWindowBackdrop
 import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
@@ -576,6 +577,15 @@ fun Jm3App() {
             // 挂在路由里的话，路由之外的弹窗（启动更新提示）拿不到源，库会直接抛异常。
             SkinWindowBackdrop(uiSkin = uiSkin) { windowModifier ->
                 Box(modifier = Modifier.fillMaxSize().then(windowModifier)) {
+                    // 导航目标表：屏幕只认语义动作，路由构造集中在这里
+                    val nav = remember(backStack) {
+                        AppRoutes(
+                            push = { route -> backStack.add(route) },
+                            replaceTop = { route ->
+                                if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = route
+                            },
+                        )
+                    }
                     NavDisplay(
                         backStack = backStack,
                         onBack = popBack,
@@ -585,21 +595,21 @@ fun Jm3App() {
                         ),
                     ) {
                         entry<Route.Main> {
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
-                            val openFavorites: () -> Unit = { backStack.add(Route.Favorites) }
-                            val openHistory: () -> Unit = { backStack.add(Route.History) }
-                            val openShelf: () -> Unit = { backStack.add(Route.Shelf) }
-                            val openSettings: () -> Unit = { backStack.add(Route.Settings) }
-                            val openWeek: () -> Unit = { backStack.add(Route.Week) }
-                            val openNotifications: () -> Unit = { backStack.add(Route.Notifications) }
-                            val openTracking: () -> Unit = { backStack.add(Route.Tracking) }
-                            val openProfile: () -> Unit = { backStack.add(Route.Profile) }
-                            val openTasks: () -> Unit = { backStack.add(Route.Tasks) }
-                            val openWatchHistory: () -> Unit = { backStack.add(Route.WatchHistory) }
-                            val openForum: () -> Unit = { backStack.add(Route.Forum) }
-                            val openNovel: () -> Unit = { backStack.add(Route.Novel) }
-                            val openLibrary: () -> Unit = { backStack.add(Route.Library) }
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openLogin: () -> Unit = nav::login
+                            val openFavorites: () -> Unit = nav::favorites
+                            val openHistory: () -> Unit = nav::history
+                            val openShelf: () -> Unit = nav::shelf
+                            val openSettings: () -> Unit = nav::settings
+                            val openWeek: () -> Unit = nav::week
+                            val openNotifications: () -> Unit = nav::notifications
+                            val openTracking: () -> Unit = nav::tracking
+                            val openProfile: () -> Unit = nav::profile
+                            val openTasks: () -> Unit = nav::tasks
+                            val openWatchHistory: () -> Unit = nav::watchHistory
+                            val openForum: () -> Unit = nav::forum
+                            val openNovel: () -> Unit = nav::novelList
+                            val openLibrary: () -> Unit = nav::library
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -664,8 +674,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -691,8 +701,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openReader: (String) -> Unit = { photoId -> backStack.add(Route.Reader(photoId)) }
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openReader: (String) -> Unit = nav::reader
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -718,7 +728,7 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openReader: (String) -> Unit = { photoId -> backStack.add(Route.Reader(photoId)) }
+                            val openReader: (String) -> Unit = nav::reader
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -733,7 +743,7 @@ fun Jm3App() {
                             transition = subPageTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
-                            val openUpdate: () -> Unit = { backStack.add(Route.Update) }
+                            val openUpdate: () -> Unit = nav::update
                             val changeThemeMode: (ThemeMode) -> Unit = { mode ->
                                 themeModeName = mode.name
                                 scope.launch { deps.settings.setThemeMode(mode) }
@@ -801,8 +811,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -828,8 +838,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -859,8 +869,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -888,7 +898,7 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -914,7 +924,7 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -940,8 +950,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -969,8 +979,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
+                            val openLogin: () -> Unit = nav::login
+                            val openAlbum: (String) -> Unit = nav::album
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -997,13 +1007,10 @@ fun Jm3App() {
                             transition = albumDetailTransition,
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
-                            val openReader: (String, Int?) -> Unit = { photoId, startPage ->
-                                backStack.add(Route.Reader(photoId, startPage))
-                            }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openSearch: (String, SearchScope) -> Unit =
-                                { query, scope -> backStack.add(Route.Search(query, scope)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openReader: (String, Int?) -> Unit = nav::readerAt
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openSearch: (String, SearchScope) -> Unit = nav::search
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1053,11 +1060,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openChapter: (String) -> Unit = { nextPageId ->
-                                // 同层替换：返回键回到详情页，而不是逐章回退
-                                if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = Route.Reader(nextPageId)
-                            }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openChapter: (String) -> Unit = nav::nextChapter
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1091,8 +1095,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openNovel: (String) -> Unit = { novelId -> backStack.add(Route.NovelDetail(novelId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openNovel: (String) -> Unit = nav::novelDetail
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1120,13 +1124,10 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openNovel: (String) -> Unit = { novelId -> backStack.add(Route.NovelDetail(novelId)) }
-                            val openReader: (String, String) -> Unit = { novelId, chapterId ->
-                                backStack.add(Route.NovelReader(novelId, chapterId))
-                            }
-                            val openSearch: (String, SearchScope) -> Unit =
-                                { query, scope -> backStack.add(Route.Search(query, scope)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openNovel: (String) -> Unit = nav::novelDetail
+                            val openReader: (String, String) -> Unit = nav::novelReader
+                            val openSearch: (String, SearchScope) -> Unit = nav::search
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1160,7 +1161,7 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1190,10 +1191,9 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) {
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openCreator: (String) -> Unit =
-                                { creatorId -> backStack.add(Route.Creator(creatorId)) }
-                            val openWork: (String) -> Unit = { workId -> backStack.add(Route.CreatorWork(workId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openCreator: (String) -> Unit = nav::creator
+                            val openWork: (String) -> Unit = nav::creatorWork
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1223,8 +1223,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openWork: (String) -> Unit = { workId -> backStack.add(Route.CreatorWork(workId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openWork: (String) -> Unit = nav::creatorWork
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1232,7 +1232,7 @@ fun Jm3App() {
                                         deps = deps,
                                         creatorId = route.creatorId,
                                         onBack = back,
-                                        onOpenCreator = { creatorId -> backStack.add(Route.Creator(creatorId)) },
+                                        onOpenCreator = nav::creator,
                                         onOpenWork = openWork,
                                         snackbarHostState = snackbarHostState,
                                         onOpenLogin = openLogin,
@@ -1255,8 +1255,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openWork: (String) -> Unit = { workId -> backStack.add(Route.CreatorWork(workId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openWork: (String) -> Unit = nav::creatorWork
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1285,8 +1285,8 @@ fun Jm3App() {
                             swipeDismiss = NavSwipeDirection.LeftToRight,
                         ) { route ->
                             val back: () -> Unit = { backStack.removeLastOrNull() }
-                            val openAlbum: (String) -> Unit = { albumId -> backStack.add(Route.AlbumDetail(albumId)) }
-                            val openLogin: () -> Unit = { backStack.add(Route.Login) }
+                            val openAlbum: (String) -> Unit = nav::album
+                            val openLogin: () -> Unit = nav::login
                             SkinRoute(
                                 uiSkin = uiSkin,
                                 hyperOs = {
@@ -1330,12 +1330,12 @@ fun Jm3App() {
                                 onDownload = {
                                     startupRelease = null
                                     pendingStartup.apk?.let { asset -> deps.updateDownloader.start(asset) }
-                                    backStack.add(Route.Update)
+                                    nav.update()
                                 },
                                 onOpenRelease = {
                                     startupRelease = null
                                     if (!openUpdateReleasePage(context, pendingStartup.htmlUrl)) {
-                                        backStack.add(Route.Update)
+                                        nav.update()
                                     }
                                 },
                                 onIgnore = { version ->
