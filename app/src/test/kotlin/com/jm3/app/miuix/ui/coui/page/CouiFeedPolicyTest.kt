@@ -151,4 +151,28 @@ class CouiFeedPolicyTest {
         assertEquals(4, couiBrowseHeadCount(isCategoryMode = false, hasTagNav = true, hasWeeklyPaging = false))
         assertEquals(5, couiBrowseHeadCount(isCategoryMode = false, hasTagNav = true, hasWeeklyPaging = true))
     }
+
+    @Test
+    fun `榜单模式周更展开为独立卡片后按标题加条数计入列表头项`() {
+        assertEquals(
+            9,
+            couiBrowseHeadCount(
+                isCategoryMode = false,
+                hasTagNav = false,
+                hasWeeklyPaging = true,
+                weeklyItemCount = 5,
+                hasWeeklyFooter = false,
+            ),
+        )
+        assertEquals(
+            11,
+            couiBrowseHeadCount(
+                isCategoryMode = false,
+                hasTagNav = true,
+                hasWeeklyPaging = true,
+                weeklyItemCount = 5,
+                hasWeeklyFooter = true,
+            ),
+        )
+    }
 }

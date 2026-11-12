@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.itos.coui.backdrop.rememberCouiBackdrop
 import com.itos.coui.chip.ChipTabButton
@@ -78,7 +80,10 @@ import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.asListState
+import com.jm3.app.miuix.ui.browseTagCacheKey
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
+import com.jm3.app.miuix.ui.normalizeBrowseTagKeyword
+import com.jm3.app.miuix.ui.shouldReloadRestoredTag
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
@@ -158,7 +163,7 @@ private const val HOT_TAG_LIMIT = 12
  *
  * 「每周连载更新」取 gateway.serialization(1)（与首页同一接口），
  * 「更多分类」取 gateway.categoriesList() 的标签区块；两者与筛选无关，进页各加载一次。
- * 点标签进入本页的标签检索视图，不写 SessionCache：标签组合无限多，缓存只会污染缓存表。
+ * 点标签进入本页的标签检索视图，结果同步写入 SessionCache 的 BrowseTag 键以便退栈直接复用。
  */
 @Composable
 internal fun CouiBrowseScreen(
@@ -209,11 +214,14 @@ internal fun CouiBrowseScreen(
     // 热门标签：与子分类一起构成结果列表之前的标签导航；拿不到就整块隐藏
     var hotTags by remember { mutableStateOf(emptyList<String>()) }
 
-    // 激活标签保留在 Saveable 状态中：进入作品详情再开阅读器导致主页面销毁重建后仍停留在标签结果
+    // 激活标签保留在 Saveable 状态中；首屏与续页按 BrowseTag 键进 SessionCache，退栈重建后首帧即可恢复滚动位置
     var tagKeyword by rememberSaveable { mutableStateOf<String?>(null) }
-    var tagFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
-    var tagLoading by remember { mutableStateOf(false) }
-    var tagFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
+    val tagCacheKey = browseTagCacheKey(tagKeyword, order)
+    var tagFeed by remember(tagCacheKey) {
+        mutableStateOf((tagCacheKey?.let { sessionCache.stateOrNull(it) } as? ListState.Loaded)?.feed ?: PagedFeed())
+    }
+    var tagLoading by remember(tagCacheKey) { mutableStateOf(false) }
+    var tagFailure by remember(tagCacheKey) { mutableStateOf<ScreenLoadPlan?>(null) }
     var tagToken by remember { mutableIntStateOf(0) }
 
     // 分类只认分类 + 排序，榜单只认时间 + 排序：两套口径与旧页一致
@@ -317,17 +325,24 @@ internal fun CouiBrowseScreen(
     fun loadTag(keyword: String) {
         tagToken++
         val token = tagToken
+        val targetOrder = order
         tagLoading = true
         tagFailure = null
         tagFeed = PagedFeed()
         scope.launch {
             val outcome = authCall.call {
-                gateway.search(text = keyword, page = 1, order = order, scope = SearchScope.TAG)
+                gateway.search(text = keyword, page = 1, order = targetOrder, scope = SearchScope.TAG)
             }
             if (token != tagToken) return@launch
             tagLoading = false
             when (outcome) {
-                is SessionOutcome.Ok -> tagFeed = outcome.value.toFeed()
+                is SessionOutcome.Ok -> {
+                    val nextFeed = outcome.value.toFeed()
+                    tagFeed = nextFeed
+                    browseTagCacheKey(keyword, targetOrder)?.let {
+                        sessionCache.remember(it, ListState.Loaded(nextFeed))
+                    }
+                }
                 else -> tagFailure =
                     planLoad(outcome, hasContent = false, failureMessage = "标签加载失败")
             }
@@ -336,6 +351,7 @@ internal fun CouiBrowseScreen(
 
     fun loadMoreTag() {
         val keyword = tagKeyword ?: return
+        val targetOrder = order
         val current = tagFeed
         val requested = current.beginLoadMore()
         if (requested === current) return
@@ -347,20 +363,27 @@ internal fun CouiBrowseScreen(
                 gateway.search(
                     text = keyword,
                     page = requested.page + 1,
-                    order = order,
+                    order = targetOrder,
                     scope = SearchScope.TAG,
                 )
             }
             if (token != tagToken) return@launch
-            tagFeed = when (outcome) {
+            val updated = when (outcome) {
                 is SessionOutcome.Ok -> requested.appendedBy(outcome.value)
                 else -> requested.failLoadMore()
+            }
+            tagFeed = updated
+            if (outcome is SessionOutcome.Ok) {
+                browseTagCacheKey(keyword, targetOrder)?.let {
+                    sessionCache.remember(it, ListState.Loaded(updated))
+                }
             }
         }
     }
 
     fun jumpToTagPage(target: Int) {
         val keyword = tagKeyword ?: return
+        val targetOrder = order
         val current = tagFeed
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
@@ -369,13 +392,17 @@ internal fun CouiBrowseScreen(
         tagLoading = true
         scope.launch {
             val outcome = authCall.call {
-                gateway.search(text = keyword, page = resolved, order = order, scope = SearchScope.TAG)
+                gateway.search(text = keyword, page = resolved, order = targetOrder, scope = SearchScope.TAG)
             }
             if (token != tagToken) return@launch
             tagLoading = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    tagFeed = outcome.value.toFeed()
+                    val nextFeed = outcome.value.toFeed()
+                    tagFeed = nextFeed
+                    browseTagCacheKey(keyword, targetOrder)?.let {
+                        sessionCache.remember(it, ListState.Loaded(nextFeed))
+                    }
                     lazyState.animateScrollToItem(0)
                 }
 
@@ -386,16 +413,28 @@ internal fun CouiBrowseScreen(
     }
 
     fun openTag(keyword: String) {
-        val trimmed = keyword.trim()
-        if (trimmed.isEmpty()) return
+        val trimmed = normalizeBrowseTagKeyword(keyword) ?: return
         tagKeyword = trimmed
-        loadTag(trimmed)
+        val key = browseTagCacheKey(trimmed, order)
+        val cached = key?.let { sessionCache.stateOrNull(it) } as? ListState.Loaded
+        if (cached != null) {
+            tagFeed = cached.feed
+            tagLoading = false
+            tagFailure = null
+        } else {
+            loadTag(trimmed)
+        }
     }
 
-    LaunchedEffect(tagKeyword) {
-        val active = com.jm3.app.miuix.ui.normalizeBrowseTagKeyword(tagKeyword) ?: return@LaunchedEffect
-        if (com.jm3.app.miuix.ui.shouldReloadRestoredTag(active, tagFeed.items.size, tagLoading, tagFailure != null)) {
-            loadTag(active)
+    LaunchedEffect(tagCacheKey) {
+        val key = tagCacheKey ?: return@LaunchedEffect
+        val cached = sessionCache.stateOrNull(key) as? ListState.Loaded
+        if (cached != null && tagFeed.items.isEmpty()) {
+            tagFeed = cached.feed
+            tagLoading = false
+            tagFailure = null
+        } else if (shouldReloadRestoredTag(key.keyword, tagFeed.items.size, tagLoading, tagFailure != null)) {
+            loadTag(key.keyword)
         }
     }
 
@@ -404,7 +443,10 @@ internal fun CouiBrowseScreen(
         if (sessionCache.hasPage(SessionListKey.Browse(pageKey))) return@LaunchedEffect
         refresh()
     }
-    PaginationModeReloadEffect(pageMode) { refresh() }
+    PaginationModeReloadEffect(pageMode) {
+        refresh()
+        normalizeBrowseTagKeyword(tagKeyword)?.let(::loadTag)
+    }
     LaunchedEffect(deps.gateway, deps.authCall) {
         loadWeekly()
         // 分类树失败只让「更多分类」退化成一行提示，不打断主列表
@@ -425,6 +467,8 @@ internal fun CouiBrowseScreen(
         isCategoryMode = mode == BrowseMode.CATEGORY,
         hasTagNav = hasTagNav,
         hasWeeklyPaging = weeklyFeed.items.isNotEmpty(),
+        weeklyItemCount = weeklyFeed.items.size,
+        hasWeeklyFooter = weeklyFeed.items.isNotEmpty() && weeklyFailure != null,
     )
 
     /*
@@ -582,20 +626,11 @@ internal fun CouiBrowseScreen(
                             items = tagItems,
                             key = { result -> "coui-tag-row-${result.id}" },
                         ) { result ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        horizontal = CouiPageDefaults.horizontalMargin,
-                                        vertical = CouiWorkCardTokens.RowSpacing / 2,
-                                    ),
-                            ) {
-                                CouiBrowseResultRow(
-                                    result = result,
-                                    rank = null,
-                                    onClick = { onOpenAlbum(result.id) },
-                                )
-                            }
+                            CouiBrowseRowSlot(
+                                result = result,
+                                rank = null,
+                                onClick = { onOpenAlbum(result.id) },
+                            )
                         }
                         item(key = "coui-tag-paging") {
                             if (clickPaging) {
@@ -666,26 +701,16 @@ internal fun CouiBrowseScreen(
                     }
                 }
                 if (mode == BrowseMode.RANK) {
-                    // 榜单模式仍就地保留每周连载更新与续页脚
-                    item(key = "coui-browse-weekly") {
-                        CouiWeeklyGroup(
-                            feed = weekly,
-                            loading = weeklyIsLoading,
-                            failure = weeklyFail,
-                            onRetry = { loadWeekly() },
-                            onOpenLogin = onOpenLogin,
-                            onOpenAlbum = onOpenAlbum,
-                        )
-                    }
-                    if (weekly.items.isNotEmpty()) {
-                        item(key = "coui-browse-weekly-paging") {
-                            CouiLoadMoreFooter(
-                                feed = weekly,
-                                errorMessage = WEEKLY_LOAD_MORE_FAILED,
-                                onRetry = { loadMoreWeekly() },
-                            )
-                        }
-                    }
+                    // 榜单模式仍就地保留每周连载更新（与其余列表统一为独立浮岛行卡）与续页脚
+                    couiWeeklySection(
+                        feed = weekly,
+                        loading = weeklyIsLoading,
+                        failure = weeklyFail,
+                        onRetry = { loadWeekly() },
+                        onLoadMore = { loadMoreWeekly() },
+                        onOpenLogin = onOpenLogin,
+                        onOpenAlbum = onOpenAlbum,
+                    )
                 }
 
                 when (feedState) {
@@ -744,24 +769,15 @@ internal fun CouiBrowseScreen(
                                 items = feed.items,
                                 key = { index, result -> "coui-browse-row-${result.id}-$index" },
                             ) { index, result ->
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(
-                                            horizontal = CouiPageDefaults.horizontalMargin,
-                                            vertical = CouiWorkCardTokens.RowSpacing / 2,
-                                        ),
-                                ) {
-                                    CouiBrowseResultRow(
-                                        result = result,
-                                        rank = if (mode == BrowseMode.RANK) {
-                                            displayRank(clickPaging, feed.page, stride, index)
-                                        } else {
-                                            null
-                                        },
-                                        onClick = { onOpenAlbum(result.id) },
-                                    )
-                                }
+                                CouiBrowseRowSlot(
+                                    result = result,
+                                    rank = if (mode == BrowseMode.RANK) {
+                                        displayRank(clickPaging, feed.page, stride, index)
+                                    } else {
+                                        null
+                                    },
+                                    onClick = { onOpenAlbum(result.id) },
+                                )
                             }
                             item(key = "coui-browse-paging") {
                                 if (clickPaging) {
@@ -1161,8 +1177,9 @@ private fun CouiWeeklyUpdatesDialog(
             )
 
             else -> {
+                val layoutSpec = couiWeeklyCardLayoutSpec(inDialog = true)
                 feed.items.forEachIndexed { index, result ->
-                    if (index > 0) Divider()
+                    if (index > 0) Spacer(modifier = Modifier.height(layoutSpec.cardSpacingDp.dp))
                     CouiBrowseResultRow(
                         result = result,
                         rank = null,
@@ -1203,39 +1220,82 @@ private fun CouiWeeklyUpdatesDialog(
  * 续页脚在卡外单独成项：[CouiLoadMoreFooter] 自带卡片，套进本 Group 会变成卡中卡。
  */
 @Composable
-private fun CouiWeeklyGroup(
+private fun CouiBrowseRowSlot(
+    result: SearchResult,
+    rank: Int?,
+    onClick: () -> Unit,
+    horizontalMargin: Dp = CouiPageDefaults.horizontalMargin,
+    verticalPadding: Dp = CouiWorkCardTokens.RowSpacing / 2,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = horizontalMargin, vertical = verticalPadding),
+    ) {
+        CouiBrowseResultRow(
+            result = result,
+            rank = rank,
+            onClick = onClick,
+        )
+    }
+}
+
+private fun LazyListScope.couiWeeklySection(
     feed: PagedFeed<SearchResult>,
     loading: Boolean,
     failure: ScreenLoadPlan?,
     onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
     onOpenLogin: () -> Unit,
     onOpenAlbum: (String) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        CouiGroupTitle(title = "每周连载更新")
-        when {
-            loading && feed.items.isEmpty() -> CouiLoadingGroup(text = "正在加载每周更新…")
+    val layoutSpec = couiWeeklyCardLayoutSpec(inDialog = false)
+    if (feed.items.isEmpty()) {
+        item(key = "coui-browse-weekly") {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                CouiGroupTitle(title = "每周连载更新")
+                when {
+                    loading -> CouiLoadingGroup(text = "正在加载每周更新…")
 
-            failure != null && feed.items.isEmpty() -> CouiScreenFailureGroup(
-                message = failure.message,
-                expired = failure.phase == ScreenLoadPhase.Expired,
-                onRetry = onRetry,
-                onOpenLogin = onOpenLogin,
-            )
-
-            feed.items.isEmpty() -> CouiEmptyGroup(text = "暂无每周更新")
-
-            else -> Group(footer = failure?.message) {
-                feed.items.forEachIndexed { index, result ->
-                    if (index > 0) Divider()
-                    CouiBrowseResultRow(
-                        result = result,
-                        rank = null,
-                        onClick = { onOpenAlbum(result.id) },
+                    failure != null -> CouiScreenFailureGroup(
+                        message = failure.message,
+                        expired = failure.phase == ScreenLoadPhase.Expired,
+                        onRetry = onRetry,
+                        onOpenLogin = onOpenLogin,
                     )
+
+                    else -> CouiEmptyGroup(text = "暂无每周更新")
                 }
             }
         }
+        return
+    }
+    item(key = "coui-browse-weekly-title") {
+        CouiGroupTitle(title = "每周连载更新")
+    }
+    itemsIndexed(
+        items = feed.items,
+        key = { index, result -> "coui-weekly-row-${result.id}-$index" },
+    ) { _, result ->
+        CouiBrowseRowSlot(
+            result = result,
+            rank = null,
+            onClick = { onOpenAlbum(result.id) },
+            horizontalMargin = layoutSpec.horizontalMarginDp.dp,
+            verticalPadding = layoutSpec.cardSpacingDp.dp / 2,
+        )
+    }
+    failure?.message?.let { message ->
+        item(key = "coui-browse-weekly-footer") {
+            Footer(text = message)
+        }
+    }
+    item(key = "coui-browse-weekly-paging") {
+        CouiLoadMoreFooter(
+            feed = feed,
+            errorMessage = WEEKLY_LOAD_MORE_FAILED,
+            onRetry = onLoadMore,
+        )
     }
 }
 

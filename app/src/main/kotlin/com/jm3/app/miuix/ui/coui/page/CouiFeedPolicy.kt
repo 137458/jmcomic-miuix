@@ -2,6 +2,8 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import com.itos.coui.layout.CouiPageDefaults
+import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.shouldLoadMore
 import kotlin.math.ceil
@@ -88,8 +90,34 @@ internal fun couiBrowseHeadCount(
     isCategoryMode: Boolean,
     hasTagNav: Boolean,
     hasWeeklyPaging: Boolean = false,
+    weeklyItemCount: Int = 0,
+    hasWeeklyFooter: Boolean = false,
 ): Int = if (isCategoryMode) {
     2 + if (hasTagNav) 1 else 0
 } else {
-    3 + (if (hasTagNav) 1 else 0) + (if (hasWeeklyPaging) 1 else 0)
+    val weeklyCount = if (weeklyItemCount > 0) {
+        1 + weeklyItemCount + (if (hasWeeklyFooter) 1 else 0)
+    } else {
+        1
+    }
+    2 + (if (hasTagNav) 1 else 0) + weeklyCount + (if (hasWeeklyPaging) 1 else 0)
 }
+
+/**
+ * 每周更新卡片的容器规格：统一切换为与其他 COUI 页面一致的独立浮岛行卡，
+ * 不再包在外层 Group 内，也不在卡片之间插分割线。
+ */
+internal data class CouiWeeklyCardLayoutSpec(
+    val wrapInGroup: Boolean,
+    val showDivider: Boolean,
+    val cardSpacingDp: Float,
+    val horizontalMarginDp: Float,
+)
+
+internal fun couiWeeklyCardLayoutSpec(inDialog: Boolean): CouiWeeklyCardLayoutSpec =
+    CouiWeeklyCardLayoutSpec(
+        wrapInGroup = false,
+        showDivider = false,
+        cardSpacingDp = CouiWorkCardTokens.RowSpacing.value,
+        horizontalMarginDp = if (inDialog) 0f else CouiPageDefaults.horizontalMargin.value,
+    )
