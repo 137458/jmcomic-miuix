@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.blur.RuntimeShader
 import top.yukonga.miuix.kmp.blur.asBrush
@@ -45,10 +47,15 @@ internal class InteractiveHighlight(
     private val pressProgressAnimation = Animatable(0f, 0.001f)
     private val positionAnimation = Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold)
     private var startPosition = Offset.Zero
+    private var pressJob: Job? = null
+    private var snapJob: Job? = null
 
     // 平滑阶跃聚光点；不支持 RuntimeShader 或编译失败时退化为径向渐变（线性衰减而非 S 曲线）。
     private val spotShader: RuntimeShader? =
         createSpotShaderOrNull(isRuntimeShaderSupported()) { RuntimeShader(SPOT_SHADER) }
+
+    // 缓存 ShaderBrush：Uniform 更新复用同一个 RuntimeShader 实例，避免每帧绘制重建画刷。
+    private val spotBrush: Brush? = spotShader?.asBrush()
 
     val modifier: Modifier = Modifier.drawWithContent {
         val progress = pressProgressAnimation.value
@@ -64,12 +71,13 @@ internal class InteractiveHighlight(
                 y = pos.y.coerceIn(0f, size.height),
             )
             val spotColor = Color.White.copy(alpha = 0.12f * progress)
-            if (spotShader != null) {
+            val brush = spotBrush
+            if (spotShader != null && brush != null) {
                 spotShader.setColorUniform("color", spotColor)
                 spotShader.setFloatUniform("radius", radius)
                 spotShader.setFloatUniform("position", center.x, center.y)
                 drawRect(
-                    brush = spotShader.asBrush(),
+                    brush = brush,
                     blendMode = BlendMode.Plus,
                 )
             } else {
@@ -94,7 +102,9 @@ internal class InteractiveHighlight(
         inspectDragGestures(
             onDragStart = { down ->
                 startPosition = down.position
-                animationScope.launch {
+                pressJob?.cancel()
+                snapJob?.cancel()
+                pressJob = animationScope.launch {
                     launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
                     launch { positionAnimation.snapTo(startPosition) }
                 }
@@ -102,12 +112,17 @@ internal class InteractiveHighlight(
             onDragEnd = { release() },
             onDragCancel = { release() },
         ) { change, _ ->
-            animationScope.launch { positionAnimation.snapTo(change.position) }
+            snapJob?.cancel()
+            snapJob = animationScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                positionAnimation.snapTo(change.position)
+            }
         }
     }
 
     private fun release() {
-        animationScope.launch {
+        pressJob?.cancel()
+        snapJob?.cancel()
+        pressJob = animationScope.launch {
             launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
             launch { positionAnimation.animateTo(startPosition, positionAnimationSpec) }
         }

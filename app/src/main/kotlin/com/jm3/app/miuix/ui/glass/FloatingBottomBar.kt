@@ -57,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.fastRoundToInt
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BadgedBox
@@ -272,6 +274,7 @@ fun FloatingBottomBar(
     var currentDragValue by remember { mutableFloatStateOf(selectedIndex().toFloat()) }
 
     val dampedDragAnimation = remember(animationScope, tabsCount, density, isLtr) {
+        var offsetSnapJob: Job? = null
         DampedDragAnimation(
             animationScope = animationScope,
             initialValue = selectedIndex().toFloat(),
@@ -303,7 +306,8 @@ fun FloatingBottomBar(
                 val isSwitched = dropIndex != currentSelectedIndex()
 
                 animateToValue(dropIndex.toFloat())
-                animationScope.launch {
+                offsetSnapJob?.cancel()
+                offsetSnapJob = animationScope.launch {
                     offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
                 }
                 if (isSwitched || isTapOnSameTab) {
@@ -316,7 +320,8 @@ fun FloatingBottomBar(
                     currentDragValue = (currentDragValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
                         .fastCoerceIn(0f, (tabsCount - 1).toFloat())
                     updateValue(currentDragValue)
-                    animationScope.launch {
+                    offsetSnapJob?.cancel()
+                    offsetSnapJob = animationScope.launch(start = CoroutineStart.UNDISPATCHED) {
                         offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x)
                     }
                 }
@@ -401,11 +406,9 @@ fun FloatingBottomBar(
         BottomBarActiveTabsLayer(
             isLiquidGlassMode = isLiquidGlassMode,
             backdrop = backdrop,
-            pillShape = pillShape,
             panelOffsetState = panelOffsetState,
             dampedDragAnimation = dampedDragAnimation,
             colors = colors,
-            containerColor = containerColor,
             interactiveHighlight = interactiveHighlight,
             tabsBackdrop = tabsBackdrop,
             content = content,

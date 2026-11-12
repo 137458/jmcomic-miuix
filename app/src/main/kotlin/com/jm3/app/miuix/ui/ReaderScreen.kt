@@ -76,8 +76,10 @@ import com.jm3.app.miuix.data.download.decodePhotoPages
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.core.runCatchingSuspending
+import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.history.HistoryEntry
+import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
@@ -180,6 +182,30 @@ sealed interface ReaderUiState {
     data class Failed(val message: String, val sessionExpired: Boolean = false) : ReaderUiState
 }
 
+internal fun resolveReaderLoadedState(
+    photo: PhotoPages,
+    savedRecord: DownloadRecord?,
+    detail: AlbumDetail?,
+): ReaderUiState.Loaded {
+    val resolvedAlbumId = photo.albumId.ifBlank { savedRecord?.albumId.orEmpty() }
+    val resolvedTitle = photo.title.ifBlank {
+        savedRecord?.title?.takeIf { it.isNotBlank() } ?: detail?.title.orEmpty()
+    }
+    val resolvedPhoto = if (resolvedAlbumId == photo.albumId && resolvedTitle == photo.title) {
+        photo
+    } else {
+        photo.copy(albumId = resolvedAlbumId, title = resolvedTitle)
+    }
+    val sortedChapters = detail?.chapters?.sortedBy { it.sortOrder }.orEmpty()
+    return ReaderUiState.Loaded(
+        photo = resolvedPhoto,
+        chapters = sortedChapters,
+        chapterIndex = sortedChapters.indexOfFirst { it.id == resolvedPhoto.photoId },
+        favorited = detail?.favorited == true,
+        liked = detail?.liked == true,
+    )
+}
+
 /**
  * 首载结局 → 阅读器失败态；成功返回 null，由调用方继续走内容分支。
  *
@@ -207,7 +233,7 @@ fun ReaderScreen(
     // 首载与重试共享一次去重：新一次加载先取消上一次，结局写回前校验代际，
     // 避免连点重试并行发出多个 gateway.photo，旧响应覆盖新状态。
     val loadGate = remember(photoId) { ReaderLoadGate() }
-    var loadJob by remember(photoId) { mutableStateOf<Job?>(null) }
+    var loadJob by remember { mutableStateOf<Job?>(null) }
 
     // 优先读已下载落盘数据，缺失时回退网关；首载与失败重试复用同一段请求
     suspend fun loadContent() {
@@ -233,13 +259,7 @@ fun ReaderScreen(
                 val detail = (deps.authCall.call { deps.gateway.album(albumId) } as? SessionOutcome.Ok)?.value
                 // 期间又发起了新的加载：本次结局作废，不覆盖新状态
                 if (!loadGate.isLatest(token)) return
-                state = ReaderUiState.Loaded(
-                    photo = photo,
-                    chapters = detail?.chapters.orEmpty(),
-                    chapterIndex = detail?.chapters?.indexOfFirst { it.id == photo.photoId } ?: -1,
-                    favorited = detail?.favorited == true,
-                    liked = detail?.liked == true,
-                )
+                state = resolveReaderLoadedState(photo = photo, savedRecord = saved?.record, detail = detail)
             }
 
             else -> {
@@ -257,6 +277,8 @@ fun ReaderScreen(
     }
 
     LaunchedEffect(photoId) {
+        // 同槽位切换 photoId 时先取消前一个章节的在途加载，避免旧请求继续占位或竞争状态
+        loadJob?.cancel()
         // 首载也要登记 Job：失败重试入口靠它取消在途加载，注释与实现才一致
         loadJob = scope.launch { loadContent() }
     }
@@ -559,13 +581,19 @@ private fun ReaderPages(
                 target - 1
             }
             scope.launch {
-                pagerState.springAnimateToPage(clampPagerTarget(pagerTarget, pagerPageCount))
-                pagePlan = settleJump(pagePlan, target)
+                try {
+                    pagerState.springAnimateToPage(clampPagerTarget(pagerTarget, pagerPageCount))
+                } finally {
+                    pagePlan = settleJump(pagePlan, target)
+                }
             }
         } else {
             scope.launch {
-                listState.scrollToItem(target - 1)
-                pagePlan = settleJump(pagePlan, target)
+                try {
+                    listState.scrollToItem(target - 1)
+                } finally {
+                    pagePlan = settleJump(pagePlan, target)
+                }
             }
         }
     }
@@ -660,7 +688,7 @@ private fun ReaderPages(
     // 转屏或分屏改变可用宽度时，pager 的页数会切换单/双页语义：
     // 用当前单页锚点重新定位到对应的跨页，避免把「第 4 页」直接当成第 4 屏而错位。
     LaunchedEffect(spreadActive, horizontal, pagerPageCount) {
-        if (!horizontal || pagerPageCount <= 0) return@LaunchedEffect
+        if (!progressRestored || !horizontal || pagerPageCount <= 0) return@LaunchedEffect
         val page = pagePlan.currentPage.coerceIn(1, totalPages)
         val index = if (spreadActive) {
             ReaderSpreadPolicy.spreadIndexForPage(page, photo.images.size)
@@ -1589,7 +1617,6 @@ private fun ReaderPage(
                 modifier
             },
         ) {
-            if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
             ZoomableAsyncImage(
                 model = request,
                 contentDescription = null,
@@ -1599,6 +1626,7 @@ private fun ReaderPage(
                 onClick = tapHandler,
                 modifier = Modifier.fillMaxSize(),
             )
+            if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
         }
         return
     }
@@ -1621,7 +1649,6 @@ private fun ReaderPage(
         modifier
     }
     Box(modifier = contentModifier.then(tapModifier)) {
-        if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
         AsyncImage(
             model = request,
             contentDescription = null,
@@ -1642,6 +1669,7 @@ private fun ReaderPage(
             onError = { failed = true },
             modifier = Modifier.fillMaxSize(),
         )
+        if (failed) ReaderLoadFailedHint { failed = false; retryKey++ }
     }
 }
 

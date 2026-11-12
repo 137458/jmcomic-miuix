@@ -156,7 +156,7 @@ internal fun AlbumDetailScreen(
     val scope = rememberCoroutineScope()
     val skin = LocalSkin.current
     // 预览图与阅读页共用同一套图片加载器（含同一份缓存），避免再建第二个 loader
-    val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles)
+    val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles, authCall)
 
     var uiSnapshot by rememberSaveable(albumId, stateSaver = AlbumDetailUiSnapshotSaver) {
         mutableStateOf(AlbumDetailUiSnapshot())
@@ -539,12 +539,16 @@ internal fun AlbumDetailScreen(
                         var splitFraction by rememberSaveable {
                             mutableStateOf(wide.defaultDetailSplitFraction)
                         }
+                        val clampedSplitFraction = WideLayoutPolicy.clampDetailSplitFraction(
+                            fraction = splitFraction,
+                            availableWidthDp = wide.contentWidthDp,
+                        )
                         val dividerTouchWidthPx = with(LocalDensity.current) {
                             WideLayoutPolicy.DETAIL_DIVIDER_TOUCH_WIDTH_DP.dp.toPx()
                         }
                         BoxWithConstraints(
                             // 分栏分支也要限宽：否则 1280dp 下两栏各自横跨到窗口边缘
-                            modifier = Modifier.fillMaxSize().padding(innerPadding).readableWidth(),
+                            modifier = Modifier.fillMaxSize().readableWidth(),
                         ) {
                             // 比例只作用于扣掉分隔条后的可分空间；两栏各有独立滚动状态
                             val paneWidthPx = (constraints.maxWidth.toFloat() - dividerTouchWidthPx)
@@ -552,8 +556,8 @@ internal fun AlbumDetailScreen(
                             Row(modifier = Modifier.fillMaxSize()) {
                                 TrackedLazyColumn(
                                     state = listState,
-                                    contentPadding = PaddingValues(0.dp),
-                                    modifier = Modifier.weight(splitFraction).fillMaxHeight(),
+                                    contentPadding = innerPadding,
+                                    modifier = Modifier.weight(clampedSplitFraction).fillMaxHeight(),
                                 ) {
                                     headerItem()
                                     infoItems(wideDetail)
@@ -561,7 +565,7 @@ internal fun AlbumDetailScreen(
                                 DetailSplitHandle(
                                     onDragPx = { dragPx ->
                                         splitFraction = WideLayoutPolicy.clampDetailSplitFraction(
-                                            fraction = splitFraction + dragPx / paneWidthPx,
+                                            fraction = clampedSplitFraction + dragPx / paneWidthPx,
                                             availableWidthDp = wide.contentWidthDp,
                                         )
                                     },
@@ -569,8 +573,8 @@ internal fun AlbumDetailScreen(
                                 )
                                 TrackedLazyColumn(
                                     state = rightListState,
-                                    contentPadding = PaddingValues(0.dp),
-                                    modifier = Modifier.weight(1f - splitFraction).fillMaxHeight(),
+                                    contentPadding = innerPadding,
+                                    modifier = Modifier.weight(1f - clampedSplitFraction).fillMaxHeight(),
                                 ) {
                                     previewItems()
                                     chapterItems(wideDetail)
@@ -637,7 +641,8 @@ internal fun AlbumDetailScreen(
                         cornerRadius = skin.shapes.sheetCorner,
                         onDismissRequest = stateHolder::closeFolderSheet,
                     ) {
-                        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        // 水平内边距由抽屉自带，这里只补垂直间距，与下方按钮左右对齐
+                        Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                             val allLabel = uiState.folders["0"] ?: "全部收藏"
                             BasicComponent(
                                 title = allLabel,

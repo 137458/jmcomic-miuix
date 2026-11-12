@@ -42,7 +42,6 @@ import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
 import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
-import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
 import top.yukonga.miuix.kmp.blur.highlight.Highlight
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -125,11 +124,9 @@ internal fun BottomBarBaseLayer(
 internal fun BottomBarActiveTabsLayer(
     isLiquidGlassMode: Boolean,
     backdrop: Backdrop?,
-    pillShape: Shape,
     panelOffsetState: State<Float>,
     dampedDragAnimation: DampedDragAnimation,
     colors: FloatingBottomBarColors,
-    containerColor: Color,
     interactiveHighlight: InteractiveHighlight?,
     tabsBackdrop: LayerBackdrop,
     content: @Composable RowScope.() -> Unit,
@@ -149,19 +146,6 @@ internal fun BottomBarActiveTabsLayer(
                     .alpha(0f)
                     .layerBackdrop(tabsBackdrop)
                     .graphicsLayer { translationX = panelOffsetState.value }
-                    .drawBackdrop(
-                        backdrop = backdrop,
-                        shape = { pillShape },
-                        effects = {
-                            vibrancy()
-                            blur(4.dp.toPx(), 4.dp.toPx())
-                            lens(
-                                refractionHeight = 24.dp.toPx(),
-                                refractionAmount = 24.dp.toPx(),
-                            )
-                        },
-                        onDrawSurface = { drawRect(containerColor) },
-                    )
                     .then(interactiveHighlight?.modifier ?: Modifier)
                     .height(tokens.height)
                     .padding(tokens.innerPadding),

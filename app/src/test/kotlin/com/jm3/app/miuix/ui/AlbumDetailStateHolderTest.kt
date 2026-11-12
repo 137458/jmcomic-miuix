@@ -622,4 +622,30 @@ class AlbumDetailStateHolderTest {
 
         testScope.cancel()
     }
+
+    @Test
+    fun 评论输入超过上限时自动截断至最大长度() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val holder = AlbumDetailStateHolder(
+            albumId = "123",
+            gateway = fakeGateway(),
+            history = InMemoryHistoryRepository(),
+            scope = testScope,
+            showMessage = {},
+            authCall = AuthCall(NoopGate, UnconfinedTestDispatcher(testScheduler)),
+            onOpenLogin = {},
+            engagement = AlbumEngagementStore(),
+        )
+
+        val withinLimit = "短评".repeat(10)
+        holder.setCommentText(withinLimit)
+        assertEquals(withinLimit, holder.commentDraft.value)
+
+        val oversized = "字".repeat(COMMENT_REPLY_MAX_LENGTH + 50)
+        holder.setCommentText(oversized)
+        assertEquals(COMMENT_REPLY_MAX_LENGTH, holder.commentDraft.value.length)
+        assertEquals("字".repeat(COMMENT_REPLY_MAX_LENGTH), holder.commentDraft.value)
+
+        testScope.cancel()
+    }
 }

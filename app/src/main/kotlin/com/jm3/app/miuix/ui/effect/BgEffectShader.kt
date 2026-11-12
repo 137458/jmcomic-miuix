@@ -82,7 +82,11 @@ const val BG_EFFECT_FRAG = """
         }
 
         float oppositeNoise = smoothstep(0., 1., noiseValue);
-        color.rgb /= color.a;
+        if (color.a > 1e-4) {
+            color.rgb /= color.a;
+        } else {
+            color.rgb = vec3(0.0);
+        }
         vec3 hsv = rgb2hsv(color.rgb);
         hsv.y = mix(hsv.y, 0.0, oppositeNoise * uSaturateOffset);
         color.rgb = hsv2rgb(hsv);

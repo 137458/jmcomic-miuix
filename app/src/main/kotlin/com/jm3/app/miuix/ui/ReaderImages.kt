@@ -25,6 +25,8 @@ import com.jm3.core.model.PageImage
 import com.jm3.core.session.AuthCall
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.FileSystem
@@ -41,6 +43,32 @@ class ReaderKeyer : Keyer<PageImage> {
     }
 }
 
+/** 按缓存键做单飞互斥：同键并发竞争时只让首个请求读网/写盘，后续方直接复用已落盘快照。 */
+internal class ReaderKeyLockPool {
+    private class Entry(val mutex: Mutex = Mutex(), var refs: Int = 0)
+
+    private val guard = Any()
+    private val entries = HashMap<String, Entry>()
+
+    suspend fun <T> withKey(key: String, block: suspend () -> T): T {
+        val entry = synchronized(guard) {
+            entries.getOrPut(key) { Entry() }.also { it.refs++ }
+        }
+        return try {
+            entry.mutex.withLock { block() }
+        } finally {
+            synchronized(guard) {
+                entry.refs--
+                if (entry.refs == 0 && entries[key] === entry) {
+                    entries.remove(key)
+                }
+            }
+        }
+    }
+
+    internal fun activeKeyCount(): Int = synchronized(guard) { entries.size }
+}
+
 /** 取图：已下载页读本地文件，否则经网关在线取（含分割还原字节）。 */
 class ReaderFetcherFactory(
     private val gateway: Jm3Gateway,
@@ -53,6 +81,8 @@ class ReaderFetcherFactory(
      */
     private val authCall: () -> AuthCall? = { null },
 ) : Fetcher.Factory<PageImage> {
+    private val keyLocks = ReaderKeyLockPool()
+
     override fun create(data: PageImage, options: Options, imageLoader: ImageLoader): Fetcher = Fetcher {
         // 字节来源只有一处：磁盘缓存命中就直接复用，命中不到再取。
         // 必须走磁盘缓存：telephoto 的分块超采样只能从磁盘缓存快照构造，
@@ -66,41 +96,51 @@ class ReaderFetcherFactory(
                 dataSource = DataSource.DISK,
             )
         }
-        // 页列表下标 0 起，落盘页号 1 起，统一经 PageNumbers 换算。
-        val pageNo = PageNumbers.pageNo(data.index)
-        val local = store
-            ?.takeIf { it.exists(data.photoId, pageNo) }
-            ?.let { withContext(Dispatchers.IO) { it.read(data.photoId, pageNo) } }
-        val bytes = local ?: fetchRemote(data)
-        val dataSource = if (local != null) DataSource.DISK else DataSource.NETWORK
-        // 无磁盘缓存（例如页面误用了不带缓存的 ImageLoader）时退回内存流
-        val editor = diskCache?.openEditor(cacheKey)
-            ?: return@Fetcher SourceFetchResult(
-                source = ImageSource(Buffer().apply { write(bytes) }, FileSystem.SYSTEM),
-                mimeType = null,
-                dataSource = dataSource,
-            )
-        try {
-            diskCache.fileSystem.write(editor.data) { write(bytes) }
-            val snapshot = editor.commitAndOpenSnapshot()
-            if (snapshot == null) {
-                // 提交成功但快照打不开（极少数情况）：本次退回内存流，条目下次命中仍可用
-                SourceFetchResult(
+        keyLocks.withKey(cacheKey) {
+            // 同键前序请求刚刚提交快照时，竞争方直接复用磁盘 FileImageSource，不重复取图也不退回内存流
+            diskCache?.openSnapshot(cacheKey)?.let { snapshot ->
+                return@withKey SourceFetchResult(
+                    source = ImageSource(snapshot.data, diskCache.fileSystem, cacheKey, snapshot),
+                    mimeType = null,
+                    dataSource = DataSource.DISK,
+                )
+            }
+            // 页列表下标 0 起，落盘页号 1 起，统一经 PageNumbers 换算。
+            val pageNo = PageNumbers.pageNo(data.index)
+            val local = store
+                ?.takeIf { it.exists(data.photoId, pageNo) }
+                ?.let { withContext(Dispatchers.IO) { it.read(data.photoId, pageNo) } }
+            val bytes = local ?: fetchRemote(data)
+            val dataSource = if (local != null) DataSource.DISK else DataSource.NETWORK
+            // 无磁盘缓存（例如页面误用了不带缓存的 ImageLoader）时退回内存流
+            val editor = diskCache?.openEditor(cacheKey)
+                ?: return@withKey SourceFetchResult(
                     source = ImageSource(Buffer().apply { write(bytes) }, FileSystem.SYSTEM),
                     mimeType = null,
                     dataSource = dataSource,
                 )
-            } else {
-                SourceFetchResult(
-                    source = ImageSource(snapshot.data, diskCache.fileSystem, cacheKey, snapshot),
-                    mimeType = null,
-                    dataSource = dataSource,
-                )
+            try {
+                diskCache.fileSystem.write(editor.data) { write(bytes) }
+                val snapshot = editor.commitAndOpenSnapshot()
+                if (snapshot == null) {
+                    // 提交成功但快照打不开（极少数情况）：本次退回内存流，条目下次命中仍可用
+                    SourceFetchResult(
+                        source = ImageSource(Buffer().apply { write(bytes) }, FileSystem.SYSTEM),
+                        mimeType = null,
+                        dataSource = dataSource,
+                    )
+                } else {
+                    SourceFetchResult(
+                        source = ImageSource(snapshot.data, diskCache.fileSystem, cacheKey, snapshot),
+                        mimeType = null,
+                        dataSource = dataSource,
+                    )
+                }
+            } catch (t: Throwable) {
+                // 写盘或提交失败时放弃这次编辑，避免留下半截缓存条目
+                editor.abort()
+                throw t
             }
-        } catch (t: Throwable) {
-            // 写盘或提交失败时放弃这次编辑，避免留下半截缓存条目
-            editor.abort()
-            throw t
         }
     }
 
@@ -113,10 +153,13 @@ class ReaderFetcherFactory(
         return when (val outcome = call.call { gateway.imageBytes(data) }) {
             is SessionOutcome.Ok -> outcome.value
             SessionOutcome.Expired -> throw IOException(SessionOutcome.Expired.message)
-            is SessionOutcome.Failed -> throw IOException(failureCopy(outcome.cause, "图片加载失败"))
+            is SessionOutcome.Failed -> throw IOException(readerRemoteFailureMessage(outcome))
         }
     }
 }
+
+internal fun readerRemoteFailureMessage(outcome: SessionOutcome.Failed): String =
+    failureCopy(outcome, "图片加载失败")
 
 // 进程级共享的阅读器 ImageLoader。Coil3 对同一磁盘目录只保留一个 DiskCache 实例，
 // 按屏创建再按屏 shutdown 会让旧屏在换章重叠时序下关掉新屏正在用的缓存，
@@ -151,7 +194,7 @@ internal fun shouldReuseReaderLoader(held: ReaderLoaderKey?, next: ReaderLoaderK
  * 会话通道的运行期引用：共享 loader 只建一次，所以不能在构建时把 [AuthCall] 固定进取图工厂，
  * 否则后接线的调用方永远读不到新值。
  */
-internal class ReaderAuthChannel(private var authCall: AuthCall? = null) {
+internal class ReaderAuthChannel(@Volatile private var authCall: AuthCall? = null) {
     /** 只接受接线：省略参数的调用方传 null，不许清掉别处已经接好的会话闸门。 */
     fun wire(authCall: AuthCall?) {
         if (authCall != null) this.authCall = authCall

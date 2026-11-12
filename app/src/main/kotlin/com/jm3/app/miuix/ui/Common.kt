@@ -86,6 +86,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.VerticalScrollBar
 import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
+import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.layout.DialogDefaults
@@ -485,6 +486,8 @@ fun LoadMoreOnScroll(
  * 只由 [TrackedLazyColumn] 在同一层 [Box] 内调用，轨道内边距与列表内边距共用同一份参数；
  * 调用方不再手工让两者对齐，也不必自己决定要不要滚动条。
  */
+// ScrollBar 目前在 Miuix 标记为实验 API（warning 级别），仅此处显式表态使用
+@OptIn(ExperimentalScrollBarApi::class)
 @Composable
 private fun BoxScope.ListScrollBar(
     listState: LazyListState,
@@ -557,6 +560,10 @@ private fun SearchResultCard(
     }
 }
 
+/** 多页列表底部入口可见性：总页数大于 1、仍有下一页或已翻到第 2 页起均需展示分页/加载区。 */
+internal fun shouldShowPagedFooter(feed: PagedFeed<*>): Boolean =
+    feed.items.isNotEmpty() && ((feed.pageCount ?: 1) > 1 || feed.hasMore || feed.page > 1)
+
 /**
  * 搜索/浏览共用的结果列表与加载更多入口；是否还有下一页、在不在拉、上次是否失败都由 [PagedFeed] 回答。
  *
@@ -592,7 +599,7 @@ fun LazyListScope.searchResultItems(
         )
     }
     // 单页结果（如每周必看）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
-    if (feed.items.isNotEmpty() && (feed.pageCount ?: 1) > 1) {
+    if (shouldShowPagedFooter(feed)) {
         if (clickPaging && onPageChange != null) {
             item(key = "pager") {
                 PagerBar(
@@ -701,7 +708,12 @@ fun LazyListScope.pagedSearchResultItems(
         SearchResultCard(result = result, onClick = { onOpenAlbum(result.id) })
     }
     item(key = "pager") {
-        PagerBar(page = feed.page, totalPages = feed.pageCount ?: 1, onPageChange = onPageChange)
+        PagerBar(
+            page = feed.page,
+            totalPages = feed.pageCount,
+            hasMore = feed.hasMore,
+            onPageChange = onPageChange,
+        )
     }
 }
 
@@ -914,7 +926,7 @@ fun LazyStaggeredGridScope.rankResultGrid(
         )
     }
     // 单页结果（筛选后只有一页）不展示加载更多区；多页列表即使到底也给出「没有更多了」反馈
-    if (feed.items.isNotEmpty() && (feed.pageCount ?: 1) > 1) {
+    if (shouldShowPagedFooter(feed)) {
         if (clickPaging && onPageChange != null) {
             item(key = "rank-pager", span = StaggeredGridItemSpan.FullLine) {
                 PagerBar(

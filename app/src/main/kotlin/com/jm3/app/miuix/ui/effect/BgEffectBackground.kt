@@ -11,8 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.unit.dp
-import com.jm3.app.miuix.ui.rememberWindowDpSize
+import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.core.layout.WideLayoutPolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -44,7 +43,7 @@ fun BgEffectBackground(
     // 用 surface 亮度判断明暗，而不是 isSystemInDarkTheme：应用内主题可以覆盖系统设置
     val isDarkTheme = surface.luminance() < 0.5f
     // 与页面断点同源：光点预置按窗口宽度选择，不再自己读 Configuration 尺寸
-    val isTablet = rememberWindowDpSize().width >= WideLayoutPolicy.MEDIUM_MIN_WIDTH_DP.dp
+    val isTablet = LocalWideLayout.current.widthDp >= WideLayoutPolicy.MEDIUM_MIN_WIDTH_DP
     val deviceType = if (isTablet) DeviceType.PAD else DeviceType.PHONE
     val painter = remember { BgEffectPainter() }
     val preset = remember(deviceType, isDarkTheme) { BgEffectConfig.get(deviceType, isDarkTheme) }

@@ -371,7 +371,7 @@ internal class AlbumDetailStateHolder(
     }
 
     fun setCommentText(text: String) {
-        _commentDraft.value = text
+        _commentDraft.value = text.take(COMMENT_REPLY_MAX_LENGTH)
     }
 
     fun setReplyTarget(target: CommentItem?) {

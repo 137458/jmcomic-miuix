@@ -7,6 +7,7 @@ import top.yukonga.miuix.kmp.nav.transition.NavMotion
 import top.yukonga.miuix.kmp.nav.transition.NavSettleSpec
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -49,7 +50,7 @@ class SkinPoliciesTest {
         val tokens = skinTokensFor(UiSkin.COLOROS)
         val programmatic = tokens.motion.navMotionOrDefault().programmatic
         assertTrue(programmatic is NavSettleSpec.Tween)
-        assertEquals(tokens.motion.screenTransitionMs, (programmatic as NavSettleSpec.Tween).durationMillis)
+        assertEquals(tokens.motion.screenTransitionMs, programmatic.durationMillis)
     }
 
     @Test
@@ -58,8 +59,8 @@ class SkinPoliciesTest {
         val color = skinTokensFor(UiSkin.COLOROS).shapes
         assertEquals(28f, hyper.sheetCorner.value)
         assertTrue(color.sheetCorner.value != hyper.sheetCorner.value)
-        assertTrue(color.dialogCorner != null)
-        assertTrue(color.dialogCorner!!.value != hyper.cardCorner.value)
+        val dialogCorner = assertNotNull(color.dialogCorner)
+        assertTrue(dialogCorner.value != hyper.cardCorner.value)
     }
 
     @Test

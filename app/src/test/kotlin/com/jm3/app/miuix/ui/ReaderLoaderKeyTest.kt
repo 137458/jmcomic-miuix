@@ -1,11 +1,18 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.core.LOGIN_EXPIRED_MESSAGE
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.PhotoSource
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.session.AuthCall
+import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.StartupGate
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.test.runTest
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -133,5 +140,57 @@ class ReaderLoaderKeyTest {
         assertTrue(shouldReuseReaderLoader(held, readerLoaderKeyOf(gateway, store)))
         channel.wire(AuthCall(FakeGate()))
         assertTrue(shouldReuseReaderLoader(held, readerLoaderKeyOf(gateway, store)))
+    }
+
+    @Test
+    fun 在线取图失败带失效文案且无异常栈时识别为登录失效() {
+        assertEquals(
+            LOGIN_EXPIRED_MESSAGE,
+            readerRemoteFailureMessage(SessionOutcome.Failed("""{"code":401}""", cause = null)),
+        )
+        assertEquals(
+            LOGIN_EXPIRED_MESSAGE,
+            readerRemoteFailureMessage(SessionOutcome.Failed("請先登入會員", cause = null)),
+        )
+        assertEquals(
+            "网络超时，请稍后重试",
+            readerRemoteFailureMessage(SessionOutcome.Failed("timeout", cause = java.net.SocketTimeoutException("timed out"))),
+        )
+    }
+
+    @Test
+    fun 同键并发请求按单飞串行并在结束后清理锁表() = runTest {
+        val pool = ReaderKeyLockPool()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val cache = mutableMapOf<String, String>()
+        val networkCalls = AtomicInteger(0)
+
+        coroutineScope {
+            val first = async {
+                pool.withKey("k1") {
+                    entered.complete(Unit)
+                    release.await()
+                    networkCalls.incrementAndGet()
+                    cache["k1"] = "disk-snapshot"
+                    cache.getValue("k1")
+                }
+            }
+            entered.await()
+            val second = async {
+                pool.withKey("k1") {
+                    cache["k1"] ?: run {
+                        networkCalls.incrementAndGet()
+                        "fallback"
+                    }
+                }
+            }
+            release.complete(Unit)
+            assertEquals("disk-snapshot", first.await())
+            assertEquals("disk-snapshot", second.await())
+        }
+
+        assertEquals(1, networkCalls.get(), "同键并发应由首个请求落盘后，竞争方直接复用快照")
+        assertEquals(0, pool.activeKeyCount(), "所有同键请求完成后应清理锁表不泄漏")
     }
 }
