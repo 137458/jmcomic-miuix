@@ -117,7 +117,7 @@ internal fun CouiMineScreen(
     onOpenNovel: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
-    val user by deps.session.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     val unread by unreadBadge.count.collectAsState()
     val downloads by deps.downloadManager.queue.updates.collectAsState()
     val activeDownloads = downloads.activeDownloadCount()
@@ -288,7 +288,7 @@ internal fun CouiMineScreen(
         confirmAction = couiDestructiveConfirmAction(text = "确认退出") {
             confirmLogout = false
             scope.launch {
-                if (runCatchingSuspending { deps.session.account.logout() }.isSuccess) {
+                if (runCatchingSuspending { deps.account.logout() }.isSuccess) {
                     snackbarHostState.showSnackbar("已退出登录")
                 } else {
                     snackbarHostState.showSnackbar("退出登录失败，请稍后重试")

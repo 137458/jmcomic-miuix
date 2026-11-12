@@ -124,7 +124,7 @@ fun CouiHistoryScreen(
 ) {
     CouiTheme {
         val repository = deps.history
-        val mode = deps.preferences.paginationMode
+        val mode = deps.paging.paginationMode
         val clickPaging = mode == PaginationMode.CLICK
         val gridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns

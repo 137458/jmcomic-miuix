@@ -113,18 +113,18 @@ fun CouiMainScreen(
         val heightDp = windowSize.height.toLayoutDpInt()
         // 宽屏导航偏好与底栏 token 同源：600dp 以下设置项不可见，布局一律按底栏渲染；
         // 够宽够高时未设置默认侧栏，矮横屏一律回落底栏。
-        val wideScreenNavigation = remember(deps.preferences.wideScreenNavigation, widthDp, heightDp) {
+        val wideScreenNavigation = remember(deps.bottomBar.wideScreenNavigation, widthDp, heightDp) {
             BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
-                deps.preferences.wideScreenNavigation,
+                deps.bottomBar.wideScreenNavigation,
                 widthDp,
                 heightDp,
             )
         }
         // 尺寸档与形态档在组合期一次性解析成 token，切换偏好只重建这份数值，不进入测量热路径
-        val tokens = remember(deps.preferences.bottomBarSize, deps.preferences.bottomBarForm, widthDp) {
+        val tokens = remember(deps.bottomBar.bottomBarSize, deps.bottomBar.bottomBarForm, widthDp) {
             resolveBottomBarTokens(
-                explicitSize = deps.preferences.bottomBarSize,
-                explicitForm = deps.preferences.bottomBarForm,
+                explicitSize = deps.bottomBar.bottomBarSize,
+                explicitForm = deps.bottomBar.bottomBarForm,
                 widthDp = widthDp,
                 skin = UiSkin.COLOROS,
             )

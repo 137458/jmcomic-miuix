@@ -109,7 +109,7 @@ internal fun CouiTrackingScreen(
     val user by deps.account.user.collectAsState()
     val haptic = rememberSelectionHaptic()
     val dateFormat = rememberDateFormatter()
-    val mode = deps.preferences.paginationMode
+    val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
 

@@ -201,7 +201,7 @@ fun CouiHomeScreen(
     val searchState = rememberCouiSearchBarState(expanded = searchExpanded)
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
-    val mode = deps.preferences.paginationMode
+    val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val searching = isShowingSearchResults(activeQuery, results)
 

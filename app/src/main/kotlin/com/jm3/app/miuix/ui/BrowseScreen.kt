@@ -102,7 +102,7 @@ fun BrowseScreen(
     // 筛选口径与列表结果一起进缓存：切 tab 回来时按同一口径取回上次的结果，滚动位置才有内容可落
     val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
     val sessionCache = deps.sessionCache
-    val pageMode = deps.preferences.paginationMode
+    val pageMode = deps.paging.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     var state by remember(pageKey) { mutableStateOf(sessionCache.stateOf(SessionListKey.Browse(pageKey))) }
     // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
@@ -674,7 +674,7 @@ private fun TagResultSection(
     val tagKey = browseTagCacheKey(normalizedKeyword, order) ?: SessionListKey.BrowseTag(normalizedKeyword, order)
     var state by remember(tagKey) { mutableStateOf(deps.sessionCache.stateOf(tagKey)) }
     var requestToken by remember { mutableIntStateOf(0) }
-    val pageMode = deps.preferences.paginationMode
+    val pageMode = deps.paging.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()

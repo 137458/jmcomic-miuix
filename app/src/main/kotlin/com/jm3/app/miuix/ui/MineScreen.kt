@@ -70,7 +70,7 @@ fun MineScreen(
     onOpenLibrary: () -> Unit,
 ) {
     val skin = LocalSkin.current
-    val user by deps.session.account.user.collectAsState()
+    val user by deps.account.user.collectAsState()
     val unread by unreadBadge.count.collectAsState()
     val downloads by deps.downloadManager.queue.updates.collectAsState()
     val activeDownloads = downloads.activeDownloadCount()

@@ -195,7 +195,7 @@ internal fun CouiUpdateScreen(
             localVersion = currentVersion,
             prompt = UpdatePromptState(
                 ignoredVersion = ignoredVersion,
-                promptedVersion = deps.updates.promptedVersion,
+                promptedVersion = deps.promptedVersion,
             ),
         )
         state = outcome
@@ -204,7 +204,7 @@ internal fun CouiUpdateScreen(
             showPreviewDialog = false
             previewSimulating = false
             showDialog = true
-            deps.updates.promptedVersion = outcome.release.version
+            deps.promptedVersion = outcome.release.version
         }
     }
 
@@ -266,7 +266,7 @@ internal fun CouiUpdateScreen(
     }
 
     fun install(file: File) {
-        when (val result = deps.updates.install(file)) {
+        when (val result = deps.installUpdate(file)) {
             is ApkInstaller.Result.Launched -> Unit
             is ApkInstaller.Result.PermissionRequired -> scope.launch {
                 snackbarHostState.showSnackbar("请先允许本应用安装未知来源应用")

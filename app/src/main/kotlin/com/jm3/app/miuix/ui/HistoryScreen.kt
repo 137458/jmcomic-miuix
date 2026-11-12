@@ -86,7 +86,7 @@ fun HistoryScreen(
     val skin = LocalSkin.current
     val repository = deps.history
     val pageSize = 20
-    val mode = deps.preferences.paginationMode
+    val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     // 翻页在途守卫：仓库读取期间禁用翻页条，避免连点重复请求

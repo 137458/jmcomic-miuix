@@ -114,7 +114,7 @@ fun FavoritesScreen(
     var tagInput by rememberSaveable { mutableStateOf("") }
     var tagDeleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val mode = deps.preferences.paginationMode
+    val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     // 翻页在途守卫：请求期间列表仍可读，但翻页条要禁用，避免连点重复请求

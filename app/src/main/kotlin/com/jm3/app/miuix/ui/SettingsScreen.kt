@@ -106,20 +106,20 @@ fun SettingsScreen(
     var showDisclaimer by rememberSaveable { mutableStateOf(false) }
 
     // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
-    val paginationMode = deps.preferences.paginationMode
+    val paginationMode = deps.paging.paginationMode
     // 底栏尺寸/形态：偏好存 null 表示未显式设置，展示与生效都按同一处窗口断点解析
     val windowDp = rememberWindowDpSize()
     val widthDp = windowDp.width.toLayoutDpInt()
-    val bottomBarSize = BottomBarPreferencePolicy.resolveSize(deps.preferences.bottomBarSize, widthDp)
+    val bottomBarSize = BottomBarPreferencePolicy.resolveSize(deps.bottomBar.bottomBarSize, widthDp)
     // 尺寸档只有「偏大」是强制选择；「普通」与未设置同义，都表示按设备自适应
     val bottomBarSizeOption =
-        if (deps.preferences.bottomBarSize == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
-    val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.preferences.bottomBarForm)
+        if (deps.bottomBar.bottomBarSize == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else BottomBarSize.STANDARD
+    val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.bottomBar.bottomBarForm)
     // 宽屏导航：展示布局真正采用的那一档（未设置时按窗口宽高断点推导），
     // 否则大屏上「设置说底栏、界面却是侧栏」会自相矛盾；
     // 该项只在 600dp 及以上（含小平板/折叠展开/分屏）渲染整行，其余设备完全隐藏。
     val wideScreenNavigation = BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
-        deps.preferences.wideScreenNavigation,
+        deps.bottomBar.wideScreenNavigation,
         widthDp,
         windowDp.height.toLayoutDpInt(),
     )
@@ -146,46 +146,15 @@ fun SettingsScreen(
         }.getOrDefault(0L)
     }
 
-    // 偏好写盘不挂载至 rememberCoroutineScope：用户点选设置后可能立即返回上一页，
-    // 若随页面销毁取消协程会导致内存状态已改而 DataStore 落盘半途中断，故统一挂在进程作用域 deps.appScope。
-    fun persistPreference(label: String, write: suspend () -> Unit) {
-        deps.appScope.launch {
-            runCatchingSuspending { write() }.onFailure { error ->
-                Jm3Log.warn("Settings", "保存设置「$label」失败：${error.javaClass.simpleName}", error)
-            }
-        }
-    }
 
-    fun applyPaginationMode(mode: PaginationMode) {
-        if (mode == deps.preferences.paginationMode) return
-        deps.preferences.paginationMode = mode
-        // 列表页此时已被设置路由移出组合；作废旧模式的缓存，回来时才会按新语义从第 1 页加载。
-        deps.sessionCache.forgetPages()
-        persistPreference("分页模式") { deps.preferences.repository.setPaginationMode(mode) }
-    }
+    fun applyPaginationMode(mode: PaginationMode) = deps.selectPaginationMode(mode)
 
-    fun applyBottomBarSize(size: BottomBarSize) {
-        // 「普通」表示自适应，清空显式值回到断点解析；只有「偏大」是需要落盘的强制选择
-        val target = if (size == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else null
-        if (target == deps.preferences.bottomBarSize) return
-        deps.preferences.bottomBarSize = target
-        persistPreference("底栏尺寸") {
-            if (target == null) deps.preferences.repository.clearBottomBarSize()
-            else deps.preferences.repository.setBottomBarSize(target)
-        }
-    }
+    fun applyBottomBarSize(size: BottomBarSize) = deps.selectBottomBarSize(size)
 
-    fun applyBottomBarForm(form: BottomBarForm) {
-        if (form == deps.preferences.bottomBarForm) return
-        deps.preferences.bottomBarForm = form
-        persistPreference("底栏形态") { deps.preferences.repository.setBottomBarForm(form) }
-    }
+    fun applyBottomBarForm(form: BottomBarForm) = deps.selectBottomBarForm(form)
 
-    fun applyWideScreenNavigation(navigation: WideScreenNavigation) {
-        if (navigation == deps.preferences.wideScreenNavigation) return
-        deps.preferences.wideScreenNavigation = navigation
-        persistPreference("宽屏导航") { deps.preferences.repository.setWideScreenNavigation(navigation) }
-    }
+    fun applyWideScreenNavigation(navigation: WideScreenNavigation) =
+        deps.selectWideScreenNavigation(navigation)
 
     // 连点计数在窗口内归零，避免误触累计
     LaunchedEffect(versionTapCount) {
@@ -336,7 +305,7 @@ fun SettingsScreen(
                     selectedIndex = PaginationMode.entries.indexOf(paginationMode),
                     showValue = false,
                     onSelectedIndexChange = { index ->
-                        resolvePaginationSelection(deps.preferences.paginationMode, index)
+                        resolvePaginationSelection(deps.paging.paginationMode, index)
                             ?.takeIf { it.changed }
                             ?.let { applyPaginationMode(it.mode) }
                     },
@@ -394,7 +363,7 @@ fun SettingsScreen(
                     )
                 }
                 ReaderSettingsSection(
-                    state = rememberReaderSettingsState(deps.preferences.repository),
+                    state = rememberReaderSettingsState(deps.settings),
                     spreadAllowed = readerSpreadAllowed,
                 )
             }

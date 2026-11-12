@@ -148,7 +148,7 @@ fun CouiSettingsScreen(
         // 网关与结局翻译统一从 ScreenDeps 取，调用方不再并行传一份
         val gateway = deps.gateway
         val authCall = deps.authCall
-        val repository = deps.preferences.repository
+        val repository = deps.settings
 
         val domainsInput = rememberSaveable { mutableStateOf("") }
         var loadedSaved by rememberSaveable { mutableStateOf(false) }
@@ -167,16 +167,16 @@ fun CouiSettingsScreen(
         var showDisclaimer by rememberSaveable { mutableStateOf(false) }
 
         // 分页模式：只读全局设置域里的可观察状态，本地不再留一份会滞后的副本
-        val paginationMode = deps.preferences.paginationMode
+        val paginationMode = deps.paging.paginationMode
         // 底栏形态：偏好存 null 表示未显式设置，ColorOS 不展示「底栏尺寸」
         val windowDp = rememberWindowDpSize()
         val widthDp = windowDp.width.toLayoutDpInt()
-        val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.preferences.bottomBarForm)
+        val bottomBarForm = BottomBarPreferencePolicy.resolveForm(deps.bottomBar.bottomBarForm)
         // 宽屏导航：展示布局真正采用的那一档（未设置时按窗口宽高断点推导），
         // 否则大屏上「设置说底栏、界面却是侧栏」会自相矛盾；
         // 该项只在 600dp 及以上（含小平板/折叠展开/分屏）渲染整行，其余设备完全隐藏。
         val wideScreenNavigation = BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
-            deps.preferences.wideScreenNavigation,
+            deps.bottomBar.wideScreenNavigation,
             widthDp,
             windowDp.height.toLayoutDpInt(),
         )
@@ -206,25 +206,12 @@ fun CouiSettingsScreen(
             }.getOrDefault(0L)
         }
 
-        fun applyPaginationMode(mode: PaginationMode) {
-            if (mode == deps.preferences.paginationMode) return
-            deps.preferences.paginationMode = mode
-            // 列表页此时已被设置路由移出组合；作废旧模式的缓存，回来时才会按新语义从第 1 页加载。
-            deps.sessionCache.forgetPages()
-            scope.launch { deps.preferences.repository.setPaginationMode(mode) }
-        }
+        fun applyPaginationMode(mode: PaginationMode) = deps.selectPaginationMode(mode)
 
-        fun applyBottomBarForm(form: BottomBarForm) {
-            if (form == deps.preferences.bottomBarForm) return
-            deps.preferences.bottomBarForm = form
-            scope.launch { deps.preferences.repository.setBottomBarForm(form) }
-        }
+        fun applyBottomBarForm(form: BottomBarForm) = deps.selectBottomBarForm(form)
 
-        fun applyWideScreenNavigation(navigation: WideScreenNavigation) {
-            if (navigation == deps.preferences.wideScreenNavigation) return
-            deps.preferences.wideScreenNavigation = navigation
-            scope.launch { deps.preferences.repository.setWideScreenNavigation(navigation) }
-        }
+        fun applyWideScreenNavigation(navigation: WideScreenNavigation) =
+            deps.selectWideScreenNavigation(navigation)
 
         // 连点计数在窗口内归零，避免误触累计
         LaunchedEffect(versionTapCount) {
@@ -437,7 +424,7 @@ fun CouiSettingsScreen(
                             onSelect = { mode ->
                                 // 选择解析要按枚举下标复算，才能沿用「已是最新则不写盘」的既有语义
                                 resolvePaginationSelection(
-                                    deps.preferences.paginationMode,
+                                    deps.paging.paginationMode,
                                     PaginationMode.entries.indexOf(mode),
                                 )?.takeIf { it.changed }?.let { applyPaginationMode(it.mode) }
                             },

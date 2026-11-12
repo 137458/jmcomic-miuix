@@ -136,7 +136,7 @@ fun LibraryScreen(
     var workPageBusy by remember { mutableStateOf(false) }
     var attemptedCreatorQuery by remember { mutableStateOf<String?>(null) }
     var attemptedWorkParams by remember { mutableStateOf<Triple<String, String, String>?>(null) }
-    val paginationMode = deps.preferences.paginationMode
+    val paginationMode = deps.paging.paginationMode
     // 阻尼阈值略低：下拉更轻快即触发刷新，回弹仍由库的弹簧曲线负责
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()

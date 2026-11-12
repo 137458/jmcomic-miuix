@@ -507,7 +507,7 @@ fun Jm3App() {
             deps.preferences.applyStartupPaginationMode(
                 PaginationModePolicy.resolveStartupPaginationMode(
                     persisted = deps.settings.paginationMode(),
-                    current = deps.preferences.paginationMode,
+                    current = deps.paging.paginationMode,
                     userModified = deps.preferences.paginationModeUserModified,
                 )
             )
@@ -527,16 +527,16 @@ fun Jm3App() {
 
     // 进程级只发起一次启动期更新检查：提升到顶层后，进出 Route.Update 或切皮肤不会重建并重复请求 GitHub。
     LaunchedEffect(Unit) {
-        if (!deps.updates.claimStartupUpdateCheck()) return@LaunchedEffect
+        if (!deps.claimStartupUpdateCheck()) return@LaunchedEffect
         val pending = UpdateCenter().promptForStartup(
             autoCheckEnabled = deps.settings.autoCheckUpdate(),
             localVersion = currentVersion,
             prompt = UpdatePromptState(
                 ignoredVersion = deps.settings.ignoredUpdateVersion(),
-                promptedVersion = deps.updates.promptedVersion,
+                promptedVersion = deps.promptedVersion,
             ),
         ) ?: return@LaunchedEffect
-        deps.updates.promptedVersion = pending.version
+        deps.promptedVersion = pending.version
         if (backStack.lastOrNull() != Route.Update) {
             startupRelease = pending
         }
@@ -605,7 +605,7 @@ fun Jm3App() {
                                 hyperOs = {
                                     MainScreen(
                                         deps = deps,
-                                        unreadBadge = deps.session.unread,
+                                        unreadBadge = deps.unread,
                                         snackbarHostState = snackbarHostState,
                                         onOpenAlbum = openAlbum,
                                         onOpenLogin = openLogin,
@@ -627,7 +627,7 @@ fun Jm3App() {
                                 colorOs = {
                                     CouiMainScreen(
                                         deps = deps,
-                                        unreadBadge = deps.session.unread,
+                                        unreadBadge = deps.unread,
                                         snackbarHostState = snackbarHostState,
                                         onOpenAlbum = openAlbum,
                                         onOpenLogin = openLogin,
@@ -838,7 +838,7 @@ fun Jm3App() {
                                         onBack = back,
                                         onOpenAlbum = openAlbum,
                                         snackbarHostState = snackbarHostState,
-                                        unreadBadge = deps.session.unread,
+                                        unreadBadge = deps.unread,
                                         onOpenLogin = openLogin,
                                     )
                                 },
@@ -847,7 +847,7 @@ fun Jm3App() {
                                         deps = deps,
                                         onBack = back,
                                         snackbarHostState = snackbarHostState,
-                                        unreadBadge = deps.session.unread,
+                                        unreadBadge = deps.unread,
                                         onOpenAlbum = openAlbum,
                                         onOpenLogin = openLogin,
                                     )

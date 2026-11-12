@@ -69,7 +69,7 @@ fun TrackingScreen(
     var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     var removingId by remember { mutableStateOf<String?>(null) }
-    val mode = deps.preferences.paginationMode
+    val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     var pageSizeHint by remember { mutableIntStateOf(0) }

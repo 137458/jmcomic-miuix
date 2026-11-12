@@ -128,7 +128,7 @@ private fun CouiSearchBody(
     val coroutineScope = rememberCoroutineScope()
     val lazyState = rememberLazyListState()
     val scheme = CouiKitTheme.colorScheme
-    val pageMode = deps.preferences.paginationMode
+    val pageMode = deps.paging.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
 
     var state by remember(query, scope) { mutableStateOf<ListState>(ListState.Loading) }

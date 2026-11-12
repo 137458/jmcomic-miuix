@@ -126,7 +126,7 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
             localVersion = currentVersion,
             prompt = UpdatePromptState(
                 ignoredVersion = ignoredVersion,
-                promptedVersion = deps.updates.promptedVersion,
+                promptedVersion = deps.promptedVersion,
             ),
         )
         state = outcome
@@ -134,7 +134,7 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
         // 免得启动期弹过的版本进页面又被弹一次。记录只存在内存里，下次冷启动仍会提醒。
         if (outcome is UpdateOutcome.Available && outcome.notify) {
             showDialog = true
-            deps.updates.promptedVersion = outcome.release.version
+            deps.promptedVersion = outcome.release.version
         }
     }
 
@@ -150,7 +150,7 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
     }
 
     fun installApk(file: File) {
-        when (val result = deps.updates.install(file)) {
+        when (val result = deps.installUpdate(file)) {
             is ApkInstaller.Result.Launched -> Unit
             is ApkInstaller.Result.PermissionRequired ->
                 scope.launch { snackbarHostState.showSnackbar("请先允许本应用安装未知来源应用") }

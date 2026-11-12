@@ -203,7 +203,7 @@ internal fun CouiBrowseScreen(
     // 单页条数：只有首页能确定，用于榜单名次跨页续号
     var pageStride by remember(pageKey) { mutableIntStateOf(0) }
 
-    val pageMode = deps.preferences.paginationMode
+    val pageMode = deps.paging.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
 
     // 每周连载更新：首页一页 + 用户点「加载更多」追加；分类模式收进顶栏入口弹层

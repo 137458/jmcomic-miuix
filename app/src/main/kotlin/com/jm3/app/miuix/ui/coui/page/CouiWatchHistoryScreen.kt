@@ -102,7 +102,7 @@ fun CouiWatchHistoryScreen(
     CouiTheme {
         val scope = rememberCoroutineScope()
         val user by deps.account.user.collectAsState()
-        val mode = deps.preferences.paginationMode
+        val mode = deps.paging.paginationMode
         val clickPaging = mode == PaginationMode.CLICK
         val gridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns

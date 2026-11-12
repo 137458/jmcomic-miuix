@@ -86,7 +86,7 @@ fun SearchScreen(
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
     // 分页模式是全局可观察状态，设置页切换后本页立即变更控件形态。
-    val mode = deps.preferences.paginationMode
+    val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
 
     fun fetch(page: Int, sort: BrowseOrder): SearchPage =

@@ -65,7 +65,7 @@ fun WatchHistoryScreen(
     snackbarHostState: SnackbarHostState,
     onOpenLogin: () -> Unit = {},
 ) {
-    val mode = deps.preferences.paginationMode
+    val mode = deps.paging.paginationMode
     val user by deps.account.user.collectAsState()
     val skin = LocalSkin.current
     // 当前页码、是否还有下一页、追加在途与追加失败都由 PagedFeed 记；

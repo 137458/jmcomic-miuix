@@ -451,7 +451,7 @@ internal class MineCheckInHolder(
     private var loadJob: Job? = null
 
     private val coordinator = CheckInCoordinator(
-        settings = deps.preferences.repository,
+        settings = deps.settings,
         sessionCache = deps.sessionCache,
         awaitReady = {
             awaitGatewayReady(ready = { runCatching { deps.gateway.domainsReady() }.getOrDefault(false) })

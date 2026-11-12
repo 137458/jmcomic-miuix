@@ -96,7 +96,7 @@ fun ForumScreen(
     onOpenAlbum: (albumId: String) -> Unit = {},
 ) {
     val user by deps.account.user.collectAsState()
-    val pageMode = deps.preferences.paginationMode
+    val pageMode = deps.paging.paginationMode
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
     val clampedScopeIndex = scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)
