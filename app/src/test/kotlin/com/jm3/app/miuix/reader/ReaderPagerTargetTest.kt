@@ -1,4 +1,4 @@
-package com.jm3.app.miuix.ui
+package com.jm3.app.miuix.reader
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
