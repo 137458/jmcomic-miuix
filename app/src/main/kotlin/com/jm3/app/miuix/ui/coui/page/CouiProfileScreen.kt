@@ -30,7 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,9 +68,9 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ProfileDraftPolicy
+import com.jm3.app.miuix.ui.ProfileDraftState
+import com.jm3.app.miuix.ui.ProfileDraftStateSaver
 import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.StringMapSaver
-import com.jm3.app.miuix.ui.StringSetSaver
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.trackedProfileFieldMap
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
@@ -93,7 +92,6 @@ import com.jm3.app.miuix.ui.applyLoadPlan
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
-import com.jm3.core.model.UserProfile
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
@@ -149,38 +147,12 @@ internal fun CouiProfileScreen(
 ) {
     val user by deps.account.user.collectAsState()
     var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
-    var profile by remember { mutableStateOf<UserProfile?>(null) }
     var saving by remember { mutableStateOf(false) }
     var savedUidToken by rememberSaveable { mutableStateOf(ProfileDraftPolicy.UID_UNSET) }
-    var savedDrafts by rememberSaveable(stateSaver = StringMapSaver) {
-        mutableStateOf<Map<String, String>>(emptyMap())
-    }
-    var dirtyKeys by rememberSaveable(stateSaver = StringSetSaver) {
-        mutableStateOf<Set<String>>(emptySet())
-    }
-    val backingFields = remember { mutableStateMapOf<String, String>() }
-    val fields = remember {
-        trackedProfileFieldMap(backingFields) { key, value ->
-            dirtyKeys = dirtyKeys + key
-            savedDrafts = savedDrafts + (key to value)
-        }
-    }
+    // 服务端资料、脏字段、未保存草稿与编辑缓冲同属一份草稿状态：两套皮肤共用，跨旋转由 Saver 保留
+    val draft = rememberSaveable(saver = ProfileDraftStateSaver) { ProfileDraftState() }
+    val fields = remember { trackedProfileFieldMap(draft.backingFields, draft::noteEdit) }
     val scope = rememberCoroutineScope()
-
-    fun applyProfile(next: UserProfile, resetDrafts: Boolean = false) {
-        profile = next
-        if (resetDrafts) {
-            dirtyKeys = emptySet()
-            savedDrafts = emptyMap()
-        }
-        val merged = ProfileDraftPolicy.mergeProfileFields(
-            serverFields = next.editableFields(),
-            savedDrafts = savedDrafts,
-            dirtyKeys = dirtyKeys,
-        )
-        backingFields.clear()
-        backingFields.putAll(merged)
-    }
 
     fun load(showLoading: Boolean = true) {
         val uid = user?.uid
@@ -192,11 +164,11 @@ internal fun CouiProfileScreen(
         scope.launch {
             when (val outcome = deps.authCall.call { deps.gateway.userProfile(uid) }) {
                 is SessionOutcome.Ok -> {
-                    applyProfile(outcome.value)
+                    draft.apply(outcome.value)
                     state = ProfileUiState.Loaded
                 }
                 else -> scope.applyLoadPlan(
-                    outcome, hasContent = profile != null, failureMessage = "个人资料加载失败",
+                    outcome, hasContent = draft.profile != null, failureMessage = "个人资料加载失败",
                     snackbarHostState = snackbarHostState,
                 ) { plan ->
                     state = ProfileUiState.Failed(
@@ -217,7 +189,7 @@ internal fun CouiProfileScreen(
             saving = false
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    applyProfile(outcome.value, resetDrafts = true)
+                    draft.apply(outcome.value, resetDrafts = true)
                     snackbarHostState.showSnackbar("资料已保存")
                 }
                 is SessionOutcome.Expired -> snackbarHostState.showSnackbar(
@@ -233,10 +205,7 @@ internal fun CouiProfileScreen(
     LaunchedEffect(user?.uid) {
         if (ProfileDraftPolicy.shouldResetOnUidEffect(savedUidToken, user?.uid)) {
             savedUidToken = ProfileDraftPolicy.uidToken(user?.uid)
-            backingFields.clear()
-            savedDrafts = emptyMap()
-            dirtyKeys = emptySet()
-            profile = null
+            draft.reset()
         }
         load()
     }

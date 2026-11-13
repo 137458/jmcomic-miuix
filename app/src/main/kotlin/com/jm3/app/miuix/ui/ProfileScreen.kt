@@ -14,7 +14,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -29,7 +28,6 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.model.UserProfile
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -88,41 +86,15 @@ internal fun ProfileScreen(
     val skin = LocalSkin.current
     val user by deps.account.user.collectAsState()
     var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
-    var profile by remember { mutableStateOf<UserProfile?>(null) }
     var saving by remember { mutableStateOf(false) }
     var selector by remember { mutableStateOf<ProfileSelector?>(null) }
     var requestToken by remember { mutableIntStateOf(0) }
     var savedUidToken by rememberSaveable { mutableStateOf(ProfileDraftPolicy.UID_UNSET) }
-    var savedDrafts by rememberSaveable(stateSaver = StringMapSaver) {
-        mutableStateOf<Map<String, String>>(emptyMap())
-    }
-    var dirtyKeys by rememberSaveable(stateSaver = StringSetSaver) {
-        mutableStateOf<Set<String>>(emptySet())
-    }
+    // 服务端资料、脏字段、未保存草稿与编辑缓冲同属一份草稿状态：两套皮肤共用，跨旋转由 Saver 保留
+    val draft = rememberSaveable(saver = ProfileDraftStateSaver) { ProfileDraftState() }
     // 编辑缓冲：键与 editableFields() 一致，提交时整体回传；未保存的修改跨旋转保留
-    val backingFields = remember { mutableStateMapOf<String, String>() }
-    val fields = remember {
-        trackedProfileFieldMap(backingFields) { key, value ->
-            dirtyKeys = dirtyKeys + key
-            savedDrafts = savedDrafts + (key to value)
-        }
-    }
+    val fields = remember { trackedProfileFieldMap(draft.backingFields, draft::noteEdit) }
     val scope = rememberCoroutineScope()
-
-    fun applyProfile(next: UserProfile, resetDrafts: Boolean = false) {
-        profile = next
-        if (resetDrafts) {
-            dirtyKeys = emptySet()
-            savedDrafts = emptyMap()
-        }
-        val merged = ProfileDraftPolicy.mergeProfileFields(
-            serverFields = next.editableFields(),
-            savedDrafts = savedDrafts,
-            dirtyKeys = dirtyKeys,
-        )
-        backingFields.clear()
-        backingFields.putAll(merged)
-    }
 
     fun load(showLoading: Boolean = true) {
         val token = ++requestToken
@@ -137,14 +109,14 @@ internal fun ProfileScreen(
             if (token != requestToken || user?.uid != uid) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    applyProfile(outcome.value)
+                    draft.apply(outcome.value)
                     state = ProfileUiState.Loaded
                 }
 
                 // 失效与失败同一落点：两个分支原本逐字相同，planLoad 内部已按 phase 分流
                 else -> scope.applyLoadPlan(
                     outcome = outcome,
-                    hasContent = profile != null,
+                    hasContent = draft.profile != null,
                     failureMessage = "个人资料加载失败",
                     snackbarHostState = snackbarHostState,
                 ) { plan ->
@@ -167,7 +139,7 @@ internal fun ProfileScreen(
             if (user?.uid != uid) return@launch
             when (outcome) {
                 is SessionOutcome.Ok -> {
-                    applyProfile(outcome.value, resetDrafts = true)
+                    draft.apply(outcome.value, resetDrafts = true)
                     snackbarHostState.showSnackbar("资料已保存")
                 }
 
@@ -183,10 +155,7 @@ internal fun ProfileScreen(
     LaunchedEffect(user?.uid) {
         if (ProfileDraftPolicy.shouldResetOnUidEffect(savedUidToken, user?.uid)) {
             savedUidToken = ProfileDraftPolicy.uidToken(user?.uid)
-            backingFields.clear()
-            savedDrafts = emptyMap()
-            dirtyKeys = emptySet()
-            profile = null
+            draft.reset()
         }
         load()
     }
@@ -236,8 +205,8 @@ internal fun ProfileScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 SmallTitle(text = "账号信息")
                 Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
-                    BasicComponent(title = "用户名", summary = profile?.username.orEmpty())
-                    BasicComponent(title = "邮箱", summary = profile?.email.orEmpty())
+                    BasicComponent(title = "用户名", summary = draft.profile?.username.orEmpty())
+                    BasicComponent(title = "邮箱", summary = draft.profile?.email.orEmpty())
                 }
 
                 SmallTitle(text = "基本信息")

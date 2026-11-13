@@ -2,9 +2,6 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.background
@@ -107,6 +104,7 @@ import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.ui.StringSetSaver
 import com.jm3.app.miuix.ui.albumHeroHeader
+import com.jm3.app.miuix.ui.copyTextToClipboard
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
@@ -309,9 +307,7 @@ private fun CouiAlbumDetailScreenBody(
     }
 
     fun copyText(label: String, value: String) {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText(label, value))
-        scope.launch { snackbarHostState.showSnackbar("复制成功！") }
+        copyTextToClipboard(context, scope, snackbarHostState, label, value)
     }
 
     fun share(detail: AlbumDetail) {

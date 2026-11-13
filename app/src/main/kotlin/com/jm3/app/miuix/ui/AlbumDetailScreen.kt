@@ -1,8 +1,5 @@
 package com.jm3.app.miuix.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -218,9 +215,7 @@ internal fun AlbumDetailScreen(
     }
 
     fun copyText(label: String, value: String) {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText(label, value))
-        scope.launch { snackbarHostState.showSnackbar("复制成功！") }
+        copyTextToClipboard(context, scope, snackbarHostState, label, value)
     }
 
     fun share(detail: AlbumDetail) {
