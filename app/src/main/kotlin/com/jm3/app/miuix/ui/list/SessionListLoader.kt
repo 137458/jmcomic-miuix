@@ -1,6 +1,8 @@
 package com.jm3.app.miuix.ui.list
 
+import com.jm3.app.miuix.ui.ListStateCache
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
@@ -10,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 
 /** 列表页的屏级加载态：只有三档，与 [com.jm3.app.miuix.ui.ScreenLoadPhase] 一一对应。 */
@@ -38,6 +41,9 @@ internal data class SessionListSnapshot<T>(
  *
  * 失败处置沿用 [planLoad]：有内容就留内容并提示，没内容才整屏换形态；会话失效与普通失败
  * 的文案、以及「失效不给重试」的规矩都在那一处，这里只负责把计划落到列表状态上。
+ *
+ * 会话缓存（[cache] + [cacheKey]）可给可不给：给了就在构造时用已落定的快照当首帧、每次成功
+ * 落定后写回，屏幕回来不用再闪一次加载态；没给则行为与从前完全一致。
  */
 internal class SessionListLoader<T>(
     private val scope: CoroutineScope,
@@ -46,8 +52,10 @@ internal class SessionListLoader<T>(
     private val fetchPage: suspend (page: Int) -> SessionOutcome<PageSlice<T>>,
     private val notice: (String) -> Unit,
     private val stalePrefix: String = "加载失败：",
+    private val cache: ListStateCache<T>? = null,
+    private val cacheKey: SessionListKey? = null,
 ) {
-    private val _snapshot = MutableStateFlow(SessionListSnapshot<T>())
+    private val _snapshot = MutableStateFlow(seededSnapshot())
     val snapshot: StateFlow<SessionListSnapshot<T>> = _snapshot.asStateFlow()
 
     /** 请求代次：只增不减，旧请求返回时对不上就直接丢弃，避免旧结果盖掉新列表。 */
@@ -91,9 +99,33 @@ internal class SessionListLoader<T>(
         request(page = page, replace = true, showLoading = false, pulling = false, keepOnFailure = true)
     }
 
-    /** 本地抹掉若干条（删除成功后不必回源）。 */
+    /** 本地抹掉若干条（删除成功后不必回源）；删除是既成事实，缓存跟着少一条，否则下次回来死灰复燃。 */
     fun removeWhere(predicate: (T) -> Boolean) {
-        _snapshot.update { it.copy(feed = it.feed.copy(items = it.feed.items.filterNot(predicate))) }
+        val next = _snapshot.updateAndGet {
+            it.copy(feed = it.feed.copy(items = it.feed.items.filterNot(predicate)))
+        }
+        cacheLanded(next.feed)
+    }
+
+    /**
+     * 缓存命中时的首帧：直接是已落定状态与该份分页游标。
+     *
+     * 只在构造时读一次：缓存键换了就是另一份结果，换 key 的重新种子交给屏幕侧 remember 重建 loader；
+     * 这里不监听 key 变化，免得在编排里再长出一套失效判断。
+     */
+    private fun seededSnapshot(): SessionListSnapshot<T> {
+        val key = cacheKey ?: return SessionListSnapshot()
+        val cached = cache?.read(key) ?: return SessionListSnapshot()
+        return SessionListSnapshot(feed = cached, state = ListLoadState.Loaded)
+    }
+
+    /**
+     * 成功落定后写回缓存：只存稳定快照，页脚的「在途/重试」标记属于这一次请求，带进缓存会让下次回来一直转圈。
+     * 失败与加载中永不写回——与 [com.jm3.app.miuix.ui.SessionCache.remember] 同一条规矩。
+     */
+    private fun cacheLanded(feed: PagedFeed<T>) {
+        val key = cacheKey ?: return
+        cache?.write(key, feed)
     }
 
     private fun request(
@@ -119,16 +151,16 @@ internal class SessionListLoader<T>(
             val outcome = fetchPage(page)
             if (token != requestToken) return@launch
             when (outcome) {
-                is SessionOutcome.Ok -> _snapshot.update {
-                    it.copy(
-                        feed = if (replace) {
-                            PagedFeed<T>().replace(outcome.value, idOf)
-                        } else {
-                            pending.append(outcome.value, idOf)
-                        },
-                        state = ListLoadState.Loaded,
-                        refreshing = false,
-                    )
+                is SessionOutcome.Ok -> {
+                    val landed = if (replace) {
+                        PagedFeed<T>().replace(outcome.value, idOf)
+                    } else {
+                        pending.append(outcome.value, idOf)
+                    }
+                    _snapshot.update {
+                        it.copy(feed = landed, state = ListLoadState.Loaded, refreshing = false)
+                    }
+                    cacheLanded(landed)
                 }
 
                 SessionOutcome.Expired -> applyFailure(outcome, pending, replace, pulling, keepOnFailure)

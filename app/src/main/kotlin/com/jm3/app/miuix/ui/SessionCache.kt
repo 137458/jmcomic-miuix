@@ -90,6 +90,32 @@ internal class AlbumEngagementStore {
 }
 
 /**
+ * 列表结果的会话级读写面：列表编排（[com.jm3.app.miuix.ui.list.SessionListLoader]）只认这五个动作，
+ * 缓存怎么存、存哪里与它无关。
+ *
+ * 按条目类型参数化：缓存里只允许放已落定的分页快照（[SessionCache.remember] 的规矩），读面因此不给
+ * Loading/Failed 留位置——写不进去，也就不会被读出来。参数 T 让「同一条目类型的 loader 才能拿这份缓存」
+ * 在编译期成立；把 `PagedFeed<SearchResult>` 硬转成泛型 T 的那种写法在这里不成立。
+ */
+internal interface ListStateCache<T> {
+
+    /** 该身份下已落定的分页快照；没有就返回 null。 */
+    fun read(key: SessionListKey): PagedFeed<T>?
+
+    /** 记一份已落定的快照；实现在这里抹掉在途/重试标记，页脚状态属于那一次请求，不进缓存。 */
+    fun write(key: SessionListKey, feed: PagedFeed<T>)
+
+    /** 作废该身份的结果。 */
+    fun forget(key: SessionListKey)
+
+    /** 作废全部列表结果；账号级缓存（侧栏、签到、喜欢）不归这个接口管。 */
+    fun forgetAll()
+
+    /** 该身份下是否已有可用结果。 */
+    fun hasPage(key: SessionListKey): Boolean
+}
+
+/**
  * 会话级列表缓存，全应用一个实例（由组装根持有，经屏幕依赖容器注入）。
  *
  * 页面数据是 remember 的：切 tab 或点进详情再回来，Compose 会销毁整棵页面，回来只剩一个 Loading 项，
@@ -98,7 +124,7 @@ internal class AlbumEngagementStore {
  * 只留加载成功的结果：Loading 与 Failed 落进来，只会让下次回来先闪一下旧错误，不如让页面重新请求。
  * 页面自己的当前状态仍由 Composable 持有，失败态才显示得出来。
  */
-internal class SessionCache {
+internal class SessionCache : ListStateCache<SearchResult> {
 
     private val entries = mutableMapOf<SessionListKey, ListState>()
 
@@ -149,8 +175,17 @@ internal class SessionCache {
     /** 该身份下已加载的结果；没有返回 null（首页用它区分「没搜过」与「搜出来是空的」）。 */
     fun stateOrNull(key: SessionListKey): ListState? = entries[key]
 
+    /** [ListStateCache.read]：只交出已落定的分页快照；返回 null 即「这个身份没加载过」。 */
+    override fun read(key: SessionListKey): PagedFeed<SearchResult>? =
+        (stateOrNull(key) as? ListState.Loaded)?.feed
+
+    /** [ListStateCache.write]：成功落定才进缓存，Loading/Failed 的筛除与快照归一化都留在 [remember]。 */
+    override fun write(key: SessionListKey, feed: PagedFeed<SearchResult>) {
+        remember(key, ListState.Loaded(feed))
+    }
+
     /** 该身份下是否已有可用结果。 */
-    fun hasPage(key: SessionListKey): Boolean = entries[key] is ListState.Loaded
+    override fun hasPage(key: SessionListKey): Boolean = entries[key] is ListState.Loaded
 
     /**
      * 只记加载成功的结果：其余状态落进来，下次回来只会先闪一下旧加载态或旧错误。
@@ -165,7 +200,7 @@ internal class SessionCache {
         }
     }
 
-    fun forget(key: SessionListKey) {
+    override fun forget(key: SessionListKey) {
         entries.remove(key)
     }
 
@@ -173,6 +208,9 @@ internal class SessionCache {
     fun forgetPages() {
         entries.clear()
     }
+
+    /** [ListStateCache.forgetAll]：只作废列表结果，侧栏、签到与喜欢状态不受牵连。 */
+    override fun forgetAll() = forgetPages()
 
     /** 退出登录等场景整份清空。 */
     fun clear() {

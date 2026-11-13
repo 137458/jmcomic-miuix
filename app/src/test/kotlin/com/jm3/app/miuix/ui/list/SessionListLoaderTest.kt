@@ -1,6 +1,9 @@
 package com.jm3.app.miuix.ui.list
 
+import com.jm3.app.miuix.ui.ListStateCache
+import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.core.paging.PageSlice
+import com.jm3.core.paging.PagedFeed
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -17,7 +20,34 @@ class SessionListLoaderTest {
 
     private data class Item(val id: String)
 
-    private class Harness(scope: CoroutineScope) {
+    /** 缓存替身：只记「写进去过什么」，读面就是最后一次写入，够验种子与写回两个方向。 */
+    private class RecordingCache<T>(seed: Map<SessionListKey, PagedFeed<T>> = emptyMap()) : ListStateCache<T> {
+        val writes = mutableMapOf<SessionListKey, PagedFeed<T>>()
+        private val entries = seed.toMutableMap()
+
+        override fun read(key: SessionListKey): PagedFeed<T>? = entries[key]
+
+        override fun write(key: SessionListKey, feed: PagedFeed<T>) {
+            entries[key] = feed
+            writes[key] = feed
+        }
+
+        override fun forget(key: SessionListKey) {
+            entries.remove(key)
+        }
+
+        override fun forgetAll() {
+            entries.clear()
+        }
+
+        override fun hasPage(key: SessionListKey): Boolean = entries[key] != null
+    }
+
+    private class Harness(
+        scope: CoroutineScope,
+        cache: ListStateCache<Item>? = null,
+        cacheKey: SessionListKey? = null,
+    ) {
         val requestedPages = mutableListOf<Int>()
         val notices = mutableListOf<String>()
         var nextOutcome: SessionOutcome<PageSlice<Item>> = SessionOutcome.Failed(message = "网络不通")
@@ -32,6 +62,8 @@ class SessionListLoaderTest {
                 nextOutcome
             },
             notice = { notices += it },
+            cache = cache,
+            cacheKey = cacheKey,
         )
     }
 
@@ -240,6 +272,124 @@ class SessionListLoaderTest {
 
         assertEquals(ListLoadState.Loaded, harness.loader.state)
         assertEquals(listOf("a"), harness.loader.feed.items.map { it.id })
+        scope.cancel()
+    }
+
+    @Test
+    fun 缓存命中时首帧即已加载且不发请求() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cached = PagedFeed(items = listOf(Item("x")), page = 2, pageCount = 5, hasMore = true)
+        val cache = RecordingCache<Item>(mapOf(SessionListKey.HomeFeed to cached))
+        val harness = Harness(scope, cache, SessionListKey.HomeFeed)
+
+        assertEquals(ListLoadState.Loaded, harness.loader.state)
+        assertEquals(listOf("x"), harness.loader.feed.items.map { it.id })
+        assertFalse(harness.loader.refreshing)
+        assertTrue(harness.requestedPages.isEmpty())
+        scope.cancel()
+    }
+
+    @Test
+    fun 缓存种子把翻页游标一起带回来() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cached = PagedFeed(items = listOf(Item("x")), page = 2, hasMore = true)
+        val cache = RecordingCache<Item>(mapOf(SessionListKey.HomeFeed to cached))
+        val harness = Harness(scope, cache, SessionListKey.HomeFeed)
+        harness.nextOutcome = ok("y", hasMore = true, page = 3)
+
+        harness.loader.loadMore()
+
+        assertEquals(listOf(3), harness.requestedPages)
+        assertEquals(listOf("x", "y"), harness.loader.feed.items.map { it.id })
+        scope.cancel()
+    }
+
+    @Test
+    fun 首屏成功后写回缓存() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cache = RecordingCache<Item>()
+        val harness = Harness(scope, cache, SessionListKey.HomeSearch)
+        harness.nextOutcome = ok("a", "b", hasMore = true, page = 1)
+
+        harness.loader.loadFirstPage()
+
+        val written = cache.writes.getValue(SessionListKey.HomeSearch)
+        assertEquals(listOf("a", "b"), written.items.map { it.id })
+        assertEquals(1, written.page)
+        assertTrue(written.hasMore)
+        assertFalse(written.loadingMore)
+        assertFalse(written.loadMoreFailed)
+        scope.cancel()
+    }
+
+    @Test
+    fun 翻页成功后缓存带上追加的条目() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cache = RecordingCache<Item>()
+        val harness = Harness(scope, cache, SessionListKey.HomeFeed)
+        harness.nextOutcome = ok("a", hasMore = true, page = 1)
+        harness.loader.loadFirstPage()
+        harness.nextOutcome = ok("b", hasMore = false, page = 2)
+
+        harness.loader.loadMore()
+
+        val written = cache.writes.getValue(SessionListKey.HomeFeed)
+        assertEquals(listOf("a", "b"), written.items.map { it.id })
+        assertEquals(2, written.page)
+        assertFalse(written.hasMore)
+        assertFalse(written.loadingMore)
+        scope.cancel()
+    }
+
+    @Test
+    fun 加载中与失败都不写缓存() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cache = RecordingCache<Item>()
+        val harness = Harness(scope, cache, SessionListKey.HomeFeed)
+        val gate = CompletableDeferred<Unit>()
+        harness.gate = gate
+        harness.nextOutcome = ok("a")
+
+        harness.loader.loadFirstPage()
+        assertTrue(harness.loader.state is ListLoadState.Loading)
+        assertTrue(cache.writes.isEmpty())
+
+        harness.nextOutcome = SessionOutcome.Failed(message = "网络不通")
+        gate.complete(Unit)
+
+        assertTrue(harness.loader.state is ListLoadState.Failed)
+        assertTrue(cache.writes.isEmpty())
+        scope.cancel()
+    }
+
+    @Test
+    fun 本地删除后缓存跟着少一条() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cache = RecordingCache<Item>()
+        val harness = Harness(scope, cache, SessionListKey.HomeFeed)
+        harness.nextOutcome = ok("a", "b", hasMore = true, page = 1)
+        harness.loader.loadFirstPage()
+
+        harness.loader.removeWhere { it.id == "a" }
+
+        val written = cache.writes.getValue(SessionListKey.HomeFeed)
+        assertEquals(listOf("b"), written.items.map { it.id })
+        assertEquals(1, written.page)
+        assertTrue(written.hasMore)
+        scope.cancel()
+    }
+
+    @Test
+    fun 没给缓存键时既不种缓存也不写回() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cache = RecordingCache<Item>()
+        val harness = Harness(scope, cache, cacheKey = null)
+        harness.nextOutcome = ok("a")
+
+        harness.loader.loadFirstPage()
+
+        assertEquals(ListLoadState.Loaded, harness.loader.state)
+        assertTrue(cache.writes.isEmpty())
         scope.cancel()
     }
 }
