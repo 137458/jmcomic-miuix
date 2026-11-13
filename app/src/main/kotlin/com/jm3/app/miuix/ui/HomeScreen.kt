@@ -53,7 +53,7 @@ import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
-import com.jm3.app.miuix.ui.list.SessionListSnapshot
+import com.jm3.app.miuix.ui.list.toListState
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.albumCodeOf
@@ -103,14 +103,7 @@ private data class HomeSearchRequest(
     val order: BrowseOrder,
 )
 
-/** loader 的屏级三态映射回页面既有的四态渲染类型（Loading/Loaded/Failed）。 */
-private fun SessionListSnapshot<SearchResult>.toListState(): ListState = when (val s = state) {
-    is ListLoadState.Loading -> ListState.Loading
-    is ListLoadState.Loaded -> ListState.Loaded(feed)
-    is ListLoadState.Failed -> ListState.Failed(s.message, s.sessionExpired)
-}
-
-// 列表三态与会话缓存统一在 SessionCache.kt 定义；结局到列表状态的翻译在 ListOutcome.kt
+// 列表三态与会话缓存统一在 SessionCache.kt 定义；loader 快照到页面三态的翻译在 list/ListStateAdapters.kt
 
 /** 首页：固定搜索栏 + 发现流（连载更新/热门标签/随便看看/最新上架）或搜索结果。 */
 @Composable

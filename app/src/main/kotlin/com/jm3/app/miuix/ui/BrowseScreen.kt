@@ -54,7 +54,7 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
-import com.jm3.app.miuix.ui.list.SessionListSnapshot
+import com.jm3.app.miuix.ui.list.toListState
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
@@ -768,13 +768,6 @@ private fun BrowsePageKey.toFilter(): BrowseFilter = when (mode) {
         order = BrowseOrder.entries.firstOrNull { it.apiValue == order } ?: BrowseOrder.LATEST,
         time = BrowseTime.entries.firstOrNull { it.apiValue == time } ?: BrowseTime.ALL,
     )
-}
-
-/** loader 的屏级三态映射回页面既有的四态渲染类型（Loading/Loaded/Failed）。 */
-private fun SessionListSnapshot<SearchResult>.toListState(): ListState = when (val s = state) {
-    is ListLoadState.Loading -> ListState.Loading
-    is ListLoadState.Loaded -> ListState.Loaded(feed)
-    is ListLoadState.Failed -> ListState.Failed(s.message, s.sessionExpired)
 }
 
 /**
