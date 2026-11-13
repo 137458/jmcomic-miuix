@@ -46,9 +46,11 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
+import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
@@ -71,21 +73,20 @@ import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
-import com.jm3.app.miuix.ui.list.SessionListSnapshot
+import com.jm3.app.miuix.ui.list.toCouiPageSlice
+import com.jm3.app.miuix.ui.list.toListState
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
-import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
-import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import com.jm3.core.toSlice
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 结果行在懒列表里的起点：前面只有一条筛选胶囊项。 */
 private const val COUI_SEARCH_ROW_START = 1
@@ -132,6 +133,8 @@ private fun CouiSearchBody(
     val gateway = deps.gateway
     val authCall = deps.authCall
     val coroutineScope = rememberCoroutineScope()
+    val sessionCache = deps.sessionCache
+    val snackbarHostState = remember { SnackbarHostState() }
     val lazyState = rememberLazyListState()
     val scheme = CouiKitTheme.colorScheme
     val pageMode = deps.paging.paginationMode
@@ -151,16 +154,20 @@ private fun CouiSearchBody(
             fetchPage = { page ->
                 authCall.call { gateway.search(query, page, order, scope, time) }.toCouiPageSlice()
             },
-            notice = {},
+            notice = { message -> coroutineScope.launch { snackbarHostState.showSnackbar(message) } },
+            cache = sessionCache,
+            cacheKey = SessionListKey.Search(query = query, scope = scope, order = order, time = time),
         )
     }
     val snapshot by loader.snapshot.collectAsState()
-    // 渲染仍按 ListState 三态走：翻译留在页内，公共三态件不必为加载编排改签名
+    // 渲染仍按 ListState 三态走：快照到三态的翻译在 list/ListStateAdapters.kt，这里只取结果
     val state = snapshot.toListState()
     // 换筛选或跳页后回到列表顶部：滚动位置是页面的事，不进 loader
     var pendingScrollTop by remember { mutableStateOf(false) }
 
     LaunchedEffect(loader) {
+        // 缓存命中时 loader 构造即带内容：不再补拉首屏，回来时不闪加载态
+        if (loader.state is ListLoadState.Loaded) return@LaunchedEffect
         pendingScrollTop = true
         loader.loadFirstPage()
     }
@@ -301,6 +308,10 @@ private fun CouiSearchBody(
                 }
             }
         }
+        GlassSnackbarHost(
+            state = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -372,21 +383,6 @@ private fun CouiSearchFilterChip(label: String, selected: Boolean, onClick: () -
     }
 }
 
-/** 加载态 → 渲染三态：页面画的是 [ListState]，编排只认 [ListLoadState]。 */
-private fun SessionListSnapshot<SearchResult>.toListState(): ListState =
-    when (val current = state) {
-        ListLoadState.Loading -> ListState.Loading
-        ListLoadState.Loaded -> ListState.Loaded(feed)
-        is ListLoadState.Failed -> ListState.Failed(current.message, current.sessionExpired)
-    }
-
-/** 网关结局的外层映射：一页结果的解码在 core 的 toSlice，这里只补结局分支。 */
-private fun SessionOutcome<SearchPage>.toCouiPageSlice(): SessionOutcome<PageSlice<SearchResult>> =
-    when (this) {
-        is SessionOutcome.Ok -> SessionOutcome.Ok(value.toSlice())
-        SessionOutcome.Expired -> SessionOutcome.Expired
-        is SessionOutcome.Failed -> this
-    }
 
 /** 结果行：封面 + 标题 + 作者 + 标签，整行可点进相册详情。 */
 @Composable

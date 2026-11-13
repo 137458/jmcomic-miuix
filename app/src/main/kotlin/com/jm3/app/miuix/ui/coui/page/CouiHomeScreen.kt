@@ -64,12 +64,12 @@ import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CollapsingTopAppBar
 import com.itos.coui.topappbar.rememberCouiCollapsingAppBarState
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.HomeSideData
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
-import com.jm3.app.miuix.ui.list.SessionListSnapshot
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.SessionListKey
@@ -97,6 +97,8 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
+import com.jm3.app.miuix.ui.list.toCouiPageSlice
+import com.jm3.app.miuix.ui.list.toListState
 import com.jm3.app.miuix.ui.mutateSearchHistory
 import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.readSearchHistory
@@ -109,15 +111,13 @@ import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
-import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
-import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import com.jm3.core.toSlice
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 private const val SERIAL_CAROUSEL_LIMIT = 12
 private const val HOT_TAG_COLLAPSED = 8
@@ -173,6 +173,7 @@ fun CouiHomeScreen(
     val gateway = deps.gateway
     val authCall = deps.authCall
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -213,7 +214,7 @@ fun CouiHomeScreen(
             fetchPage = { page ->
                 authCall.call { gateway.latest(page) }.toCouiPageSlice()
             },
-            notice = {},
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
             cache = sessionCache,
             cacheKey = SessionListKey.HomeFeed,
         )
@@ -235,7 +236,7 @@ fun CouiHomeScreen(
                     )
                 }.toCouiPageSlice()
             },
-            notice = {},
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
         )
     }
 
@@ -426,327 +427,333 @@ fun CouiHomeScreen(
         onPrefetch = ::loadMore,
     )
 
-    CouiAppScaffold(
-        modifier = Modifier.fillMaxSize().nestedScroll(header.nestedScrollConnection),
-        topBar = {
-            CollapsingTopAppBar(
-                state = header,
-                searchState = searchState,
-                title = "JMComic",
-                // 顶栏自绘底默认透明 + 叠 40% 黑渐变，用皮肤页底色替代，避免滚动时透出正文
-                backgroundColor = CouiTheme.colorScheme.background,
-                searchBar = {
-                    SearchBar(
-                        state = searchState,
-                        query = query,
-                        onQueryChange = { value ->
-                            query = value
-                            // 清空输入框时退回首页，避免空查询与旧结果同时存在
-                            if (value.isEmpty() && searching) clearSearch()
-                        },
-                        onExpandedChange = { expanded ->
-                            if (expanded) searchExpanded = true else collapseSearch()
-                        },
-                        placeholder = "搜索作品 / 作者 / 标签",
-                        cancelText = "取消",
-                        clearDescription = "清除搜索内容",
-                        onSearch = { submitSearch() },
-                    )
-                },
-            )
-        },
-        floatingActionButton = {
-            val fallback = LocalCouiFallbackContentColor.current
-            val iconTint = if (fallback == Color.Unspecified) CouiTheme.colorScheme.onAccent else fallback
-            val showBackToTop by remember { derivedStateOf { lazyState.firstVisibleItemIndex > 2 } }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                if (showBackToTop) {
-                    CouiFab(
-                        icon = CouiIcons.Back,
-                        contentDescription = "回到顶部",
-                        rotationDegrees = 90f,
-                        onClick = { scope.launch { lazyState.animateScrollToItem(0) } },
-                    )
-                }
-                CouiFab(
-                    onClick = { openRandom() },
-                ) {
-                    Icon(
-                        imageVector = CouiIcons.Shuffle,
-                        contentDescription = "随机看一部",
-                        modifier = Modifier.size(24.dp),
-                        tint = iconTint,
-                    )
-                }
-            }
-        },
-    ) { innerPadding ->
-        // 顶栏留白改由 LazyColumn 的 contentPadding 承担，正文才能滚到折叠后的顶栏下面。
-        // 折叠位移留到测量期读取：组合期算成字面量会把首次组合那一帧的顶栏高度冻结住，
-        // 之后顶栏展开/收缩正文都不再跟随（切 tab 回首页时标签行被大标题与搜索框压住）。
-        // 底栏净空与 FAB 位置由 CouiAppScaffold 的 bottomBar 占位统一让出。
-        val contentPadding = remember(header, innerPadding, density) {
-            val base = header.contentPadding(innerPadding, density)
-            object : PaddingValues {
-                override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
-                    base.calculateLeftPadding(layoutDirection)
-
-                override fun calculateTopPadding(): Dp = base.calculateTopPadding()
-
-                override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
-                    base.calculateRightPadding(layoutDirection)
-
-                // 竖排两枚 FAB 固定占位（16 + 56 + 12 + 56 + 16 呼吸净空），末项必须滚到它们上方；
-                // 不按 showBackToTop 拆分：回到顶部按钮显隐会让 contentPadding 在滚动中跳动
-                override fun calculateBottomPadding(): Dp =
-                    base.calculateBottomPadding() + couiHomeExtraBottomDp().dp
-            }
-        }
-        val feedState = if (searching) results else feed
-        // 大屏按 LocalWideLayout 的断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding，
-        // 页面不再自写宽度常量；窄屏该内衬为 0，行为与旧页一致
-        LazyColumn(
-            state = lazyState,
-            modifier = Modifier.fillMaxSize().readableWidth().consumeWindowInsets(innerPadding),
-            contentPadding = contentPadding,
-            overscrollEffect = rememberCouiOverscrollEffect(),
-        ) {
-            item(key = "coui-home-head") {
-                if (searching) {
-                    CouiSearchHeader(
-                        sortLabels = SortLabels,
-                        selectedSort = order.ordinal.coerceIn(0, SortLabels.lastIndex),
-                        onSelectSort = { index ->
-                            runSearch(activeQuery, searchByTag, BrowseOrder.entries[index])
-                        },
-                        summary = searchSummary(
-                            query = activeQuery,
-                            byTag = searchByTag,
-                            total = (results as? ListState.Loaded)?.feed?.total,
-                        ),
-                    )
-                } else {
-                    CouiTagRow(
-                        tags = hotTags,
-                        expanded = showAllTags,
-                        onToggleExpanded = { showAllTags = !showAllTags },
-                        onPick = { tag ->
-                            query = tag
-                            runSearch(tag, byTag = true, sort = order)
-                        },
-                    )
-                }
-            }
-            // 三条横滑轨道排在发现流之前：先给「今天有什么可看」，再给完整清单
-            tracks.forEach { track ->
-                item(key = "coui-home-track-${track.key}") {
-                    CouiHomeTrackSection(
-                        track = track,
-                        onOpenAlbum = ::openAlbum,
-                        // 进榜入口只挂在排名轨道：其余轨道不摆一个没有去处的按钮
-                        onOpenRanking = if (track.ranked) onOpenRanking else null,
-                    )
-                }
-            }
-            item(key = "coui-home-title") {
-                CouiGroupTitle(
-                    title = if (searching) "搜索结果" else "最近更新",
-                    actions = {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            if (!searching) {
-                                CouiHeaderCapsuleAction(text = "每周必看", onClick = onOpenWeek)
-                            }
-                            CouiHeaderCapsuleAction(
-                                text = "帮助",
-                                tinted = false,
-                                onClick = { showSearchHelp = true },
-                            )
-                            CouiFeedRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
-                        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        CouiAppScaffold(
+            modifier = Modifier.fillMaxSize().nestedScroll(header.nestedScrollConnection),
+            topBar = {
+                CollapsingTopAppBar(
+                    state = header,
+                    searchState = searchState,
+                    title = "JMComic",
+                    // 顶栏自绘底默认透明 + 叠 40% 黑渐变，用皮肤页底色替代，避免滚动时透出正文
+                    backgroundColor = CouiTheme.colorScheme.background,
+                    searchBar = {
+                        SearchBar(
+                            state = searchState,
+                            query = query,
+                            onQueryChange = { value ->
+                                query = value
+                                // 清空输入框时退回首页，避免空查询与旧结果同时存在
+                                if (value.isEmpty() && searching) clearSearch()
+                            },
+                            onExpandedChange = { expanded ->
+                                if (expanded) searchExpanded = true else collapseSearch()
+                            },
+                            placeholder = "搜索作品 / 作者 / 标签",
+                            cancelText = "取消",
+                            clearDescription = "清除搜索内容",
+                            onSearch = { submitSearch() },
+                        )
                     },
                 )
-            }
-            when (val current = feedState) {
-                null, is ListState.Loading -> item(key = "coui-home-loading") {
-                    CouiLoadingGroup(
-                        text = if (searching) "正在搜索…" else "正在加载最新上架…",
-                    )
-                }
-
-                is ListState.Failed -> item(key = "coui-home-error") {
-                    val failureMessage = current.message.ifBlank { if (searching) "搜索失败" else CouiStrings.LoadFailed }
-                    CouiScreenFailureGroup(
-                        message = failureMessage,
-                        expired = current.sessionExpired,
-                        onRetry = {
-                            if (searching) searchLoader.loadFirstPage() else feedLoader.loadFirstPage()
-                        },
-                        onOpenLogin = onOpenLogin,
-                    )
-                }
-
-                is ListState.Loaded -> {
-                    val loadedFeed = current.feed
-                    val items = loadedFeed.items
-                    if (items.isEmpty()) {
-                        item(key = "coui-home-empty") {
-                            CouiEmptyGroup(
-                                text = if (searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent,
-                            )
-                        }
-                        item(key = "coui-home-empty-hint") {
-                            Footer(
-                                text = if (searching) {
-                                    "换个关键词或标签再试"
-                                } else {
-                                    "点右上角刷新再试一次"
-                                },
-                            )
-                        }
-                    } else {
-                        // key 用作品 id：首行贴齐标题下沿（top=0）与其它分段保持 8dp 标题间距，末行归零由下个分段自己留白
-                        // 大屏把发现流行卡排成两列，手机断点仍是单列；key 与改动前一致，滚动位置不丢
-                        feedRowItems(
-                            count = items.size,
-                            columns = feedColumns,
-                            keyPrefix = "coui-home-row-",
-                            keyOf = { index -> items[index].id },
-                        ) { index ->
-                            val album = items[index]
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        start = CouiPageDefaults.horizontalMargin,
-                                        end = CouiPageDefaults.horizontalMargin,
-                                        top = if (index == 0) 0.dp else CouiWorkCardTokens.RowSpacing,
-                                    ),
-                            ) {
-                                CouiWorkFeedRow(album = album, onClick = { openAlbum(album.id) })
-                            }
-                        }
-                        item(key = "coui-home-paging") {
-                            if (clickPaging) {
-                                CouiPagingGroup(
-                                    page = loadedFeed.page,
-                                    pageCount = loadedFeed.pageCount,
-                                    hasMore = loadedFeed.hasMore,
-                                    onJumpPage = ::jumpToPage,
-                                )
-                            } else {
-                                CouiLoadMoreFooter(
-                                    loading = loadedFeed.loadingMore,
-                                    error = if (loadedFeed.loadMoreFailed) {
-                                        if (searching) SEARCH_LOAD_MORE_FAILED else HOME_LOAD_MORE_FAILED
-                                    } else {
-                                        null
-                                    },
-                                    endReached = !loadedFeed.hasMore,
-                                    onRetry = { loadMore() },
-                                )
-                            }
-                        }
+            },
+            floatingActionButton = {
+                val fallback = LocalCouiFallbackContentColor.current
+                val iconTint = if (fallback == Color.Unspecified) CouiTheme.colorScheme.onAccent else fallback
+                val showBackToTop by remember { derivedStateOf { lazyState.firstVisibleItemIndex > 2 } }
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    if (showBackToTop) {
+                        CouiFab(
+                            icon = CouiIcons.Back,
+                            contentDescription = "回到顶部",
+                            rotationDegrees = 90f,
+                            onClick = { scope.launch { lazyState.animateScrollToItem(0) } },
+                        )
+                    }
+                    CouiFab(
+                        onClick = { openRandom() },
+                    ) {
+                        Icon(
+                            imageVector = CouiIcons.Shuffle,
+                            contentDescription = "随机看一部",
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint,
+                        )
                     }
                 }
+            },
+        ) { innerPadding ->
+            // 顶栏留白改由 LazyColumn 的 contentPadding 承担，正文才能滚到折叠后的顶栏下面。
+            // 折叠位移留到测量期读取：组合期算成字面量会把首次组合那一帧的顶栏高度冻结住，
+            // 之后顶栏展开/收缩正文都不再跟随（切 tab 回首页时标签行被大标题与搜索框压住）。
+            // 底栏净空与 FAB 位置由 CouiAppScaffold 的 bottomBar 占位统一让出。
+            val contentPadding = remember(header, innerPadding, density) {
+                val base = header.contentPadding(innerPadding, density)
+                object : PaddingValues {
+                    override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+                        base.calculateLeftPadding(layoutDirection)
+
+                    override fun calculateTopPadding(): Dp = base.calculateTopPadding()
+
+                    override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+                        base.calculateRightPadding(layoutDirection)
+
+                    // 竖排两枚 FAB 固定占位（16 + 56 + 12 + 56 + 16 呼吸净空），末项必须滚到它们上方；
+                    // 不按 showBackToTop 拆分：回到顶部按钮显隐会让 contentPadding 在滚动中跳动
+                    override fun calculateBottomPadding(): Dp =
+                        base.calculateBottomPadding() + couiHomeExtraBottomDp().dp
+                }
             }
-            // 搜索历史与更多入口只在首页态出现，搜索结果下保持与旧页一致的清爽
-            if (!searching) {
-                item(key = "coui-home-history") {
-                    Group(
-                        title = "首页发现",
-                        headerActions = {
-                            if (searchHistory.isNotEmpty()) {
-                                CouiHeaderTextAction(text = "清除") {
-                                    mutateHistory { deps.settings.clearSearchHistory() }
+            val feedState = if (searching) results else feed
+            // 大屏按 LocalWideLayout 的断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding，
+            // 页面不再自写宽度常量；窄屏该内衬为 0，行为与旧页一致
+            LazyColumn(
+                state = lazyState,
+                modifier = Modifier.fillMaxSize().readableWidth().consumeWindowInsets(innerPadding),
+                contentPadding = contentPadding,
+                overscrollEffect = rememberCouiOverscrollEffect(),
+            ) {
+                item(key = "coui-home-head") {
+                    if (searching) {
+                        CouiSearchHeader(
+                            sortLabels = SortLabels,
+                            selectedSort = order.ordinal.coerceIn(0, SortLabels.lastIndex),
+                            onSelectSort = { index ->
+                                runSearch(activeQuery, searchByTag, BrowseOrder.entries[index])
+                            },
+                            summary = searchSummary(
+                                query = activeQuery,
+                                byTag = searchByTag,
+                                total = (results as? ListState.Loaded)?.feed?.total,
+                            ),
+                        )
+                    } else {
+                        CouiTagRow(
+                            tags = hotTags,
+                            expanded = showAllTags,
+                            onToggleExpanded = { showAllTags = !showAllTags },
+                            onPick = { tag ->
+                                query = tag
+                                runSearch(tag, byTag = true, sort = order)
+                            },
+                        )
+                    }
+                }
+                // 三条横滑轨道排在发现流之前：先给「今天有什么可看」，再给完整清单
+                tracks.forEach { track ->
+                    item(key = "coui-home-track-${track.key}") {
+                        CouiHomeTrackSection(
+                            track = track,
+                            onOpenAlbum = ::openAlbum,
+                            // 进榜入口只挂在排名轨道：其余轨道不摆一个没有去处的按钮
+                            onOpenRanking = if (track.ranked) onOpenRanking else null,
+                        )
+                    }
+                }
+                item(key = "coui-home-title") {
+                    CouiGroupTitle(
+                        title = if (searching) "搜索结果" else "最近更新",
+                        actions = {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (!searching) {
+                                    CouiHeaderCapsuleAction(text = "每周必看", onClick = onOpenWeek)
+                                }
+                                CouiHeaderCapsuleAction(
+                                    text = "帮助",
+                                    tinted = false,
+                                    onClick = { showSearchHelp = true },
+                                )
+                                CouiFeedRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
+                            }
+                        },
+                    )
+                }
+                when (val current = feedState) {
+                    null, is ListState.Loading -> item(key = "coui-home-loading") {
+                        CouiLoadingGroup(
+                            text = if (searching) "正在搜索…" else "正在加载最新上架…",
+                        )
+                    }
+
+                    is ListState.Failed -> item(key = "coui-home-error") {
+                        val failureMessage = current.message.ifBlank { if (searching) "搜索失败" else CouiStrings.LoadFailed }
+                        CouiScreenFailureGroup(
+                            message = failureMessage,
+                            expired = current.sessionExpired,
+                            onRetry = {
+                                if (searching) searchLoader.loadFirstPage() else feedLoader.loadFirstPage()
+                            },
+                            onOpenLogin = onOpenLogin,
+                        )
+                    }
+
+                    is ListState.Loaded -> {
+                        val loadedFeed = current.feed
+                        val items = loadedFeed.items
+                        if (items.isEmpty()) {
+                            item(key = "coui-home-empty") {
+                                CouiEmptyGroup(
+                                    text = if (searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent,
+                                )
+                            }
+                            item(key = "coui-home-empty-hint") {
+                                Footer(
+                                    text = if (searching) {
+                                        "换个关键词或标签再试"
+                                    } else {
+                                        "点右上角刷新再试一次"
+                                    },
+                                )
+                            }
+                        } else {
+                            // key 用作品 id：首行贴齐标题下沿（top=0）与其它分段保持 8dp 标题间距，末行归零由下个分段自己留白
+                            // 大屏把发现流行卡排成两列，手机断点仍是单列；key 与改动前一致，滚动位置不丢
+                            feedRowItems(
+                                count = items.size,
+                                columns = feedColumns,
+                                keyPrefix = "coui-home-row-",
+                                keyOf = { index -> items[index].id },
+                            ) { index ->
+                                val album = items[index]
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = CouiPageDefaults.horizontalMargin,
+                                            end = CouiPageDefaults.horizontalMargin,
+                                            top = if (index == 0) 0.dp else CouiWorkCardTokens.RowSpacing,
+                                        ),
+                                ) {
+                                    CouiWorkFeedRow(album = album, onClick = { openAlbum(album.id) })
                                 }
                             }
-                        },
-                    ) {
-                        if (searchHistory.isEmpty()) {
-                            CouiMessageRow(title = "还没有搜索记录", summary = "搜索或点热词后，关键词会留在这里")
-                        } else {
-                            searchHistory.forEachIndexed { index, word ->
-                                if (index > 0) Divider()
-                                Item(
-                                    title = {
-                                        Text(
-                                            text = word,
-                                            kind = CouiTextKind.ItemTitle,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                    summary = {
-                                        Text(text = "点按重新搜索", kind = CouiTextKind.ItemSummary)
-                                    },
-                                    trailing = {
-                                        CouiRowIconAction(
-                                            icon = CouiIcons.Close,
-                                            description = "删除这条搜索记录",
-                                            onClick = {
-                                                mutateHistory { deps.settings.removeSearchHistory(word) }
-                                            },
-                                        )
-                                    },
-                                    onClick = {
-                                        query = word
-                                        runSearch(word, byTag = false, sort = order)
-                                    },
-                                )
+                            item(key = "coui-home-paging") {
+                                if (clickPaging) {
+                                    CouiPagingGroup(
+                                        page = loadedFeed.page,
+                                        pageCount = loadedFeed.pageCount,
+                                        hasMore = loadedFeed.hasMore,
+                                        onJumpPage = ::jumpToPage,
+                                    )
+                                } else {
+                                    CouiLoadMoreFooter(
+                                        loading = loadedFeed.loadingMore,
+                                        error = if (loadedFeed.loadMoreFailed) {
+                                            if (searching) SEARCH_LOAD_MORE_FAILED else HOME_LOAD_MORE_FAILED
+                                        } else {
+                                            null
+                                        },
+                                        endReached = !loadedFeed.hasMore,
+                                        onRetry = { loadMore() },
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
-            item(key = "coui-home-more") {
-                Group(title = "更多") {
-                    Item(
-                        icon = { CouiAccentIcon(CouiIcons.Star) },
-                        title = { Text(text = "每周必看", kind = CouiTextKind.ItemTitle) },
-                        summary = { Text(text = "按周汇总的连载更新", kind = CouiTextKind.ItemSummary) },
-                        onClick = {
-                            dismissSearchInput()
-                            onOpenWeek()
-                        },
-                    )
-                    Divider()
-                    Item(
-                        icon = { CouiAccentIcon(CouiIcons.Info) },
-                        title = { Text(text = "搜索语法", kind = CouiTextKind.ItemTitle) },
-                        summary = { Text(text = "空格 / + / - 组合关键词", kind = CouiTextKind.ItemSummary) },
-                        onClick = { showSearchHelp = true },
-                    )
+                // 搜索历史与更多入口只在首页态出现，搜索结果下保持与旧页一致的清爽
+                if (!searching) {
+                    item(key = "coui-home-history") {
+                        Group(
+                            title = "首页发现",
+                            headerActions = {
+                                if (searchHistory.isNotEmpty()) {
+                                    CouiHeaderTextAction(text = "清除") {
+                                        mutateHistory { deps.settings.clearSearchHistory() }
+                                    }
+                                }
+                            },
+                        ) {
+                            if (searchHistory.isEmpty()) {
+                                CouiMessageRow(title = "还没有搜索记录", summary = "搜索或点热词后，关键词会留在这里")
+                            } else {
+                                searchHistory.forEachIndexed { index, word ->
+                                    if (index > 0) Divider()
+                                    Item(
+                                        title = {
+                                            Text(
+                                                text = word,
+                                                kind = CouiTextKind.ItemTitle,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        },
+                                        summary = {
+                                            Text(text = "点按重新搜索", kind = CouiTextKind.ItemSummary)
+                                        },
+                                        trailing = {
+                                            CouiRowIconAction(
+                                                icon = CouiIcons.Close,
+                                                description = "删除这条搜索记录",
+                                                onClick = {
+                                                    mutateHistory { deps.settings.removeSearchHistory(word) }
+                                                },
+                                            )
+                                        },
+                                        onClick = {
+                                            query = word
+                                            runSearch(word, byTag = false, sort = order)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                item(key = "coui-home-more") {
+                    Group(title = "更多") {
+                        Item(
+                            icon = { CouiAccentIcon(CouiIcons.Star) },
+                            title = { Text(text = "每周必看", kind = CouiTextKind.ItemTitle) },
+                            summary = { Text(text = "按周汇总的连载更新", kind = CouiTextKind.ItemSummary) },
+                            onClick = {
+                                dismissSearchInput()
+                                onOpenWeek()
+                            },
+                        )
+                        Divider()
+                        Item(
+                            icon = { CouiAccentIcon(CouiIcons.Info) },
+                            title = { Text(text = "搜索语法", kind = CouiTextKind.ItemTitle) },
+                            summary = { Text(text = "空格 / + / - 组合关键词", kind = CouiTextKind.ItemSummary) },
+                            onClick = { showSearchHelp = true },
+                        )
+                    }
                 }
             }
         }
-    }
 
-    Dialog(
-        onDismissRequest = { showSearchHelp = false },
-        material = couiDialogMaterial(),
-        // visible 非空时退场窗口由库持有；外层 if 会在关闭瞬间把弹窗抽走，动画来不及播
-        visible = showSearchHelp,
-        confirmAction = CouiDialogAction(text = "知道了", onClick = { showSearchHelp = false }),
-        title = "搜索语法",
-        message = "空格、加号与减号决定关键词之间的关系。",
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        Dialog(
+            onDismissRequest = { showSearchHelp = false },
+            material = couiDialogMaterial(),
+            // visible 非空时退场窗口由库持有；外层 if 会在关闭瞬间把弹窗抽走，动画来不及播
+            visible = showSearchHelp,
+            confirmAction = CouiDialogAction(text = "知道了", onClick = { showSearchHelp = false }),
+            title = "搜索语法",
+            message = "空格、加号与减号决定关键词之间的关系。",
         ) {
-            CouiSyntaxRow(expression = "全彩 人妻", meaning = "同时包含这两个关键词（空格分隔）")
-            CouiSyntaxRow(expression = "全彩 +人妻", meaning = "两个关键词都必须包含")
-            CouiSyntaxRow(expression = "全彩 -人妻", meaning = "包含「全彩」，排除「人妻」")
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CouiSyntaxRow(expression = "全彩 人妻", meaning = "同时包含这两个关键词（空格分隔）")
+                CouiSyntaxRow(expression = "全彩 +人妻", meaning = "两个关键词都必须包含")
+                CouiSyntaxRow(expression = "全彩 -人妻", meaning = "包含「全彩」，排除「人妻」")
+            }
         }
+        GlassSnackbarHost(
+            state = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -964,18 +971,4 @@ private fun CouiSyntaxRow(expression: String, meaning: String) {
 private fun searchSummary(query: String, byTag: Boolean, total: Int?): String {
     val head = if (byTag) "标签：$query" else "“$query”"
     return if (total != null && total > 0) "$head · 共 $total 个结果" else head
-}
-
-/** 渲染层仍按 [ListState] 分三态：把 loader 的快照映射回去，渲染代码不用改。 */
-private fun SessionListSnapshot<SearchResult>.toListState(): ListState = when (val current = state) {
-    is ListLoadState.Loading -> ListState.Loading
-    is ListLoadState.Loaded -> ListState.Loaded(feed)
-    is ListLoadState.Failed -> ListState.Failed(current.message, current.sessionExpired)
-}
-
-/** 网关分页结果 → 共享分页切片：页码必须透传，否则续页会取错页。 */
-private fun SessionOutcome<SearchPage>.toCouiPageSlice(): SessionOutcome<PageSlice<SearchResult>> = when (this) {
-    is SessionOutcome.Ok -> SessionOutcome.Ok(value.toSlice())
-    is SessionOutcome.Expired -> SessionOutcome.Expired
-    is SessionOutcome.Failed -> this
 }
