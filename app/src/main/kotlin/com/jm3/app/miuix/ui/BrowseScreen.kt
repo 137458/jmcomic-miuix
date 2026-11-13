@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,6 +52,9 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.list.SessionListSnapshot
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
@@ -67,6 +71,7 @@ import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.toFeed
+import com.jm3.core.toSlice
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -76,6 +81,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -101,16 +107,11 @@ internal fun BrowseScreen(
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     // 筛选口径与列表结果一起进缓存：切 tab 回来时按同一口径取回上次的结果，滚动位置才有内容可落
     val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
-    val sessionCache = deps.sessionCache
     val pageMode = deps.paging.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
-    var state by remember(pageKey) { mutableStateOf(sessionCache.stateOf(SessionListKey.Browse(pageKey))) }
-    // 仅下拉手势触发的刷新使用顶部指示器；切换筛选等程序化加载走列表内进度条。
-    var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
-    // 快速切换筛选时旧响应不能覆盖新条件的结果
-    var requestToken by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     // 榜单走两列瀑布流，滚动状态与分类页的逐行列表分开保存
     val gridState = rememberLazyStaggeredGridState()
@@ -138,73 +139,48 @@ internal fun BrowseScreen(
     // 主分类 slug 与分类树一级节点同值，据此取当前分类的子分类（在列表项内读取，避免闭包捕获过期值）。
     val hasTagBlocks = categoryTree?.blocks?.isNotEmpty() == true
 
-    fun filter(): BrowseFilter = when (mode) {
-        BrowseMode.CATEGORY -> BrowseFilter(category = category, order = order, time = BrowseTime.ALL)
-        BrowseMode.RANK -> BrowseFilter(category = BrowseCategory.ALL, order = order, time = time)
+    // 列表加载编排（请求代次/在途标记/翻页游标/失败落点）收在 loader 内；页面只提供取哪一页与如何提示
+    val loader = remember(pageKey) {
+        SessionListLoader<SearchResult>(
+            scope = scope,
+            idOf = { it.id },
+            failureMessage = "加载失败",
+            fetchPage = { page ->
+                val outcome = deps.authCall.call { deps.gateway.browse(pageKey.toFilter(), page) }
+                when (outcome) {
+                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
+                    SessionOutcome.Expired -> SessionOutcome.Expired
+                    is SessionOutcome.Failed -> outcome
+                }
+            },
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+            cache = deps.sessionCache,
+            cacheKey = SessionListKey.Browse(pageKey),
+        )
     }
+    val snapshot by loader.snapshot.collectAsState()
+    // 渲染层沿用页面既有的 ListState 四态：列表复用件只吃 feed，不认加载态
+    val state = snapshot.toListState()
+    val refreshing = snapshot.refreshing
+    // 点击分页换页成功后才滚回顶部
+    var pendingScrollPage by remember(pageKey) { mutableIntStateOf(0) }
 
-    /**
-     * 列表状态与缓存一起改。
-     *
-     * 只改 state 的话，切走再回来缓存里还是上一份，页面会先闪一次旧列表再跳成新的。
-     */
-    fun publish(key: BrowsePageKey, next: ListState) {
-        sessionCache.remember(SessionListKey.Browse(key), next)
-        if (key == pageKey) {
-            state = next
-        }
-    }
-
+    /** 下拉手势走 refresh（保留当前列表），程序化重载走 loadFirstPage（整屏进度）。 */
     fun refresh(byPull: Boolean = false) {
-        if (byPull) refreshing = true
-        requestToken++
-        val token = requestToken
-        val key = pageKey
-        // 下拉刷新时保留当前列表，避免刷新指示器下方整屏空白
-        if (!byPull) publish(key, ListState.Loading)
-        scope.launch {
-            val next = deps.authCall.call { deps.gateway.browse(filter(), 1) }.asListState("加载失败")
-            if (token != requestToken) return@launch
-            publish(key, next)
-            refreshing = false
-        }
+        if (byPull) loader.refresh() else loader.loadFirstPage()
     }
 
     /** 点击分页：按目标页整页替换，沿用首屏缓存与筛选口径。 */
     fun jumpToPage(target: Int) {
-        val current = (state as? ListState.Loaded)?.feed ?: return
+        val current = loader.feed
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
-        refreshing = false
-        requestToken++
-        val token = requestToken
-        val key = pageKey
-        publish(key, ListState.Loading)
-        scope.launch {
-            val next = deps.authCall.call { deps.gateway.browse(filter(), resolved) }.asListState("加载失败")
-            if (token != requestToken) return@launch
-            publish(key, next)
-            if (mode == BrowseMode.RANK) gridState.scrollToItem(0) else listState.scrollToItem(0)
-        }
+        pendingScrollPage = resolved
+        loader.goToPage(resolved)
     }
 
     fun loadMore() {
-        val loaded = state as? ListState.Loaded ?: return
-        val requested = loaded.feed.beginLoadMore()
-        if (requested === loaded.feed) return
-        val token = requestToken
-        val key = pageKey
-        state = ListState.Loaded(requested)
-        scope.launch {
-            val next = deps.authCall.call { deps.gateway.browse(filter(), requested.page + 1) }
-            // 加载期间切换了筛选：这批结果属于旧条件，丢弃以免串页
-            if (token != requestToken) return@launch
-            val updated = when (next) {
-                is SessionOutcome.Ok -> requested.appendedBy(next.value)
-                else -> requested.failLoadMore()
-            }
-            publish(key, ListState.Loaded(updated))
-        }
+        loader.loadMore()
     }
 
     // 子分类/标签没有独立的筛选参数，统一按标签检索展示结果。
@@ -253,19 +229,21 @@ internal fun BrowseScreen(
         }
     }
 
-    LaunchedEffect(pageKey) {
-        val cacheKey = SessionListKey.Browse(pageKey)
-        // 同一口径的结果还在缓存里（切 tab 或切回已缓存筛选）：直接同步缓存并作废旧在途请求
-        if (sessionCache.hasPage(cacheKey)) {
-            requestToken++
-            refreshing = false
-            state = sessionCache.stateOf(cacheKey)
-            return@LaunchedEffect
-        }
-        refresh()
+    // 首帧命中 SessionCache 时 loader 构造即带内容，这里不再补拉，避免先闪一次加载态
+    LaunchedEffect(loader) {
+        if (loader.state !is ListLoadState.Loaded) loader.loadFirstPage()
     }
 
-    PaginationModeReloadEffect(pageMode) { refresh() }
+    // 换页落地后回顶，避免停在旧页的滚动位置
+    LaunchedEffect(snapshot.feed.page, snapshot.state) {
+        val page = pendingScrollPage
+        if (page != 0 && snapshot.state is ListLoadState.Loaded && snapshot.feed.page == page) {
+            pendingScrollPage = 0
+            if (mode == BrowseMode.RANK) gridState.scrollToItem(0) else listState.scrollToItem(0)
+        }
+    }
+
+    PaginationModeReloadEffect(pageMode) { loader.loadFirstPage() }
 
     // 触底加载：分类页跟逐行列表，榜单页跟两列瀑布流，判据由 PagedFeed 统一给出
     val browsing = state as? ListState.Loaded
@@ -371,6 +349,7 @@ internal fun BrowseScreen(
                 color = Color.Transparent,
             )
         },
+        snackbarHost = { GlassSnackbarHost(state = snackbarHostState) },
     ) { innerPadding ->
         // 主框架切换 tab 会重建页面，滚动容器恢复到原位置后顶栏要跟上，否则大标题压在已滚内容上
         // 用 AnimatedContent 只在标签结果与分类/榜单之间切换时播放横向转场，从详情/阅读器返回同一标签页时不重播入场
@@ -392,6 +371,7 @@ internal fun BrowseScreen(
                     order = order,
                     onOpenAlbum = nav::album,
                     onOpenLogin = nav::login,
+                    snackbarHostState = snackbarHostState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
                 )
@@ -409,7 +389,7 @@ internal fun BrowseScreen(
                         gridState = gridState,
                         contentPadding = innerPadding,
                         refreshing = refreshing,
-                        onRetry = ::refresh,
+                        onRetry = { refresh() },
                         onOpenLogin = nav::login,
                         onLoadMore = ::loadMore,
                         onOpenAlbum = nav::album,
@@ -502,7 +482,7 @@ internal fun BrowseScreen(
                                 ScreenFailureOrLogin(
                                     message = s.message,
                                     expired = s.sessionExpired,
-                                    onRetry = ::refresh,
+                                    onRetry = { refresh() },
                                     onOpenLogin = nav::login,
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 )
@@ -667,78 +647,70 @@ private fun TagResultSection(
     order: BrowseOrder,
     onOpenAlbum: (String) -> Unit,
     onOpenLogin: () -> Unit,
+    snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
     val normalizedKeyword = normalizeBrowseTagKeyword(keyword) ?: keyword.trim()
-    val tagKey = browseTagCacheKey(normalizedKeyword, order) ?: SessionListKey.BrowseTag(normalizedKeyword, order)
-    var state by remember(tagKey) { mutableStateOf(deps.sessionCache.stateOf(tagKey)) }
-    var requestToken by remember { mutableIntStateOf(0) }
+    // 缓存键同时也是「同一份标签结果」的身份；空白检索词没有键，此时不挂缓存，退化为纯网络加载
+    val tagKey = browseTagCacheKey(normalizedKeyword, order)
     val pageMode = deps.paging.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    // 从详情/阅读器退栈重建后首帧即可命中 SessionCache，与 listState 恢复的滚动下标直接对齐
-
-    fun publish(key: SessionListKey.BrowseTag, next: ListState) {
-        state = next
-        deps.sessionCache.remember(key, next)
+    val loader = remember(tagKey) {
+        SessionListLoader<SearchResult>(
+            scope = scope,
+            idOf = { it.id },
+            failureMessage = "加载失败",
+            fetchPage = { page ->
+                val outcome = deps.authCall.call {
+                    deps.gateway.search(tagKey?.keyword ?: normalizedKeyword, page, order, SearchScope.TAG)
+                }
+                when (outcome) {
+                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
+                    SessionOutcome.Expired -> SessionOutcome.Expired
+                    is SessionOutcome.Failed -> outcome
+                }
+            },
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+            cache = tagKey?.let { deps.sessionCache },
+            cacheKey = tagKey,
+        )
     }
+    val snapshot by loader.snapshot.collectAsState()
+    val state = snapshot.toListState()
+    var pendingScrollPage by remember(tagKey) { mutableIntStateOf(0) }
 
     fun load() {
-        requestToken++
-        val token = requestToken
-        val key = tagKey
-        publish(key, ListState.Loading)
-        scope.launch {
-            val next = deps.authCall.call { deps.gateway.search(key.keyword, 1, order, SearchScope.TAG) }
-                .asListState("加载失败")
-            if (token != requestToken) return@launch
-            publish(key, next)
-        }
+        loader.loadFirstPage()
     }
 
     /** 点击分页：按目标页整页替换，检索口径不变。 */
     fun jumpToPage(target: Int) {
-        val current = (state as? ListState.Loaded)?.feed ?: return
+        val current = loader.feed
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
-        requestToken++
-        val token = requestToken
-        val key = tagKey
-        publish(key, ListState.Loading)
-        scope.launch {
-            val next = deps.authCall.call { deps.gateway.search(key.keyword, resolved, order, SearchScope.TAG) }
-                .asListState("加载失败")
-            if (token != requestToken) return@launch
-            publish(key, next)
-            listState.scrollToItem(0)
-        }
+        pendingScrollPage = resolved
+        loader.goToPage(resolved)
     }
 
     fun loadMore() {
-        val loaded = state as? ListState.Loaded ?: return
-        val requested = loaded.feed.beginLoadMore()
-        if (requested === loaded.feed) return
-        val token = requestToken
-        val key = tagKey
-        state = ListState.Loaded(requested)
-        scope.launch {
-            val next = deps.authCall.call { deps.gateway.search(key.keyword, requested.page + 1, order, SearchScope.TAG) }
-            if (token != requestToken) return@launch
-            val updated = when (next) {
-                is SessionOutcome.Ok -> requested.appendedBy(next.value)
-                else -> requested.failLoadMore()
-            }
-            publish(key, ListState.Loaded(updated))
-        }
+        loader.loadMore()
     }
 
-    LaunchedEffect(tagKey) {
-        if (deps.sessionCache.hasPage(tagKey)) return@LaunchedEffect
-        load()
+    // 从详情/阅读器退栈重建后首帧即可命中 SessionCache，与 listState 恢复的滚动下标直接对齐
+    LaunchedEffect(loader) {
+        if (loader.state !is ListLoadState.Loaded) loader.loadFirstPage()
     }
-    PaginationModeReloadEffect(pageMode) { load() }
+    LaunchedEffect(snapshot.feed.page, snapshot.state) {
+        val page = pendingScrollPage
+        if (page != 0 && snapshot.state is ListLoadState.Loaded && snapshot.feed.page == page) {
+            pendingScrollPage = 0
+            listState.scrollToItem(0)
+        }
+    }
+    PaginationModeReloadEffect(pageMode) { loader.loadFirstPage() }
 
     val loaded = state as? ListState.Loaded
     if (!clickPaging && loaded != null) {
@@ -782,6 +754,27 @@ private fun TagResultSection(
             }
         }
     }
+}
+
+/** 缓存键里的筛选口径还原成请求条件：分类页只认主分类与排序，榜单页只认排序与时间。 */
+private fun BrowsePageKey.toFilter(): BrowseFilter = when (mode) {
+    BrowseMode.CATEGORY -> BrowseFilter(
+        category = BrowseCategory.entries.firstOrNull { it.apiValue == category } ?: BrowseCategory.ALL,
+        order = BrowseOrder.entries.firstOrNull { it.apiValue == order } ?: BrowseOrder.LATEST,
+        time = BrowseTime.ALL,
+    )
+    BrowseMode.RANK -> BrowseFilter(
+        category = BrowseCategory.ALL,
+        order = BrowseOrder.entries.firstOrNull { it.apiValue == order } ?: BrowseOrder.LATEST,
+        time = BrowseTime.entries.firstOrNull { it.apiValue == time } ?: BrowseTime.ALL,
+    )
+}
+
+/** loader 的屏级三态映射回页面既有的四态渲染类型（Loading/Loaded/Failed）。 */
+private fun SessionListSnapshot<SearchResult>.toListState(): ListState = when (val s = state) {
+    is ListLoadState.Loading -> ListState.Loading
+    is ListLoadState.Loaded -> ListState.Loaded(feed)
+    is ListLoadState.Failed -> ListState.Failed(s.message, s.sessionExpired)
 }
 
 /**

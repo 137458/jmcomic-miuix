@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -50,14 +51,17 @@ import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.list.SessionListSnapshot
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.albumCodeOf
-import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.toSlice
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
@@ -72,6 +76,7 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TooltipBox
@@ -91,6 +96,20 @@ private const val SERIAL_CAROUSEL_LIMIT = 12
 /** 热门标签折叠时展示的标签数。 */
 private const val HOT_TAG_COLLAPSED = 8
 
+/** 搜索 loader 的取数条件：查询词、是否标签检索、排序。loader 只建一次，条件由持有者逐次刷新。 */
+private data class HomeSearchRequest(
+    val query: String,
+    val byTag: Boolean,
+    val order: BrowseOrder,
+)
+
+/** loader 的屏级三态映射回页面既有的四态渲染类型（Loading/Loaded/Failed）。 */
+private fun SessionListSnapshot<SearchResult>.toListState(): ListState = when (val s = state) {
+    is ListLoadState.Loading -> ListState.Loading
+    is ListLoadState.Loaded -> ListState.Loaded(feed)
+    is ListLoadState.Failed -> ListState.Failed(s.message, s.sessionExpired)
+}
+
 // 列表三态与会话缓存统一在 SessionCache.kt 定义；结局到列表状态的翻译在 ListOutcome.kt
 
 /** 首页：固定搜索栏 + 发现流（连载更新/热门标签/随便看看/最新上架）或搜索结果。 */
@@ -106,20 +125,14 @@ internal fun HomeScreen(
     var activeQuery by rememberSaveable { mutableStateOf("") }
     var searchByTag by rememberSaveable { mutableStateOf(false) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
-    // 页面当前的列表状态（含失败态）由 Composable 持有；会话缓存只留加载成功的结果，供重建后恢复。
+    // 列表加载编排（代次/在途标记/翻页游标/失败落点）与缓存读写都收进 loader：首帧有已落定结果就直接渲染
     val sessionCache = deps.sessionCache
-    var feed by remember { mutableStateOf(sessionCache.stateOf(SessionListKey.HomeFeed)) }
-    var results by remember { mutableStateOf(sessionCache.stateOrNull(SessionListKey.HomeSearch)) }
     var hotTags by remember { mutableStateOf(sessionCache.homeSide.hotTags) }
     var serialUpdates by remember { mutableStateOf(sessionCache.homeSide.serialUpdates) }
     var randomPicks by remember { mutableStateOf(sessionCache.homeSide.randomPicks) }
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var showAllTags by rememberSaveable { mutableStateOf(false) }
     var showSearchHelp by rememberSaveable { mutableStateOf(false) }
-    // 仅下拉手势触发的刷新使用顶部指示器；普通加载由列表内进度条表达。
-    var refreshing by remember { mutableStateOf(false) }
-    // 列表代次：切换搜索/刷新时递增，旧请求的响应只在代次未变时落地。
-    var listToken by remember { mutableIntStateOf(0) }
     // 下拉阻尼阈值调低：首页内容多，轻拉即可触发刷新
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
@@ -133,18 +146,67 @@ internal fun HomeScreen(
     // 分页模式来自设置域的可观察状态：设置页切换后立即变更控件形态，并触发第一页重载。
     val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
-    val searching = isShowingSearchResults(activeQuery, results)
+    // 搜索态 = 有活跃关键词 或 缓存里还留着上次结果：后者让从详情页返回时结果先出现
+    var searchActive by remember { mutableStateOf(sessionCache.hasPage(SessionListKey.HomeSearch)) }
+    val searching = activeQuery.isNotBlank() || searchActive
+    // 两个 loader 只在首帧建一次：搜索条件由持有者给，避免按关键词重建 loader 把不同查询串进同一份缓存
+    val searchRequest = remember { mutableStateOf(HomeSearchRequest(activeQuery, searchByTag, order)) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    /** 列表状态与会话缓存一起改：只改其一，切走再回来就会先闪上一份结果。 */
-    fun rememberFeed(next: ListState) {
-        feed = next
-        sessionCache.remember(SessionListKey.HomeFeed, next)
+    val feedLoader = remember {
+        SessionListLoader<SearchResult>(
+            scope = scope,
+            idOf = { it.id },
+            failureMessage = "加载失败",
+            fetchPage = { page ->
+                val outcome = deps.authCall.call { deps.gateway.latest(page) }
+                when (outcome) {
+                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
+                    SessionOutcome.Expired -> SessionOutcome.Expired
+                    is SessionOutcome.Failed -> outcome
+                }
+            },
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+            cache = sessionCache,
+            cacheKey = SessionListKey.HomeFeed,
+        )
     }
-
-    fun rememberResults(next: ListState) {
-        results = next
-        sessionCache.remember(SessionListKey.HomeSearch, next)
+    val searchLoader = remember {
+        SessionListLoader<SearchResult>(
+            scope = scope,
+            idOf = { it.id },
+            failureMessage = "网络错误",
+            fetchPage = { page ->
+                val request = searchRequest.value
+                val outcome = deps.authCall.call {
+                    deps.gateway.search(
+                        request.query,
+                        page,
+                        request.order,
+                        if (request.byTag) SearchScope.TAG else SearchScope.SITE,
+                    )
+                }
+                when (outcome) {
+                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
+                    SessionOutcome.Expired -> SessionOutcome.Expired
+                    is SessionOutcome.Failed -> outcome
+                }
+            },
+            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+            cache = sessionCache,
+            cacheKey = SessionListKey.HomeSearch,
+        )
     }
+    val feedSnapshot by feedLoader.snapshot.collectAsState()
+    val searchSnapshot by searchLoader.snapshot.collectAsState()
+    // 渲染层沿用页面既有的 ListState 四态：列表复用件只吃 feed
+    val feed = feedSnapshot.toListState()
+    val results: ListState? = if (searching) searchSnapshot.toListState() else null
+    val activeSnapshot = if (searching) searchSnapshot else feedSnapshot
+    val refreshing = activeSnapshot.refreshing
+    val activeFeed: PagedFeed<SearchResult>? =
+        if (activeSnapshot.state is ListLoadState.Loaded) activeSnapshot.feed else null
+    var pendingScrollPage by remember { mutableIntStateOf(0) }
 
     /** 侧栏三份数据一起到达，一起换。 */
     fun rememberSide(tags: List<String>, updates: List<SearchResult>, picks: List<SearchResult>) {
@@ -154,9 +216,6 @@ internal fun HomeScreen(
         sessionCache.homeSide = HomeSideData(tags, updates, picks)
     }
 
-    fun requestSearch(page: Int, byTag: Boolean, text: String, sort: BrowseOrder): SearchPage =
-        deps.gateway.search(text, page, sort, if (byTag) SearchScope.TAG else SearchScope.SITE)
-
     /** 搜索历史读写都在 IO 线程，写入后重新读取，UI 只拿最新快照。 */
     fun mutateHistory(block: suspend () -> Unit) {
         scope.launch {
@@ -164,44 +223,28 @@ internal fun HomeScreen(
         }
     }
 
-    fun loadFeed(page: Int, token: Int) {
-        scope.launch {
-            // 等待会话恢复、切 IO、判失效都在 AuthCall 里完成，这里只关心结局。
-            val next = deps.authCall.call { deps.gateway.latest(page) }
-            if (token != listToken) return@launch
-            rememberFeed(next.asListState("加载失败"))
-        }
-    }
-
     fun runSearch(text: String, byTag: Boolean, sort: BrowseOrder) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
-        refreshing = false
         activeQuery = trimmed
         searchByTag = byTag
         orderValue = sort.apiValue
-        listToken++
-        val token = listToken
-        rememberResults(ListState.Loading)
+        // 请求条件先落到持有者，再让 loader 去取：loader 只认这一份条件
+        searchRequest.value = HomeSearchRequest(trimmed, byTag, sort)
+        searchActive = true
         // 提交即记录：标签检索与排序切换也会把当前关键词前移。
         mutateHistory { deps.settings.addSearchHistory(trimmed) }
-        scope.launch {
-            val next = deps.authCall.call { requestSearch(1, byTag, trimmed, sort) }
-            if (token != listToken) return@launch
-            rememberResults(next.asListState("网络错误"))
-        }
+        searchLoader.loadFirstPage()
     }
 
     fun clearSearch() {
-        refreshing = false
         query = ""
         activeQuery = ""
-        results = null
+        searchActive = false
         sessionCache.forget(SessionListKey.HomeSearch)
         searchByTag = false
-        listToken++
-        // 首屏发现流请求可能被搜索代次丢弃；退出搜索时补一次，避免发现流一直停在加载态
-        if (feed !is ListState.Loaded) loadFeed(1, listToken)
+        // 首屏发现流请求可能被搜索态丢弃；退出搜索时补一次，避免发现流一直停在加载态
+        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
     }
 
     // 处于搜索态时拦截系统返回键，退回主页发现流而非直接退出应用
@@ -236,100 +279,47 @@ internal fun HomeScreen(
         }
     }
 
+    /** 下拉手势保留当前列表，程序化重载整屏换进度条；搜索态与发现流各走自己的 loader。 */
     fun refresh(byPull: Boolean = false) {
-        refreshing = byPull
-        listToken++
-        val token = listToken
-        scope.launch {
-            if (searching) {
-                val text = activeQuery
-                val byTag = searchByTag
-                val next = deps.authCall.call { requestSearch(1, byTag, text, order) }
-                if (token == listToken) {
-                    rememberResults(next.asListState("网络错误"))
-                    refreshing = false
-                }
-            } else {
-                val next = deps.authCall.call { deps.gateway.latest(1) }
-                if (token == listToken) {
-                    rememberFeed(next.asListState("加载失败"))
-                    refreshing = false
-                }
-            }
-        }
+        val loader = if (searching) searchLoader else feedLoader
+        if (byPull) loader.refresh() else loader.loadFirstPage()
     }
 
-    /** 当前展示列表的分页状态：搜索态看搜索结果，否则看发现流。 */
-    fun activeFeed(): PagedFeed<SearchResult>? =
-        ((if (searching) results else feed) as? ListState.Loaded)?.feed
-
-    /** 只改页面状态、不写会话缓存：在途标记属于这一次请求，不该留在缓存里。 */
-    fun publishTransient(next: ListState) {
-        if (searching) results = next else feed = next
+    /** 失败页重试：整屏换加载态重取第一页。 */
+    fun reload() {
+        if (searching) searchLoader.loadFirstPage() else feedLoader.loadFirstPage()
     }
 
     fun loadMore() {
-        val current = activeFeed() ?: return
-        // 还能不能拉、在不在拉、上次是否失败，全由 PagedFeed 判定
-        val requested = current.beginLoadMore()
-        if (requested === current) return
-        val token = listToken
-        val nextOrder = order
-        val text = activeQuery
-        val byTag = searchByTag
-        publishTransient(ListState.Loaded(requested))
-        scope.launch {
-            val next = deps.authCall.call {
-                if (searching) requestSearch(requested.page + 1, byTag, text, nextOrder)
-                else deps.gateway.latest(requested.page + 1)
-            }
-            if (token != listToken) return@launch
-            val updated = when (next) {
-                is SessionOutcome.Ok -> requested.appendedBy(next.value)
-                else -> requested.failLoadMore()
-            }
-            if (searching) rememberResults(ListState.Loaded(updated)) else rememberFeed(ListState.Loaded(updated))
-        }
+        if (searching) searchLoader.loadMore() else feedLoader.loadMore()
     }
 
     /** 点击分页：用目标页整页替换当前列表，成功后回到列表顶部。 */
     fun jumpToPage(target: Int) {
-        val current = activeFeed() ?: return
+        val loader = if (searching) searchLoader else feedLoader
+        val current = loader.feed
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
         if (current.pageCount == null && resolved > current.page && !current.hasMore) return
-        refreshing = false
-        val text = activeQuery
-        val byTag = searchByTag
-        val nextOrder = order
-        listToken++
-        val token = listToken
-        if (searching) {
-            rememberResults(ListState.Loading)
-        } else {
-            rememberFeed(ListState.Loading)
-        }
-        scope.launch {
-            val next = deps.authCall.call {
-                if (searching) requestSearch(resolved, byTag, text, nextOrder)
-                else deps.gateway.latest(resolved)
-            }
-            if (token != listToken) return@launch
-            val mapped = next.asListState("网络错误")
-            if (searching) rememberResults(mapped) else rememberFeed(mapped)
-            if (mapped is ListState.Loaded) listState.scrollToItem(0)
+        pendingScrollPage = resolved
+        loader.goToPage(resolved)
+    }
+
+    // 换页落地后回顶：目标页在请求前已知，但要等内容真正落地再滚，否则会滚到空列表上
+    LaunchedEffect(activeSnapshot.feed.page, activeSnapshot.state) {
+        val page = pendingScrollPage
+        if (page != 0 && activeSnapshot.state is ListLoadState.Loaded && activeSnapshot.feed.page == page) {
+            pendingScrollPage = 0
+            listState.scrollToItem(0)
         }
     }
 
     // 首屏：最新上架 + 连载更新 + 热门标签 + 随机推荐 + 搜索历史并行加载；若处于搜索态且无缓存结果则自动拉取搜索。
     LaunchedEffect(deps.gateway, deps.authCall) {
-        if (!searching && feed !is ListState.Loaded) {
-            listToken++
-            loadFeed(1, listToken)
-        }
-        if (searching && results == null) {
-            runSearch(activeQuery, byTag = searchByTag, sort = order)
-        }
+        // 首帧命中 SessionCache 时 loader 构造即带内容，这里不再补拉，避免先闪一次加载态
+        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
+        // 搜索态可能是恢复出来的（缓存命中则跳过）；确实没有结果时才补一次
+        if (searching && searchLoader.state is ListLoadState.Loading) searchLoader.loadFirstPage()
         coroutineScope {
             if (sessionCache.homeSide.isEmpty) {
                 launch {
@@ -359,20 +349,18 @@ internal fun HomeScreen(
     // 分页模式切换后清掉已追加内容并回到第 1 页重取，避免两种翻页语义混用；非激活列表同步复位。
     PaginationModeReloadEffect(mode) {
         if (searching) {
-            rememberResults(ListState.Loading)
-            rememberFeed(ListState.Loading)
+            searchLoader.loadFirstPage()
+            feedLoader.loadFirstPage()
         } else {
-            rememberFeed(ListState.Loading)
-            results = null
+            feedLoader.loadFirstPage()
+            searchActive = false
             sessionCache.forget(SessionListKey.HomeSearch)
         }
-        refresh()
     }
 
     // 接近列表尾部时自动加载下一页；点击分页模式下改由页码控件驱动。
-    val pagingFeed = activeFeed()
-    if (!clickPaging && pagingFeed != null) {
-        LoadMoreOnScroll(listState = listState, feed = pagingFeed, onLoadMore = ::loadMore)
+    if (!clickPaging && activeFeed != null) {
+        LoadMoreOnScroll(listState = listState, feed = activeFeed, onLoadMore = ::loadMore)
     }
 
     // 与原版一致：列表滚动后出现悬浮操作（随机一部/回到顶部）
@@ -393,7 +381,7 @@ internal fun HomeScreen(
     }
 
     fun openRandom() {
-        val candidates = randomPicks.ifEmpty { activeFeed()?.items.orEmpty() }
+        val candidates = randomPicks.ifEmpty { activeFeed?.items.orEmpty() }
         candidates.randomOrNull()?.let { openAlbum(it.id) }
     }
 
@@ -524,6 +512,7 @@ internal fun HomeScreen(
             }
         },
         collapsibleSearch = searchCollapse,
+        snackbarHost = { GlassSnackbarHost(state = snackbarHostState) },
     ) { innerPadding ->
         val listContentPadding = remember(innerPadding, floatingBarContentPadding, floatingActionsBottom) {
             val extraBottom = glassHomeExtraBottomDp(
@@ -668,7 +657,7 @@ internal fun HomeScreen(
                             ScreenFailureOrLogin(
                                 message = s.message,
                                 expired = s.sessionExpired,
-                                onRetry = { refresh() },
+                                onRetry = { reload() },
                                 onOpenLogin = nav::login,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )

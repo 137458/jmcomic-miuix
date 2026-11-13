@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -25,8 +26,10 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.list.SessionListSnapshot
 import com.jm3.app.miuix.ui.route.AppRoutes
-import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.SearchPage
@@ -37,8 +40,10 @@ import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
+import com.jm3.core.toSlice
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 
 internal sealed interface SearchUiState {
@@ -63,6 +68,13 @@ internal fun searchStateOf(outcome: SessionOutcome<SearchPage>, failureMessage: 
         )
     }
 
+/** loader 快照 → 本屏渲染状态：三档一一对应，失败文案与失效标记原样搬过来。 */
+private fun SessionListSnapshot<SearchResult>.toUiState(): SearchUiState = when (val s = state) {
+    ListLoadState.Loading -> SearchUiState.Loading
+    ListLoadState.Loaded -> SearchUiState.Loaded(feed)
+    is ListLoadState.Failed -> SearchUiState.Failed(message = s.message, sessionExpired = s.sessionExpired)
+}
+
 /** 独立搜索结果页：标签/作者/作品/人物点击与外部入口共用，支持排序与分页。 */
 @Composable
 internal fun SearchScreen(
@@ -72,16 +84,13 @@ internal fun SearchScreen(
     onBack: () -> Unit,
     nav: AppRoutes,
 ) {
-    var state by remember(query, scope) { mutableStateOf<SearchUiState>(SearchUiState.Loading) }
     var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
-    var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
-    // 排序/下拉刷新会替换第一页，旧的分页响应只在代次未变时落地
-    var requestToken by remember { mutableIntStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val selectionHaptic = rememberSelectionHaptic()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
@@ -89,64 +98,53 @@ internal fun SearchScreen(
     val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
 
-    fun fetch(page: Int, sort: BrowseOrder): SearchPage =
-        deps.gateway.search(query, page, sort, scope, time)
+    // 关键词/范围/排序/时间任一变化就是另一份结果：loader 跟着重建，在途请求与页游标从零起算。
+    val loader = remember(query, scope, order, time) {
+        SessionListLoader<SearchResult>(
+            scope = coroutineScope,
+            idOf = { it.id },
+            failureMessage = "搜索失败",
+            fetchPage = { page ->
+                val outcome = deps.authCall.call { deps.gateway.search(query, page, order, scope, time) }
+                when (outcome) {
+                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
+                    SessionOutcome.Expired -> SessionOutcome.Expired
+                    is SessionOutcome.Failed -> outcome
+                }
+            },
+            notice = { message -> coroutineScope.launch { snackbarHostState.showSnackbar(message) } },
+        )
+    }
+    val snapshot by loader.snapshot.collectAsState()
+    val state = snapshot.toUiState()
+    // 下拉指示器状态由 loader 给：刷新只保留内容，不再由本屏另置一份
+    val refreshing = snapshot.refreshing
+    // 跳页成功后回顶：loader 只认页号，回顶时点由本屏登记
+    var pendingScrollPage by remember { mutableIntStateOf(0) }
 
-    fun loadFirstPage(byPull: Boolean = false) {
-        refreshing = byPull
-        requestToken++
-        val token = requestToken
-        // 下拉刷新时保留当前结果，避免列表在刷新指示器下方整屏消失
-        if (!byPull) state = SearchUiState.Loading
-        coroutineScope.launch {
-            val next = deps.authCall.call { fetch(1, order) }
-            if (token != requestToken) return@launch
-            state = searchStateOf(next, "搜索失败")
-            refreshing = false
+    LaunchedEffect(loader) { loader.loadFirstPage() }
+    LaunchedEffect(snapshot.feed.page, snapshot.state) {
+        if (pendingScrollPage != 0 && snapshot.state is ListLoadState.Loaded && pendingScrollPage == snapshot.feed.page) {
+            pendingScrollPage = 0
+            listState.scrollToItem(0)
         }
     }
+
+    PaginationModeReloadEffect(mode) { loader.loadFirstPage() }
 
     fun loadMore() {
-        val loaded = state as? SearchUiState.Loaded ?: return
-        if (!loaded.feed.canLoadMore) return
-        val token = requestToken
-        val requested = loaded.feed.beginLoadMore()
-        state = SearchUiState.Loaded(requested)
-        coroutineScope.launch {
-            val next = deps.authCall.call { fetch(requested.page + 1, order) }
-            if (token != requestToken) return@launch
-            val current = state as? SearchUiState.Loaded ?: return@launch
-            val updated = when (next) {
-                is SessionOutcome.Ok -> current.feed.appendedBy(next.value)
-                else -> current.feed.failLoadMore()
-            }
-            state = SearchUiState.Loaded(updated)
-        }
+        loader.loadMore()
     }
 
-    /** 点击分页：整页替换并回到列表顶部。 */
+    /** 点击分页：按目标页整页替换并回到列表顶部。 */
     fun jumpToPage(target: Int) {
-        val loaded = state as? SearchUiState.Loaded ?: return
-        val resolved = pagerTargetPage(loaded.feed.page, target, loaded.feed.pageCount)
-        if (resolved == loaded.feed.page) return
-        if (loaded.feed.pageCount == null && resolved > loaded.feed.page && !loaded.feed.hasMore) return
-        refreshing = false
-        requestToken++
-        val token = requestToken
-        state = SearchUiState.Loading
-        coroutineScope.launch {
-            val next = deps.authCall.call { fetch(resolved, order) }
-            if (token != requestToken) return@launch
-            state = searchStateOf(next, "搜索失败")
-            if (state is SearchUiState.Loaded) listState.scrollToItem(0)
-        }
+        val current = snapshot.feed
+        val resolved = pagerTargetPage(current.page, target, current.pageCount)
+        if (resolved == current.page) return
+        if (current.pageCount == null && resolved > current.page && !current.hasMore) return
+        pendingScrollPage = resolved
+        loader.goToPage(resolved)
     }
-
-    LaunchedEffect(query, scope, orderValue, timeValue) {
-        loadFirstPage()
-    }
-
-    PaginationModeReloadEffect(mode) { loadFirstPage() }
 
     GlassScaffold(
         topBar = {
@@ -183,11 +181,12 @@ internal fun SearchScreen(
                 )
             }
         },
+        snackbarHost = { GlassSnackbarHost(state = snackbarHostState) },
     ) { innerPadding ->
         // 列表内容穿到玻璃顶栏（顶栏 + 筛选条）下方，顶栏才能采样到真实背景
         GlassPullToRefresh(
             isRefreshing = refreshing,
-            onRefresh = { loadFirstPage(byPull = true) },
+            onRefresh = { loader.refresh() },
             pullToRefreshState = refreshState,
             modifier = Modifier.fillMaxSize(),
             // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
@@ -226,7 +225,7 @@ internal fun SearchScreen(
                         ScreenFailureOrLogin(
                             message = s.message,
                             expired = s.sessionExpired,
-                            onRetry = { loadFirstPage() },
+                            onRetry = { loader.loadFirstPage() },
                             onOpenLogin = nav::login,
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                         )

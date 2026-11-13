@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -77,14 +78,10 @@ import com.jm3.app.miuix.ui.BrowsePageKey
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
-import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.SessionListKey
-import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.browseTagCacheKey
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.normalizeBrowseTagKeyword
-import com.jm3.app.miuix.ui.shouldReloadRestoredTag
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
@@ -105,6 +102,9 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRankBadge
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.list.SessionListSnapshot
 import com.jm3.app.miuix.ui.coui.component.LocalCouiAppBackdrop
 import com.jm3.app.miuix.ui.coui.component.couiDialogListMaxHeight
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
@@ -118,24 +118,22 @@ import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.orDegrade
-import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
-import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseCategory
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.CategoryBlock
 import com.jm3.core.model.CategoryTree
+import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import com.jm3.core.toFeed
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import com.jm3.core.toSlice
 import top.yukonga.miuix.kmp.basic.Icon
 
 /** 标签检索视图里结果行的起始下标：0 是「标签：xxx」标题，其后才是行。 */
@@ -195,11 +193,28 @@ internal fun CouiBrowseScreen(
     val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
     val listKey = SessionListKey.Browse(pageKey)
 
-    // SessionCache 是普通 map，不是快照状态，页面自己持有一份并双写
-    var state by remember(pageKey) { mutableStateOf(sessionCache.stateOf(listKey)) }
-    // 快速切筛选时，旧响应不能覆盖新条件的结果
-    var requestToken by remember { mutableIntStateOf(0) }
-    var inFlightJob by remember { mutableStateOf<Job?>(null) }
+    // 加载编排交给共享的 SessionListLoader：首屏 / 下拉刷新 / 翻页 / 跳页 / 失败分派都只有一份实现，
+    // 本页只留渲染用的 ListState，以及「换页后归顶」这种纯视觉决策。
+    // 分类只认分类 + 排序，榜单只认时间 + 排序：两套口径与旧页一致
+    val currentFilter = when (mode) {
+        BrowseMode.CATEGORY -> BrowseFilter(category = category, order = order, time = BrowseTime.ALL)
+        BrowseMode.RANK -> BrowseFilter(category = BrowseCategory.ALL, order = order, time = time)
+    }
+
+    val feedLoader = remember(pageKey) {
+        SessionListLoader(
+            scope = scope,
+            idOf = { item: SearchResult -> item.id },
+            failureMessage = CouiStrings.LoadFailed,
+            fetchPage = { page ->
+                authCall.call { gateway.browse(currentFilter, page) }.toCouiPageSlice()
+            },
+            notice = {},
+            cache = sessionCache,
+            cacheKey = listKey,
+        )
+    }
+
     // 单页条数：只有首页能确定，用于榜单名次跨页续号
     var pageStride by remember(pageKey) { mutableIntStateOf(0) }
 
@@ -207,10 +222,18 @@ internal fun CouiBrowseScreen(
     val clickPaging = pageMode == PaginationMode.CLICK
 
     // 每周连载更新：首页一页 + 用户点「加载更多」追加；分类模式收进顶栏入口弹层
-    var weeklyFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
-    var weeklyLoading by remember { mutableStateOf(true) }
-    var weeklyFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-    var weeklyToken by remember { mutableIntStateOf(0) }
+    val weeklyLoader = remember {
+        SessionListLoader(
+            scope = scope,
+            idOf = { item: SearchResult -> item.id },
+            failureMessage = "每周更新加载失败",
+            fetchPage = { page ->
+                authCall.call { gateway.serialization(page) }.toCouiPageSlice()
+            },
+            notice = {},
+        )
+    }
+
     // 分类树只用来渲染标签区块；拿不到时不显示顶栏「更多」入口，避免空弹窗
     var categoryTree by remember { mutableStateOf<CategoryTree?>(null) }
     var weeklyDialogOpen by rememberSaveable { mutableStateOf(false) }
@@ -219,251 +242,121 @@ internal fun CouiBrowseScreen(
     // 热门标签：与子分类一起构成结果列表之前的标签导航；拿不到就整块隐藏
     var hotTags by remember { mutableStateOf(emptyList<String>()) }
 
-    // 激活标签保留在 Saveable 状态中；首屏与续页按 BrowseTag 键进 SessionCache，退栈重建后首帧即可恢复滚动位置
+    // 激活标签保留在 Saveable 状态中；loader 用 BrowseTag 键自取缓存种子，退栈重建后首帧即可恢复
     var tagKeyword by rememberSaveable { mutableStateOf<String?>(null) }
-    val tagCacheKey = browseTagCacheKey(tagKeyword, order)
-    var tagFeed by remember(tagCacheKey) {
-        mutableStateOf((tagCacheKey?.let { sessionCache.stateOrNull(it) } as? ListState.Loaded)?.feed ?: PagedFeed())
-    }
-    var tagLoading by remember(tagCacheKey) { mutableStateOf(false) }
-    var tagFailure by remember(tagCacheKey) { mutableStateOf<ScreenLoadPlan?>(null) }
-    var tagToken by remember { mutableIntStateOf(0) }
-
-    // 分类只认分类 + 排序，榜单只认时间 + 排序：两套口径与旧页一致
-    fun filter(): BrowseFilter = when (mode) {
-        BrowseMode.CATEGORY -> BrowseFilter(category = category, order = order, time = BrowseTime.ALL)
-        BrowseMode.RANK -> BrowseFilter(category = BrowseCategory.ALL, order = order, time = time)
-    }
-
-    /** 列表状态与缓存一起改：只改 state 的话，切走再回来缓存还是上一份。 */
-    fun publish(key: BrowsePageKey, next: ListState) {
-        if (key != pageKey) return
-        state = next
-        if (next is ListState.Loaded && next.feed.page == 1 && next.feed.items.isNotEmpty()) {
-            pageStride = next.feed.items.size
+    val tagLoader = remember(tagKeyword, order) {
+        tagKeyword?.let { keyword ->
+            SessionListLoader(
+                scope = scope,
+                idOf = { item: SearchResult -> item.id },
+                failureMessage = "标签加载失败",
+                fetchPage = { page ->
+                    authCall.call {
+                        gateway.search(
+                            text = keyword,
+                            page = page,
+                            order = order,
+                            scope = SearchScope.TAG,
+                        )
+                    }.toCouiPageSlice()
+                },
+                notice = {},
+                cache = sessionCache,
+                cacheKey = browseTagCacheKey(keyword, order),
+            )
         }
-        sessionCache.remember(SessionListKey.Browse(key), next)
     }
+
+    val feedSnapshot by feedLoader.snapshot.collectAsState()
+    val tagSnapshot = tagLoader?.snapshot?.collectAsState()?.value
+    val weeklySnapshot by weeklyLoader.snapshot.collectAsState()
+
+    // 换页后回到顶部：loader 不替页面滚列表，归顶时机仍由本页决定（整页替换落定那一刻）
+    var pendingFeedScrollTop by remember { mutableStateOf(false) }
+    var pendingTagScrollTop by remember { mutableStateOf(false) }
 
     fun refresh() {
-        inFlightJob?.cancel()
-        requestToken++
-        val token = requestToken
-        val key = pageKey
-        val currentFilter = filter()
-        publish(key, ListState.Loading)
-        inFlightJob = scope.launch {
-            val next = authCall.call { gateway.browse(currentFilter, 1) }.asListState(CouiStrings.LoadFailed)
-            if (token != requestToken) return@launch
-            publish(key, next)
-        }
+        feedLoader.refresh()
+    }
+
+    fun loadMore() {
+        feedLoader.loadMore()
     }
 
     /** 点击分页：整页替换，沿用同一筛选口径与首屏缓存。 */
     fun jumpToPage(target: Int) {
-        val current = (state as? ListState.Loaded)?.feed ?: return
+        val current = feedSnapshot.feed
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
-        inFlightJob?.cancel()
-        requestToken++
-        val token = requestToken
-        val key = pageKey
-        val currentFilter = filter()
-        publish(key, ListState.Loading)
-        inFlightJob = scope.launch {
-            val next = authCall.call { gateway.browse(currentFilter, resolved) }.asListState(CouiStrings.LoadFailed)
-            if (token != requestToken) return@launch
-            publish(key, next)
-            // 换页后回到顶部，否则新一页会停在上一页的滚动位置
-            lazyState.animateScrollToItem(0)
-        }
-    }
-
-    fun loadMore() {
-        val current = (state as? ListState.Loaded)?.feed ?: return
-        val requested = current.beginLoadMore()
-        if (requested === current) return
-        inFlightJob?.cancel()
-        val token = requestToken
-        val key = pageKey
-        val currentFilter = filter()
-        // 加载中标记不进缓存：它只是瞬态，缓存只留可复用的整页结果
-        state = ListState.Loaded(requested)
-        inFlightJob = scope.launch {
-            val next = authCall.call { gateway.browse(currentFilter, requested.page + 1) }
-            // 加载期间切了筛选：这批结果属于旧条件，直接丢弃
-            if (token != requestToken) return@launch
-            val updated = when (next) {
-                is SessionOutcome.Ok -> requested.appendedBy(next.value)
-                else -> requested.failLoadMore()
-            }
-            publish(key, ListState.Loaded(updated))
-        }
+        pendingFeedScrollTop = true
+        feedLoader.goToPage(resolved)
     }
 
     fun loadWeekly() {
-        weeklyToken++
-        val token = weeklyToken
-        weeklyLoading = true
-        weeklyFailure = null
-        scope.launch {
-            val outcome = authCall.call { gateway.serialization(1) }
-            if (token != weeklyToken) return@launch
-            weeklyLoading = false
-            when (outcome) {
-                is SessionOutcome.Ok -> weeklyFeed = outcome.value.toFeed()
-                else -> weeklyFailure =
-                    planLoad(outcome, hasContent = false, failureMessage = "每周更新加载失败")
-            }
-        }
+        weeklyLoader.loadFirstPage()
     }
 
     fun loadMoreWeekly() {
-        val current = weeklyFeed
-        val requested = current.beginLoadMore()
-        if (requested === current) return
-        val token = weeklyToken
-        weeklyFeed = requested
-        scope.launch {
-            val outcome = authCall.call { gateway.serialization(requested.page + 1) }
-            if (token != weeklyToken) return@launch
-            weeklyFeed = when (outcome) {
-                is SessionOutcome.Ok -> requested.appendedBy(outcome.value)
-                else -> requested.failLoadMore()
-            }
-        }
+        weeklyLoader.loadMore()
     }
 
     fun loadTag(keyword: String) {
-        tagToken++
-        val token = tagToken
-        val targetOrder = order
-        tagLoading = true
-        tagFailure = null
-        tagFeed = PagedFeed()
-        scope.launch {
-            val outcome = authCall.call {
-                gateway.search(text = keyword, page = 1, order = targetOrder, scope = SearchScope.TAG)
-            }
-            if (token != tagToken) return@launch
-            tagLoading = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val nextFeed = outcome.value.toFeed()
-                    tagFeed = nextFeed
-                    browseTagCacheKey(keyword, targetOrder)?.let {
-                        sessionCache.remember(it, ListState.Loaded(nextFeed))
-                    }
-                }
-                else -> tagFailure =
-                    planLoad(outcome, hasContent = false, failureMessage = "标签加载失败")
-            }
+        val trimmed = normalizeBrowseTagKeyword(keyword) ?: return
+        if (trimmed == tagKeyword) {
+            // 同一个标签：loader 已被 remember 复用，重试要走它的首屏入口
+            tagLoader?.loadFirstPage()
+        } else {
+            // 换标签：tagKeyword 一变就重建 loader，首屏由 LaunchedEffect(tagLoader) 触发
+            tagKeyword = trimmed
         }
     }
 
     fun loadMoreTag() {
-        val keyword = tagKeyword ?: return
-        val targetOrder = order
-        val current = tagFeed
-        val requested = current.beginLoadMore()
-        if (requested === current) return
-        // 切换标签会推进 token：在途的旧标签下一页到达后不能再写进新列表
-        val token = tagToken
-        tagFeed = requested
-        scope.launch {
-            val outcome = authCall.call {
-                gateway.search(
-                    text = keyword,
-                    page = requested.page + 1,
-                    order = targetOrder,
-                    scope = SearchScope.TAG,
-                )
-            }
-            if (token != tagToken) return@launch
-            val updated = when (outcome) {
-                is SessionOutcome.Ok -> requested.appendedBy(outcome.value)
-                else -> requested.failLoadMore()
-            }
-            tagFeed = updated
-            if (outcome is SessionOutcome.Ok) {
-                browseTagCacheKey(keyword, targetOrder)?.let {
-                    sessionCache.remember(it, ListState.Loaded(updated))
-                }
-            }
-        }
+        tagLoader?.loadMore()
     }
 
     fun jumpToTagPage(target: Int) {
-        val keyword = tagKeyword ?: return
-        val targetOrder = order
-        val current = tagFeed
+        val loader = tagLoader ?: return
+        val current = tagSnapshot?.feed ?: return
         val resolved = pagerTargetPage(current.page, target, current.pageCount)
         if (resolved == current.page) return
-        tagToken++
-        val token = tagToken
-        tagLoading = true
-        scope.launch {
-            val outcome = authCall.call {
-                gateway.search(text = keyword, page = resolved, order = targetOrder, scope = SearchScope.TAG)
-            }
-            if (token != tagToken) return@launch
-            tagLoading = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val nextFeed = outcome.value.toFeed()
-                    tagFeed = nextFeed
-                    browseTagCacheKey(keyword, targetOrder)?.let {
-                        sessionCache.remember(it, ListState.Loaded(nextFeed))
-                    }
-                    lazyState.animateScrollToItem(0)
-                }
-
-                else -> tagFailure =
-                    planLoad(outcome, hasContent = false, failureMessage = "标签加载失败")
-            }
-        }
+        pendingTagScrollTop = true
+        loader.goToPage(resolved)
     }
 
     fun openTag(keyword: String) {
-        val trimmed = normalizeBrowseTagKeyword(keyword) ?: return
-        tagKeyword = trimmed
-        val key = browseTagCacheKey(trimmed, order)
-        val cached = key?.let { sessionCache.stateOrNull(it) } as? ListState.Loaded
-        if (cached != null) {
-            tagFeed = cached.feed
-            tagLoading = false
-            tagFailure = null
-        } else {
-            loadTag(trimmed)
-        }
+        tagKeyword = normalizeBrowseTagKeyword(keyword) ?: return
     }
 
-    LaunchedEffect(tagCacheKey) {
-        val key = tagCacheKey ?: return@LaunchedEffect
-        val cached = sessionCache.stateOrNull(key) as? ListState.Loaded
-        if (cached != null && tagFeed.items.isEmpty()) {
-            tagFeed = cached.feed
-            tagLoading = false
-            tagFailure = null
-        } else if (shouldReloadRestoredTag(key.keyword, tagFeed.items.size, tagLoading, tagFailure != null)) {
-            loadTag(key.keyword)
-        }
+    // 命中缓存时种子已是 Loaded：同一口径切回来直接渲染，不退回 Loading 冲掉
+    LaunchedEffect(feedLoader) {
+        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
     }
-
-    LaunchedEffect(pageKey) {
-        // 命中缓存时也要作废并取消上一个筛选的在途请求，防旧筛选请求回写覆盖当前态
-        inFlightJob?.cancel()
-        requestToken++
-        // 同一口径的结果还在缓存里（切 pageKey 回来就是这种情况）：直接用，别退回 Loading 冲掉
-        if (sessionCache.hasPage(SessionListKey.Browse(pageKey))) return@LaunchedEffect
-        refresh()
+    // 首页条数落定即可用于榜单名次续号；续页与跳页不改写这个基准
+    LaunchedEffect(feedSnapshot.feed.page, feedSnapshot.feed.items.size) {
+        val feed = feedSnapshot.feed
+        if (feed.page == 1 && feed.items.isNotEmpty()) pageStride = feed.items.size
+    }
+    LaunchedEffect(feedSnapshot.state, feedSnapshot.feed.page) {
+        if (!pendingFeedScrollTop || feedSnapshot.state !is ListLoadState.Loaded) return@LaunchedEffect
+        pendingFeedScrollTop = false
+        lazyState.animateScrollToItem(0)
+    }
+    LaunchedEffect(tagLoader) {
+        val loader = tagLoader ?: return@LaunchedEffect
+        if (loader.state !is ListLoadState.Loaded) loader.loadFirstPage()
+    }
+    LaunchedEffect(tagSnapshot?.state, tagSnapshot?.feed?.page) {
+        if (!pendingTagScrollTop || tagSnapshot?.state !is ListLoadState.Loaded) return@LaunchedEffect
+        pendingTagScrollTop = false
+        lazyState.animateScrollToItem(0)
     }
     PaginationModeReloadEffect(pageMode) {
-        refresh()
+        feedLoader.loadFirstPage()
         normalizeBrowseTagKeyword(tagKeyword)?.let(::loadTag)
     }
     LaunchedEffect(deps.gateway, deps.authCall) {
-        loadWeekly()
+        weeklyLoader.loadFirstPage()
         // 分类树失败只让「更多分类」退化成一行提示，不打断主列表
         categoryTree = authCall.call { gateway.categoriesList() }.orDegrade<CategoryTree?>(null)
         hotTags = authCall.call { gateway.hotTags() }.orDegrade(emptyList())
@@ -480,12 +373,17 @@ internal fun CouiBrowseScreen(
     val hasTagNav = subCategories.isNotEmpty() || tagNavTags.isNotEmpty()
     // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
     val feedColumns = LocalWideLayout.current.feedColumns
+    val weekly = weeklySnapshot.feed
+    val weeklyIsLoading = weeklySnapshot.state is ListLoadState.Loading
+    val weeklyFail = weeklySnapshot.state as? ListLoadState.Failed
+    val tagFeed = tagSnapshot?.feed ?: PagedFeed()
+    val feedState = feedSnapshot.toListState()
     val browseHeadCount = couiBrowseHeadCount(
         isCategoryMode = mode == BrowseMode.CATEGORY,
         hasTagNav = hasTagNav,
-        hasWeeklyPaging = weeklyFeed.items.isNotEmpty(),
-        weeklyItemCount = weeklyFeed.items.size,
-        hasWeeklyFooter = weeklyFeed.items.isNotEmpty() && weeklyFailure != null,
+        hasWeeklyPaging = weekly.items.isNotEmpty(),
+        weeklyItemCount = weekly.items.size,
+        hasWeeklyFooter = weekly.items.isNotEmpty() && weeklyFail != null,
         columns = feedColumns,
     )
 
@@ -496,7 +394,7 @@ internal fun CouiBrowseScreen(
      */
     val browseTagView = tagKeyword != null
     CouiFeedPrefetchEffect(
-        feed = if (browseTagView) tagFeed else (state as? ListState.Loaded)?.feed,
+        feed = if (browseTagView) tagFeed else (feedState as? ListState.Loaded)?.feed,
         rowStart = if (browseTagView) TAG_FEED_ROW_START else browseHeadCount,
         listState = lazyState,
         columns = feedColumns,
@@ -516,10 +414,9 @@ internal fun CouiBrowseScreen(
      * 状态一变本页重组、结构随之重建。把快照读留到 item 内容里只会让单个 item 重组，
      * 结构（有几行、有没有空态）不会重建。
      */
-    val feedState = state
     val keyword = tagKeyword
-    val tagFailureMessage = tagFailure
-    val tagIsLoading = tagLoading
+    val tagFailureMessage = tagSnapshot?.state as? ListLoadState.Failed
+    val tagIsLoading = tagSnapshot?.state is ListLoadState.Loading
     val tagItems = tagFeed.items
     val tagTotal = tagFeed.total
     val tagPage = tagFeed.page
@@ -527,9 +424,6 @@ internal fun CouiBrowseScreen(
     val tagHasMore = tagFeed.hasMore
     val tagLoadingMore = tagFeed.loadingMore
     val tagLoadMoreFailed = tagFeed.loadMoreFailed
-    val weekly = weeklyFeed
-    val weeklyIsLoading = weeklyLoading
-    val weeklyFail = weeklyFailure
     val categoryBackdrop = if (Build.VERSION.SDK_INT >= 34) rememberCouiBackdrop() else null
     val activeBackdrop = if (mode == BrowseMode.CATEGORY && keyword == null) categoryBackdrop else null
 
@@ -624,7 +518,7 @@ internal fun CouiBrowseScreen(
                     tagFailureMessage != null && tagItems.isEmpty() -> item(key = "coui-tag-error") {
                         CouiScreenFailureGroup(
                             message = tagFailureMessage.message,
-                            expired = tagFailureMessage.phase == ScreenLoadPhase.Expired,
+                            expired = tagFailureMessage.sessionExpired,
                             onRetry = { loadTag(keyword) },
                             onOpenLogin = onOpenLogin,
                         )
@@ -1152,7 +1046,7 @@ private fun CouiWeeklyUpdatesDialog(
     visible: Boolean,
     feed: PagedFeed<SearchResult>,
     loading: Boolean,
-    failure: ScreenLoadPlan?,
+    failure: ListLoadState.Failed?,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
@@ -1182,16 +1076,16 @@ private fun CouiWeeklyUpdatesDialog(
 
             failure != null && feed.items.isEmpty() -> {
                 CouiBodyText(
-                    text = failure.message.orEmpty().ifBlank { "每周更新加载失败" },
+                    text = failure.message.ifBlank { "每周更新加载失败" },
                     color = colors.onSurfaceVariant,
                     textAlign = TextAlign.Start,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 CouiTagChip(
-                    text = if (failure.phase == ScreenLoadPhase.Expired) "去登录" else "重试",
+                    text = if (failure.sessionExpired) "去登录" else "重试",
                     onClick = {
-                        if (failure.phase == ScreenLoadPhase.Expired) onOpenLogin() else onRetry()
+                        if (failure.sessionExpired) onOpenLogin() else onRetry()
                     },
                 )
             }
@@ -1271,7 +1165,7 @@ private fun LazyListScope.couiWeeklySection(
     feed: PagedFeed<SearchResult>,
     columns: Int,
     loading: Boolean,
-    failure: ScreenLoadPlan?,
+    failure: ListLoadState.Failed?,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
     onOpenLogin: () -> Unit,
@@ -1287,7 +1181,7 @@ private fun LazyListScope.couiWeeklySection(
 
                     failure != null -> CouiScreenFailureGroup(
                         message = failure.message,
-                        expired = failure.phase == ScreenLoadPhase.Expired,
+                        expired = failure.sessionExpired,
                         onRetry = onRetry,
                         onOpenLogin = onOpenLogin,
                     )
@@ -1490,4 +1384,18 @@ internal fun couiFilterCategoryBlocks(
             if (matched.isEmpty()) null else block.copy(tags = matched)
         }
     }
+}
+
+/** 渲染层仍按 [ListState] 分三态：把 loader 的快照映射回去，渲染代码不用改。 */
+private fun SessionListSnapshot<SearchResult>.toListState(): ListState = when (val current = state) {
+    is ListLoadState.Loading -> ListState.Loading
+    is ListLoadState.Loaded -> ListState.Loaded(feed)
+    is ListLoadState.Failed -> ListState.Failed(current.message, current.sessionExpired)
+}
+
+/** 网关分页结果 → 共享分页切片：页码必须透传，否则续页会取错页。 */
+private fun SessionOutcome<SearchPage>.toCouiPageSlice(): SessionOutcome<PageSlice<SearchResult>> = when (this) {
+    is SessionOutcome.Ok -> SessionOutcome.Ok(value.toSlice())
+    is SessionOutcome.Expired -> SessionOutcome.Expired
+    is SessionOutcome.Failed -> this
 }

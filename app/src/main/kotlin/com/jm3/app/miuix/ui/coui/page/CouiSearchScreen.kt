@@ -22,8 +22,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,7 +49,6 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
-import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
@@ -70,19 +69,26 @@ import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.list.SessionListSnapshot
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
+import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.launch
+import com.jm3.core.toSlice
 import top.yukonga.miuix.kmp.basic.Icon
+
+/** 结果行在懒列表里的起点：前面只有一条筛选胶囊项。 */
+private const val COUI_SEARCH_ROW_START = 1
 
 private const val COUI_SEARCH_LOAD_MORE_FAILED = CouiStrings.LoadMoreFailedRetry
 private const val COUI_SEARCH_EMPTY = "无结果"
@@ -130,78 +136,65 @@ private fun CouiSearchBody(
     val scheme = CouiKitTheme.colorScheme
     val pageMode = deps.paging.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
+    // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
+    val feedColumns = LocalWideLayout.current.feedColumns
 
-    var state by remember(query, scope) { mutableStateOf<ListState>(ListState.Loading) }
-    var requestToken by remember { mutableIntStateOf(0) }
     var order by rememberSaveable(query, scope.name) { mutableStateOf(BrowseOrder.LATEST) }
     var time by rememberSaveable(query, scope.name) { mutableStateOf(BrowseTime.ALL) }
 
-    fun loadFirstPage() {
-        requestToken++
-        val token = requestToken
-        state = ListState.Loading
-        coroutineScope.launch {
-            val next = authCall.call { gateway.search(query, 1, order, scope, time) }
-                .asListState(CouiStrings.LoadFailed)
-            if (token != requestToken) return@launch
-            state = next
-            if (next is ListState.Loaded && next.feed.items.isNotEmpty()) lazyState.scrollToItem(0)
-        }
+    // 代次、在途标记、翻页游标与失败落点都收进 loader：本页只交「取哪一页」与重试入口
+    val loader = remember(query, scope, order, time) {
+        SessionListLoader(
+            scope = coroutineScope,
+            idOf = { item: SearchResult -> item.id },
+            failureMessage = CouiStrings.LoadFailed,
+            fetchPage = { page ->
+                authCall.call { gateway.search(query, page, order, scope, time) }.toCouiPageSlice()
+            },
+            notice = {},
+        )
+    }
+    val snapshot by loader.snapshot.collectAsState()
+    // 渲染仍按 ListState 三态走：翻译留在页内，公共三态件不必为加载编排改签名
+    val state = snapshot.toListState()
+    // 换筛选或跳页后回到列表顶部：滚动位置是页面的事，不进 loader
+    var pendingScrollTop by remember { mutableStateOf(false) }
+
+    LaunchedEffect(loader) {
+        pendingScrollTop = true
+        loader.loadFirstPage()
+    }
+    LaunchedEffect(snapshot.state, snapshot.feed.page) {
+        if (!pendingScrollTop || snapshot.state !is ListLoadState.Loaded) return@LaunchedEffect
+        pendingScrollTop = false
+        lazyState.scrollToItem(0)
     }
 
     fun jumpToPage(targetPage: Int) {
-        val current = (state as? ListState.Loaded)?.feed ?: return
+        if (snapshot.state !is ListLoadState.Loaded) return
+        val current = snapshot.feed
         val resolved = pagerTargetPage(current.page, targetPage, current.pageCount)
         if (resolved == current.page) return
-        requestToken++
-        val token = requestToken
-        state = ListState.Loading
-        coroutineScope.launch {
-            val next = authCall.call { gateway.search(query, resolved, order, scope, time) }
-                .asListState(CouiStrings.LoadFailed)
-            if (token != requestToken) return@launch
-            state = next
-            if (next is ListState.Loaded && next.feed.items.isNotEmpty()) lazyState.scrollToItem(0)
-        }
+        pendingScrollTop = true
+        loader.goToPage(resolved)
     }
 
-    fun loadMore() {
-        val current = (state as? ListState.Loaded)?.feed ?: return
-        val requested = current.beginLoadMore()
-        if (requested === current) return
-        val token = requestToken
-        state = ListState.Loaded(requested)
-        coroutineScope.launch {
-            val outcome = authCall.call { gateway.search(query, requested.page + 1, order, scope, time) }
-            if (token != requestToken) return@launch
-            val updated = when (outcome) {
-                is SessionOutcome.Ok -> requested.appendedBy(outcome.value)
-                else -> requested.failLoadMore()
-            }
-            state = ListState.Loaded(updated)
-        }
-    }
+    PaginationModeReloadEffect(pageMode) { loader.loadFirstPage() }
 
-    LaunchedEffect(query, scope, order, time) { loadFirstPage() }
-
-    PaginationModeReloadEffect(pageMode) { loadFirstPage() }
-
-    CouiPrefetchEffect(
+    CouiFeedPrefetchEffect(
+        feed = snapshot.feed.takeIf { snapshot.state is ListLoadState.Loaded },
+        rowStart = COUI_SEARCH_ROW_START,
         listState = lazyState,
+        columns = feedColumns,
         enabled = !clickPaging,
         restartKey = Triple(query, order, time),
-    ) { lastIndex, totalItemsCount, prefetchRows ->
-        val feed = (state as? ListState.Loaded)?.feed ?: return@CouiPrefetchEffect
-        if (!feed.canLoadMore || feed.loadMoreFailed) return@CouiPrefetchEffect
-        if (!shouldPrefetch(lastIndex, totalItemsCount, prefetchRows)) return@CouiPrefetchEffect
-        loadMore()
-    }
+        onPrefetch = { loader.loadMore() },
+    )
 
     val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
         canScroll = { lazyState.canScrollForward || lazyState.canScrollBackward },
     )
     val title = if (scope == SearchScope.SITE) "搜索：$query" else "${scope.label}：$query"
-    val feed = (state as? ListState.Loaded)?.feed
 
     Box(modifier = Modifier.fillMaxSize()) {
         CouiAppScaffold(
@@ -220,7 +213,7 @@ private fun CouiSearchBody(
                 CouiFab(
                     icon = CouiIcons.Refresh,
                     contentDescription = "重新搜索",
-                    onClick = { loadFirstPage() },
+                    onClick = { loader.loadFirstPage() },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 )
             },
@@ -232,8 +225,6 @@ private fun CouiSearchBody(
                 horizontalPadding = null,
                 extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
             )
-            // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
-            val feedColumns = LocalWideLayout.current.feedColumns
             LazyColumn(
                 state = lazyState,
                 modifier = Modifier
@@ -260,7 +251,7 @@ private fun CouiSearchBody(
                         CouiScreenFailureGroup(
                             message = current.message,
                             expired = current.sessionExpired,
-                            onRetry = { loadFirstPage() },
+                            onRetry = { loader.loadFirstPage() },
                             onOpenLogin = onOpenLogin,
                         )
                     }
@@ -300,7 +291,7 @@ private fun CouiSearchBody(
                                             loading = current.feed.loadingMore,
                                             error = if (current.feed.loadMoreFailed) COUI_SEARCH_LOAD_MORE_FAILED else null,
                                             endReached = !current.feed.hasMore,
-                                            onRetry = { loadMore() },
+                                            onRetry = { loader.loadMore() },
                                         )
                                     }
                                 }
@@ -380,6 +371,22 @@ private fun CouiSearchFilterChip(label: String, selected: Boolean, onClick: () -
         )
     }
 }
+
+/** 加载态 → 渲染三态：页面画的是 [ListState]，编排只认 [ListLoadState]。 */
+private fun SessionListSnapshot<SearchResult>.toListState(): ListState =
+    when (val current = state) {
+        ListLoadState.Loading -> ListState.Loading
+        ListLoadState.Loaded -> ListState.Loaded(feed)
+        is ListLoadState.Failed -> ListState.Failed(current.message, current.sessionExpired)
+    }
+
+/** 网关结局的外层映射：一页结果的解码在 core 的 toSlice，这里只补结局分支。 */
+private fun SessionOutcome<SearchPage>.toCouiPageSlice(): SessionOutcome<PageSlice<SearchResult>> =
+    when (this) {
+        is SessionOutcome.Ok -> SessionOutcome.Ok(value.toSlice())
+        SessionOutcome.Expired -> SessionOutcome.Expired
+        is SessionOutcome.Failed -> this
+    }
 
 /** 结果行：封面 + 标题 + 作者 + 标签，整行可点进相册详情。 */
 @Composable

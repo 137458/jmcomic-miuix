@@ -27,8 +27,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -67,10 +67,12 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.HomeSideData
 import com.jm3.app.miuix.ui.ListState
+import com.jm3.app.miuix.ui.list.ListLoadState
+import com.jm3.app.miuix.ui.list.SessionListLoader
+import com.jm3.app.miuix.ui.list.SessionListSnapshot
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.SessionListKey
-import com.jm3.app.miuix.ui.asListState
 import com.jm3.app.miuix.ui.couiHomeExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
@@ -95,13 +97,11 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
-import com.jm3.app.miuix.ui.isShowingSearchResults
 import com.jm3.app.miuix.ui.mutateSearchHistory
 import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.readSearchHistory
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.albumCodeOf
-import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseCategory
 import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
@@ -109,9 +109,12 @@ import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
+import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
+import com.jm3.core.toSlice
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
@@ -181,8 +184,6 @@ fun CouiHomeScreen(
     // 展开态必须由页面持有：CouiSearchBarState.expanded 只读，库只按宿主给的目标做动画
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     val sessionCache = deps.sessionCache
-    var feed by remember { mutableStateOf(sessionCache.stateOf(SessionListKey.HomeFeed)) }
-    var results by remember { mutableStateOf(sessionCache.stateOrNull(SessionListKey.HomeSearch)) }
     var hotTags by remember { mutableStateOf(sessionCache.homeSide.hotTags) }
     var serialUpdates by remember { mutableStateOf(sessionCache.homeSide.serialUpdates) }
     var randomPicks by remember { mutableStateOf(sessionCache.homeSide.randomPicks) }
@@ -190,8 +191,6 @@ fun CouiHomeScreen(
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var showAllTags by rememberSaveable { mutableStateOf(false) }
     var showSearchHelp by rememberSaveable { mutableStateOf(false) }
-    var refreshing by remember { mutableStateOf(false) }
-    var listToken by remember { mutableIntStateOf(0) }
 
     val lazyState = rememberLazyListState()
     // 折叠顶栏只在列表还能滚的时候才收，短页保持展开
@@ -203,17 +202,54 @@ fun CouiHomeScreen(
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     val mode = deps.paging.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
-    val searching = isShowingSearchResults(activeQuery, results)
 
-    fun rememberFeed(next: ListState) {
-        feed = next
-        sessionCache.remember(SessionListKey.HomeFeed, next)
+    // 加载编排交给共享的 SessionListLoader：首屏 / 下拉刷新 / 翻页 / 跳页 / 失败分派只有一份实现，
+    // 本页只留渲染用的 ListState 与「换页后归顶」这种纯视觉决策。
+    val feedLoader = remember {
+        SessionListLoader(
+            scope = scope,
+            idOf = { item: SearchResult -> item.id },
+            failureMessage = CouiStrings.LoadFailed,
+            fetchPage = { page ->
+                authCall.call { gateway.latest(page) }.toCouiPageSlice()
+            },
+            notice = {},
+            cache = sessionCache,
+            cacheKey = SessionListKey.HomeFeed,
+        )
+    }
+    // 搜索结果按「查询 + 是否标签 + 排序」重建 loader；HomeSearch 键没有查询维度，
+    // 种缓存会让新查询先闪一眼旧结果，故这里只吃内存态，不接缓存。
+    val searchLoader = remember(activeQuery, searchByTag, order) {
+        SessionListLoader(
+            scope = scope,
+            idOf = { item: SearchResult -> item.id },
+            failureMessage = "网络错误",
+            fetchPage = { page ->
+                authCall.call {
+                    gateway.search(
+                        activeQuery,
+                        page,
+                        order,
+                        if (searchByTag) SearchScope.TAG else SearchScope.SITE,
+                    )
+                }.toCouiPageSlice()
+            },
+            notice = {},
+        )
     }
 
-    fun rememberResults(next: ListState) {
-        results = next
-        sessionCache.remember(SessionListKey.HomeSearch, next)
-    }
+    val feedSnapshot by feedLoader.snapshot.collectAsState()
+    val searchSnapshotAll by searchLoader.snapshot.collectAsState()
+    // 查询为空即首页态：clearSearch 之后结果立即让位，不需要额外的「有没有搜过」标记
+    val searching = activeQuery.isNotEmpty()
+    val searchSnapshot = searchSnapshotAll.takeIf { searching }
+    val feed = feedSnapshot.toListState()
+    val results = searchSnapshot?.toListState()
+    val refreshing = if (searching) searchSnapshotAll.refreshing else feedSnapshot.refreshing
+
+    // 换页后回到顶部：loader 不替页面滚列表，归顶时机仍由本页决定（整页替换落定那一刻）
+    var pendingScrollTop by remember { mutableStateOf(false) }
 
     fun rememberSide(tags: List<String>, updates: List<SearchResult>, picks: List<SearchResult>) {
         hotTags = tags
@@ -222,48 +258,28 @@ fun CouiHomeScreen(
         sessionCache.homeSide = HomeSideData(tags, updates, picks, rankPicks)
     }
 
-    fun requestSearch(page: Int, byTag: Boolean, text: String, sort: BrowseOrder): SearchPage =
-        gateway.search(text, page, sort, if (byTag) SearchScope.TAG else SearchScope.SITE)
-
     fun mutateHistory(block: suspend () -> Unit) {
         scope.launch {
             searchHistory = mutateSearchHistory(deps.settings, { searchHistory }) { block() }
         }
     }
 
-    fun loadFeed(page: Int, token: Int) {
-        scope.launch {
-            val next = authCall.call { gateway.latest(page) }
-            if (token != listToken) return@launch
-            rememberFeed(next.asListState(CouiStrings.LoadFailed))
-        }
-    }
-
     fun runSearch(text: String, byTag: Boolean, sort: BrowseOrder) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
+        // 三个 remember 键一变，searchLoader 就重建并自动拉首屏；重试同一查询要走 loader 的首屏入口
         activeQuery = trimmed
         searchByTag = byTag
         orderValue = sort.apiValue
-        listToken++
-        val token = listToken
-        rememberResults(ListState.Loading)
         mutateHistory { deps.settings.addSearchHistory(trimmed) }
-        scope.launch {
-            val next = authCall.call { requestSearch(1, byTag, trimmed, sort) }
-            if (token != listToken) return@launch
-            rememberResults(next.asListState("网络错误"))
-        }
     }
 
     fun clearSearch() {
         query = ""
         activeQuery = ""
-        results = null
-        sessionCache.forget(SessionListKey.HomeSearch)
         searchByTag = false
-        listToken++
-        if (feed !is ListState.Loaded) loadFeed(1, listToken)
+        // 首页流被搜索覆盖期间可能已经换代：回来时若手里没有可用结果，就补一次首屏
+        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
     }
 
     fun dismissSearchInput() {
@@ -296,73 +312,21 @@ fun CouiHomeScreen(
     }
 
     fun refresh() {
-        refreshing = true
-        listToken++
-        val token = listToken
-        scope.launch {
-            if (searching) {
-                rememberResults(ListState.Loading)
-                val text = activeQuery
-                val byTag = searchByTag
-                val next = authCall.call { requestSearch(1, byTag, text, order) }
-                if (token == listToken) rememberResults(next.asListState("网络错误"))
-            } else {
-                val next = authCall.call { gateway.latest(1) }
-                if (token == listToken) rememberFeed(next.asListState(CouiStrings.LoadFailed))
-            }
-            if (token == listToken) refreshing = false
-        }
+        if (searching) searchLoader.refresh() else feedLoader.refresh()
     }
 
     fun activeFeed(): PagedFeed<SearchResult>? =
         ((if (searching) results else feed) as? ListState.Loaded)?.feed
 
-    fun publishTransient(next: ListState) {
-        if (searching) results = next else feed = next
-    }
-
     fun loadMore() {
-        val current = activeFeed() ?: return
-        val requested = current.beginLoadMore()
-        if (requested === current) return
-        val token = listToken
-        val nextOrder = order
-        val text = activeQuery
-        val byTag = searchByTag
-        publishTransient(ListState.Loaded(requested))
-        scope.launch {
-            val next = authCall.call {
-                if (searching) requestSearch(requested.page + 1, byTag, text, nextOrder)
-                else gateway.latest(requested.page + 1)
-            }
-            if (token != listToken) return@launch
-            val updated = when (next) {
-                is SessionOutcome.Ok -> requested.appendedBy(next.value)
-                else -> requested.failLoadMore()
-            }
-            if (searching) rememberResults(ListState.Loaded(updated)) else rememberFeed(ListState.Loaded(updated))
-        }
+        if (searching) searchLoader.loadMore() else feedLoader.loadMore()
     }
 
     fun jumpToPage(target: Int) {
         val current = activeFeed() ?: return
         if (!couiCanJumpFeedPage(current, target)) return
-        val text = activeQuery
-        val byTag = searchByTag
-        val nextOrder = order
-        listToken++
-        val token = listToken
-        if (searching) rememberResults(ListState.Loading) else rememberFeed(ListState.Loading)
-        scope.launch {
-            val next = authCall.call {
-                if (searching) requestSearch(target, byTag, text, nextOrder) else gateway.latest(target)
-            }
-            if (token != listToken) return@launch
-            val mapped = next.asListState("网络错误")
-            if (searching) rememberResults(mapped) else rememberFeed(mapped)
-            // 换页后回到列表顶部，否则用户会停在新一页的中段
-            if (mapped is ListState.Loaded) lazyState.scrollToItem(0)
-        }
+        pendingScrollTop = true
+        if (searching) searchLoader.goToPage(target) else feedLoader.goToPage(target)
     }
 
     fun openRandom() {
@@ -372,29 +336,37 @@ fun CouiHomeScreen(
 
     BackHandler(enabled = searchExpanded || searching) { collapseSearch() }
 
+    // 命中缓存时种子已是 Loaded：切 tab 回来首帧直接有列表，不退回 Loading 冲掉
+    LaunchedEffect(feedLoader) {
+        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
+    }
+    LaunchedEffect(searchLoader) {
+        if (activeQuery.isNotEmpty()) searchLoader.loadFirstPage()
+    }
+    LaunchedEffect(searchSnapshot?.state, searchSnapshot?.feed?.page, feedSnapshot.state, feedSnapshot.feed.page) {
+        if (!pendingScrollTop) return@LaunchedEffect
+        val target = searchSnapshot ?: feedSnapshot
+        if (target.state !is ListLoadState.Loaded) return@LaunchedEffect
+        pendingScrollTop = false
+        lazyState.scrollToItem(0)
+    }
     LaunchedEffect(gateway, authCall) {
-        if (!searching && feed !is ListState.Loaded) {
-            listToken++
-            loadFeed(1, listToken)
-        }
-        if (searching && results == null) {
-            runSearch(activeQuery, byTag = searchByTag, sort = order)
-        }
         if (sessionCache.homeSide.isEmpty) {
+            // 四份侧栏数据互不依赖，并发取；任何一份失败只退化成空，不拖住首屏发现流
             coroutineScope {
-                launch {
-                    val tags = authCall.call { gateway.hotTags() }.orDegrade(emptyList())
-                    val picks = authCall.call { gateway.randomRecommend() }.orDegrade(emptyList())
-                    val updates = authCall
+                val tags = async { authCall.call { gateway.hotTags() }.orDegrade(emptyList()) }
+                val picks = async { authCall.call { gateway.randomRecommend() }.orDegrade(emptyList()) }
+                val updates = async {
+                    authCall
                         .call { gateway.serialization(1) }
                         .orDegrade<SearchPage?>(null)
                         ?.items
                         ?.take(SERIAL_CAROUSEL_LIMIT)
                         .orEmpty()
-                    val storedHistory = readSearchHistory(deps.settings) { emptyList() }
-                    rememberSide(tags = tags, updates = updates, picks = picks)
-                    searchHistory = storedHistory
                 }
+                val history = async { readSearchHistory(deps.settings) { emptyList() } }
+                rememberSide(tags = tags.await(), updates = updates.await(), picks = picks.await())
+                searchHistory = history.await()
             }
         } else {
             searchHistory = readSearchHistory(deps.settings) { searchHistory }
@@ -420,12 +392,9 @@ fun CouiHomeScreen(
         rankPicks = rank?.items?.take(TRACK_CARD_LIMIT).orEmpty()
         if (rankPicks.isNotEmpty()) sessionCache.homeSide = sessionCache.homeSide.copy(rankPicks = rankPicks)
     }
-
-    PaginationModeReloadEffect(mode) { _ ->
-        if (searching) rememberResults(ListState.Loading) else rememberFeed(ListState.Loading)
-        refresh()
+    PaginationModeReloadEffect(mode) {
+        if (searching) searchLoader.loadFirstPage() else feedLoader.loadFirstPage()
     }
-
     // 轨道条数随数据变化，结果行的起点不能写死：头部一块 + 若干条轨道 + 分组标题
     val tracks: List<CouiHomeTrackData> = if (searching) {
         emptyList()
@@ -447,7 +416,7 @@ fun CouiHomeScreen(
     val feedColumns = LocalWideLayout.current.feedColumns
 
     // 虚拟化后没有单一滚动位置可读，改看可见项：采集在 CouiFeedPrefetchEffect，
-    // 本页只交 feed 与结果行起点；请求幂等仍由 beginLoadMore 保证。
+    // 本页只交 feed 与结果行起点；请求幂等仍由 loader 的 canLoadMore 保证。
     CouiFeedPrefetchEffect(
         feed = activeFeed(),
         rowStart = feedRowStart,
@@ -619,11 +588,7 @@ fun CouiHomeScreen(
                         message = failureMessage,
                         expired = current.sessionExpired,
                         onRetry = {
-                            if (searching) {
-                                runSearch(activeQuery, searchByTag, order)
-                            } else {
-                                refresh()
-                            }
+                            if (searching) searchLoader.loadFirstPage() else feedLoader.loadFirstPage()
                         },
                         onOpenLogin = onOpenLogin,
                     )
@@ -999,4 +964,18 @@ private fun CouiSyntaxRow(expression: String, meaning: String) {
 private fun searchSummary(query: String, byTag: Boolean, total: Int?): String {
     val head = if (byTag) "标签：$query" else "“$query”"
     return if (total != null && total > 0) "$head · 共 $total 个结果" else head
+}
+
+/** 渲染层仍按 [ListState] 分三态：把 loader 的快照映射回去，渲染代码不用改。 */
+private fun SessionListSnapshot<SearchResult>.toListState(): ListState = when (val current = state) {
+    is ListLoadState.Loading -> ListState.Loading
+    is ListLoadState.Loaded -> ListState.Loaded(feed)
+    is ListLoadState.Failed -> ListState.Failed(current.message, current.sessionExpired)
+}
+
+/** 网关分页结果 → 共享分页切片：页码必须透传，否则续页会取错页。 */
+private fun SessionOutcome<SearchPage>.toCouiPageSlice(): SessionOutcome<PageSlice<SearchResult>> = when (this) {
+    is SessionOutcome.Ok -> SessionOutcome.Ok(value.toSlice())
+    is SessionOutcome.Expired -> SessionOutcome.Expired
+    is SessionOutcome.Failed -> this
 }
