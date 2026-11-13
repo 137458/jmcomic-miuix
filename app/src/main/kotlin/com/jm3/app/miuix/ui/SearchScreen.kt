@@ -88,6 +88,7 @@ internal fun SearchScreen(
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val coroutineScope = rememberCoroutineScope()
+    val sessionCache = deps.sessionCache
     val listState = rememberLazyListState()
     val selectionHaptic = rememberSelectionHaptic()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -113,6 +114,8 @@ internal fun SearchScreen(
                 }
             },
             notice = { message -> coroutineScope.launch { snackbarHostState.showSnackbar(message) } },
+            cache = sessionCache,
+            cacheKey = SessionListKey.Search(query = query, scope = scope, order = order, time = time),
         )
     }
     val snapshot by loader.snapshot.collectAsState()
@@ -122,7 +125,8 @@ internal fun SearchScreen(
     // 跳页成功后回顶：loader 只认页号，回顶时点由本屏登记
     var pendingScrollPage by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(loader) { loader.loadFirstPage() }
+    // 缓存命中时 loader 构造即带内容：不再补拉首屏，回来时不闪加载态
+    LaunchedEffect(loader) { if (loader.state !is ListLoadState.Loaded) loader.loadFirstPage() }
     LaunchedEffect(snapshot.feed.page, snapshot.state) {
         if (pendingScrollPage != 0 && snapshot.state is ListLoadState.Loaded && pendingScrollPage == snapshot.feed.page) {
             pendingScrollPage = 0

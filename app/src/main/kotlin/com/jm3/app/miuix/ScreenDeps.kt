@@ -74,6 +74,11 @@ class ScreenDeps internal constructor(
 
     internal val sessionCache: SessionCache = sessionCache
 
+    init {
+        // 列表快照按账号分仓：绑定账号域的实时读面，屏幕侧不必再关心账号维度
+        sessionCache.bindAccount { account.user.value?.uid }
+    }
+
     val gateway: Jm3Gateway
         get() = api.gateway
 

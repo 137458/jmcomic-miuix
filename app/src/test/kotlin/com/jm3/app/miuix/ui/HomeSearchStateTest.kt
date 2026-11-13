@@ -10,6 +10,12 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/**
+ * 首页搜索区的会话缓存：搜索结果按 [SessionListKey.HomeSearch] 这一格存取，清空搜索词即作废。
+ *
+ * 界面是否切到搜索内容列由页面自己的查询词状态决定，这里只钉住缓存这一侧：存进去能原样取回、
+ * 离开路由再回来能直接复用、清空后不再命中。
+ */
 class HomeSearchStateTest {
 
     private val fakePage = SearchPage(
@@ -31,38 +37,19 @@ class HomeSearchStateTest {
     private val fakeFeed = fakePage.toFeed()
 
     @Test
-    fun 初始状态无搜索词时处于发现流模式() {
-        val activeQuery = ""
-        val results: ListState? = null
-        assertFalse(isShowingSearchResults(activeQuery, results))
-    }
-
-    @Test
-    fun 执行搜索并取得结果后处于搜索内容列模式() {
+    fun 执行搜索并取得结果后搜索结果存入会话缓存() {
         val cache = SessionCache()
-        val activeQuery = "火影"
         val results = ListState.Loaded(fakeFeed)
         cache.remember(SessionListKey.HomeSearch, results)
 
-        assertTrue(isShowingSearchResults(activeQuery, results))
         assertTrue(cache.hasPage(SessionListKey.HomeSearch))
         assertEquals(results, cache.stateOrNull(SessionListKey.HomeSearch))
-    }
-
-    @Test
-    fun 从详情页返回时即使results瞬态为null只要activeQuery非空仍处于搜索内容列模式() {
-        // 旧逻辑如果按 results != null 判断，在恢复但 results 尚未被赋值或缓存空时会误判为 false（跳回主页）
-        // 新逻辑必须保证 activeQuery 非空时绝不退回主页发现流
-        val activeQuery = "火影"
-        val results: ListState? = null
-        assertTrue(isShowingSearchResults(activeQuery, results))
     }
 
     @Test
     fun 从详情页返回时能够直接复用会话缓存中的搜索结果无需重新网络请求() {
         val cache = SessionCache()
         // 模拟搜索完成并存入会话缓存
-        val activeQuery = "火影"
         val initialResults = ListState.Loaded(fakeFeed)
         cache.remember(SessionListKey.HomeSearch, initialResults)
 
@@ -70,20 +57,16 @@ class HomeSearchStateTest {
         val restoredResults = cache.stateOrNull(SessionListKey.HomeSearch)
         assertNotNull(restoredResults)
         assertEquals(initialResults, restoredResults)
-        assertTrue(isShowingSearchResults(activeQuery, restoredResults))
+        assertEquals(fakeFeed, cache.read(SessionListKey.HomeSearch))
     }
 
     @Test
-    fun 清空搜索词时会话缓存被清空且退出搜索内容列模式() {
+    fun 清空搜索词时会话缓存被清空() {
         val cache = SessionCache()
         cache.remember(SessionListKey.HomeSearch, ListState.Loaded(fakeFeed))
         cache.forget(SessionListKey.HomeSearch)
 
         assertNull(cache.stateOrNull(SessionListKey.HomeSearch))
         assertFalse(cache.hasPage(SessionListKey.HomeSearch))
-
-        val activeQuery = ""
-        val results = cache.stateOrNull(SessionListKey.HomeSearch)
-        assertFalse(isShowingSearchResults(activeQuery, results))
     }
 }

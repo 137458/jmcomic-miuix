@@ -289,6 +289,8 @@ internal fun CouiMineScreen(
             confirmLogout = false
             scope.launch {
                 if (runCatchingSuspending { deps.account.logout() }.isSuccess) {
+                    // 登出后账号维度的列表缓存、侧栏与喜欢状态都属于上一个账号，必须整份作废
+                    deps.sessionCache.clear()
                     snackbarHostState.showSnackbar("已退出登录")
                 } else {
                     snackbarHostState.showSnackbar("退出登录失败，请稍后重试")

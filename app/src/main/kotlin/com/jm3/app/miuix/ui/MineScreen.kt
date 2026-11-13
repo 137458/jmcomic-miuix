@@ -289,6 +289,8 @@ internal fun MineScreen(
                     confirmLogout = false
                     scope.launch {
                         deps.account.logout()
+                        // 登出后账号维度的列表缓存、侧栏与喜欢状态都属于上一个账号，必须整份作废
+                        deps.sessionCache.clear()
                         snackbarHostState.showSnackbar("已退出登录")
                     }
                 },

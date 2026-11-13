@@ -2,8 +2,10 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.runtime.mutableStateMapOf
 import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.SearchResult
+import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import java.time.LocalDate
 
@@ -25,14 +27,24 @@ internal sealed interface ListState {
 /**
  * 列表在会话里的身份：缓存靠它判断「这次回来的是不是同一份结果」。
  *
+ * 键只描述屏幕自己看得见的查询语义；账号维度由 [SessionCache] 在键前补一层，
+ * 屏幕不需要（也不应该）知道当前是哪个账号在加载。
+ *
  * 首页发现流与搜索结果各占一格；浏览页按筛选口径（[BrowsePageKey]）认人，
- * 同一模式换了筛选条件就是另一份结果，回来必须重新请求。
+ * 同一模式换了筛选条件就是另一份结果，回来必须重新请求；独立搜索页按查询词、
+ * 范围与排序口径认人。
  */
 internal sealed interface SessionListKey {
     data object HomeFeed : SessionListKey
     data object HomeSearch : SessionListKey
     data class Browse(val pageKey: BrowsePageKey) : SessionListKey
     data class BrowseTag(val keyword: String, val order: BrowseOrder) : SessionListKey
+    data class Search(
+        val query: String,
+        val scope: SearchScope,
+        val order: BrowseOrder,
+        val time: BrowseTime,
+    ) : SessionListKey
 }
 
 /** 构造标签检索在 [SessionCache] 中的缓存键；空白检索词不入缓存。 */
@@ -90,7 +102,7 @@ internal class AlbumEngagementStore {
 }
 
 /**
- * 列表结果的会话级读写面：列表编排（[com.jm3.app.miuix.ui.list.SessionListLoader]）只认这五个动作，
+ * 列表结果的会话级读写面：列表编排（[com.jm3.app.miuix.ui.list.SessionListLoader]）只认这四个动作，
  * 缓存怎么存、存哪里与它无关。
  *
  * 按条目类型参数化：缓存里只允许放已落定的分页快照（[SessionCache.remember] 的规矩），读面因此不给
@@ -108,12 +120,16 @@ internal interface ListStateCache<T> {
     /** 作废该身份的结果。 */
     fun forget(key: SessionListKey)
 
-    /** 作废全部列表结果；账号级缓存（侧栏、签到、喜欢）不归这个接口管。 */
-    fun forgetAll()
-
     /** 该身份下是否已有可用结果。 */
     fun hasPage(key: SessionListKey): Boolean
 }
+
+/**
+ * 真正的缓存条目身份：账号维度由缓存自己补，屏幕构造的键只描述查询语义。
+ *
+ * 未登录归入 uid 为 null 的那一仓，与任何登录账号都不互通。
+ */
+private data class AccountScopedKey(val uid: String?, val key: SessionListKey)
 
 /**
  * 会话级列表缓存，全应用一个实例（由组装根持有，经屏幕依赖容器注入）。
@@ -121,18 +137,31 @@ internal interface ListStateCache<T> {
  * 页面数据是 remember 的：切 tab 或点进详情再回来，Compose 会销毁整棵页面，回来只剩一个 Loading 项，
  * LazyList 会把恢复的滚动索引钳到 0，用户就回到了列表顶部。这里按身份留一份已加载的结果，回来首帧就能铺满列表。
  *
+ * 条目按「账号 + 键」分仓：换账号回来读到的必须是自己那一仓，上一账号的列表快照不能顶上来。
+ * 账号读面由依赖容器在构造期绑定，每次读写都重新取当前值，账号切换后旧仓自然不再命中。
+ *
  * 只留加载成功的结果：Loading 与 Failed 落进来，只会让下次回来先闪一下旧错误，不如让页面重新请求。
  * 页面自己的当前状态仍由 Composable 持有，失败态才显示得出来。
  */
 internal class SessionCache : ListStateCache<SearchResult> {
 
-    private val entries = mutableMapOf<SessionListKey, ListState>()
+    private var currentUid: () -> String? = { null }
+
+    private val entries = mutableMapOf<AccountScopedKey, ListState>()
 
     /** 跨页喜欢状态；退出登录时与列表缓存一起作废。 */
     val engagement = AlbumEngagementStore()
 
     /** 首页侧栏数据；与分页列表无关，整份替换。 */
     var homeSide: HomeSideData = HomeSideData()
+
+    /** 绑定当前账号读面：由依赖容器在构造期注入账号域的实时读值。 */
+    fun bindAccount(readUid: () -> String?) {
+        currentUid = readUid
+    }
+
+    private fun scoped(key: SessionListKey): AccountScopedKey =
+        AccountScopedKey(uid = currentUid()?.trim()?.takeIf { it.isNotEmpty() }, key = key)
 
     /** 该账号当前会话缓存的签到状态与已确认签到日。 */
     data class CachedCheckInState(
@@ -169,11 +198,8 @@ internal class SessionCache : ListStateCache<SearchResult> {
         }
     }
 
-    /** 该身份下已加载的结果；没有就返回 Loading，页面照常去请求。 */
-    fun stateOf(key: SessionListKey): ListState = entries[key] ?: ListState.Loading
-
     /** 该身份下已加载的结果；没有返回 null（首页用它区分「没搜过」与「搜出来是空的」）。 */
-    fun stateOrNull(key: SessionListKey): ListState? = entries[key]
+    fun stateOrNull(key: SessionListKey): ListState? = entries[scoped(key)]
 
     /** [ListStateCache.read]：只交出已落定的分页快照；返回 null 即「这个身份没加载过」。 */
     override fun read(key: SessionListKey): PagedFeed<SearchResult>? =
@@ -185,7 +211,7 @@ internal class SessionCache : ListStateCache<SearchResult> {
     }
 
     /** 该身份下是否已有可用结果。 */
-    override fun hasPage(key: SessionListKey): Boolean = entries[key] is ListState.Loaded
+    override fun hasPage(key: SessionListKey): Boolean = entries[scoped(key)] is ListState.Loaded
 
     /**
      * 只记加载成功的结果：其余状态落进来，下次回来只会先闪一下旧加载态或旧错误。
@@ -193,24 +219,25 @@ internal class SessionCache : ListStateCache<SearchResult> {
      * 记的是稳定快照：在途/失败标记描述的是页面这一次请求，缓存下来只会在下次回来时永远转圈。
      */
     fun remember(key: SessionListKey, state: ListState) {
+        val entry = scoped(key)
         if (state is ListState.Loaded) {
-            entries[key] = ListState.Loaded(state.feed.copy(loadingMore = false, loadMoreFailed = false))
+            entries[entry] = ListState.Loaded(state.feed.copy(loadingMore = false, loadMoreFailed = false))
         } else {
-            entries.remove(key)
+            entries.remove(entry)
         }
     }
 
     override fun forget(key: SessionListKey) {
-        entries.remove(key)
+        entries.remove(scoped(key))
     }
 
-    /** 分页模式变化后作废列表结果：旧模式下已追加的内容不能按新语义展示；侧栏数据与此无关，保留。 */
+    /**
+     * 分页模式变化后作废列表结果：旧模式下已追加的内容不能按新语义展示，所有账号仓一并作废；
+     * 侧栏数据与此无关，保留。
+     */
     fun forgetPages() {
         entries.clear()
     }
-
-    /** [ListStateCache.forgetAll]：只作废列表结果，侧栏、签到与喜欢状态不受牵连。 */
-    override fun forgetAll() = forgetPages()
 
     /** 退出登录等场景整份清空。 */
     fun clear() {
@@ -219,16 +246,4 @@ internal class SessionCache : ListStateCache<SearchResult> {
         checkInStates.clear()
         engagement.clear()
     }
-}
-
-/**
- * 首页展示模式判定逻辑。
- *
- * @param activeQuery 当前已执行/生效的搜索词（关键词或标签名）
- * @param results 当前持有的搜索结果状态
- * @return 是否应当展示搜索内容列（而非主页发现流）
- */
-internal fun isShowingSearchResults(activeQuery: String, results: ListState?): Boolean {
-    // 只要有已生效的搜索词，或者已有明确的搜索结果，页面即处于搜索态
-    return activeQuery.isNotBlank() || results != null
 }

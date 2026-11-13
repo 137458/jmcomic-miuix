@@ -1,9 +1,11 @@
 package com.jm3.app.miuix.ui
 
 import com.jm3.core.model.BrowseOrder
+import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
+import com.jm3.core.model.SearchScope
 import com.jm3.core.toFeed
 import java.time.LocalDate
 import kotlin.test.Test
@@ -45,7 +47,7 @@ class SessionCacheTest {
 
         cache.remember(browseKey(), ListState.Loaded(fakeFeed))
 
-        assertEquals(ListState.Loaded(fakeFeed), cache.stateOf(browseKey()))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(browseKey()))
         assertTrue(cache.hasPage(browseKey()))
     }
 
@@ -55,7 +57,7 @@ class SessionCacheTest {
         cache.remember(browseKey(category = "all"), ListState.Loaded(fakeFeed))
 
         assertFalse(cache.hasPage(browseKey(category = "doujin")))
-        assertEquals(ListState.Loading, cache.stateOf(browseKey(category = "doujin")))
+        assertNull(cache.stateOrNull(browseKey(category = "doujin")))
     }
 
     @Test
@@ -65,8 +67,8 @@ class SessionCacheTest {
         cache.remember(browseKey(), ListState.Loaded(fakeFeed))
         cache.remember(browseKey(mode = BrowseMode.RANK), ListState.Loaded(rankFeed))
 
-        assertEquals(ListState.Loaded(fakeFeed), cache.stateOf(browseKey()))
-        assertEquals(ListState.Loaded(rankFeed), cache.stateOf(browseKey(mode = BrowseMode.RANK)))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(browseKey()))
+        assertEquals(ListState.Loaded(rankFeed), cache.stateOrNull(browseKey(mode = BrowseMode.RANK)))
     }
 
     @Test
@@ -76,7 +78,7 @@ class SessionCacheTest {
         cache.remember(browseKey(), ListState.Failed("网络不可用"))
 
         assertFalse(cache.hasPage(browseKey()))
-        assertEquals(ListState.Loading, cache.stateOf(browseKey()))
+        assertNull(cache.stateOrNull(browseKey()))
     }
 
     @Test
@@ -88,7 +90,7 @@ class SessionCacheTest {
         cache.forget(SessionListKey.HomeSearch)
 
         assertNull(cache.stateOrNull(SessionListKey.HomeSearch))
-        assertEquals(ListState.Loaded(fakeFeed), cache.stateOf(SessionListKey.HomeFeed))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(SessionListKey.HomeFeed))
     }
 
     @Test
@@ -98,8 +100,8 @@ class SessionCacheTest {
         cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakeFeed))
         cache.remember(browseKey(), ListState.Loaded(rankFeed))
 
-        assertEquals(ListState.Loaded(fakeFeed), cache.stateOf(SessionListKey.HomeFeed))
-        assertEquals(ListState.Loaded(rankFeed), cache.stateOf(browseKey()))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(SessionListKey.HomeFeed))
+        assertEquals(ListState.Loaded(rankFeed), cache.stateOrNull(browseKey()))
     }
 
     @Test
@@ -115,9 +117,104 @@ class SessionCacheTest {
 
         cache.forgetPages()
 
-        assertEquals(ListState.Loading, cache.stateOf(SessionListKey.HomeFeed))
+        assertNull(cache.stateOrNull(SessionListKey.HomeFeed))
         assertFalse(cache.hasPage(browseKey()))
         assertEquals(listOf("热血"), cache.homeSide.hotTags)
+    }
+
+    @Test
+    fun 分页模式变化作废所有账号的列表结果() {
+        val cache = SessionCache()
+        var uid: String? = "1001"
+        cache.bindAccount { uid }
+        cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakeFeed))
+        uid = "1002"
+        cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakeFeed))
+
+        cache.forgetPages()
+
+        assertNull(cache.stateOrNull(SessionListKey.HomeFeed))
+        uid = "1001"
+        assertNull(cache.stateOrNull(SessionListKey.HomeFeed))
+    }
+
+    @Test
+    fun 列表快照按账号分仓换账号后不命中上一账号的结果() {
+        val cache = SessionCache()
+        var uid: String? = "1001"
+        cache.bindAccount { uid }
+        cache.remember(browseKey(), ListState.Loaded(fakeFeed))
+
+        assertTrue(cache.hasPage(browseKey()))
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(browseKey()))
+        assertEquals(fakeFeed, cache.read(browseKey()))
+
+        // 换账号：同一把键读到的是另一个仓，必须按未加载处理，页面才会重新首拉
+        uid = "1002"
+        assertFalse(cache.hasPage(browseKey()))
+        assertNull(cache.stateOrNull(browseKey()))
+        assertNull(cache.read(browseKey()))
+
+        // 切回原账号仍命中自己那一格
+        uid = "1001"
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(browseKey()))
+        assertEquals(fakeFeed, cache.read(browseKey()))
+    }
+
+    @Test
+    fun 未登录与登录账号的列表缓存互不串格() {
+        val cache = SessionCache()
+        var uid: String? = null
+        cache.bindAccount { uid }
+        cache.remember(SessionListKey.HomeFeed, ListState.Loaded(fakeFeed))
+        assertTrue(cache.hasPage(SessionListKey.HomeFeed))
+
+        uid = "1001"
+        assertFalse(cache.hasPage(SessionListKey.HomeFeed))
+        assertNull(cache.stateOrNull(SessionListKey.HomeFeed))
+
+        uid = null
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(SessionListKey.HomeFeed))
+    }
+
+    @Test
+    fun 账号读面取到的是实时值而不是构造期快照() {
+        val cache = SessionCache()
+        var uid: String? = "1001"
+        // 绑定的是 lambda：账号切换发生在绑定之后，读写必须跟着走
+        cache.bindAccount { uid }
+        uid = "1002"
+        cache.remember(browseKey(), ListState.Loaded(fakeFeed))
+
+        uid = "1001"
+        assertNull(cache.stateOrNull(browseKey()))
+        uid = "1002"
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(browseKey()))
+    }
+
+    @Test
+    fun 独立搜索页缓存按查询词范围与排序口径分格() {
+        val cache = SessionCache()
+        val key = SessionListKey.Search(
+            query = "火影",
+            scope = SearchScope.SITE,
+            order = BrowseOrder.LATEST,
+            time = BrowseTime.ALL,
+        )
+        val otherOrder = key.copy(order = BrowseOrder.MOST_VIEWED)
+        val otherScope = key.copy(scope = SearchScope.TAG)
+        val otherTime = key.copy(time = BrowseTime.WEEK)
+        val otherQuery = key.copy(query = "海贼")
+
+        cache.remember(key, ListState.Loaded(fakeFeed))
+
+        assertEquals(ListState.Loaded(fakeFeed), cache.stateOrNull(key))
+        assertEquals(fakeFeed, cache.read(key))
+        assertTrue(cache.hasPage(key))
+        listOf(otherOrder, otherScope, otherTime, otherQuery).forEach { other ->
+            assertFalse(cache.hasPage(other), "另一份查询语义不该命中：$other")
+            assertNull(cache.stateOrNull(other), "另一份查询语义不该命中：$other")
+        }
     }
 
     @Test
@@ -136,7 +233,7 @@ class SessionCacheTest {
         cache.clear()
 
         assertTrue(cache.homeSide.isEmpty)
-        assertEquals(ListState.Loading, cache.stateOf(SessionListKey.HomeFeed))
+        assertNull(cache.stateOrNull(SessionListKey.HomeFeed))
     }
 
     @Test
@@ -178,11 +275,11 @@ class SessionCacheTest {
         cache.remember(keyLatest!!, ListState.Loaded(latestFeed))
         cache.remember(keyViewed!!, ListState.Loaded(viewedFeed))
 
-        assertEquals(ListState.Loaded(latestFeed), cache.stateOf(keyLatest))
-        assertEquals(ListState.Loaded(viewedFeed), cache.stateOf(keyViewed))
+        assertEquals(ListState.Loaded(latestFeed), cache.stateOrNull(keyLatest))
+        assertEquals(ListState.Loaded(viewedFeed), cache.stateOrNull(keyViewed))
 
         cache.forgetPages()
         assertFalse(cache.hasPage(keyLatest))
-        assertEquals(ListState.Loading, cache.stateOf(keyLatest))
+        assertNull(cache.stateOrNull(keyLatest))
     }
 }
