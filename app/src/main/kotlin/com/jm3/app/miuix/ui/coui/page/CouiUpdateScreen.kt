@@ -2,9 +2,6 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.os.Build
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
@@ -101,6 +98,7 @@ import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.copyTextToClipboard
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.formatUpdateSize
 import com.jm3.app.miuix.ui.loadAppIcon
@@ -260,9 +258,14 @@ internal fun CouiUpdateScreen(
     }
 
     fun copyCurrentVersion() {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText("版本号", currentVersion))
-        scope.launch { snackbarHostState.showSnackbar("已复制版本号 v$currentVersion") }
+        copyTextToClipboard(
+            context = context,
+            scope = scope,
+            snackbarHostState = snackbarHostState,
+            label = "版本号",
+            value = currentVersion,
+            successMessage = "已复制版本号 v$currentVersion",
+        )
     }
 
     fun install(file: File) {
