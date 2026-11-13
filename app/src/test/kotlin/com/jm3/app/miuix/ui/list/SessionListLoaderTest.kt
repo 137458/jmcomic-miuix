@@ -4,6 +4,7 @@ import com.jm3.app.miuix.ui.ListStateCache
 import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
+import com.jm3.core.paging.shouldLoadMore
 import com.jm3.core.session.SessionOutcome
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -34,10 +35,6 @@ class SessionListLoaderTest {
 
         override fun forget(key: SessionListKey) {
             entries.remove(key)
-        }
-
-        override fun forgetAll() {
-            entries.clear()
         }
 
         override fun hasPage(key: SessionListKey): Boolean = entries[key] != null
@@ -174,6 +171,12 @@ class SessionListLoaderTest {
 
         assertEquals(ListLoadState.Loaded, harness.loader.state)
         assertEquals(listOf("a", "b"), harness.loader.feed.items.map { it.id })
+        // 跳页失败不是「加载更多失败」：游标停在旧页，页脚不报错，触底翻页不被挡住
+        assertEquals(1, harness.loader.feed.page)
+        assertFalse(harness.loader.feed.loadingMore)
+        assertFalse(harness.loader.feed.loadMoreFailed)
+        assertTrue(harness.loader.feed.canLoadMore)
+        assertTrue(harness.loader.feed.shouldLoadMore(lastVisibleIndex = 1, totalItemCount = 2))
         assertEquals(1, harness.notices.size)
         scope.cancel()
     }
@@ -182,15 +185,21 @@ class SessionListLoaderTest {
     fun 刷新失败保留旧内容并收起刷新指示() = runTest {
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val harness = Harness(scope)
-        harness.nextOutcome = ok("a")
+        harness.nextOutcome = ok("a", "b", hasMore = true)
         harness.loader.loadFirstPage()
         harness.nextOutcome = SessionOutcome.Failed(message = "网络不通")
 
         harness.loader.refresh()
 
-        assertEquals(listOf("a"), harness.loader.feed.items.map { it.id })
+        assertEquals(listOf("a", "b"), harness.loader.feed.items.map { it.id })
         assertEquals(ListLoadState.Loaded, harness.loader.state)
         assertFalse(harness.loader.refreshing)
+        // 刷新失败不是「加载更多失败」：游标与条目原样保留，页脚不报错，触底翻页不被挡住
+        assertEquals(1, harness.loader.feed.page)
+        assertFalse(harness.loader.feed.loadingMore)
+        assertFalse(harness.loader.feed.loadMoreFailed)
+        assertTrue(harness.loader.feed.canLoadMore)
+        assertTrue(harness.loader.feed.shouldLoadMore(lastVisibleIndex = 1, totalItemCount = 2))
         assertEquals(1, harness.notices.size)
         scope.cancel()
     }
@@ -390,6 +399,55 @@ class SessionListLoaderTest {
 
         assertEquals(ListLoadState.Loaded, harness.loader.state)
         assertTrue(cache.writes.isEmpty())
+        scope.cancel()
+    }
+
+    @Test
+    fun 刷新遇到会话失效保留内容且不标页脚失败() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val harness = Harness(scope)
+        harness.nextOutcome = ok("a", "b", hasMore = true)
+        harness.loader.loadFirstPage()
+        harness.nextOutcome = SessionOutcome.Expired
+
+        harness.loader.refresh()
+
+        assertEquals(listOf("a", "b"), harness.loader.feed.items.map { it.id })
+        assertEquals(ListLoadState.Loaded, harness.loader.state)
+        assertFalse(harness.loader.refreshing)
+        assertFalse(harness.loader.feed.loadMoreFailed)
+        assertTrue(harness.loader.feed.canLoadMore)
+        assertEquals(SessionOutcome.Expired.message, harness.notices.single())
+        scope.cancel()
+    }
+
+    @Test
+    fun 翻页在途时刷新失败只收起在途标记() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val harness = Harness(scope)
+        harness.nextOutcome = ok("a", "b", hasMore = true, page = 1)
+        harness.loader.loadFirstPage()
+
+        val loadMoreGate = CompletableDeferred<Unit>()
+        harness.gate = loadMoreGate
+        harness.loader.loadMore()
+        assertTrue(harness.loader.feed.loadingMore)
+
+        harness.gate = null
+        harness.nextOutcome = SessionOutcome.Failed(message = "网络不通")
+        harness.loader.refresh()
+
+        // 刷新失败要收回上一笔翻页留下的在途标记，否则页脚会一直转圈；但仍不得标成加载更多失败
+        assertEquals(listOf("a", "b"), harness.loader.feed.items.map { it.id })
+        assertFalse(harness.loader.feed.loadingMore)
+        assertFalse(harness.loader.feed.loadMoreFailed)
+        assertTrue(harness.loader.feed.canLoadMore)
+        assertEquals(1, harness.loader.feed.page)
+
+        loadMoreGate.complete(Unit)
+        // 旧翻页结果被代次守卫丢弃，不会盖到刷新失败后的内容上
+        assertEquals(listOf("a", "b"), harness.loader.feed.items.map { it.id })
+        assertFalse(harness.loader.feed.loadMoreFailed)
         scope.cancel()
     }
 }

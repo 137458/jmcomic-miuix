@@ -173,8 +173,9 @@ internal class SessionListLoader<T>(
     /**
      * 失败落点：翻页与刷新时屏上已有内容，一律保留并提示；首屏才允许整屏换形态。
      *
-     * 保留内容时顺手把页脚标成可重试（[PagedFeed.failLoadMore]）；整屏失败要撤掉在途标记，
-     * 否则页脚会永远转圈。
+     * 保留内容时按失败类型分开标记：只有加载更多失败才置 [PagedFeed.failLoadMore]（页脚重试），
+     * 刷新或跳页失败只收起在途标记——否则页脚会误报「加载失败」并挡住触底翻页。
+     * 整屏失败同样要撤掉在途标记，否则页脚会永远转圈。
      */
     private fun applyFailure(
         outcome: SessionOutcome<*>,
@@ -186,7 +187,9 @@ internal class SessionListLoader<T>(
         val hasContent = pending.items.isNotEmpty() && (!replace || pulling || keepOnFailure)
         val plan = planLoad(outcome, hasContent, failureMessage, stalePrefix)
         if (plan.keepContent) {
-            _snapshot.update { it.copy(feed = pending.failLoadMore(), refreshing = false) }
+            // 刷新/跳页失败只收起在途标记；只有加载更多失败才标页脚可重试
+            val kept = if (replace) pending.copy(loadingMore = false) else pending.failLoadMore()
+            _snapshot.update { it.copy(feed = kept, refreshing = false) }
             notice(plan.notice.orEmpty())
         } else {
             _snapshot.update {
