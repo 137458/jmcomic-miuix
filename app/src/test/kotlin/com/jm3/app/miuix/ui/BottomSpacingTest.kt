@@ -73,15 +73,14 @@ class BottomSpacingTest {
     }
 
     @Test
-    fun coui页面底部安全边距按FAB数量与软键盘态统一收敛() {
+    fun coui页面底部安全边距按有无FAB与软键盘态统一收敛() {
+        // 无 FAB：给页面呼吸 24dp；键盘弹出时归零（键盘自己让位）
         assertEquals(24f, couiPageExtraBottomDp(hasFab = false, isImeVisible = false))
         assertEquals(0f, couiPageExtraBottomDp(hasFab = false, isImeVisible = true))
-        assertEquals(24f, couiPageExtraBottomDp(fabCount = 0, isImeVisible = false))
-        assertEquals(0f, couiPageExtraBottomDp(fabCount = 0, isImeVisible = true))
-        assertEquals(24f, couiPageExtraBottomDp(fabCount = -2, isImeVisible = false))
+        assertEquals(24f, couiPageExtraBottomDp())
+        // 有 FAB：固定 72dp，键盘不影响
         assertEquals(72f, couiPageExtraBottomDp(hasFab = true, isImeVisible = false))
         assertEquals(72f, couiPageExtraBottomDp(hasFab = true, isImeVisible = true))
-        assertEquals(156f, couiPageExtraBottomDp(fabCount = 2, isImeVisible = false))
     }
 
     @Test

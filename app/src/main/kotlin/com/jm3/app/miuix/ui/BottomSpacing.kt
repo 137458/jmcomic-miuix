@@ -67,18 +67,16 @@ internal const val COUI_PAGE_BOTTOM_BREATHING_DP = 24f
 internal const val COUI_SINGLE_FAB_EXTRA_BOTTOM_DP = 72f
 
 /**
- * COUI 页面底部额外净空：按 FAB 数量与软键盘态收敛。
+ * COUI 页面底部额外净空：按有无 FAB 与软键盘态收敛。
  *
- * 双 FAB 走首页公式，单 FAB 固定 72dp；软键盘弹出且没有 FAB 时归零（键盘自己已经让位），
- * 其余情况给页面呼吸 24dp。
+ * 有 FAB 固定 72dp；软键盘弹出且没有 FAB 时归零（键盘自己已经让位），
+ * 其余情况给页面呼吸 24dp。双 FAB 的首页量走 [couiHomeExtraBottomDp]。
  */
 internal fun couiPageExtraBottomDp(
     hasFab: Boolean = false,
-    fabCount: Int = if (hasFab) 1 else 0,
     isImeVisible: Boolean = false,
 ): Float = when {
-    fabCount >= 2 -> couiHomeExtraBottomDp(fabCount)
-    fabCount == 1 -> COUI_SINGLE_FAB_EXTRA_BOTTOM_DP
+    hasFab -> COUI_SINGLE_FAB_EXTRA_BOTTOM_DP
     isImeVisible -> 0f
     else -> COUI_PAGE_BOTTOM_BREATHING_DP
 }
