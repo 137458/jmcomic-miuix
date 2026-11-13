@@ -265,19 +265,6 @@ internal object ProfileDraftPolicy {
     }
 }
 
-internal val StringMapSaver: Saver<Map<String, String>, Any> = listSaver<Map<String, String>, String>(
-    save = { map -> map.entries.flatMap { listOf(it.key, it.value) } },
-    restore = { flat ->
-        buildMap {
-            var i = 0
-            while (i + 1 < flat.size) {
-                put(flat[i], flat[i + 1])
-                i += 2
-            }
-        }
-    },
-)
-
 /**
  * 创建由 rememberSaveable 备份的个人资料表单 Map：任何写入都会同步记入 [dirtyKeys] 与 [savedDrafts]。
  */
