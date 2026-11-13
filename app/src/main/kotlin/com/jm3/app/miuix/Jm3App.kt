@@ -897,9 +897,8 @@ fun Jm3App() {
                                     CouiWatchHistoryScreen(
                                         deps = deps,
                                         onBack = back,
-                                        onOpenAlbum = nav::album,
                                         snackbarHostState = snackbarHostState,
-                                        onOpenLogin = nav::login,
+                                        nav = nav,
                                     )
                                 },
                             )

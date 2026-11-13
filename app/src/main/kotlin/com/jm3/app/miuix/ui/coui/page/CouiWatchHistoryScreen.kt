@@ -57,6 +57,7 @@ import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.pageLooksFull
@@ -71,19 +72,18 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 private const val WATCH_PAGE_SIZE = 20
 
 /**
- * 观看记录（COUI 栅格版）：参数与旧 Miuix 页一比一，数据与分页语义由 SessionListLoader 统一，
- * 本页只负责栅格渲染与删除确认。
+ * 观看记录（COUI 栅格版）：形参与其他 COUI 页一致收成 [AppRoutes]，数据与分页语义由
+ * SessionListLoader 统一，本页只负责栅格渲染与删除确认。
  *
  * 栅格触底不用预取组件（COUI 预取只支持 LazyListState），改为页脚项进入组合即取下一页；
  * loader 的 beginLoadMore 自带防抖，重复触发不会重发请求。
  */
 @Composable
-fun CouiWatchHistoryScreen(
+internal fun CouiWatchHistoryScreen(
     deps: ScreenDeps,
     onBack: () -> Unit,
-    onOpenAlbum: (String) -> Unit,
+    nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
-    onOpenLogin: () -> Unit = {},
 ) {
     CouiTheme {
         val scope = rememberCoroutineScope()
@@ -125,7 +125,7 @@ fun CouiWatchHistoryScreen(
 
                     SessionOutcome.Expired -> {
                         snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        onOpenLogin()
+                        nav.login()
                     }
 
                     is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
@@ -173,7 +173,7 @@ fun CouiWatchHistoryScreen(
                                 message = state.message,
                                 expired = state.sessionExpired,
                                 onRetry = loader::loadFirstPage,
-                                onOpenLogin = onOpenLogin,
+                                onOpenLogin = nav::login,
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                             )
                         }
@@ -195,7 +195,7 @@ fun CouiWatchHistoryScreen(
                                         CouiWorkGridCard(
                                             title = item.title,
                                             coverUrl = item.coverUrl,
-                                            onClick = { onOpenAlbum(item.id) },
+                                            onClick = { nav.album(item.id) },
                                             albumId = item.id,
                                             coverContentDescription = item.title,
                                             subtitle = item.authors.authorNames(),
