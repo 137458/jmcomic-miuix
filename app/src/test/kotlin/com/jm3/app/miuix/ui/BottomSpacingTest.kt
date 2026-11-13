@@ -1,9 +1,12 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.app.miuix.ui.glass.bottomBarTokens
+import com.jm3.core.settings.BottomBarForm
+import com.jm3.core.settings.BottomBarSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class BottomClearanceTest {
+class BottomSpacingTest {
 
     @Test
     fun coui首页底栏在双FAB上方留出额外呼吸净空() {
@@ -79,5 +82,42 @@ class BottomClearanceTest {
         assertEquals(72f, couiPageExtraBottomDp(hasFab = true, isImeVisible = false))
         assertEquals(72f, couiPageExtraBottomDp(hasFab = true, isImeVisible = true))
         assertEquals(156f, couiPageExtraBottomDp(fabCount = 2, isImeVisible = false))
+    }
+
+    @Test
+    fun 底栏净空由条高底距呼吸三段相加得出且三档结果不变() {
+        // 普通档悬浮：56 + 16 + 8 = 80
+        assertEquals(80f, bottomBarContentPaddingDp(56f, BottomBarSize.STANDARD, BottomBarForm.FLOATING))
+        // 偏大档悬浮：72 + 24 + 12 = 108
+        assertEquals(108f, bottomBarContentPaddingDp(72f, BottomBarSize.GENEROUS, BottomBarForm.FLOATING))
+        // 贴底通栏没有底距与呼吸：净空等于条高
+        for (size in BottomBarSize.entries) {
+            assertEquals(64f, bottomBarContentPaddingDp(64f, size, BottomBarForm.DOCKED))
+        }
+    }
+
+    @Test
+    fun token净空与条高始终来自同一次推导() {
+        // 净空只由「条高 + 底距 + 呼吸」派生：谁把 80/108/64 写回 BottomBarTokens，这里就会对不上。
+        for (size in BottomBarSize.entries) {
+            for (form in BottomBarForm.entries) {
+                val tokens = bottomBarTokens(size, form)
+                val derived = bottomBarContentPaddingDp(tokens.height.value, size, form)
+                assertEquals(derived, tokens.contentPadding.value, "$size/$form 的净空必须由本模块派生")
+                if (form == BottomBarForm.FLOATING) {
+                    assertEquals(
+                        bottomBarContentPaddingDp(0f, size, form),
+                        tokens.contentPadding.value - tokens.height.value,
+                        "$size 的悬浮余量必须等于底距加呼吸",
+                    )
+                } else {
+                    assertEquals(tokens.height.value, tokens.contentPadding.value, "$size 贴底净空必须等于条高")
+                }
+            }
+        }
+        // 三档结果逐位钉住，防止公式被"化简"成别的数
+        assertEquals(80f, bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.FLOATING).contentPadding.value)
+        assertEquals(108f, bottomBarTokens(BottomBarSize.GENEROUS, BottomBarForm.FLOATING).contentPadding.value)
+        assertEquals(64f, bottomBarTokens(BottomBarSize.STANDARD, BottomBarForm.DOCKED).contentPadding.value)
     }
 }
