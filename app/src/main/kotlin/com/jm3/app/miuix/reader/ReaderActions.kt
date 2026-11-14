@@ -5,7 +5,7 @@ import androidx.compose.foundation.pager.PagerState
 import com.jm3.app.miuix.ui.EdgePageTurn
 import com.jm3.core.reader.ReaderPageProgress
 import com.jm3.core.reader.ReaderSpreadPolicy
-import com.jm3.core.reader.shouldClearReaderProgress
+import com.jm3.core.reader.persistReaderProgress
 import com.jm3.core.settings.ReaderSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -77,12 +77,8 @@ internal class ReaderActions(
         }
     }
 
-    /** 记进度：已读到末页说明本章读完，清键；否则写键。 */
+    /** 记进度：已读到末页说明本章读完，清键；否则写键。规则见 [persistReaderProgress]。 */
     suspend fun persistProgress(progress: ReaderPageProgress) {
-        if (shouldClearReaderProgress(progress)) {
-            settings.clearReaderLastPage(photoId)
-        } else {
-            settings.setReaderLastPage(photoId, progress)
-        }
+        persistReaderProgress(settings, photoId, progress)
     }
 }

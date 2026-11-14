@@ -1,5 +1,7 @@
 package com.jm3.core.reader
 
+import com.jm3.core.settings.ReaderProgressSettings
+
 /** 阅读进度：当前页与该章节的总页数。 */
 data class ReaderPageProgress(val page: Int, val total: Int)
 
@@ -67,3 +69,21 @@ fun readerProgressOnExit(restored: Boolean, page: Int, total: Int): ReaderPagePr
  */
 fun shouldClearReaderProgress(progress: ReaderPageProgress): Boolean =
     progress.total > 0 && progress.page >= progress.total
+
+/**
+ * 记进度：读完末页改为清键，其余写键。
+ *
+ * 收在这里而不是留在 UI 编排里，是让「末页清键」这一条规则只有一处实现，
+ * 两套皮肤与阅读器的多个退出口都走同一个判定。
+ */
+suspend fun persistReaderProgress(
+    settings: ReaderProgressSettings,
+    photoId: String,
+    progress: ReaderPageProgress,
+) {
+    if (shouldClearReaderProgress(progress)) {
+        settings.clearReaderLastPage(photoId)
+    } else {
+        settings.setReaderLastPage(photoId, progress)
+    }
+}
