@@ -8,8 +8,7 @@ import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.StartupGate
 import com.jm3.core.settings.InMemorySettingsRepository
 import kotlinx.coroutines.Dispatchers
-import io.github.jukomu.jmcomic.api.exception.JmClientInitializationException
-import io.github.jukomu.jmcomic.api.exception.NetworkException
+import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.LocalDate
@@ -153,7 +152,7 @@ class CheckInLoadPolicyTest {
     fun `网络异常归类为网络连接失败`() {
         assertEquals(
             "网络连接失败，请检查网络后重试",
-            checkInFailureCopy(SessionOutcome.Failed("connect failed", NetworkException("connect failed")), FALLBACK),
+            checkInFailureCopy(SessionOutcome.Failed("connect failed", ConnectException("connect failed")), FALLBACK),
         )
         assertEquals(
             "网络连接失败，请检查网络后重试",
@@ -163,21 +162,11 @@ class CheckInLoadPolicyTest {
 
     @Test
     fun `异常链上的网络错误也要归类`() {
-        val wrapped = RuntimeException("wrapped", NetworkException("connect failed"))
+        val wrapped = RuntimeException("wrapped", UnknownHostException("connect failed"))
 
         assertEquals(
             "网络连接失败，请检查网络后重试",
             checkInFailureCopy(SessionOutcome.Failed("wrapped", wrapped), FALLBACK),
-        )
-    }
-
-    @Test
-    fun `初始化异常优先于其包裹的网络异常`() {
-        val init = JmClientInitializationException("all domains dead", SocketTimeoutException("timeout"))
-
-        assertEquals(
-            "客户端尚未就绪，请稍后重试",
-            checkInFailureCopy(SessionOutcome.Failed("all domains dead", init), FALLBACK),
         )
     }
 

@@ -15,10 +15,13 @@ java {
 }
 
 dependencies {
-    api(libs.jmcomic.api)
+    implementation(libs.jmcomic.api)
     implementation(libs.jmcomic.core) {
         exclude(group = "io.github.darkxanter", module = "webp-imageio")
     }
+    // SessionCookies / LibraryBridge / LibraryReflection 直接使用 okhttp 的 Cookie 与 HttpUrl，
+    // 依赖不再靠 jmcomic-core 的传递依赖偶然存在。
+    implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(kotlin("test"))
