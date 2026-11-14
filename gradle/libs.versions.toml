@@ -9,10 +9,13 @@ coil = "3.6.3"
 serializationJson = "1.12.0"
 miuix = "0.9.4"
 jmcomic = "v1.1.12"
+# 与 jmcomic 解析出的 okhttp 版本保持一致；:core 直接使用 Cookie/HttpUrl 类型，故显式声明。
+okhttp = "4.12.0"
 room = "2.8.5"
+# KSP2 起版本号独立于 Kotlin（POM 不约束 kotlin-gradle-plugin），升级 Kotlin 时无需同步改这里。
 ksp = "2.3.12"
 datastore = "1.3.0"
-coroutinesTest = "1.11.0"
+coroutines = "1.11.0"
 telephoto = "0.19.0"
 coui = "0.0.1-alpha10"
 
@@ -29,8 +32,8 @@ coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref 
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 telephoto-zoomable-image-coil3 = { group = "me.saket.telephoto", name = "zoomable-image-coil3", version.ref = "telephoto" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
-kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutinesTest" }
-kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
@@ -44,6 +47,7 @@ coui = { group = "io.github.itoseo", name = "coui", version.ref = "coui" }
 jmcomic-api = { group = "io.github.jukomu", name = "jmcomic-api", version.ref = "jmcomic" }
 jmcomic-core = { group = "io.github.jukomu", name = "jmcomic-core", version.ref = "jmcomic" }
 jmcomic-android-support = { group = "io.github.jukomu", name = "jmcomic-android-support", version.ref = "jmcomic" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
