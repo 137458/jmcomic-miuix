@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -404,6 +405,9 @@ fun CouiWorkRowCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // 两列行卡由容器对齐：父级给出确定高度时撑满，卡片底色与描边才与同行另一张等高。
+            // 单列列表的父级高度无界，fillMaxHeight 不生效，行高仍由封面与文字决定。
+            .fillMaxHeight()
             .graphicsLayer {
                 scaleX = press.scale.value
                 scaleY = press.scale.value

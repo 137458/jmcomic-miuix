@@ -2,8 +2,11 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -16,6 +19,8 @@ import androidx.compose.ui.unit.dp
  *
  * 仍然是一条 LazyColumn 的项，所以标题项、分页脚、触底预取与既有 key 都不受影响；
  * 只有同质的行卡段按列切片，每行一个 [Row]，格子等宽（尾部空位留白，不把最后一张拉宽）。
+ * 同一行的格子按最高的一格对齐：多列时 [Row] 取子项固有高度的最大值，每格再撑满，
+ * 行卡背景与边框不会因为一张有标签行、另一张没有而一高一低。
  * 列数由 [com.jm3.core.layout.WideLayoutPolicy.feedColumns] 判定后经
  * [com.jm3.app.miuix.ui.WideLayout.feedColumns] 传入，页面不自己算断点。
  *
@@ -36,9 +41,13 @@ fun LazyListScope.feedRowItems(
 ) {
     val columnCount = columns.coerceAtLeast(1)
     val rowCount = (count + columnCount - 1) / columnCount
+    // 单列没有等高需求，跳过固有高度测量：省掉一趟双测量，也避免子项不支持固有高度时出错。
+    val equalHeight = columnCount > 1
     items(count = rowCount, key = { row -> keyPrefix + keyOf(row * columnCount) }) { row ->
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (equalHeight) Modifier.height(IntrinsicSize.Max) else Modifier),
             horizontalArrangement = if (columnCount > 1) {
                 Arrangement.spacedBy(rowSpacing)
             } else {
@@ -46,7 +55,11 @@ fun LazyListScope.feedRowItems(
             },
         ) {
             for (column in 0 until columnCount) {
-                Box(modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(if (equalHeight) Modifier.fillMaxHeight() else Modifier),
+                ) {
                     val index = row * columnCount + column
                     if (index < count) content(index)
                 }

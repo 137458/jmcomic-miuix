@@ -225,7 +225,17 @@ private fun WorkCardSubtitleText(
 ) {
     val authorText = authors?.trim()?.takeIf { it.isNotEmpty() }
     val categoryText = category?.trim()?.takeIf { it.isNotEmpty() }
-    if (authorText == null && categoryText == null) return
+    if (authorText == null && categoryText == null) {
+        // 两者都缺时仍占住一行：同一排卡片不会因为有无次级信息而一高一低。
+        Text(
+            text = "",
+            style = MiuixTheme.textStyles.footnote1,
+            lineHeight = lineHeight,
+            maxLines = 1,
+            modifier = modifier.padding(top = WorkCardTokens.TextGap),
+        )
+        return
+    }
     Text(
         text = buildAnnotatedString {
             if (authorText != null) append(authorText)
@@ -388,7 +398,9 @@ internal fun WorkRowCard(
     val heroHost = LocalAlbumHeroHost.current
     val cardCorner = LocalSkin.current.shapes.cardCorner
     Card(
-        modifier = modifier.pressScale(),
+        // 两列行卡由容器对齐：父级给出确定高度时撑满，卡片底色与描边才与同行另一张等高。
+        // 单列列表的父级高度无界，fillMaxHeight 不生效，行高仍由封面与文字决定。
+        modifier = modifier.fillMaxHeight().pressScale(),
         cornerRadius = cardCorner,
         insideMargin = PaddingValues(0.dp),
         onClick = {
