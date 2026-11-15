@@ -36,11 +36,21 @@ object WideLayoutPolicy {
     /** 网格左右外边距之和（每侧 16dp），用于从窗口宽度换算排布宽度。 */
     const val GRID_HORIZONTAL_MARGIN_DP = 32
 
-    /** Medium 窗口的单栏可读宽度（横屏手机、竖屏小平板）。 */
-    const val MEDIUM_CONTENT_MAX_WIDTH_DP = 640
+    /**
+     * Medium 窗口的单栏可读宽度（横屏手机、竖屏小平板）。
+     *
+     * 取 720dp 而不是 640dp：640dp 时 700dp 以上的窗口就开始留白，
+     * 而 720dp 让断点内的窗口基本铺满，单栏仍在一屏可扫读的行长内。
+     */
+    const val MEDIUM_CONTENT_MAX_WIDTH_DP = 720
 
-    /** Expanded 窗口的单栏可读宽度。 */
-    const val EXPANDED_CONTENT_MAX_WIDTH_DP = 840
+    /**
+     * Expanded 窗口的单栏可读宽度。
+     *
+     * 取 1120dp 而不是 840dp：840dp 时 1280dp 平板横屏每侧留白 220dp、正文只占窗口六成，
+     * 屏幕越大留白越多。1120dp 让 1280dp 窗口每侧只留 80dp，同时恰好排满六列网格。
+     */
+    const val EXPANDED_CONTENT_MAX_WIDTH_DP = 1120
 
     /** 详情页固定双栏的最小宽度。 */
     const val DETAIL_TWO_PANE_MIN_WIDTH_DP = EXPANDED_MIN_WIDTH_DP
@@ -92,7 +102,7 @@ object WideLayoutPolicy {
     /**
      * 作品网格列数：断点以下沿用手机的两列；大屏按**限宽后的内容宽度**补列。
      *
-     * 大屏正文被 [contentMaxWidthDp] 收窄（640/840dp），列数若按窗口宽度算，
+     * 大屏正文被 [contentMaxWidthDp] 收窄（720/1120dp），列数若按窗口宽度算，
      * 窗口越宽列越多、卡片反而越窄（1280dp 曾排出 7 列 116dp 的封面）。
      * 因此这里先取内容宽度再换算，卡片宽度始终不低于 [GRID_MIN_COLUMN_WIDTH_DP]。
      */

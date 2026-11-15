@@ -25,31 +25,47 @@ class WideLayoutPolicyTest {
 
     @Test
     fun `网格列数只按限宽后的内容宽度推导`() {
-        // 大屏正文被收窄到 640/840dp，列数必须按收窄后的排布宽度算，
+        // 大屏正文被收窄到 720/1120dp，列数必须按收窄后的排布宽度算，
         // 否则窗口越宽列越多、每张卡片越窄（1280dp 曾排出 7 列 116dp 的封面）。
         assertEquals(3, WideLayoutPolicy.gridColumns(600))
         assertEquals(4, WideLayoutPolicy.gridColumns(840))
-        assertEquals(4, WideLayoutPolicy.gridColumns(1080))
-        assertEquals(4, WideLayoutPolicy.gridColumns(1280))
-        assertEquals(4, WideLayoutPolicy.gridColumns(2400))
+        assertEquals(5, WideLayoutPolicy.gridColumns(1080))
+        assertEquals(6, WideLayoutPolicy.gridColumns(1280))
+        assertEquals(6, WideLayoutPolicy.gridColumns(2400))
     }
 
     @Test
     fun `限宽后的列数封顶`() {
-        // 内容宽本身被 840dp 封顶，列数上限只在直接喂排布宽度时生效
+        // 内容宽本身被 1120dp 封顶，列数上限只在直接喂排布宽度时生效
         assertEquals(
             WideLayoutPolicy.MAX_GRID_COLUMNS,
             WideLayoutPolicy.gridColumnsForContent(2000),
         )
         assertEquals(4, WideLayoutPolicy.gridColumnsForContent(808))
+        // 封顶宽度恰好排满六列：再宽的窗口不再多出列，也不会把封面压窄
+        assertEquals(
+            WideLayoutPolicy.MAX_GRID_COLUMNS,
+            WideLayoutPolicy.gridColumnsForContent(WideLayoutPolicy.EXPANDED_CONTENT_MAX_WIDTH_DP),
+        )
     }
 
     @Test
     fun `内容宽度扣掉断点上限`() {
         assertEquals(599, WideLayoutPolicy.contentWidthDp(599))
         assertEquals(600, WideLayoutPolicy.contentWidthDp(600))
-        assertEquals(640, WideLayoutPolicy.contentWidthDp(700))
-        assertEquals(840, WideLayoutPolicy.contentWidthDp(1280))
+        assertEquals(700, WideLayoutPolicy.contentWidthDp(700))
+        assertEquals(720, WideLayoutPolicy.contentWidthDp(839))
+        assertEquals(840, WideLayoutPolicy.contentWidthDp(840))
+        assertEquals(1120, WideLayoutPolicy.contentWidthDp(1280))
+        assertEquals(1120, WideLayoutPolicy.contentWidthDp(1600))
+    }
+
+    @Test
+    fun `宽屏窗口每侧留白不超过 80dp`() {
+        // 1280dp 平板横屏曾是每侧 220dp 留白，正文只占窗口的 65%
+        assertEquals(80, (1280 - WideLayoutPolicy.contentWidthDp(1280)) / 2)
+        // Medium 窗口在封顶前随窗口增长，800dp 窗口只留 40dp
+        assertEquals(40, (800 - WideLayoutPolicy.contentWidthDp(800)) / 2)
     }
 
     @Test
@@ -66,10 +82,10 @@ class WideLayoutPolicyTest {
     @Test
     fun `单栏内容最大宽度按断点切换`() {
         assertNull(WideLayoutPolicy.contentMaxWidthDp(599))
-        assertEquals(640, WideLayoutPolicy.contentMaxWidthDp(600))
-        assertEquals(640, WideLayoutPolicy.contentMaxWidthDp(839))
-        assertEquals(840, WideLayoutPolicy.contentMaxWidthDp(840))
-        assertEquals(840, WideLayoutPolicy.contentMaxWidthDp(1600))
+        assertEquals(720, WideLayoutPolicy.contentMaxWidthDp(600))
+        assertEquals(720, WideLayoutPolicy.contentMaxWidthDp(839))
+        assertEquals(1120, WideLayoutPolicy.contentMaxWidthDp(840))
+        assertEquals(1120, WideLayoutPolicy.contentMaxWidthDp(1600))
     }
 
     @Test
@@ -138,7 +154,7 @@ class WideLayoutPolicyTest {
         assertEquals(1, WideLayoutPolicy.feedColumns(0))
         assertEquals(1, WideLayoutPolicy.feedColumns(640))
         assertEquals(1, WideLayoutPolicy.feedColumns(839))
-        // Expanded 内容宽上限 840dp 起排两列，再宽也最多两列
+        // 内容宽达到 Expanded 断点（840dp）起排两列，再宽也最多两列
         assertEquals(2, WideLayoutPolicy.feedColumns(840))
         assertEquals(2, WideLayoutPolicy.feedColumns(1280))
     }
