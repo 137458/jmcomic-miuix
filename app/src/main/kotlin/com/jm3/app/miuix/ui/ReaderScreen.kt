@@ -364,8 +364,8 @@ private fun ReaderPages(
     val windowSize = LocalWindowInfo.current.containerSize
     val scope = rememberCoroutineScope()
     val user by deps.account.user.collectAsState()
-    // 页宽取「窗口宽」与正文列宽的较小值：竖屏手机两者相同，1280dp 横屏窗口里正文列只有 840dp，
-    // 横向单页因此收成居中的阅读列，而不是拉满整屏只留左右各 340dp 纯黑边。
+    // 页宽取「窗口宽」与正文列宽的较小值：竖屏手机两者相同，1280dp 横屏窗口里正文列是 1120dp，
+    // 横向单页因此收成居中的阅读列，而不是拉满整屏只留左右各 80dp 边。
     // 解码尺寸也从这一页的真实宽高比推算，否则 800x20000 的长条图会被解成 58x1440 再拉满整宽，
     // 放大十几倍必然发糊。
     val wideLayout = LocalWideLayout.current

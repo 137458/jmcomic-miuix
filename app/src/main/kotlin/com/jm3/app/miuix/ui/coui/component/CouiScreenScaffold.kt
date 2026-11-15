@@ -108,8 +108,8 @@ fun CouiScreenScaffold(
                     colors = couiTopAppBarColors(),
                 )
             }
-            // 横向对齐由 CouiAppScaffold 的顶栏内容层统一负责，这里只负责纵向叠放，
-            // 再套一次 alignToReadableContent 会叠加成双倍留白。
+            // 顶栏不再收进正文列，这里也无需再套 alignToReadableContent：
+            // 返回键与标题直接贴着大屏窗口两边。
             Column(modifier = Modifier.fillMaxWidth()) {
                 topAppBar()
                 if (topBarBottom != null) topBarBottom()
@@ -135,8 +135,7 @@ fun CouiTopBarSegmentedTabs(
     enabled: Boolean = true,
 ) {
     val backdrop = LocalCouiAppBackdrop.current
-    // 横向对齐由 CouiAppScaffold 的顶栏内容层统一负责，此处再套 readableWidth 会叠加成双倍留白，
-    // 840dp 以上页签与正文就会错开。
+    // 顶栏不再收进正文列，此处也无需再套 readableWidth：页签胶囊随窗口铺到两端。
     Box(
         modifier = modifier
             .fillMaxWidth()

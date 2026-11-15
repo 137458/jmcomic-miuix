@@ -225,12 +225,11 @@ fun GlassScaffold(
                             )
                         }
                         // 实测高度只取顶栏内容本身：模糊层不计入内容净空、折叠位移与展开高度。
-                        // 横向只收窄这一层：标题、页签、搜索框跟着正文落在同一内容列里，
-                        // 上面的渐变模糊层与降级实色仍满窗口宽，滚动到边缘时不会露出硬边。
+                        // 横向铺满窗口：返回键与标题贴窗口两边，大屏上导航入口不再被推进正文列；
+                        // 与同样满窗口宽的渐变模糊层、降级实色同宽，滚动到边缘时不会露出硬边。
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .alignToReadableContent()
                                 .onSizeChanged { topBarMaxHeightPx = maxOf(topBarMaxHeightPx, it.height) },
                         ) {
                             topBar()

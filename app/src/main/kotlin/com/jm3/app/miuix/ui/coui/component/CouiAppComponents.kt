@@ -91,7 +91,6 @@ fun CouiAppScaffold(
     modifier: Modifier = Modifier,
     floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
     contentBackdrop: CouiBackdrop? = null,
-    alignTopBar: Boolean = true,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     // 净空值不含系统导航栏 inset，占位也要让出同一条底部安全区
@@ -101,19 +100,9 @@ fun CouiAppScaffold(
         modifier = modifier.imePadding(),
         topBar = {
             CompositionLocalProvider(LocalCouiAppBackdrop provides contentBackdrop) {
-                // 顶栏内容统一收进正文列：大屏上标题、返回键与正文左缘共线。
-                // 满宽底色与毛玻璃采样层由各页顶栏自己铺在收窄层之外，不跟着内容列缩。
-                if (alignTopBar) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alignToReadableContent(),
-                    ) {
-                        topBar()
-                    }
-                } else {
-                    topBar()
-                }
+                // 顶栏不跟随正文限宽：大屏上返回键与标题贴窗口两边，导航入口不会被推到屏幕中部。
+                // 满宽底色与毛玻璃采样层本来就由各页顶栏铺满整行，这里直接铺满即可。
+                topBar()
             }
         },
         bottomBar = {
