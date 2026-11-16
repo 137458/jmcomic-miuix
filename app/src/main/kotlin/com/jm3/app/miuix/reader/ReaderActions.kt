@@ -4,7 +4,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.PagerState
 import com.jm3.app.miuix.ui.EdgePageTurn
 import com.jm3.core.reader.ReaderPageProgress
-import com.jm3.core.reader.ReaderSpreadPolicy
 import com.jm3.core.reader.persistReaderProgress
 import com.jm3.core.settings.ReaderSettings
 import kotlinx.coroutines.CoroutineScope
@@ -35,10 +34,10 @@ internal class ReaderActions(
      * 目标页在松手时定下（与旧编排一致），惯性复核通过后才真的翻。
      */
     fun turnPage(turn: EdgePageTurn, stillPinned: suspend () -> Boolean) {
-        val target = pagerState.currentPage + if (turn == EdgePageTurn.Next) 1 else -1
+        val target = planEdgeTurnPagerIndex(pagerState.currentPage, turn, pagerPageCount)
         scope.launch {
             if (!stillPinned()) return@launch
-            pagerState.springAnimateToPage(clampPagerTarget(target, pagerPageCount))
+            pagerState.springAnimateToPage(target)
         }
     }
 
@@ -46,30 +45,23 @@ internal class ReaderActions(
     fun goToPage(page: Int) {
         // 双页下把目标换算成所在跨页的锚点：进度、页码与跳页都用同一个单页坐标，
         // 用户输入第 5 页时落到含 4、5 页的那一屏，不会因为并排而错开一页。
-        val canonical = if (spreadActive) {
-            ReaderSpreadPolicy.anchorPageForPage(page, pageCount)
-        } else {
-            page
-        }
+        val canonical = planJumpPage(page, pageCount, spreadActive)
         // 冻结与解冻都交给 session：目标页在动画前定下，落地后才放开可见页回写
         val target = session.requestJump(canonical) ?: return
         if (horizontal) {
-            val pagerTarget = if (spreadActive) {
-                ReaderSpreadPolicy.spreadIndexForPage(target, pageCount)
-            } else {
-                target - 1
-            }
+            val pagerTarget = planPagerIndex(target, pageCount, spreadActive, pagerPageCount)
             scope.launch {
                 try {
-                    pagerState.springAnimateToPage(clampPagerTarget(pagerTarget, pagerPageCount))
+                    pagerState.springAnimateToPage(pagerTarget)
                 } finally {
                     session.onJumpSettled(target)
                 }
             }
         } else {
+            val listTarget = planListIndex(target)
             scope.launch {
                 try {
-                    listState.scrollToItem(target - 1)
+                    listState.scrollToItem(listTarget)
                 } finally {
                     session.onJumpSettled(target)
                 }

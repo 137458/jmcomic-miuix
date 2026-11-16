@@ -6,10 +6,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.positionChange
 import com.jm3.app.miuix.ui.EDGE_CONFIRM_DELAY_MS
-import com.jm3.app.miuix.ui.EDGE_CONFIRM_MOVE_PX
 import com.jm3.app.miuix.ui.EdgeDragTracker
 import kotlinx.coroutines.delay
-import kotlin.math.abs
 
 /**
  * 边界空拖采集：telephoto 越过触摸阈值后会无条件消费全部位移，内容到边界之后也不放手，
@@ -42,7 +40,7 @@ internal suspend fun PointerInputScope.collectHorizontalEdgeDrag(
                     val offsetAtRelease = contentOffsetX()
                     onEdgeDrag(pinnedDragX) {
                         delay(EDGE_CONFIRM_DELAY_MS)
-                        abs(contentOffsetX() - offsetAtRelease) < EDGE_CONFIRM_MOVE_PX
+                        edgeDragStillPinned(offsetAtRelease = offsetAtRelease, offsetNow = contentOffsetX())
                     }
                 }
                 break

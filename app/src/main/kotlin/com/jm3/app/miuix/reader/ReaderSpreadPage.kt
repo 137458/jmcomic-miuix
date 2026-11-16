@@ -71,15 +71,17 @@ internal fun ReaderSpreadPage(
             modifier.zoomable(state = zoomableState, gestures = EnabledZoomGestures.ZoomAndPan, onClick = tapHandler)
         },
     ) {
-        if (images.size >= 2) {
-            Row(modifier = Modifier.fillMaxSize()) {
+        when (spreadArrangeFor(images.size)) {
+            ReaderSpreadArrange.SideBySide -> Row(modifier = Modifier.fillMaxSize()) {
                 images.forEach { image ->
                     page(image, Modifier.weight(1f).fillMaxHeight())
                 }
             }
-        } else {
             // 首页单页与末尾补空：单页保持与并排页相同的宽度，居中显示，翻屏时版面不跳
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ReaderSpreadArrange.SingleCentered -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
                 images.firstOrNull()?.let { image ->
                     page(image, Modifier.fillMaxHeight().fillMaxWidth(0.5f))
                 }
