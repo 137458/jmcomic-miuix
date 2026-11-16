@@ -30,6 +30,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
+ * 底栏尺寸档 → 需要落盘的显式值。
+ *
+ * 「普通」只是「不强制」，盘上要留空而不是写 STANDARD：写死 STANDARD 之后，
+ * 平板或宽屏窗口的断点再也解析不出更大的默认值。
+ */
+internal fun explicitBottomBarSize(size: BottomBarSize): BottomBarSize? =
+    if (size == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else null
+
+/**
  * 列表页读取的分页开关。
  *
  * 只暴露读面：写入要连着作废分页缓存与落盘，走 [ScreenDeps.selectPaginationMode]，
@@ -164,10 +173,10 @@ class ScreenDeps internal constructor(
 
     /**
      * 用户选底栏尺寸：「普通」表示自适应，清空显式值回到断点解析；
-     * 只有「偏大」是需要落盘的强制选择。
+     * 只有「偏大」是需要落盘的强制选择，映射见 [explicitBottomBarSize]。
      */
     fun selectBottomBarSize(size: BottomBarSize) {
-        val target = if (size == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else null
+        val target = explicitBottomBarSize(size)
         if (target == preferences.bottomBarSize) return
         preferences.bottomBarSize = target
         persist("底栏尺寸") {

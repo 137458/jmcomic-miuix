@@ -604,7 +604,7 @@ private fun CouiLibrarySearchField(
 }
 
 /** 把书库接口的一页折算成 PagedFeed 切片：末页判据用页码，条目数不参与。 */
-private fun <T> couiLibrarySlice(items: List<T>, total: Int, page: Int): PageSlice<T> {
+internal fun <T> couiLibrarySlice(items: List<T>, total: Int, page: Int): PageSlice<T> {
     val pageCount = libraryPageCount(total)
     return PageSlice(
         items = items,

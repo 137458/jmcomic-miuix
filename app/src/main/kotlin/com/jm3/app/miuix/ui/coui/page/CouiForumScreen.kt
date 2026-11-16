@@ -662,7 +662,7 @@ internal fun flattenForumReplies(root: CommentItem): List<Pair<CommentItem, Int>
 }
 
 /** 评论页没有页码字段：页码与总页数由请求页和 total 补上，末页之后不再多打一次空页。 */
-private fun couiForumSlice(page: CommentPage, requestPage: Int): PageSlice<CommentItem> {
+internal fun couiForumSlice(page: CommentPage, requestPage: Int): PageSlice<CommentItem> {
     val pageCount = pageCountOf(page.total, FORUM_PAGE_SIZE)
     return PageSlice(
         items = page.items,

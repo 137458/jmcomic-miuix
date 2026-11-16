@@ -351,7 +351,7 @@ private fun MineAccountCard(
 }
 
 /** 等级、硬币与经验同为账号基础信息，压在一行里由省略号兜住窄屏。 */
-private fun mineAccountSummary(user: Jm3User): String {
+internal fun mineAccountSummary(user: Jm3User): String {
     val levelName = user.levelName?.trim().orEmpty()
     val level = if (levelName.isEmpty()) "Lv.${user.level}" else "Lv.${user.level} $levelName"
     return "$level · 硬币 ${user.coin} · 经验 ${user.currentExp}/${user.nextLevelExp}"

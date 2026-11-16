@@ -968,7 +968,7 @@ private fun CouiSyntaxRow(expression: String, meaning: String) {
 }
 
 /** 搜索摘要：标签搜索要标明是标签，结果总数只在服务端给出时显示。 */
-private fun searchSummary(query: String, byTag: Boolean, total: Int?): String {
+internal fun searchSummary(query: String, byTag: Boolean, total: Int?): String {
     val head = if (byTag) "标签：$query" else "“$query”"
     return if (total != null && total > 0) "$head · 共 $total 个结果" else head
 }

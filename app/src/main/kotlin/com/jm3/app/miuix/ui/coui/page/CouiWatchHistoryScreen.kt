@@ -303,7 +303,7 @@ private fun CouiGridDeleteBadge(
 }
 
 /** 接口不返回总数，用本页条数推断是否还有下一页。 */
-private fun SessionOutcome<List<SearchResult>>.toWatchSlice(
+internal fun SessionOutcome<List<SearchResult>>.toWatchSlice(
     page: Int,
     pageSize: Int,
 ): SessionOutcome<PageSlice<SearchResult>> = when (this) {

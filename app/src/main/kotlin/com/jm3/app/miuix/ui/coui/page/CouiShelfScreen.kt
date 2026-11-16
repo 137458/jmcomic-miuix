@@ -308,12 +308,12 @@ private fun CouiShelfDeleteBadge(
 }
 
 /** 卡副标题：状态与进度，前面带禁漫车号；车号缺失时只显示状态，不输出孤立的 “#”。 */
-private fun couiShelfSummary(record: DownloadRecord, row: DownloadRow, label: String): String {
+internal fun couiShelfSummary(record: DownloadRecord, row: DownloadRow, label: String): String {
     val progress = label + " " + row.donePages + "/" + row.total
     val albumId = couiShelfAlbumId(record) ?: return progress
     return "#" + albumId + " · " + progress
 }
 
 /** 车号口径与详情页一致（空 id 与 “-1” 都视为无车号），避免拼出无效封面地址。 */
-private fun couiShelfAlbumId(record: DownloadRecord): String? =
+internal fun couiShelfAlbumId(record: DownloadRecord): String? =
     record.albumId.trim().takeIf { it.isNotEmpty() && it != "-1" }
