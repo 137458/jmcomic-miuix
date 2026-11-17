@@ -11,7 +11,7 @@ import java.net.UnknownHostException
 /**
  * 失败结局的归类档位：把「异常类型到用户可读文案」的判定关在 :core 内。
  *
- * 为什么放在这里：协议库的异常类型只允许出现在 :core（ENGINEERING.md §二.4），
+ * 为什么放在这里：协议库的异常类型只允许出现在 :core（ENGINEERING.md §2.1），
  * 屏幕侧要的是「哪一档失败」，不是库的异常类；归类留下，`:app` 才能不带协议依赖。
  */
 enum class FailureKind {
