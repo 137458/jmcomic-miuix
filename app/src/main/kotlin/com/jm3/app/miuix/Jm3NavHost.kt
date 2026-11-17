@@ -79,6 +79,8 @@ internal fun Jm3NavHost(
     subPageTransition: NavTransition?,
     albumDetailTransition: NavTransition,
 ) {
+    // 二级页统一返回出口：弹出栈顶。原先 21 个二级页各自声明一次。
+    val back: () -> Unit = { backStack.removeLastOrNull() }
     NavDisplay(
         backStack = backStack,
         onBack = onBack,
@@ -109,7 +111,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = { LoginScreen(account = deps.account, onBack = back) },
@@ -120,7 +121,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -143,7 +143,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -166,7 +165,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -190,7 +188,6 @@ internal fun Jm3NavHost(
             val changeSkin: (UiSkin) -> Unit = { nextSkin ->
                 onUiSkinChange(nextSkin)
             }
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -229,7 +226,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -244,7 +240,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -267,7 +262,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -294,7 +288,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -319,7 +312,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -344,7 +336,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -369,7 +360,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -394,7 +384,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -461,7 +450,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) { route ->
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -492,7 +480,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -517,7 +504,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) { route ->
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -544,7 +530,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) { route ->
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -573,7 +558,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) {
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -598,7 +582,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) { route ->
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -625,7 +608,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) { route ->
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
@@ -651,7 +633,6 @@ internal fun Jm3NavHost(
             transition = subPageTransition,
             swipeDismiss = NavSwipeDirection.LeftToRight,
         ) { route ->
-            val back: () -> Unit = { backStack.removeLastOrNull() }
             SkinRoute(
                 uiSkin = uiSkin,
                 hyperOs = {
