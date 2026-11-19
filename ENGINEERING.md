@@ -35,17 +35,17 @@
 
 - 同一域内类型禁止在其他位置重复实例化。
 - 屏幕统一经 `ScreenDeps`（`app/src/main/kotlin/com/jm3/app/miuix/ScreenDeps.kt:73`）接收注入依赖，禁止在屏幕内直读 `Jm3Graph.<成员>`。
-- 偏好只读面收窄为 `PagingPreference`（`ScreenDeps.kt:47`）与 `BottomBarPreference`（`:57`），屏幕拿不到 `SettingsDomain` 本体；写偏好只允许经 `selectPaginationMode`（`:166`）、`selectBottomBarSize`（`:178`）、`selectBottomBarForm`（`:187`）、`selectWideScreenNavigation`（`:193`）。写序固定为「比较现值 → 写内存态 → 进程作用域落盘」，落盘唯一出口为私有 `persist`（`:201-207`，内部用 `runCatchingSuspending` 并只记日志）；`selectBottomBarSize` 的「普通」档由 `explicitBottomBarSize`（`:38`）映射为空值落盘，不能写成 `STANDARD`，否则平板与宽屏断点解析不出更大的默认值；四个入口里只有 `selectPaginationMode` 在写内存态后额外调 `sessionCache.forgetPages()`（`:170`），因为只有它改变了分页语义，其余三项照抄会白清缓存。屏幕不得自行拼这套顺序。
-- 读面按关心点继续切窄：只要线路可观测信息的屏幕用 `routes`（`:81-82`），只要图片域名或相册封面地址的屏幕用 `images`（`:85-86`），两者都由网关对象转发，屏幕不必认识内容方法。
+- 偏好只读面收窄为 `PagingPreference`（`ScreenDeps.kt:47`）与 `BottomBarPreference`（`:57`），屏幕拿不到 `SettingsDomain` 本体；写偏好只允许经 `selectPaginationMode`（`:166`）、`selectBottomBarSize`（`:178`）、`selectBottomBarForm`（`:187`）、`selectWideScreenNavigation`（`:193`）。写序固定为「比较现值 → 写内存态 → 进程作用域落盘」，落盘唯一出口为私有 `persist`（`:201-207`，内部用 `runCatchingSuspending` 并只记日志）；四个入口里只有 `selectPaginationMode` 在写内存态后额外调 `sessionCache.forgetPages()`（`:170`），因为只有它改变了分页语义，其余三项照抄会白清缓存。屏幕不得自行拼这套顺序。
+- 读面按关心点继续切窄：只要线路可观测信息的屏幕用 `routes`（`:95-96`），只要图片域名或相册封面地址的屏幕用 `images`（`:99-100`），两者都由网关对象转发，屏幕不必认识内容方法。
 - `Jm3Graph` 成员仅允许 `Jm3Application`（`Jm3App.kt:150`）、`MainActivity`（`MainActivity.kt:29`、`:54`、`:58`、`:79`）、`DownloadService`（`data/download/DownloadService.kt:95`、`:147`、`:177`、`:184-185`、`:214`）与装配处 `ScreenDeps(...)`（`Jm3App.kt:341-350`）读取，且禁止在读取处写编排逻辑。
 
 ### 1.2 协程作用域与界面编排
 
 - 唯一长期协程作用域为 `appScope`（`Jm3App.kt:164`，`SupervisorJob() + Dispatchers.IO`）。禁止使用 `GlobalScope`。
-- 现有用途限于装配注入、`ScreenDeps.appScope`、`ApiDomain`（`:29`、`:119`）、`UpdateDomain`（`:16`、`:39`）、`DownloadManager`（`:28`、`:57`、`:62`）、`DownloadService`（`:147`、`:177`、`:184`）、`MainActivity.onStop`（`:79`）、阅读器退出补记页码（`ui/ReaderEffects.kt:196` 的 `ReaderProgressExitEffect`、`ui/coui/page/CouiReaderPages.kt:301-307`）与设置页偏好写盘（经 `ScreenDeps.select*` 内部的 `persist`，见 `ScreenDeps.kt:201-207`；因退出设置页会取消 `rememberCoroutineScope`，导致内存状态与 DataStore 半途不一致，故须挂载至进程作用域）。新增使用点必须说明为何无法挂载至 `rememberCoroutineScope`。
+- 现有用途限于装配注入、`ScreenDeps.appScope`、`ApiDomain`（`:29`、`:119`）、`UpdateDomain`（`:16`、`:39`）、`DownloadManager`（`:28`、`:57`、`:62`）、`DownloadService`（`:147`、`:177`、`:184`）、`MainActivity.onStop`（`:79`）、`ReaderScreen` 退出补记页码（`:609`）、`CouiReaderScreen` 退出补记页码（`ui/coui/page/CouiReaderScreen.kt:645`）与设置页偏好写盘（经 `ScreenDeps.select*` 内部的 `persist`，见 `ScreenDeps.kt:201-207`；因退出设置页会取消 `rememberCoroutineScope`，导致内存状态与 DataStore 半途不一致，故须挂载至进程作用域）。新增使用点必须说明为何无法挂载至 `rememberCoroutineScope`。
 - 本仓库不引入 `ViewModel`。屏幕数据状态使用 `remember` 与 `LaunchedEffect` 编排，状态复杂时抽离纯 Kotlin 状态容器（如 `AlbumDetailStateHolder`）。
 - 路由目标只在 `AppRoutes`（`app/src/main/kotlin/com/jm3/app/miuix/ui/route/AppRoutes.kt:15`）拼装：构造只收两个出口 `push`（`:16`，普通压栈）与 `replaceTop`（`:17`，栈顶同层替换），对外是 24 个语义动作（`:19-69`；例 `album` `:46`、`reader` `:49`、`readerAt` `:52`、`nextChapter` 换章替换 `:55`、`search` `:69`）。表在 `Jm3App.kt:490-497` 构造一次（`remember(backStack)`，`push` 实现为 `backStack.add`、`replaceTop` 实现为栈顶赋值）。
-- 屏幕只认识语义动作，不拼 `Route`：屏幕形参统一为 `nav: AppRoutes`（例 `ui/MainScreen.kt:92`、`ui/AlbumDetailScreen.kt:142`、`ui/coui/page/CouiMainScreen.kt:88`），`Jm3NavHost.kt` 的屏幕调用点一律传 `nav = nav`（`Jm3NavHost.kt:89` 起 23 个 `entry`，每个 entry 的两种皮肤各一次调用），`ui/MainScreen.kt:245`、`:250`、`:255`、`:261` 再把同一个 `nav` 转发给四个页签。路由改名、加参数或把二级页改成同层替换只改表内一行，屏幕侧零改动。
+- 屏幕只认识语义动作，不拼 `Route`：屏幕形参统一为 `nav: AppRoutes`（例 `ui/MainScreen.kt:92`、`ui/AlbumDetailScreen.kt:139`、`ui/coui/page/CouiMainScreen.kt:88`），`Jm3NavHost.kt` 的屏幕调用点一律传 `nav = nav`（`Jm3NavHost.kt:89` 起 23 个 `entry`，每个 entry 的两种皮肤各一次调用），`ui/MainScreen.kt:245`、`:250`、`:255`、`:261` 再把同一个 `nav` 转发给四个页签。路由改名、加参数或把二级页改成同层替换只改表内一行，屏幕侧零改动。
 - 网关调用一律经 `AuthCall.call`（`core/src/main/kotlin/com/jm3/core/session/AuthCall.kt:36`）。禁止在屏幕内自写 `withContext(Dispatchers.IO)` 调网关，禁止跳过启动闸门与统一失效回调。
 
 ### 1.3 持久化与单真源
@@ -122,7 +122,7 @@
 3. **SDK 坐标与传输安全矩阵**：当前固定 `compileSdkVersion("android-37.0")`（`app/build.gradle.kts:21`）、`minSdk = 31`（`:26`）、`targetSdk = 36`（`:27`）。上述下限受 `COUI-Kit 0.0.1-alpha10` 元数据强制约束，调整前必须先核对依赖矩阵。`AndroidManifest.xml:25` 声明 `android:usesCleartextTraffic="false"` 禁用明文 HTTP 流量，应用内更新下载拒绝非 HTTPS 与 3xx 降级重定向，并通过 `data_extraction_rules.xml`（`AndroidManifest.xml:23`）排除敏感 DataStore 备份迁移。
 4. **Release 混淆与压缩**：`release` 构建强制开启 `isMinifyEnabled` 与 `isShrinkResources`（`app/build.gradle.kts:45-46`），规则维护于 `app/proguard-rules.pro`。新增反射式依赖必须实测 Release 包。
 5. **签名安全边界**：Release 签名从 `local.properties` 读取四键，缺失时自动回退至调试签名（`app/build.gradle.kts:12-17`、`:49`）。密钥、口令与 Cookie 严禁入库。
-6. **Gradle 执行纪律**：Windows 固定使用 `\gradlew.bat`，禁止传入 `--offline` 参数。同一工作树同时只允许运行一个 Gradle 构建进程，并行任务须串行化构建。
+6. **Gradle 执行纪律**：Windows 固定使用 `.\gradlew.bat`，禁止传入 `--offline` 参数。同一工作树同时只允许运行一个 Gradle 构建进程，并行任务须串行化构建。
 7. **AGP 联动开关**：`gradle.properties:7`（`android.builtInKotlin=false`）与 `:9`（`android.newDsl=false`）在升级 AGP 或 KGP 时须成对检查。
 8. **仓库入库红线**：`AGENTS.md`、`docs/`、`implementation_plan.md`、`research/`、`.scratch/`、`.trae/` 与 `.tools/` 已在 `.gitignore` 中忽略。内部调研、过程台账与本地工具产物严禁提交至 Git。
 
@@ -182,7 +182,7 @@
 
 ### 6.1 改动权限与 Issue 规范
 
-- **拆单四要素**：需求描述、验收标准、架构约束（允许修改范围与复用件）、测试清单。仓库当前无 `.github` 目录，本地规范以本文与 `AGENTS.md` 为准。
+- **拆单四要素**：需求描述、验收标准、架构约束（允许修改范围与复用件）、测试清单。仓库已配置 `.github/workflows/ci.yml`（GitHub Actions），本地规范仍以本文与 `AGENTS.md` 为准。
 - **Agent 可直接修改**：`:app` 屏幕与组件、`:core` 纯函数与单测、文案与样式微调、本文规则与行号同步更新。
 - **必须先请示用户**：修改 `Jm3Gateway` / `SessionAuth` 接口签名、改动 `DownloadTask` 状态机、调整模块依赖方向、修改签名与 `proguard-rules.pro` 放宽规则，以及新增对「禁止」条款的例外。
 
@@ -191,8 +191,8 @@
 每次提交前必须依次完成以下步骤（缺一不可）：
 
 1. **红绿重构**：业务逻辑、数据处理与缺陷修复须先写测试，跑出真实业务断言失败（红灯）后再编写最小实现转绿，绿灯后严禁改弱断言。纯 UI 样式调整可豁免先行测试，但其底层状态计算仍需单测覆盖。
-2. **构建验证**：执行 `\gradlew.bat :app:assembleDebug`（纯 `:core` 改动至少执行 `:core:compileKotlin`）。若因并发锁等客观原因未跑，汇报时须如实说明「未验证」。
-3. **测试通过**：执行 `\gradlew.bat :core:test :app:testDebugUnitTest`。
+2. **构建验证**：执行 `.\gradlew.bat :app:assembleDebug`（纯 `:core` 改动至少执行 `:core:compileKotlin`）。若因并发锁等客观原因未跑，汇报时须如实说明「未验证」。
+3. **测试通过**：执行 `.\gradlew.bat :core:test :app:testDebugUnitTest`。
 4. **日志与提交**：在 `CHANGELOG.md` 的 `## [未发布]` 下按「新增 / 修复 / 优化」补充用户可读条目（不泄露内部类名与哈希）；使用纯文本中文 Conventional Commits 逐个逻辑变更提交，严禁包含 Emoji。
 5. **四项汇报**：汇报修改内容、修改原因、验证命令与结果、是否触碰既有硬约束。
 
@@ -230,7 +230,7 @@
 5. **阅读器图片强制走磁盘快照**：`telephoto` 分块超采样依赖 `FileImageSource` 的 `diskCacheKey`。禁止将内存 `okio.Buffer` 作为常规路径返回；缓存键统一由 `ReaderKeyer.keyOf` 生成。
 6. **下载前台服务只管前台态与通知**：队列调度留在 `DownloadQueue`，生命周期决策由纯类 `ForegroundPolicy` 产出，防抖与拉起失败退避由 `ForegroundRunner` 驱动，不引入 `WorkManager`。
 7. **通知节流 `300 ms` 与配额退避**：常规进度按 `300 ms` 节流，终态立即刷新。`dataSync` 6 小时配额耗尽后暂停在途任务并留存可见通知，不做保活；系统拒绝拉起前台服务后按 `5 s` 退避重试一次。
-8. **许可证隔离规范**：仅允许复制 `Apache-2.0`、`MIT` 或 `ISC` 源码并保留 SPDX 标注；`GPL-3.0`/`AGPL-3.0` 项目仅采思路、自行重写。仓库主体为 `MIT`，其中 `app/src/main/kotlin/com/jm3/app/miuix/ui/` 下共 64 个文件带 `Apache-2.0` 头（含 `glass/` 15 个、`coui/` 34 个、`ui/` 直属 12 个、`effect/` 2 个、`route/` 1 个），`CouiIcons.kt` 带 `ISC` 头，`COUI-Kit` 按 `MPL-2.0` 依赖接入（详情见 `NOTICE`）。
+8. **许可证隔离规范**：仅允许复制 `Apache-2.0`、`MIT` 或 `ISC` 源码并保留 SPDX 标注；`GPL-3.0`/`AGPL-3.0` 项目仅采思路、自行重写。仓库主体为 `MIT`，其中 `app/src/main/kotlin/com/jm3/app/miuix/ui/` 下共 68 个文件带 `Apache-2.0` 头（含 `glass/` 15 个、`coui/` 38 个、`ui/` 直属 12 个、`effect/` 2 个、`route/` 1 个），`CouiIcons.kt` 带 `ISC` 头，`COUI-Kit` 按 `MPL-2.0` 依赖接入（详情见 `NOTICE`）。
 9. **提升型持续通知按 API 36.1 判定**：`setRequestPromotedOngoing` 仅存在于 Android 16.1（API 36.1），必须先判 `SDK_INT >= 36` 再判 `SDK_INT_FULL >= BAKLAVA_1`（`DownloadNotifier.kt:216`、`:228`），避免 Android 16.0 触发 `NoSuchMethodError`。
 10. **共享元素采用自绘覆盖层**：因 `miuix-nav 0.9.4` 转场无 `AnimatedVisibilityScope`，采用 `onGloballyPositioned` 登记起止矩形并在 `AlbumHeroOverlay` 插值绘制，使用缩略图地址与 `crossfade(false)`。拿不到起止矩形时退化为普通转场。
 11. **静默重登连续失败 3 次清凭据**：`AccountManager` 持久化 `renewFailureCount`，连续 3 次失败后清除已存加密凭据，避免每次冷启动重复无效登录；任一次重登成功立即归零，兼容短暂断网。
@@ -257,7 +257,7 @@
 32. **路由目标集中在 `AppRoutes`、屏幕只表达语义**：`AppRoutes`（`AppRoutes.kt:15`）把 24 个语义动作与 `push` / `replaceTop` 两个出口封在一起，屏幕形参收成 `nav: AppRoutes`；否则 46 个屏幕调用点各自拼 `Route`，改一次路由要扫全仓调用点。语义动作也让「换章是同层替换」这类栈行为只在一处表达（`:55`）。
 33. **分页列表的取数编排收进 `SessionListLoader`**：请求代次、在途标记、翻页游标与失败落点只有一份（`SessionListLoader.kt:48`），屏幕只提供 `fetchPage` / `idOf` / `notice` 三个洞。此前两套皮肤十余个列表页各持一份代次令牌与 `beginLoadMore` 顺序，漏一处就会出现旧结果盖新列表或页脚常转。
 34. **列表会话缓存只存已落定快照、并按账号分仓**：`ListStateCache`（`SessionCache.kt:112`）只收 `Loaded`，`SessionCache.remember`（`:221-228`）先把 `loadingMore` / `loadMoreFailed` 归一才落缓存，`SessionListLoader` 用 `seededSnapshot`（`:116-120`）把它当首帧，因此缓存不可能把「加载中」或「页脚失败」的瞬时态带到下一次进入；条目身份由 `AccountScopedKey`（`:132`）在屏幕键前补 uid，读写每次动态取当前账号（`scoped` `:163`、`bindAccount` `:159`、绑定点 `ScreenDeps.kt:88`），换账号读不到上一账号的仓；作废入口是 `forgetPages`（`:238`，分页模式变化时清全部账号仓）与 `clear`（`:243`，登出）。
-35. **阅读器共性收口到 `reader` 包**：两皮肤逐字重复的翻页/跳页/进度编排、双页同框与边缘拖拽判定分别进 `ReaderActions`、`ReaderSpreadPage`、`ReaderEdgeDrag`，两屏随之瘦身（`ui/ReaderScreen.kt` 1692→1529 行、`ui/coui/page/CouiReaderScreen.kt` 2376→2211 行；单文件继续拆分见第 37 条）；「两皮肤必须一致」的编排留在屏幕里必然漂移，收成模块后一处改动两皮肤同时生效。
+35. **阅读器共性收口到 `reader` 包**：两皮肤逐字重复的翻页/跳页/进度编排、双页同框与边缘拖拽判定分别进 `ReaderActions`、`ReaderSpreadPage`、`ReaderEdgeDrag`，两屏随之瘦身（`ui/ReaderScreen.kt` 1692→1529 行、`ui/coui/page/CouiReaderScreen.kt` 2376→2211 行）；「两皮肤必须一致」的编排留在屏幕里必然漂移，收成模块后一处改动两皮肤同时生效。
 36. **底部净空单一推导**：底栏 contentPadding 不再在 `BottomBarTokens` 注释里写 80/108/64，而由 `bottomBarContentPaddingDp`（`BottomSpacing.kt:41`）按条高与形态算出，COUI 页、FAB 与玻璃首页的额外净空也在同一文件；`BottomClearance` 及其测试整体删除，避免两套净空公式各自漂移。
 37. **巨型屏幕按职责拆文件、屏幕只留装配**：阅读器两屏原先各自承载装配、`HorizontalPager` 宿主、缩放覆盖层、评论与追踪弹层，单文件达 1,529 行与 2,211 行；现按职责拆为 `ui/ReaderPages.kt`、`ui/ReaderPageHost.kt`、`ui/ReaderEffects.kt`、`ui/ReaderChrome.kt`、`ui/ReaderSheets.kt`、`ui/ReaderComments.kt`、`ui/ReaderEngagement.kt`、`ui/ReaderTrackPrompt.kt` 与 `ui/coui/page/CouiReaderPages.kt`、`CouiReaderPageContent.kt`、`CouiReaderHud.kt`、`CouiReaderDialogs.kt`、`CouiReaderPage.kt`、`CouiReaderWindowEffects.kt`，两屏只剩状态装配（233 行与 222 行）。拆分以声明差集与中文字面量差集核对等价：两屏声明无缺失，字面量各 38 条与 52 条全部保留。
 
