@@ -36,12 +36,4 @@ class UpdateSettingsTest {
         settings.setIgnoredUpdateVersion(null)
         assertNull(settings.ignoredUpdateVersion())
     }
-
-    @Test
-    fun 已提示版本可记录与清除() = runTest {
-        settings.setPromptedUpdateVersion("1.2.0")
-        assertEquals("1.2.0", settings.promptedUpdateVersion())
-        settings.setPromptedUpdateVersion(null)
-        assertNull(settings.promptedUpdateVersion())
-    }
 }

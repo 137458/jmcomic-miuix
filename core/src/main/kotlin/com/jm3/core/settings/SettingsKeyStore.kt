@@ -63,7 +63,6 @@ internal object SettingsKeys {
     const val NOVEL_LANG = "novel_lang"
     const val AUTO_CHECK_UPDATE = "auto_check_update"
     const val IGNORED_UPDATE_VERSION = "ignored_update_version"
-    const val PROMPTED_UPDATE_VERSION = "prompted_update_version"
 
     /** 每部小说独立成键：避免每次读写都反序列化整张进度表。 */
     fun novelLastChapter(novelId: String): String = "novel_last_" + novelId

@@ -256,13 +256,6 @@ interface UpdateSettings : SettingsKeyStore {
     suspend fun setIgnoredUpdateVersion(version: String?) {
         writeString(SettingsKeys.IGNORED_UPDATE_VERSION, VersionSettingText.normalize(version))
     }
-
-    /** 启动期已弹过提示的版本号；同一版本在新会话内不重复打扰。 */
-    suspend fun promptedUpdateVersion(): String? = VersionSettingText.normalize(readString(SettingsKeys.PROMPTED_UPDATE_VERSION))
-
-    suspend fun setPromptedUpdateVersion(version: String?) {
-        writeString(SettingsKeys.PROMPTED_UPDATE_VERSION, VersionSettingText.normalize(version))
-    }
 }
 
 /** 通知权限一次性询问标记（Android 13+ 拒绝后不再打扰）。 */

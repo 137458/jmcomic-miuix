@@ -79,8 +79,6 @@ class SettingsNormalizationTest {
         val r = repo()
         r.setIgnoredUpdateVersion(" 1.2.0 ")
         assertEquals("1.2.0", r.ignoredUpdateVersion())
-        r.setPromptedUpdateVersion(" 1.2.0 ")
-        assertEquals("1.2.0", r.promptedUpdateVersion())
     }
 
     @Test
@@ -88,8 +86,6 @@ class SettingsNormalizationTest {
         val r = repo()
         r.setIgnoredUpdateVersion("   ")
         assertEquals(null, r.ignoredUpdateVersion())
-        r.setPromptedUpdateVersion("\t")
-        assertEquals(null, r.promptedUpdateVersion())
     }
 
     @Test
