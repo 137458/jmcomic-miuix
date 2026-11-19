@@ -19,7 +19,6 @@ import com.jm3.core.history.HistoryRepository
 import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
-import com.jm3.core.session.UnreadBadge
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
 import com.jm3.core.settings.PaginationMode
@@ -49,7 +48,7 @@ internal fun explicitBottomBarSize(size: BottomBarSize): BottomBarSize? =
  */
 class ScreenDeps internal constructor(
     internal val api: ApiDomain,
-    internal val preferences: SettingsDomain,
+    private val preferences: SettingsDomain,
     internal val session: SessionDomain,
     internal val library: LibraryDomain,
     internal val downloads: DownloadDomain,
@@ -82,10 +81,6 @@ class ScreenDeps internal constructor(
     val account: AccountManager
         get() = session.account
 
-    /** 信箱未读数：底栏角标与「我的」页入口共用同一个刷新载体。 */
-    val unread: UnreadBadge
-        get() = session.unread
-
     val authCall: AuthCall
         get() = session.authCall
 
@@ -107,9 +102,6 @@ class ScreenDeps internal constructor(
         set(value) {
             updates.promptedVersion = value
         }
-
-    /** 认领进程内唯一的启动期自动更新检查名额，仅首次返回 true。 */
-    fun claimStartupUpdateCheck(): Boolean = updates.claimStartupUpdateCheck()
 
     /** 安装已下载的包；结果由调用方决定提示文案。 */
     fun installUpdate(file: File): ApkInstaller.Result = updates.install(file)

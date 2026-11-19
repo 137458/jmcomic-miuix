@@ -414,18 +414,18 @@ fun Jm3App() {
             deps.settings.uiSkinOrNull()?.let { uiSkinName = it.name }
             // 分页模式：用户在本进程内已显式改过就保留内存值，否则用盘上值。
             // 读盘发生在组合之后，盘上的旧值不该盖掉用户刚选的那个。
-            deps.preferences.applyStartupPaginationMode(
+            Jm3Graph.preferences.applyStartupPaginationMode(
                 PaginationModePolicy.resolveStartupPaginationMode(
                     persisted = deps.settings.paginationMode(),
                     current = deps.paginationMode,
-                    userModified = deps.preferences.paginationModeUserModified,
+                    userModified = Jm3Graph.preferences.paginationModeUserModified,
                 )
             )
             // 底栏尺寸/形态：盘上是 null 表示用户从未显式设置，交给窗口断点在组合期决定。
-            deps.preferences.applyStartupBottomBarSize(deps.settings.bottomBarSizeOrNull())
-            deps.preferences.applyStartupBottomBarForm(deps.settings.bottomBarFormOrNull())
+            Jm3Graph.preferences.applyStartupBottomBarSize(deps.settings.bottomBarSizeOrNull())
+            Jm3Graph.preferences.applyStartupBottomBarForm(deps.settings.bottomBarFormOrNull())
             // 宽屏导航：null 表示未显式设置，默认底栏在组合期解析。
-            deps.preferences.applyStartupWideScreenNavigation(
+            Jm3Graph.preferences.applyStartupWideScreenNavigation(
                 deps.settings.wideScreenNavigationOrNull(),
             )
             deps.applyDomains(deps.settings.apiDomains())
@@ -437,7 +437,7 @@ fun Jm3App() {
 
     // 进程级只发起一次启动期更新检查：提升到顶层后，进出 Route.Update 或切皮肤不会重建并重复请求 GitHub。
     LaunchedEffect(Unit) {
-        if (!deps.claimStartupUpdateCheck()) return@LaunchedEffect
+        if (!Jm3Graph.updates.claimStartupUpdateCheck()) return@LaunchedEffect
         val pending = UpdateCenter().promptForStartup(
             autoCheckEnabled = deps.settings.autoCheckUpdate(),
             localVersion = currentVersion,
@@ -515,6 +515,7 @@ fun Jm3App() {
                             backdropColor = MiuixTheme.colorScheme.surface,
                         ),
                         deps = deps,
+                        unreadBadge = Jm3Graph.session.unread,
                         nav = nav,
                         uiSkin = uiSkin,
                         snackbarHostState = snackbarHostState,

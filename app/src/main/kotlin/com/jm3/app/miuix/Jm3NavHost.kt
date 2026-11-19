@@ -52,6 +52,7 @@ import com.jm3.app.miuix.ui.coui.page.CouiWeekScreen
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.route.SkinRoute
 import com.jm3.app.miuix.ui.skin.DynamicColorPolicy
+import com.jm3.core.session.UnreadBadge
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -68,6 +69,7 @@ internal fun Jm3NavHost(
     onBack: () -> Unit,
     effects: NavDisplayEffects,
     deps: ScreenDeps,
+    unreadBadge: UnreadBadge,
     nav: AppRoutes,
     uiSkin: UiSkin,
     snackbarHostState: SnackbarHostState,
@@ -92,7 +94,7 @@ internal fun Jm3NavHost(
                 hyperOs = {
                     MainScreen(
                         deps = deps,
-                        unreadBadge = deps.unread,
+                        unreadBadge = unreadBadge,
                         snackbarHostState = snackbarHostState,
                         nav = nav,
                     )
@@ -100,7 +102,7 @@ internal fun Jm3NavHost(
                 colorOs = {
                     CouiMainScreen(
                         deps = deps,
-                        unreadBadge = deps.unread,
+                        unreadBadge = unreadBadge,
                         snackbarHostState = snackbarHostState,
                         nav = nav,
                     )
@@ -269,7 +271,7 @@ internal fun Jm3NavHost(
                         deps = deps,
                         onBack = back,
                         snackbarHostState = snackbarHostState,
-                        unreadBadge = deps.unread,
+                        unreadBadge = unreadBadge,
                         nav = nav,
                     )
                 },
@@ -278,7 +280,7 @@ internal fun Jm3NavHost(
                         deps = deps,
                         onBack = back,
                         snackbarHostState = snackbarHostState,
-                        unreadBadge = deps.unread,
+                        unreadBadge = unreadBadge,
                         nav = nav,
                     )
                 },
