@@ -34,7 +34,7 @@ internal fun domainPoolFromTable(table: String): List<String> = runCatching {
  */
 internal fun officialApiDomains(
     urls: List<String> = JmConstants.API_URL_DOMAIN_SERVER_LIST,
-    fetch: (String) -> String? = ::httpGetText,
+    fetch: (String) -> String? = { httpGetText(it) },
     timeoutMs: Long = DOMAIN_TABLE_TIMEOUT_MS,
 ): List<String> {
     if (urls.isEmpty()) return emptyList()
@@ -61,21 +61,68 @@ internal fun officialApiDomains(
     }
 }
 
-/** 取线路表的纯文本响应；非 200 或 IO 失败都当这一路不可用。 */
-private fun httpGetText(url: String): String? {
-    val connection = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+/** 一跳 GET 的结果：状态码、Location 头与仅 200 才读取的正文。 */
+private class DomainTableHop(val code: Int, val location: String?, val body: String?)
+
+/**
+ * 发一跳 GET 并断开连接。
+ *
+ * 显式关闭自动重定向：JDK 的自动跟随会直接打到 Location 指向的任何地址（含明文 HTTP），
+ * 本模块只有自己看 3xx 才谈得上逐跳校验。
+ */
+private fun readHop(url: URI, connectionFactory: (String) -> HttpURLConnection): DomainTableHop {
+    val connection = connectionFactory(url.toString()).apply {
         requestMethod = "GET"
         connectTimeout = DOMAIN_TABLE_TIMEOUT_MS.toInt()
         readTimeout = DOMAIN_TABLE_TIMEOUT_MS.toInt()
-        instanceFollowRedirects = true
+        instanceFollowRedirects = false
     }
     return try {
-        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-            null
-        } else {
+        val code = connection.responseCode
+        val body = if (code == HttpURLConnection.HTTP_OK) {
             connection.inputStream.bufferedReader().use { it.readText() }
+        } else {
+            null
         }
+        DomainTableHop(code, connection.getHeaderField("Location"), body)
     } finally {
         connection.disconnect()
     }
+}
+
+/**
+ * 重定向目标只接受 https 且与初始主机同名。
+ *
+ * 分发服务器是固定 OSS 域名，换路径不会换主机，所以同主机就够了；
+ * 跨主机或降级到明文一律判为不可信，宁可用不到新表也不能被 3xx 引去别处。
+ */
+private fun trustedRedirectTarget(initial: URI, location: String?): URI? {
+    if (location.isNullOrBlank()) return null
+    val target = runCatching { initial.resolve(location) }.getOrNull() ?: return null
+    if (!target.scheme.equals("https", ignoreCase = true)) return null
+    val initialHost = initial.host ?: return null
+    val targetHost = target.host ?: return null
+    return if (targetHost.equals(initialHost, ignoreCase = true)) target else null
+}
+
+/**
+ * 取线路表的纯文本响应；非 200 或 IO 失败都当这一路不可用。
+ *
+ * 最多跟一跳受信重定向，第二跳即使同域也放弃：线路表分发不靠多跳跳转。
+ *
+ * [connectionFactory] 只为单测替换网络出口：重定向策略收在本函数内，用脚本化连接就能覆盖各条跳转分支。
+ */
+internal fun httpGetText(
+    url: String,
+    connectionFactory: (String) -> HttpURLConnection = { target ->
+        URI(target).toURL().openConnection() as HttpURLConnection
+    },
+): String? {
+    val initial = runCatching { URI(url) }.getOrNull() ?: return null
+    val hop = readHop(initial, connectionFactory)
+    if (hop.code == HttpURLConnection.HTTP_OK) return hop.body
+    if (hop.code !in 300..399) return null
+    val target = trustedRedirectTarget(initial, hop.location) ?: return null
+    val redirected = readHop(target, connectionFactory)
+    return if (redirected.code == HttpURLConnection.HTTP_OK) redirected.body else null
 }
