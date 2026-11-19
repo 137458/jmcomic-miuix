@@ -277,6 +277,10 @@ internal fun CouiUpdateScreen(
             is ApkInstaller.Result.Failed -> scope.launch {
                 snackbarHostState.showSnackbar(result.message)
             }
+            // 签名不一致不可能靠重试解决，直接把原因摆给用户，而不是让系统安装器弹一句装不上的错。
+            is ApkInstaller.Result.SignerMismatch -> scope.launch {
+                snackbarHostState.showSnackbar(result.message)
+            }
         }
     }
 

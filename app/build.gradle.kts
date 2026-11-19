@@ -8,13 +8,32 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// 签名信息仅从 local.properties 读取（密钥绝不入库）；四键齐全才启用 release 签名。
+// 签名信息仅从 local.properties 读取（密钥绝不入库）；四键齐全且 keystore 真实存在才启用 release 签名。
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
-    .all { !localProps.getProperty(it).isNullOrBlank() }
+val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val claimedReleaseSigning = releaseSigningKeys.all { !localProps.getProperty(it).isNullOrBlank() }
+val releaseStoreFile = localProps.getProperty("storeFile")
+    ?.takeIf { it.isNotBlank() }
+    ?.let { rootProject.file(it) }
+// 「四个键都写了」不等于「keystore 真在」。此前只判键非空：storeFile 指错时 release 包会静默签成
+// debug 签名，装机被系统以 INSTALL_FAILED_UPDATE_INCOMPATIBLE 拒掉，且本应用 allowBackup=false，
+// 用户按提示卸载重装就丢全部本地数据。配置期直接失败，比发布后才发现便宜。
+if (claimedReleaseSigning && releaseStoreFile?.isFile != true) {
+    throw GradleException(
+        "local.properties 声明了 release 签名，但 keystore 不存在：" +
+            "${releaseStoreFile?.absolutePath ?: "(storeFile 为空)"}。" +
+            "请修正 storeFile，或删掉 storeFile/storePassword/keyAlias/keyPassword 四键以改用 debug 签名构建。",
+    )
+}
+val hasReleaseSigning = claimedReleaseSigning
+if (!hasReleaseSigning) {
+    logger.warn(
+        "未配置 release 签名：release 包将使用 debug 签名，仅可本地侧载，不得对外分发（CI 只归档 mapping，不归档该包）。",
+    )
+}
 
 android {
     namespace = "com.jm3.app.miuix"
@@ -45,7 +64,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // 键缺失时回退 debug 签名，保证 assembleRelease 产物始终可本地侧载安装。
+            // 未配置签名时回退 debug，保证 assembleRelease 产物仍可本地侧载；
+            // 上面的配置期告警与 keystore 存在性校验负责把「以为签了正式包」的错觉挡在前面。
             signingConfig = signingConfigs.getByName(if (hasReleaseSigning) "release" else "debug")
         }
     }

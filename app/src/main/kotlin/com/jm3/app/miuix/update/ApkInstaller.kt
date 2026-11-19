@@ -3,6 +3,7 @@ package com.jm3.app.miuix.update
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
@@ -34,6 +35,9 @@ object ApkInstaller {
         /** 已拉起系统安装器 */
         data object Launched : Result
 
+        /** 待装包的签名与本机已安装版本不是同一发布者，系统必然拒绝覆盖安装 */
+        data class SignerMismatch(val message: String) : Result
+
         /** 已打开"安装未知应用"授权页；用户授权后需再次调用 [install] */
         data object PermissionRequired : Result
 
@@ -52,6 +56,16 @@ object ApkInstaller {
     fun install(context: Context, file: File): Result {
         // isFile 同时覆盖"不存在"和"是目录"两种情况
         if (!file.isFile) return Result.Failed("安装包不存在，请重新下载")
+
+        // 签名不一致时系统会拒绝覆盖安装，而本应用不允许备份，用户按提示卸载就会丢数据；
+        // 在拉起安装器之前拦下，把「为什么装不上」直接说清楚。
+        when (val check = signatureCheck(context, file)) {
+            SignatureCheck.SameSigner -> Unit
+            SignatureCheck.Unknown -> return Result.Failed("安装包信息无法解析，请重新下载")
+            is SignatureCheck.Mismatch -> return Result.SignerMismatch(
+                "安装包签名与当前应用不一致（发布者不同），已停止安装；如需换装须先卸载，本地数据会被清空",
+            )
+        }
 
         if (!canInstall(context)) {
             val intent = Intent(
@@ -82,6 +96,47 @@ object ApkInstaller {
             Result.Failed("无法启动安装器：${error.reason()}")
         }
     }
+
+    /** 签名比对结论。[Unknown] 表示拿不到签名信息，按「无法证明同源」处理。 */
+    private sealed interface SignatureCheck {
+        data object SameSigner : SignatureCheck
+        data object Unknown : SignatureCheck
+        data class Mismatch(val current: Set<String>, val incoming: Set<String>) : SignatureCheck
+    }
+
+    private fun signatureCheck(context: Context, file: File): SignatureCheck {
+        val incoming = archiveSignerSha256(context, file) ?: return SignatureCheck.Unknown
+        val current = installedSignerSha256(context) ?: return SignatureCheck.Unknown
+        return if (ApkSignature.sameSigner(current, incoming)) {
+            SignatureCheck.SameSigner
+        } else {
+            SignatureCheck.Mismatch(current = current, incoming = incoming)
+        }
+    }
+
+    /** 已安装包的签名证书摘要集合；读不到返回 null。 */
+    private fun installedSignerSha256(context: Context): Set<String>? = runCatching {
+        val info = context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.GET_SIGNING_CERTIFICATES,
+        )
+        signerDigests(info.signingInfo?.apkContentsSigners)
+    }.getOrNull()
+
+    /** 待装 APK 的签名证书摘要集合；解析失败返回 null。 */
+    private fun archiveSignerSha256(context: Context, file: File): Set<String>? = runCatching {
+        val info = context.packageManager.getPackageArchiveInfo(
+            file.absolutePath,
+            PackageManager.GET_SIGNING_CERTIFICATES,
+        )
+        signerDigests(info?.signingInfo?.apkContentsSigners)
+    }.getOrNull()
+
+    private fun signerDigests(signatures: Array<android.content.pm.Signature>?): Set<String>? =
+        signatures
+            ?.mapNotNull { signature -> signature.toByteArray().let(ApkSignature::certSha256) }
+            ?.toSet()
+            ?.takeIf { it.isNotEmpty() }
 
     /** 异常信息可能为空，也可能是无意义的空串，统一兜底成可展示的原因。 */
     private fun Exception.reason(fallback: String? = null): String =
