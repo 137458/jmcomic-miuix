@@ -163,8 +163,11 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
-/** 当前未配置 room.schemaLocation，保持 exportSchema = false；改表结构须同步升版本并提供显式 Migration。 */
-@Database(entities = [HistoryEntity::class, DownloadEntity::class], version = 3, exportSchema = false)
+/**
+ * 表结构快照导出到 app/schemas（见 app/build.gradle.kts 的 room.schemaLocation），由 HistorySchemaTest 守住；
+ * 改表结构须同步升版本、提供显式 Migration，并提交重新生成的 schema JSON。
+ */
+@Database(entities = [HistoryEntity::class, DownloadEntity::class], version = 3, exportSchema = true)
 abstract class HistoryDb : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 

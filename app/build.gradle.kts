@@ -74,6 +74,11 @@ kotlin {
     }
 }
 
+// 导出 Room 表结构快照到 app/schemas：迁移脚本与实体定义一旦漂移，schema JSON 的 diff 会在评审里暴露。
+ksp {
+    arg("room.schemaLocation", "${projectDir}/schemas")
+}
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }
