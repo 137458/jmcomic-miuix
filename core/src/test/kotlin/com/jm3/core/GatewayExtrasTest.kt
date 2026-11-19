@@ -77,6 +77,34 @@ class GatewayExtrasTest {
         domainControlsProvider = { controls },
     )
 
+    /**
+     * 模拟「库客户端不是 AbstractJmClient，域名能力拿不到」：生产装配在这里就是抛错的，
+     * 网关必须把它折成空能力，而不是让异常穿到界面。
+     */
+    private fun gatewayWithoutDomainCapability(onClose: () -> Unit = {}): Jm3GatewayImpl = Jm3GatewayImpl(
+        clientProvider = { error("域名能力缺失测试不应触达真实客户端") },
+        domainControlsProvider = { error("jmcomic 的 JmApiClient 未派生自 AbstractJmClient，域名能力不可用") },
+        onClose = onClose,
+    )
+
+    /** 线路与图片域名观测面的整体快照，一次断言四个降级值。 */
+    private data class DomainFacts(
+        val host: String,
+        val ready: Boolean,
+        val latency: Map<String, Int>,
+        val used: String?,
+    )
+
+    /** 取快照：任一调用抛错就折成异常名，红点因此落在「降级值不符」而不是笼统堆栈。 */
+    private fun domainFacts(gateway: Jm3Gateway): Any = runCatching {
+        DomainFacts(
+            host = gateway.imageHost(),
+            ready = gateway.domainsReady(),
+            latency = gateway.domainLatency(),
+            used = gateway.usedDomain(),
+        )
+    }.getOrElse { "调用抛错：" + it.javaClass.simpleName }
+
     @Test
     fun 收藏页_映射_透传收藏夹与所属夹号() {
         val got = favoritePage().toFavoritePage()
@@ -203,5 +231,39 @@ class GatewayExtrasTest {
         g.close()
         assertEquals(1, fake.reprobeCount)
         assertEquals(1, fake.closeCount)
+    }
+
+    @Test
+    fun 域名能力缺失_观测面降级为空能力且不抛() {
+        val got = domainFacts(gatewayWithoutDomainCapability())
+        assertEquals(
+            DomainFacts(host = "", ready = false, latency = emptyMap(), used = null),
+            got,
+        )
+    }
+
+    @Test
+    fun 域名能力缺失_提供方交出空能力时同样降级为空能力() {
+        // 生产装配在库客户端不是 AbstractJmClient 时就是交 null：这条走「无异常、纯缺失」通道。
+        val g = Jm3GatewayImpl(
+            clientProvider = { error("域名能力缺失测试不应触达真实客户端") },
+            domainControlsProvider = { null },
+        )
+        assertEquals(
+            DomainFacts(host = "", ready = false, latency = emptyMap(), used = null),
+            domainFacts(g),
+        )
+    }
+
+    @Test
+    fun 域名能力缺失_重探与关闭不抛且关闭仍执行自身清理() {
+        var closeCount = 0
+        val g = gatewayWithoutDomainCapability(onClose = { closeCount++ })
+        val failure = runCatching {
+            g.reprobeDomains()
+            g.close()
+        }.exceptionOrNull()
+        assertNull(failure)
+        assertEquals(1, closeCount)
     }
 }

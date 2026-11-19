@@ -263,14 +263,22 @@ interface Jm3Gateway : SessionAuth, PhotoSource, DomainRoutes, ImageAddressing {
 
 class Jm3GatewayImpl internal constructor(
     private val clientProvider: () -> JmApiClient,
-    private val domainControlsProvider: () -> DomainControls,
+    private val domainControlsProvider: () -> DomainControls?,
     private val bridge: LibraryBridge = ReflectiveLibraryBridge,
     private val onClose: () -> Unit = {},
 ) : Jm3Gateway {
 
     private val client: JmApiClient by lazy(clientProvider)
 
-    private val domainControls: DomainControls by lazy(domainControlsProvider)
+    /**
+     * 域名能力可能整体缺失：库客户端未必派生自 AbstractJmClient（库版本漂移），注入方也可能拿不到能力。
+     * 缺失时统一折成空能力，与 LibraryReflection「缺成员只降级」的取向一致，界面不必区分两种缺失。
+     */
+    private val domainControls: DomainControls? by lazy {
+        runCatching { domainControlsProvider() }.onFailure {
+            Jm3Log.warn(TAG, "域名能力初始化失败（" + it.javaClass.name + "），按空能力降级", it)
+        }.getOrNull()
+    }
 
     @Volatile
     private var serializationPageSize: Int? = null
@@ -296,10 +304,9 @@ class Jm3GatewayImpl internal constructor(
             return Jm3GatewayImpl(
                 clientProvider = { lazyClient.value },
                 domainControlsProvider = {
-                    // v1.1.12 的 JmApiClient 派生自 AbstractJmClient（字节码已核实），域名能力挂在其 domainManager 上。
-                    val library = lazyClient.value as? AbstractJmClient
-                        ?: error("jmcomic v1.1.12 的 JmApiClient 必须派生自 AbstractJmClient，域名能力不可用")
-                    LibraryDomainControls(library)
+                    // v1.1.12 的 JmApiClient 派生自 AbstractJmClient（字节码已核实），域名能力挂在其 domainManager 上；
+                    // 若库版本漂移导致该前提不成立，就交出空能力，网关整体降级而不是让调用方收到异常。
+                    (lazyClient.value as? AbstractJmClient)?.let(::LibraryDomainControls)
                 },
                 onClose = onClose,
             )
@@ -418,7 +425,7 @@ class Jm3GatewayImpl internal constructor(
         // 线路由库在每次启动后重新裁决，登录域未必再被选中：Cookie 需铺满当前全部候选域名与常用镜像。
         val targetDomains = linkedSetOf<String>()
         // 域名能力取不到就没法把 Cookie 铺满全部候选域名，首批请求可能漏带会话
-        quietly(TAG, "读取候选域名") { targetDomains.addAll(domainControls.candidateDomains()) }
+        quietly(TAG, "读取候选域名") { targetDomains.addAll(domainControls?.candidateDomains().orEmpty()) }
         for (c in session.cookies) {
             targetDomains.add(c.domain)
         }
@@ -477,7 +484,7 @@ class Jm3GatewayImpl internal constructor(
             ),
         )
 
-    override fun imageHost(): String = domainControls.coverHost().orEmpty()
+    override fun imageHost(): String = domainControls?.coverHost().orEmpty()
 
     override fun userProfile(uid: String): UserProfile = client.getUserProfile(uid).toUserProfile()
 
@@ -510,17 +517,20 @@ class Jm3GatewayImpl internal constructor(
         albumId,
     ).toFolderOperation()
 
-    override fun usedDomain(): String? = domainControls.usedDomain()?.takeIf { it.isNotBlank() }
+    override fun usedDomain(): String? = domainControls?.usedDomain()?.takeIf { it.isNotBlank() }
 
-    override fun domainsReady(): Boolean = domainControls.domainsReady()
+    override fun domainsReady(): Boolean = domainControls?.domainsReady() ?: false
 
-    override fun domainLatency(): Map<String, Int> = domainControls.domainLatency()
+    override fun domainLatency(): Map<String, Int> = domainControls?.domainLatency().orEmpty()
 
-    override fun reprobeDomains() = domainControls.reprobeDomains()
+    override fun reprobeDomains() {
+        domainControls?.reprobeDomains()
+    }
 
     override fun close() {
+        // 自身的清理先跑：域名能力缺失不该连累注入方的收尾逻辑
         onClose()
-        domainControls.close()
+        domainControls?.close()
     }
 
     override fun toggleFavorite(albumId: String, folderId: String) =
@@ -585,7 +595,7 @@ class Jm3GatewayImpl internal constructor(
      * 封面与图片地址的唯一入口：域名取库的线路裁决（库把封面挂到 bestDomain；登录域在自动线路下恒为空，
      * 不能作域名来源）。每次调用只裁决一次，页内所有封面走纯拼接，不再借首项封面地址猜域名。
      */
-    private fun covers(): CoverResolver = CoverResolver.of(domainControls.coverHost())
+    private fun covers(): CoverResolver = CoverResolver.of(domainControls?.coverHost())
 
     private fun io.github.jukomu.jmcomic.api.model.JmSearchPage.toPage(covers: CoverResolver): SearchPage =
         SearchPage(
