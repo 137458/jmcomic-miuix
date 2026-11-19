@@ -30,8 +30,27 @@ class GlassTierTest {
     @Test
     fun 液态玻璃要采样源与着色器同时可用() {
         assertEquals(LiquidGlass, resolveGlassTier(hasBackdrop = true, shaderSupported = true))
-        // 有采样源但没着色器：退实色，不降到模糊
-        assertEquals(Solid, resolveGlassTier(hasBackdrop = true, shaderSupported = false))
+        // 有采样源但没着色器：只退一级到模糊，别把模糊能力也丢掉
+        assertEquals(Blur, resolveGlassTier(hasBackdrop = true, shaderSupported = false))
+        assertEquals(
+            Blur,
+            resolveGlassTier(
+                hasBackdrop = true,
+                shaderSupported = false,
+                requested = FloatingBottomBarMode.LiquidGlass,
+            ),
+        )
+    }
+
+    @Test
+    fun 能力变少时档位逐级下降不跳级() {
+        // 能力从全到无，档位必须逐级下降：液态玻璃 → 模糊 → 实色。
+        val chain = listOf(
+            resolveGlassTier(hasBackdrop = true, shaderSupported = true),
+            resolveGlassTier(hasBackdrop = true, shaderSupported = false),
+            resolveGlassTier(hasBackdrop = false, shaderSupported = false),
+        )
+        assertEquals(listOf(LiquidGlass, Blur, Solid), chain)
     }
 
     @Test

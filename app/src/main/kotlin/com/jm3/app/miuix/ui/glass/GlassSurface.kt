@@ -225,6 +225,8 @@ internal fun resolveGlassSurface(role: GlassRole, tier: GlassTier, style: GlassS
  * 档位在这里判一次（[resolveGlassTier] 内聚了「有无采样源」与「有无运行时着色器」），
  * 因此没有任何表面需要自己再问 [isRuntimeShaderSupported]。
  *
+ * @param tier 调用方在组合期已判定过的档位。判定要读 CompositionLocal 与设备能力，
+ *   同一处表面自己判一次、内部再判一次就是两次；传入后可省掉内层那次。
  * @param tint 底衬色：传不透明色即可，不透明度由角色的计划决定
  * @param liquidScrimAlpha 只覆盖液态玻璃档的底衬不透明度；同角色有多种强调程度时用它
  *   （如页签胶囊选中 0.92、未选中 0.55），其余档位不受影响
@@ -239,19 +241,20 @@ internal fun Modifier.glassSurface(
     tint: Color,
     shape: Shape,
     requested: FloatingBottomBarMode = FloatingBottomBarMode.LiquidGlass,
+    tier: GlassTier? = null,
     liquidScrimAlpha: Float? = null,
     highlight: (() -> Highlight?)? = { glassEdgeHighlight },
     borderColor: Color? = null,
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
 ): Modifier {
     val style = LocalGlassStyle.current
-    val tier = resolveGlassTier(
+    val resolvedTier = tier ?: resolveGlassTier(
         hasBackdrop = backdrop != null,
         shaderSupported = isRuntimeShaderSupported(),
         requested = requested,
         style = style,
     )
-    val plan = resolveGlassSurface(role, tier, style).let { resolved ->
+    val plan = resolveGlassSurface(role, resolvedTier, style).let { resolved ->
         if (liquidScrimAlpha != null && resolved.drawsBackdrop && resolved.lensRefractionAmountDp > 0f) {
             resolved.copy(scrimAlpha = liquidScrimAlpha)
         } else {

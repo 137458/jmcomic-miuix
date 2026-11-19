@@ -20,8 +20,11 @@ internal val GlassTier.drawsBackdrop: Boolean
  * 把「请求的形态 + 设备能力」判成实际画的那一级。
  *
  * - 没有采样源：只能实色。
- * - 请求液态玻璃：采样源与着色器都要有，缺着色器退实色（不降到模糊，保持底栏既有观感）。
+ * - 请求液态玻璃：采样源与着色器都要有，缺着色器只退一级到模糊（逐级下降，不跳级）。
  * - 请求模糊：有采样源即可。
+ *
+ * 降级必须单调：能力越少画的级越低，且一次只降一级——请求液态玻璃而设备没有着色器时，
+ * 停在实色等于把可用的模糊能力也丢掉，底栏会突然变成一块死板色块。
  *
  * @param hasBackdrop 是否拿到了采样源（[FloatingBottomBar] 的 backdrop、GlassScaffold 的 LocalGlassBackdrop）
  * @param shaderSupported 是否有运行时着色器
@@ -37,7 +40,8 @@ internal fun resolveGlassTier(
     !hasBackdrop -> GlassTier.Solid
     style == GlassStyle.Frosted -> GlassTier.Blur
     requested == FloatingBottomBarMode.Blur -> GlassTier.Blur
-    requested == FloatingBottomBarMode.LiquidGlass && shaderSupported -> GlassTier.LiquidGlass
+    requested == FloatingBottomBarMode.LiquidGlass ->
+        if (shaderSupported) GlassTier.LiquidGlass else GlassTier.Blur
     else -> GlassTier.Solid
 }
 

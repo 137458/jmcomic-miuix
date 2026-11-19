@@ -388,7 +388,7 @@ fun FloatingBottomBar(
             panelOffsetState = panelOffsetState,
             isDark = isDark,
             isLiquidGlassMode = isLiquidGlassMode,
-            mode = mode,
+            tier = tier,
             containerColor = containerColor,
             backdrop = backdrop,
             dampedDragAnimation = dampedDragAnimation,

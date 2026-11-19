@@ -57,7 +57,7 @@ internal fun BottomBarBaseLayer(
     panelOffsetState: State<Float>,
     isDark: Boolean,
     isLiquidGlassMode: Boolean,
-    mode: FloatingBottomBarMode,
+    tier: GlassTier,
     containerColor: Color,
     backdrop: Backdrop?,
     dampedDragAnimation: DampedDragAnimation,
@@ -98,7 +98,8 @@ internal fun BottomBarBaseLayer(
                     role = GlassRole.BottomBar,
                     tint = containerColor,
                     shape = pillShape,
-                    requested = mode,
+                    // 档位由 FloatingBottomBar 在组合期判一次再传下来，这里不再重判。
+                    tier = tier,
                     highlight = { baseHighlight.value },
                     layerBlock = {
                         val width = size.width.coerceAtLeast(1f)
