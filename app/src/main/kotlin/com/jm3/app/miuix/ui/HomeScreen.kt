@@ -147,7 +147,7 @@ internal fun HomeScreen(
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     // 分页模式来自设置域的可观察状态：设置页切换后立即变更控件形态，并触发第一页重载。
-    val mode = deps.paging.paginationMode
+    val mode = deps.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     // 搜索态 = 有活跃关键词 或 缓存里还留着上次结果：后者让从详情页返回时结果先出现
     var searchActive by remember { mutableStateOf(sessionCache.hasPage(SessionListKey.HomeSearch)) }

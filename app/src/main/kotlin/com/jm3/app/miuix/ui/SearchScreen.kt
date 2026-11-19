@@ -103,7 +103,7 @@ internal fun SearchScreen(
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
     val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
     // 分页模式是全局可观察状态，设置页切换后本页立即变更控件形态。
-    val mode = deps.paging.paginationMode
+    val mode = deps.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
 
     // 关键词/范围/排序/时间任一变化就是另一份结果：loader 跟着重建，在途请求与页游标从零起算。

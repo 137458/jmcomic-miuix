@@ -121,7 +121,7 @@ internal fun CouiFavoritesScreen(
         val gridState = rememberLazyGridState()
         val tagsGridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
-        val mode = deps.paging.paginationMode
+        val mode = deps.paginationMode
         val clickPaging = mode == PaginationMode.CLICK
         val scheme = CouiKitTheme.colorScheme
         val destructive = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive

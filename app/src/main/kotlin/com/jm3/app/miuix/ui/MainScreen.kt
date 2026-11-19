@@ -125,9 +125,9 @@ internal fun MainScreen(
             val heightDp = maxHeight.toLayoutDpInt()
             // 宽屏导航偏好与底栏 token 同源：600dp 以下设置项不可见，布局一律按底栏渲染；
             // 大屏未设置时默认底栏，用户显式选侧栏才切成 NavigationRail。
-            val wideScreenNavigation = remember(deps.bottomBar.wideScreenNavigation, widthDp, heightDp) {
+            val wideScreenNavigation = remember(deps.wideScreenNavigation, widthDp, heightDp) {
                 BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
-                    deps.bottomBar.wideScreenNavigation,
+                    deps.wideScreenNavigation,
                     widthDp,
                     heightDp,
                 )
@@ -135,13 +135,13 @@ internal fun MainScreen(
             // 底栏尺寸/形态档在组合期一次性解析：未显式设置时按窗口宽度断点取默认值，
             // 切换偏好只会重建这份 token，不进入滚动或测量热路径。
             val barTokens = remember(
-                deps.bottomBar.bottomBarSize,
-                deps.bottomBar.bottomBarForm,
+                deps.bottomBarSize,
+                deps.bottomBarForm,
                 widthDp,
             ) {
                 resolveBottomBarTokens(
-                    explicitSize = deps.bottomBar.bottomBarSize,
-                    explicitForm = deps.bottomBar.bottomBarForm,
+                    explicitSize = deps.bottomBarSize,
+                    explicitForm = deps.bottomBarForm,
                     widthDp = widthDp,
                 )
             }

@@ -39,36 +39,13 @@ internal fun explicitBottomBarSize(size: BottomBarSize): BottomBarSize? =
     if (size == BottomBarSize.GENEROUS) BottomBarSize.GENEROUS else null
 
 /**
- * 列表页读取的分页开关。
- *
- * 只暴露读面：写入要连着作废分页缓存与落盘，走 [ScreenDeps.selectPaginationMode]，
- * 免得每个设置页各抄一遍写序。
- */
-internal interface PagingPreference {
-    val paginationMode: PaginationMode
-}
-
-/**
- * 屏幕读取的底栏外观选项。
- *
- * null 表示用户没有显式设置过，由窗口宽度断点在组合期解析默认值；
- * 写入同分页开关，统一走 [ScreenDeps.selectBottomBarForm] 一类的入口。
- */
-internal interface BottomBarPreference {
-    val bottomBarSize: BottomBarSize?
-    val bottomBarForm: BottomBarForm?
-    val wideScreenNavigation: WideScreenNavigation?
-}
-
-/**
  * 屏幕依赖：由组装根一次性注入，屏幕内部不再直读 [Jm3Graph]。
  *
  * 只持有各域实例与进程级资源，全部成员按域转发，不在这里写业务判定或编排；
  * 这样屏幕签名只需一个 deps，新增依赖只改容器对应的一行。
  *
- * 域对象本身不出现在屏幕可见面上：屏幕要读的界面态经 [PagingPreference]、
- * [BottomBarPreference] 这类窄接口给出，要写的走本类的一次性动作，
- * 两条路径都不需要屏幕知道设置域长什么样。
+ * 域对象本身不出现在屏幕可见面上：屏幕要读的界面态由本类的只读 val 直接给出，
+ * 要写的走本类的一次性动作，两条路径都不需要屏幕知道设置域长什么样。
  */
 class ScreenDeps internal constructor(
     internal val api: ApiDomain,
@@ -79,7 +56,7 @@ class ScreenDeps internal constructor(
     internal val updates: UpdateDomain,
     sessionCache: SessionCache,
     val appScope: CoroutineScope,
-) : PagingPreference, BottomBarPreference {
+) {
 
     internal val sessionCache: SessionCache = sessionCache
 
@@ -137,24 +114,20 @@ class ScreenDeps internal constructor(
     /** 安装已下载的包；结果由调用方决定提示文案。 */
     fun installUpdate(file: File): ApkInstaller.Result = updates.install(file)
 
-    /** 分页开关的窄读面：列表页只依赖这两个成员。 */
-    internal val paging: PagingPreference
-        get() = this
-
-    /** 底栏外观的窄读面：底栏与设置页只依赖这三个成员。 */
-    internal val bottomBar: BottomBarPreference
-        get() = this
-
-    override val paginationMode: PaginationMode
+    /** 列表页读取的分页开关；写入要连着作废分页缓存与落盘，走 [selectPaginationMode]。 */
+    val paginationMode: PaginationMode
         get() = preferences.paginationMode
 
-    override val bottomBarSize: BottomBarSize?
+    /** 底栏尺寸：null 表示用户没显式设置，由窗口宽度断点在组合期解析。 */
+    val bottomBarSize: BottomBarSize?
         get() = preferences.bottomBarSize
 
-    override val bottomBarForm: BottomBarForm?
+    /** 底栏形态：null 同 [bottomBarSize]，走 [selectBottomBarForm] 写入。 */
+    val bottomBarForm: BottomBarForm?
         get() = preferences.bottomBarForm
 
-    override val wideScreenNavigation: WideScreenNavigation?
+    /** 宽屏导航：null 同 [bottomBarSize]，走 [selectWideScreenNavigation] 写入。 */
+    val wideScreenNavigation: WideScreenNavigation?
         get() = preferences.wideScreenNavigation
 
     /**

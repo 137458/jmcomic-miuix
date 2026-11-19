@@ -67,7 +67,7 @@ internal fun WatchHistoryScreen(
     nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
-    val mode = deps.paging.paginationMode
+    val mode = deps.paginationMode
     val user by deps.account.user.collectAsState()
     val skin = LocalSkin.current
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)

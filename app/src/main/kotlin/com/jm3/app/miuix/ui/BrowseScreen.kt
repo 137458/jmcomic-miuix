@@ -118,7 +118,7 @@ internal fun BrowseScreen(
     var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
     // 筛选口径与列表结果一起进缓存：切 tab 回来时按同一口径取回上次的结果，滚动位置才有内容可落
     val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
-    val pageMode = deps.paging.paginationMode
+    val pageMode = deps.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
@@ -665,7 +665,7 @@ private fun TagResultSection(
     val normalizedKeyword = normalizeBrowseTagKeyword(keyword) ?: keyword.trim()
     // 缓存键同时也是「同一份标签结果」的身份；空白检索词没有键，此时不挂缓存，退化为纯网络加载
     val tagKey = browseTagCacheKey(normalizedKeyword, order)
-    val pageMode = deps.paging.paginationMode
+    val pageMode = deps.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()

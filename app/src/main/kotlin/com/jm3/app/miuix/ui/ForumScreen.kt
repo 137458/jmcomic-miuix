@@ -101,7 +101,7 @@ internal fun ForumScreen(
     snackbarHostState: SnackbarHostState,
 ) {
     val user by deps.account.user.collectAsState()
-    val pageMode = deps.paging.paginationMode
+    val pageMode = deps.paginationMode
     var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
     val clampedScopeIndex = scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)

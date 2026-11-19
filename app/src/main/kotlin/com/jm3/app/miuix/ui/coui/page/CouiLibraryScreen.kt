@@ -122,7 +122,7 @@ internal fun CouiLibraryScreen(
         val creatorGridState = rememberLazyGridState()
         val workGridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
-        val paginationMode = deps.paging.paginationMode
+        val paginationMode = deps.paginationMode
 
         var tab by rememberSaveable { mutableIntStateOf(0) }
         var query by rememberSaveable { mutableStateOf("") }

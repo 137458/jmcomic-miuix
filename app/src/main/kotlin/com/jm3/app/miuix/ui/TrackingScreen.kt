@@ -75,7 +75,7 @@ internal fun TrackingScreen(
     nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
-    val mode = deps.paging.paginationMode
+    val mode = deps.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val user by deps.account.user.collectAsState()
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)

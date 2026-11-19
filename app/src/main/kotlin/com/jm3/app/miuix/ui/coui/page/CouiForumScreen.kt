@@ -137,7 +137,7 @@ internal fun CouiForumScreen(
     snackbarHostState: SnackbarHostState,
 ) {
     val user by deps.account.user.collectAsState()
-    val pageMode = deps.paging.paginationMode
+    val pageMode = deps.paginationMode
     val selectionHaptic = rememberSelectionHaptic()
     val scope = rememberCoroutineScope()
     val listStates = remember { List(ForumScope.entries.size) { LazyListState() } }

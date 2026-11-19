@@ -94,7 +94,7 @@ internal fun FavoritesScreen(
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
     val selectionHaptic = rememberSelectionHaptic()
 
-    val mode = deps.paging.paginationMode
+    val mode = deps.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)

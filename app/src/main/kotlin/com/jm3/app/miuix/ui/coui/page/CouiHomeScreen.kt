@@ -201,7 +201,7 @@ fun CouiHomeScreen(
     val searchState = rememberCouiSearchBarState(expanded = searchExpanded)
 
     val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
-    val mode = deps.paging.paginationMode
+    val mode = deps.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
 
     // 加载编排交给共享的 SessionListLoader：首屏 / 下拉刷新 / 翻页 / 跳页 / 失败分派只有一份实现，

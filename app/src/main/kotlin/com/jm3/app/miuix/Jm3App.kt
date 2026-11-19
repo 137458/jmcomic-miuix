@@ -417,7 +417,7 @@ fun Jm3App() {
             deps.preferences.applyStartupPaginationMode(
                 PaginationModePolicy.resolveStartupPaginationMode(
                     persisted = deps.settings.paginationMode(),
-                    current = deps.paging.paginationMode,
+                    current = deps.paginationMode,
                     userModified = deps.preferences.paginationModeUserModified,
                 )
             )

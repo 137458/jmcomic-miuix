@@ -258,10 +258,10 @@ internal fun rememberSettingsLayout(deps: ScreenDeps): SettingsLayout {
     val widthDp = windowDp.width.toLayoutDpInt()
     val heightDp = windowDp.height.toLayoutDpInt()
     return resolveSettingsLayout(
-        paginationMode = deps.paging.paginationMode,
-        bottomBarSize = deps.bottomBar.bottomBarSize,
-        bottomBarForm = deps.bottomBar.bottomBarForm,
-        wideScreenNavigation = deps.bottomBar.wideScreenNavigation,
+        paginationMode = deps.paginationMode,
+        bottomBarSize = deps.bottomBarSize,
+        bottomBarForm = deps.bottomBarForm,
+        wideScreenNavigation = deps.wideScreenNavigation,
         widthDp = widthDp,
         heightDp = heightDp,
     )
@@ -460,7 +460,7 @@ internal class SettingsScaffoldState internal constructor(
 
     /** 分页模式提交：越界索引忽略，同值不重复落盘（判定沿用 [resolvePaginationSelection]）。 */
     fun applyPaginationIndex(index: Int) {
-        resolvePaginationSelection(deps.paging.paginationMode, index)
+        resolvePaginationSelection(deps.paginationMode, index)
             ?.takeIf { it.changed }
             ?.let { deps.selectPaginationMode(it.mode) }
     }
@@ -552,7 +552,7 @@ internal class SettingsScaffoldState internal constructor(
             usedDomain = diagnostics.value.usedDomain,
             activeDomains = activeDomains.value,
             latency = diagnostics.value.latency,
-            paginationMode = deps.paging.paginationMode,
+            paginationMode = deps.paginationMode,
             themeMode = themeMode,
             dynamicColorEffective = dynamicColorEffective,
         )

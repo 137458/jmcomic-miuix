@@ -137,7 +137,7 @@ private fun CouiSearchBody(
     val snackbarHostState = remember { SnackbarHostState() }
     val lazyState = rememberLazyListState()
     val scheme = CouiKitTheme.colorScheme
-    val pageMode = deps.paging.paginationMode
+    val pageMode = deps.paginationMode
     val clickPaging = pageMode == PaginationMode.CLICK
     // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
     val feedColumns = LocalWideLayout.current.feedColumns
