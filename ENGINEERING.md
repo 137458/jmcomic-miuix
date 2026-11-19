@@ -13,7 +13,7 @@
 开始任何功能或重构前，先回答以下三问：
 
 1. **分层归属**：能进 `:core` 的逻辑禁止写进 `:app`；能写成纯函数的判定禁止藏在 Composable 内。`:core` 为纯 JVM 模块（`core/build.gradle.kts:1-4`），严禁引入 Android 类型。
-2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 203 个测试类（`:core` 80 个、`:app` 123 个）。无法测试说明分层有误，须先拆层。
+2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 222 个测试类（`:core` 80 个、`:app` 142 个）。无法测试说明分层有误，须先拆层。
 3. **红线冲击**：核对是否破坏单一网关、单一状态真源、双皮肤组件隔离、阅读器手势优先级及 Release 混淆签名规则。
 
 ---
@@ -201,8 +201,10 @@
 测试基线以 `build/test-results/**/TEST-*.xml` 为准（最近一次全量执行 `:core:test` 与 `:app:testDebugUnitTest`）：
 
 - **`:core`**：80 个测试类 / 757 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`；同目录另有一个不含 `@Test` 的共用替身 `FakeSessionAuth.kt`）。
-- **`:app`**：123 个测试类 / 839 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`；同目录另有一个不含 `@Test` 的网关替身 `FakeGateway.kt`）。
-- **全仓合计**：203 个测试类 / 1,596 个测试用例，全部通过，0 失败、0 跳过（203 个 `TEST-*.xml` 与 1,596 个 `@Test` 逐一对齐）。
+- **`:app`**：142 个测试类 / 1,223 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`；同目录另有一个不含 `@Test` 的网关替身 `FakeGateway.kt`）。
+- **全仓合计**：222 个测试类 / 1,980 个测试用例，全部通过，0 失败、0 跳过（222 个 `TEST-*.xml` 与 1,980 个 `@Test` 逐一对齐）。
+
+双皮肤共享骨架的测试全部是纯 `kotlin.test`（不依赖 Android 与 Compose 运行时），规模靠前的是 `FavoriteScaffoldTest`（42）、`TasksScaffoldTest`（26）、`SearchScaffoldTest`（24）、`ForumScaffoldTest`（23）、`BrowseScaffoldTest`（22）、`MainScaffoldTest`（22）、`NotificationsScaffoldTest`（21）、`HistoryScaffoldTest`（20）、`TrackingScaffoldTest`（19）、`WeekScaffoldTest`（19）、`MineScaffoldTest`（18）、`SettingsSectionsTest`（18）、`UpdateScaffoldTest`（17）、`ShelfScaffoldTest`（17）。
 
 典型纯逻辑边界测试规模：`AccountManagerTest`（39）、`AlbumHeroLogicTest`（31）、`ReaderPageLogicTest`（31）、`CheckInLoadPolicyTest`（30）、`MappersTest`（29）、`ReaderProgressCodecTest`（27）、`AlbumHeroHostTest`（26）、`CouiWorkCardLayoutTest`（26）、`PagedFeedTest`（22）、`ReaderZoomLogicTest`（22）、`DownloadQueueTest`（22）、`PagingBehaviorTest`（21）、`CouiFeedPolicyTest`（21）、`SessionListLoaderTest`（22）、`SessionCacheTest`（15）。
 
@@ -215,7 +217,7 @@
 - **分页、封面与协议映射**：1 基页码换算 → `PageNumbersTest`；翻页计算 → `PagingBehaviorTest`（21）；去重与触底距离 → `PagedFeedTest`（22）、`SearchPagesTest`、`CommentPagesTest`、`SerializationPageTest`；分割还原 → `ScrambleTest`；封面三态与缓存键互逆 → `CoverResolverTest`（13）、`CoverLocatorTest`；域名清洗与线路切换缓存 → `DomainsTest`、`CustomDomainPoolTest`、`DomainPoolCacheTest`、`ApiDomainTest`、`GatewayFactoryTest`；章节分组与标签 → `ChapterGroupsTest`、`ChapterLabelsTest`、`NotificationBodyTest`。
 - **会话、凭据与更新**：会话编解码 → `SessionCodecTest`；加密凭据落盘、坏数据自清与 Keystore 密钥重建 → `CredentialStorageTest`、`CredentialStoreTest`；取消异常重抛 → `CancellationTest`；反射成员表、解析与降级 → `LibraryReflectionTest`（9）、`LibrarySessionReflectionTest`、`LibraryBridgeRoutingTest`；静默重登、并发竞态与 3 次失败清凭据 → `AccountManagerTest`（39）；启动闸门与失效通知 → `AuthCallTest`；未读角标保留与纪元保护 → `UnreadBadgeTest`；版本等价、更新下载校验与设置归一 → `VersionTextTest`、`UpdateCheckerTest`、`UpdateDownloaderTest`、`ReleaseJsonTest`、`UpdateSettingsTest`、`SettingsRepositoryTest`、`SettingsNormalizationTest`、`SettingsKeyStoreAdapterTest`。
 - **列表加载编排**：首屏、刷新、触底、跳页四类请求的代次丢弃与失败落点（有内容保留 + 提示、无内容整屏、`goToPage` 保留旧页、刷新/跳页失败不占用页脚重试位） → `SessionListLoaderTest`（22）；`ListStateCache` 只收已落定快照、按账号分仓与 `forgetPages` / `clear` 作废语义 → `SessionCacheTest`（15）。
-- **阅读器、转场、布局与皮肤**：缩放与边缘翻页 → `ReaderZoomLogicTest`（22）；页框比例与解码上限 → `ReaderPageLogicTest`（31）、`ReaderPageBackfillTest`（8）；页码计划与跳页冻结 → `ReaderPagePlanTest`（12）；阅读器会话恢复时序（`AWAITING_LAYOUT` → `RESTORING` → `SETTLED`）与写盘闸门 → `ReaderSessionTest`（13）；进度编解码 → `ReaderProgressCodecTest`（27）；预取步进 → `ReaderPrefetchTest`；共享元素几何、宿主状态机与缓存尺寸 → `AlbumHeroLogicTest`（31）、`AlbumHeroHostTest`（26）、`AlbumHeroStateMachineTest`（13）、`AlbumHeroCoverSizeTest`（4）；详情状态容器 → `AlbumDetailStateHolderTest`（17）；加载结局翻译与两钩子分支 → `ScreenLoadPlanTest`（6）、`ListOutcomeTest`、`NovelActionNoticeTest`；结局翻译与签到策略 → `CheckInLoadPolicyTest`（30）；玻璃表面、能力门槛与顶栏分档 → `GlassSurfaceTest`、`InteractiveHighlightTest`、`ShaderCapabilityTest`（3）、`TopBarGlassTest`（5）；COUI 组件、字阶、通知滑动与阅读器逻辑 → `CouiPageStateTest`、`CouiTypographyTest`、`CouiForumRepliesTest`、`CouiHistoryGroupingTest`、`CouiNotificationsSwipeTest`、`CouiNovelDetailChaptersTest`、`CouiReaderLogicTest`（15）；大屏与底栏导航策略 → `WideLayoutPolicyTest`（16）、`BottomBarPreferencesTest`（9）、`WideScreenNavigationTest`（8）；双页同框页码夹取 → `ReaderPagerTargetTest`（4）；底部净空推导 → `BottomSpacingTest`（6）；复制结果文案 → `ClipboardActionsTest`（3）；资料草稿与脏键恢复 → `ProfileDraftStateTest`（5）。`reader/ReaderActions.kt`、`reader/ReaderSpreadPage.kt` 与 `reader/ReaderEdgeDrag.kt` 目前无对应测试类（缺口见附录 B）。
+- **阅读器、转场、布局与皮肤**：缩放与边缘翻页 → `ReaderZoomLogicTest`（22）；页框比例与解码上限 → `ReaderPageLogicTest`（31）、`ReaderPageBackfillTest`（8）；页码计划与跳页冻结 → `ReaderPagePlanTest`（12）；阅读器会话恢复时序（`AWAITING_LAYOUT` → `RESTORING` → `SETTLED`）与写盘闸门 → `ReaderSessionTest`（13）；进度编解码 → `ReaderProgressCodecTest`（27）；预取步进 → `ReaderPrefetchTest`；共享元素几何、宿主状态机与缓存尺寸 → `AlbumHeroLogicTest`（31）、`AlbumHeroHostTest`（26）、`AlbumHeroStateMachineTest`（13）、`AlbumHeroCoverSizeTest`（4）；详情状态容器 → `AlbumDetailStateHolderTest`（17）；加载结局翻译与两钩子分支 → `ScreenLoadPlanTest`（6）、`ListOutcomeTest`、`NovelActionNoticeTest`；结局翻译与签到策略 → `CheckInLoadPolicyTest`（30）；玻璃表面、能力门槛与顶栏分档 → `GlassSurfaceTest`、`InteractiveHighlightTest`、`ShaderCapabilityTest`（3）、`TopBarGlassTest`（5）；COUI 组件、字阶、通知滑动与阅读器逻辑 → `CouiPageStateTest`、`CouiTypographyTest`、`CouiForumRepliesTest`、`HistoryGroupingTest`（2）、`CouiNotificationsSwipeTest`、`CouiNovelDetailChaptersTest`、`CouiReaderLogicTest`（13）；大屏与底栏导航策略 → `WideLayoutPolicyTest`（16）、`BottomBarPreferencesTest`（9）、`WideScreenNavigationTest`（8）；双页同框页码夹取 → `ReaderPagerTargetTest`（4）；底部净空推导 → `BottomSpacingTest`（6）；复制结果文案 → `ClipboardActionsTest`（3）；资料草稿与脏键恢复 → `ProfileDraftStateTest`（5）。`reader/ReaderActions.kt`、`reader/ReaderSpreadPage.kt` 与 `reader/ReaderEdgeDrag.kt` 目前无对应测试类（缺口见附录 B）。
 
 ---
 
@@ -260,6 +262,7 @@
 35. **阅读器共性收口到 `reader` 包**：两皮肤逐字重复的翻页/跳页/进度编排、双页同框与边缘拖拽判定分别进 `ReaderActions`、`ReaderSpreadPage`、`ReaderEdgeDrag`，两屏随之瘦身（`ui/ReaderScreen.kt` 1692→1529 行、`ui/coui/page/CouiReaderScreen.kt` 2376→2211 行）；「两皮肤必须一致」的编排留在屏幕里必然漂移，收成模块后一处改动两皮肤同时生效。
 36. **会话 Cookie 明文落盘是已知取舍**：`SessionStore` 把 `Jm3Session` 以 JSON 写入 `jm3_session` DataStore（`app/src/main/kotlin/com/jm3/app/miuix/data/SessionStore.kt:16-36`），而账号密码经 Keystore AES/GCM/256 加密（`data/CredentialStore.kt:160-168`），敏感度看似倒挂。实际威胁模型是 root 或调试镜像下的文件读取，此时 Keystore 密钥同样可取用，加密只换来启动期每次解封的开销；云备份与设备迁移已由 `allowBackup=false` 与 `res/xml/data_extraction_rules.xml` 排除（`AndroidManifest.xml:23`）。故不对 Cookie 加密，该取舍记录于此，改动前须先证明威胁模型变化。
 37. **底部净空单一推导**：底栏 contentPadding 不再在 `BottomBarTokens` 注释里写 80/108/64，而由 `bottomBarContentPaddingDp`（`BottomSpacing.kt:41`）按条高与形态算出，COUI 页、FAB 与玻璃首页的额外净空也在同一文件；`BottomClearance` 及其测试整体删除，避免两套净空公式各自漂移。
+38. **双皮肤同名页共享骨架、视觉各留皮肤**：20 组同名页面（首页、搜索、作者主页、作品详情、分类浏览、收藏、论坛、更新、通知、历史、每周连载、任务、书架、追踪、观看记录、我的、个人资料、登录、阅读器入口、主框架及设置页分节）的加载编排、失败归类、翻页语义、弹窗与确认流状态、逐字文案常量收进同包 `XxxScaffold.kt`（`internal class XxxScaffoldState` + `@Composable internal fun rememberXxxScaffoldState` + 纯函数 + 常量，零皮肤控件，仅 `SnackbarHostState` 类型入参），皮肤侧只保留 `@Composable` 布局与控件选择。两皮肤可见差异用显式参数/枚举表达（如 `HomePaginationReload`、`TrackingUndoReload`、`SettingsOptions`），禁止在皮肤里另写一份分支；每对页面配纯 `kotlin.test` 测试固定状态迁移。此前逐字重复的双皮肤复制粘贴是「改一处漏一处」的主要来源（C4 前双皮肤同名页逐字重复 3,690 行）。
 
 ---
 
@@ -270,7 +273,7 @@
 3. **放大边缘翻页暂不做跟手拖拽**：跟手拖拽需重构 `HorizontalPager` 滚动源，改动面大于当前收益，维持松手判定后弹性翻页方案。
 4. **运行验证缺口**：
    - 已真机验证项：已在小米 15（`targetSdk 36`）实测阅读器缩放与边缘翻页、双击整屏缩放覆盖层、`dataSync` 前台服务与进度通知（含提升型通知分支）。
-   - 未真机验证项：全仓目前主要依赖编译、203 个测试类（1,596 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
+   - 未真机验证项：全仓目前主要依赖编译、222 个测试类（1,980 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
 5. **COUI 皮肤暂不实现下拉刷新**：当前 `COUI-Kit` 未提供下拉刷新容器，COUI 页面刷新入口统一由错误态重试与页面操作按钮承担，不在页面层手拼手势容器。
 6. **小说列表不做分页**：上游小说列表接口一次返回全量数据且无分页参数，屏幕按全量渲染，不强套 `PagedFeed`。
 7. **阅读器共性件只测得到纯函数部分**：`reader/ReaderActions.kt`、`reader/ReaderSpreadPage.kt` 与 `reader/ReaderEdgeDrag.kt` 由两屏共享，行为依赖 Compose 运行时（`PagerState` / `LazyListState` / 指针事件），编排本身没有测试类。可判定的部分已抽成纯函数并覆盖：`planReaderTurnEntry`（`ReaderTurnEntryTest`，8 例）、`planJumpTarget`（`ReaderJumpTargetTest`，4 例）、`pagerGestureEnabled`（`ReaderGesturePolicyTest`，3 例）、`clampPagerTarget`（`ReaderPagerTargetTest`，4 例）；`ReaderActions` 的冻结与解冻顺序由 `ReaderWiringContractTest`（3 例、源码契约）固定。库里的 `springAnimateToPage` 依赖帧时钟、`pagerGestureOverride` 只能经 Compose 生效，两者仍只能真机验证。其中「读到末页即清进度键」的落盘规则已下沉到 `core/src/main/kotlin/com/jm3/core/reader/ReaderProgress.kt` 的 `persistReaderProgress`，由 `ReaderProgressPersistTest`（5 个用例）覆盖，本项仅剩 Compose 状态编排部分。
