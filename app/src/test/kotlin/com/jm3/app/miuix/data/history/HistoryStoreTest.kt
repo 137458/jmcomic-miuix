@@ -20,8 +20,12 @@ class HistoryStoreTest {
             rows[entry.photoId] = entry
         }
 
-        override suspend fun all(): List<DownloadEntity> =
-            rows.values.sortedByDescending { it.updatedAt }
+        var lastAllLimit: Int? = null
+
+        override suspend fun all(limit: Int): List<DownloadEntity> {
+            lastAllLimit = limit
+            return rows.values.sortedByDescending { it.updatedAt }.take(limit)
+        }
 
         override suspend fun find(photoId: String): DownloadEntity? = rows[photoId]
 
@@ -127,6 +131,31 @@ class HistoryStoreTest {
         assertEquals(listOf("p3", "p2"), secondPage.map { it.photoId })
         assertEquals(4L to "p4", dao.lastAfter)
         assertEquals(null, dao.lastOffset, "续页不得退化成 OFFSET 查询")
+    }
+
+    @Test
+    fun `书架台账读取带上限不会全量拖库`() = runTest {
+        val dao = FakeDownloadDao()
+        val newest = DOWNLOAD_LEDGER_MAX_RECORDS + 5
+        for (i in 1..newest) {
+            dao.rows["p$i"] = DownloadEntity(
+                photoId = "p$i",
+                albumId = "a1",
+                title = "T$i",
+                total = 1,
+                donePages = 1,
+                status = DownloadStatus.DONE.name,
+                updatedAt = i.toLong(),
+                pagesJson = null,
+            )
+        }
+        val store = RoomDownloadLedgerStore(dao)
+
+        val records = store.all()
+
+        assertEquals(DOWNLOAD_LEDGER_MAX_RECORDS, dao.lastAllLimit, "台账读取必须声明条数上限")
+        assertEquals(DOWNLOAD_LEDGER_MAX_RECORDS, records.size, "超限记录不得全部拉进内存")
+        assertEquals("p$newest", records.first().photoId, "截断必须从最旧的一端开始")
     }
 
     @Test

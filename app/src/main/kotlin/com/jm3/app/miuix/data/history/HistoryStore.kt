@@ -94,14 +94,22 @@ data class DownloadEntity(
     val pagesJson: String?,
 )
 
+/**
+ * 书架台账单次读取上限。
+ *
+ * 台账只增不减，无上限查询会随使用时长把查询与内存成本一路推高；2000 条已远多于书架可见容量，
+ * 超出上限的最旧记录不再列出，用户仍可在书架里重新下载。
+ */
+internal const val DOWNLOAD_LEDGER_MAX_RECORDS = 2000
+
 @Dao
 interface DownloadDao {
 
     @Upsert
     suspend fun upsert(entry: DownloadEntity)
 
-    @Query("SELECT * FROM downloads ORDER BY updatedAt DESC")
-    suspend fun all(): List<DownloadEntity>
+    @Query("SELECT * FROM downloads ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun all(limit: Int): List<DownloadEntity>
 
     @Query("SELECT * FROM downloads WHERE photoId = :photoId")
     suspend fun find(photoId: String): DownloadEntity?
@@ -253,7 +261,8 @@ class RoomDownloadLedgerStore(
         }
     }
 
-    override suspend fun all(): List<DownloadRecord> = dao.all().map { it.toRecord() }
+    override suspend fun all(): List<DownloadRecord> =
+        dao.all(DOWNLOAD_LEDGER_MAX_RECORDS).map { it.toRecord() }
 
     override suspend fun find(photoId: String): DownloadLedgerEntry? =
         dao.find(photoId)?.let { entity ->
