@@ -26,6 +26,7 @@ import coil3.size.Size
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.reader.ReaderActions
 import com.jm3.app.miuix.reader.ReaderSession
+import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.app.miuix.ui.skin.LocalSkin

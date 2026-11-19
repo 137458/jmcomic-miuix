@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.components.verticalEdgeFade
 
 /** 视口上界缺失时的兜底高度：宁可矮一截，也不能回落到无界测量。 */
 internal val NotesViewportMinHeight = 48.dp

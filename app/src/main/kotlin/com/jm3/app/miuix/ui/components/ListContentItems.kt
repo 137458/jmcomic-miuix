@@ -1,4 +1,6 @@
-package com.jm3.app.miuix.ui
+package com.jm3.app.miuix.ui.components
+
+/** 列表内容构建器：搜索、榜单、结果列表各自的行与网格项。 */
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -17,6 +19,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.WideLayout
+import com.jm3.app.miuix.ui.WorkAlbumCodeBadge
+import com.jm3.app.miuix.ui.WorkCardMetaRow
+import com.jm3.app.miuix.ui.WorkCardTokens
+import com.jm3.app.miuix.ui.WorkCoverBadge
+import com.jm3.app.miuix.ui.WorkGridCard
+import com.jm3.app.miuix.ui.WorkRowCard
+import com.jm3.app.miuix.ui.WorkTagLine
+import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.showsPagedFooter
 import com.jm3.core.model.SearchResult

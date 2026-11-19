@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.app.miuix.ui.components.verticalEdgeFade
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertFalse

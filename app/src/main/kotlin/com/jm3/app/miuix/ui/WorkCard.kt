@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
+import com.jm3.app.miuix.ui.components.largeScreenTitleStyle
+import com.jm3.app.miuix.ui.components.pressScale
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text

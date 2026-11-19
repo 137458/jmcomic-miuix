@@ -39,11 +39,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.jm3.app.miuix.ui.EdgeFadeWidth
+import com.jm3.app.miuix.ui.components.EdgeFadeWidth
 import com.jm3.app.miuix.ui.SearchHeaderCollapseLogic
 import com.jm3.app.miuix.ui.SearchHeaderCollapseState
 import com.jm3.app.miuix.ui.SearchHeaderIntent
-import com.jm3.app.miuix.ui.edgeFadeMask
+import com.jm3.app.miuix.ui.components.edgeFadeMask
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged

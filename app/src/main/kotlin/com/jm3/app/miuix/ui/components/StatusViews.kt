@@ -1,4 +1,6 @@
-package com.jm3.app.miuix.ui
+package com.jm3.app.miuix.ui.components
+
+/** 状态视图：加载中、错误、空态与失败重试外壳。 */
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.jm3.app.miuix.ui.LoginExpiredScreen
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton

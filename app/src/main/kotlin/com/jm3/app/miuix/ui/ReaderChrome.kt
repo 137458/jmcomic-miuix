@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import com.jm3.app.miuix.ui.components.ActionCell
+import com.jm3.app.miuix.ui.components.BackButton
+import com.jm3.app.miuix.ui.components.MinTouchTarget
 import com.jm3.app.miuix.ui.glass.GlassRole
 import com.jm3.app.miuix.ui.glass.GlassSmallTopAppBar
 import com.jm3.app.miuix.ui.glass.glassSurface

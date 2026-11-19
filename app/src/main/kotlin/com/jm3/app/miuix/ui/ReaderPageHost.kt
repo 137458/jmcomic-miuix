@@ -44,6 +44,8 @@ import coil3.size.Size
 import com.jm3.app.miuix.reader.collectHorizontalEdgeDrag
 import com.jm3.app.miuix.reader.ReaderActions
 import com.jm3.app.miuix.reader.ReaderSpreadPage
+import com.jm3.app.miuix.ui.components.MinTouchTarget
+import com.jm3.app.miuix.ui.components.TrackedLazyColumn
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.reader.ReaderSpreadPolicy

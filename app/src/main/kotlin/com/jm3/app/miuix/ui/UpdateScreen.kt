@@ -48,6 +48,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.components.BackButton
+import com.jm3.app.miuix.ui.components.SectionHorizontalPadding
+import com.jm3.app.miuix.ui.components.TrackedLazyColumn
 import com.jm3.app.miuix.ui.effect.BgEffectBackground
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar

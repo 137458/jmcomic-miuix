@@ -38,6 +38,16 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.components.LoadMoreOnScroll
+import com.jm3.app.miuix.ui.components.MinTouchTarget
+import com.jm3.app.miuix.ui.components.ScreenFailureOrLogin
+import com.jm3.app.miuix.ui.components.SectionHorizontalPadding
+import com.jm3.app.miuix.ui.components.SectionTextStartPadding
+import com.jm3.app.miuix.ui.components.TrackedLazyColumn
+import com.jm3.app.miuix.ui.components.largeScreenTitleStyle
+import com.jm3.app.miuix.ui.components.overlayDialogMaxWidth
+import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
+import com.jm3.app.miuix.ui.components.resultItems
 import com.jm3.app.miuix.ui.glass.CollapsibleSearchAction
 import com.jm3.app.miuix.ui.glass.CollapsibleSearchBar
 import com.jm3.app.miuix.ui.glass.GlassFabItem

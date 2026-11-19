@@ -45,6 +45,7 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text as CouiText
 import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.jm3.app.miuix.ui.components.overlayDialogMaxWidth
 import com.jm3.app.miuix.ui.coui.component.CouiDialogSecondaryButton
 import com.jm3.app.miuix.ui.coui.component.CouiLinearProgressBar
 import com.jm3.app.miuix.ui.coui.component.couiContourSurface

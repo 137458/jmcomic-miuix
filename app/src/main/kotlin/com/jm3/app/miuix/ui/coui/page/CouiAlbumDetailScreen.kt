@@ -91,7 +91,7 @@ import com.jm3.app.miuix.ui.AlbumDetailStateHolder
 import com.jm3.app.miuix.ui.AlbumDetailUiSnapshot
 import com.jm3.app.miuix.ui.AlbumDetailUiSnapshotSaver
 import com.jm3.app.miuix.ui.AlbumUiState
-import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
+import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.CommentsUiState
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.HERO_COVER_HEIGHT_DP

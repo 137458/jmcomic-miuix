@@ -44,6 +44,8 @@ import com.jm3.core.coverCacheKeyText
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.snapshotFlow
+import com.jm3.app.miuix.ui.components.coverSkeleton
+import com.jm3.app.miuix.ui.components.rememberCoverSkeletonState
 import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
 import top.yukonga.miuix.kmp.nav.transition.NavRole

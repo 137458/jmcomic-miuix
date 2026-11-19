@@ -1,4 +1,6 @@
-package com.jm3.app.miuix.ui
+package com.jm3.app.miuix.ui.components
+
+/** 列表容器与滚动辅助：加载更多页脚、触底加载、滚动条、带追踪的 LazyColumn、分页条。 */
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

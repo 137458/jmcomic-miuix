@@ -2,7 +2,7 @@ package com.jm3.app.miuix.ui.coui.page
 
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
-import com.jm3.app.miuix.ui.COMMENT_REPLY_MAX_LENGTH
+import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.NovelChapterMeta
 import com.jm3.core.model.PhotoPages

@@ -1,5 +1,6 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.core.AlbumDetailPort
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.history.InMemoryHistoryRepository

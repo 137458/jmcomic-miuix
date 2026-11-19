@@ -1,4 +1,6 @@
-package com.jm3.app.miuix.ui
+package com.jm3.app.miuix.ui.components
+
+/** 交互修饰器与骨架屏：按压缩放、选中震动、微光、边缘淡化、封面骨架。 */
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode

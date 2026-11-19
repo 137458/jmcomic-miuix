@@ -1,4 +1,6 @@
-package com.jm3.app.miuix.ui
+package com.jm3.app.miuix.ui.components
+
+/** 间距与弹窗尺寸的统一取值：留白、触区、弹窗上限都从这里取，避免各页自己写 dp。 */
 
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -15,6 +17,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
+import com.jm3.app.miuix.ui.LocalWideLayout
+import com.jm3.app.miuix.ui.pinnedLineHeight
 import top.yukonga.miuix.kmp.layout.DialogDefaults
 
 internal val SectionHorizontalPadding: Dp = 12.dp
