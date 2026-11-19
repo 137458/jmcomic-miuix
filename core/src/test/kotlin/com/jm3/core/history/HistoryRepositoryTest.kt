@@ -89,6 +89,68 @@ class HistoryRepositoryTest {
     }
 
     @Test
+    fun 续页游标_前插新记录后不重复也不漏条() = runTest {
+        val r = repo()
+        for (i in 1..100) {
+            now = i.toLong()
+            r.upsert(entry("p$i"))
+        }
+        val firstPage = r.pageAfter(cursor = null, pageSize = 30)
+        assertEquals("p100", firstPage.first().photoId)
+        assertEquals("p71", firstPage.last().photoId)
+
+        // 读者自己刚读了新章节：它被顶到列表最前，按页码换算的 OFFSET 会整体错位一条
+        now = 101L
+        r.upsert(entry("p101"))
+
+        val cursor = HistoryCursor(updatedAt = firstPage.last().updatedAt, photoId = firstPage.last().photoId)
+        val secondPage = r.pageAfter(cursor = cursor, pageSize = 30)
+        assertEquals("p70", secondPage.first().photoId)
+        assertEquals("p41", secondPage.last().photoId)
+        assertTrue(secondPage.none { it.photoId in firstPage.map(HistoryEntry::photoId) })
+    }
+
+    @Test
+    fun 续页游标_上方删条后不跳过() = runTest {
+        val r = repo()
+        for (i in 1..10) {
+            now = i.toLong()
+            r.upsert(entry("p$i"))
+        }
+        val firstPage = r.pageAfter(cursor = null, pageSize = 5)
+        assertEquals(listOf("p10", "p9", "p8", "p7", "p6"), firstPage.map { it.photoId })
+
+        r.delete("p10")
+        r.delete("p9")
+
+        val secondPage = r.pageAfter(
+            cursor = HistoryCursor(updatedAt = firstPage.last().updatedAt, photoId = firstPage.last().photoId),
+            pageSize = 5,
+        )
+        assertEquals(listOf("p5", "p4", "p3", "p2", "p1"), secondPage.map { it.photoId })
+    }
+
+    @Test
+    fun 续页游标_同一时间戳按photoId定序不重不漏() = runTest {
+        val r = repo()
+        now = 7L
+        for (id in listOf("p1", "p2", "p3", "p4", "p5")) r.upsert(entry(id))
+
+        val firstPage = r.pageAfter(cursor = null, pageSize = 2)
+        assertEquals(listOf("p1", "p2"), firstPage.map { it.photoId })
+        val cursor = HistoryCursor(updatedAt = firstPage.last().updatedAt, photoId = firstPage.last().photoId)
+        assertEquals(listOf("p3", "p4"), r.pageAfter(cursor = cursor, pageSize = 2).map { it.photoId })
+    }
+
+    @Test
+    fun 续页游标_非法页大小返回空() = runTest {
+        val r = repo()
+        now = 1L; r.upsert(entry("p1"))
+        assertTrue(r.pageAfter(cursor = null, pageSize = 0).isEmpty())
+        assertTrue(r.pageAfter(cursor = null, pageSize = -3).isEmpty())
+    }
+
+    @Test
     fun 非法页大小或超大页码不溢出且返回空列表() = runTest {
         val r = repo()
         now = 1L; r.upsert(entry("p1"))

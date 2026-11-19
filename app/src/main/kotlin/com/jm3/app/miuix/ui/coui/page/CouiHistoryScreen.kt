@@ -65,6 +65,7 @@ import com.jm3.app.miuix.ui.formatEpochMillis
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
 import com.jm3.app.miuix.ui.route.AppRoutes
+import com.jm3.core.history.HistoryCursor
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
@@ -187,9 +188,13 @@ internal fun CouiHistoryScreen(
             val requested = feed.beginLoadMore()
             if (requested === feed) return
             val nextPage = requested.page + 1
+            // 续页用游标：列表上方随时可能因为读者自己的动作而多出一条，按页码算 OFFSET 会重复或漏条。
+            val cursor = requested.items.lastOrNull()?.let {
+                HistoryCursor(updatedAt = it.updatedAt, photoId = it.photoId)
+            }
             feed = requested
             scope.launch {
-                runCatchingSuspending { repository.page(nextPage, HISTORY_PAGE_SIZE) }
+                runCatchingSuspending { repository.pageAfter(cursor, HISTORY_PAGE_SIZE) }
                     .onSuccess { entries ->
                         feed = requested.append(
                             PageSlice(

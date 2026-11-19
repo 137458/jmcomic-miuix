@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.glass.GlassScaffold
+import com.jm3.core.history.HistoryCursor
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
@@ -154,10 +155,12 @@ internal fun HistoryScreen(
         val requested = feed.beginLoadMore()
         if (requested === feed) return
         val page = requested.page + 1
+        // 续页用游标：列表上方随时可能因为读者自己的动作而多出一条，按页码算 OFFSET 会重复或漏条。
+        val cursor = requested.items.lastOrNull()?.let { HistoryCursor(updatedAt = it.updatedAt, photoId = it.photoId) }
         val token = requestToken
         feed = requested
         scope.launch {
-            val outcome = runCatchingSuspending { repository.page(page, pageSize) }
+            val outcome = runCatchingSuspending { repository.pageAfter(cursor, pageSize) }
             if (token != requestToken) return@launch
             outcome
                 .onSuccess { next ->

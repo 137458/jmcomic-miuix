@@ -18,6 +18,7 @@ import com.jm3.core.download.DownloadLedgerStore
 import com.jm3.core.download.DownloadLedgerWrite
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
+import com.jm3.core.history.HistoryCursor
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.history.HistoryRepository
 
@@ -42,8 +43,22 @@ interface HistoryDao {
     @Upsert
     suspend fun upsert(entry: HistoryEntity)
 
-    @Query("SELECT * FROM history ORDER BY updatedAt DESC LIMIT :pageSize OFFSET :offset")
+    @Query("SELECT * FROM history ORDER BY updatedAt DESC, photoId ASC LIMIT :pageSize OFFSET :offset")
     suspend fun page(pageSize: Int, offset: Int): List<HistoryEntity>
+
+    @Query("SELECT * FROM history ORDER BY updatedAt DESC, photoId ASC LIMIT :pageSize")
+    suspend fun firstPage(pageSize: Int): List<HistoryEntity>
+
+    /**
+     * 续页：取游标之后的一页。[photoId] 是同一时间戳下的次序键，与 ORDER BY 的次级键一致，
+     * 因此页边界不会因为列表上方插入或删除而错位。
+     */
+    @Query(
+        "SELECT * FROM history WHERE updatedAt < :beforeUpdatedAt " +
+            "OR (updatedAt = :beforeUpdatedAt AND photoId > :beforePhotoId) " +
+            "ORDER BY updatedAt DESC, photoId ASC LIMIT :pageSize",
+    )
+    suspend fun pageAfter(beforeUpdatedAt: Long, beforePhotoId: String, pageSize: Int): List<HistoryEntity>
 
     @Query("SELECT * FROM history WHERE albumId = :albumId ORDER BY updatedAt DESC LIMIT 1")
     suspend fun latestForAlbum(albumId: String): HistoryEntity?
@@ -185,8 +200,22 @@ class RoomHistoryRepository(
     }
 
     override suspend fun page(page: Int, pageSize: Int): List<HistoryEntry> {
-        if (page < 1) return emptyList()
+        if (page < 1 || pageSize <= 0) return emptyList()
         return dao.page(pageSize = pageSize, offset = (page - 1) * pageSize).map { it.toEntry() }
+    }
+
+    override suspend fun pageAfter(cursor: HistoryCursor?, pageSize: Int): List<HistoryEntry> {
+        if (pageSize <= 0) return emptyList()
+        val rows = if (cursor == null) {
+            dao.firstPage(pageSize = pageSize)
+        } else {
+            dao.pageAfter(
+                beforeUpdatedAt = cursor.updatedAt,
+                beforePhotoId = cursor.photoId,
+                pageSize = pageSize,
+            )
+        }
+        return rows.map { it.toEntry() }
     }
 
     override suspend fun latestForAlbum(albumId: String): HistoryEntry? =
