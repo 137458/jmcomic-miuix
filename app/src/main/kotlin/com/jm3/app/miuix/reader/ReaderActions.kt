@@ -34,10 +34,13 @@ internal class ReaderActions(
      * 目标页在松手时定下（与旧编排一致），惯性复核通过后才真的翻。
      */
     fun turnPage(turn: EdgePageTurn, stillPinned: suspend () -> Boolean) {
-        val target = planEdgeTurnPagerIndex(pagerState.currentPage, turn, pagerPageCount)
+        // 入口判定先算：到头（首屏继续上一页、末屏继续下一页、单屏、换章瞬间）就不进协程，
+        // 省一次原地动画，也免得松手后的惯性复核白等一次
+        val entry = planReaderTurnEntry(pagerState.currentPage, turn, pagerPageCount)
+        if (entry !is ReaderTurnEntry.TurnTo) return
         scope.launch {
             if (!stillPinned()) return@launch
-            pagerState.springAnimateToPage(target)
+            pagerState.springAnimateToPage(entry.pagerIndex)
         }
     }
 
@@ -48,20 +51,20 @@ internal class ReaderActions(
         val canonical = planJumpPage(page, pageCount, spreadActive)
         // 冻结与解冻都交给 session：目标页在动画前定下，落地后才放开可见页回写
         val target = session.requestJump(canonical) ?: return
-        if (horizontal) {
-            val pagerTarget = planPagerIndex(target, pageCount, spreadActive, pagerPageCount)
-            scope.launch {
+        // 出口由纯函数定下：横向落到 pager 的屏、纵向落到列表的项；两条出口都在 finally 里解冻回写，
+        // 动画被取消或滚动被打断也不能把可见页回写永久冻住
+        when (val exit = planJumpTarget(target, pageCount, spreadActive, pagerPageCount, horizontal)) {
+            is ReaderJumpTarget.Pager -> scope.launch {
                 try {
-                    pagerState.springAnimateToPage(pagerTarget)
+                    pagerState.springAnimateToPage(exit.index)
                 } finally {
                     session.onJumpSettled(target)
                 }
             }
-        } else {
-            val listTarget = planListIndex(target)
-            scope.launch {
+
+            is ReaderJumpTarget.VerticalList -> scope.launch {
                 try {
-                    listState.scrollToItem(listTarget)
+                    listState.scrollToItem(exit.index)
                 } finally {
                     session.onJumpSettled(target)
                 }

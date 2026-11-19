@@ -33,3 +33,31 @@ internal fun planEdgeTurnPagerIndex(currentPage: Int, turn: EdgePageTurn, pagerP
     val target = currentPage + if (turn == EdgePageTurn.Next) 1 else -1
     return clampPagerTarget(target, pagerPageCount)
 }
+
+/**
+ * 跳页出口：横向走 pager 的屏下标，纵向走列表的项下标。
+ *
+ * 两条出口的末尾都必须在 finally 里解冻可见页回写，所以出口类型由纯函数定下，
+ * 编排里只剩一个分派——分支一旦各写一遍，漏掉解冻只是某一种排布失效，真机上很难发现。
+ */
+internal sealed interface ReaderJumpTarget {
+    /** 横向 pager 的 0 基屏下标。 */
+    data class Pager(val index: Int) : ReaderJumpTarget
+
+    /** 纵向长图列表的 0 基项下标。 */
+    data class VerticalList(val index: Int) : ReaderJumpTarget
+}
+
+/** 计划坐标 → 跳页出口。夹取只留在 pager 出口：列表项与页码一一对应，越界页码已由会话夹好。 */
+internal fun planJumpTarget(
+    page: Int,
+    pageCount: Int,
+    spreadActive: Boolean,
+    pagerPageCount: Int,
+    horizontal: Boolean,
+): ReaderJumpTarget = if (horizontal) {
+    ReaderJumpTarget.Pager(planPagerIndex(page, pageCount, spreadActive, pagerPageCount))
+} else {
+    ReaderJumpTarget.VerticalList(planListIndex(page))
+}
+
