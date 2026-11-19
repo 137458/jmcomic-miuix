@@ -34,6 +34,12 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null
           "$SDKMANAGER" "platforms;android-37.0" "build-tools;37.0.0"
 
+      # 只改 :core 时 app 的单测不会暴露 :core 的编译问题；先单独编译一次，让失败点更直接。
+      - name: 编译 core
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:compileKotlin --console=plain
+
       - name: 单元测试
         run: |
           chmod +x gradlew
@@ -48,6 +54,8 @@ jobs:
         with:
           name: test-reports
           path: |
+            core/build/test-results/test/**/*.xml
+            app/build/test-results/testDebugUnitTest/**/*.xml
             core/build/reports/tests
             app/build/reports/tests
-          if-no-files-found: ignore
+          if-no-files-found: error
