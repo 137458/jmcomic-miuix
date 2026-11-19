@@ -6,7 +6,7 @@
 
 - 编写代码前，先核对「决策三问」，再按六章查阅对应红线。
 - 若约束与源码现状冲突，以源码现状为准，并在同一次提交内同步修订本文。
-- 新增约束必须附带真实文件路径与行号；未核实的内容须显式标明「未核实」。
+- 新增约束必须附带真实文件路径与行号；未核实的内容须显式标明「未核实」。行号为写作时快照、会随重构漂移，**符号名与文件路径才是判定依据**；行号对不上时按符号定位并顺手校正。
 
 ## 决策三问
 
@@ -35,7 +35,7 @@
 
 - 同一域内类型禁止在其他位置重复实例化。
 - 屏幕统一经 `ScreenDeps`（`app/src/main/kotlin/com/jm3/app/miuix/ScreenDeps.kt:73`）接收注入依赖，禁止在屏幕内直读 `Jm3Graph.<成员>`。
-- 偏好只读面收窄为 `PagingPreference`（`ScreenDeps.kt:47`）与 `BottomBarPreference`（`:57`），屏幕拿不到 `SettingsDomain` 本体；写偏好只允许经 `selectPaginationMode`（`:166`）、`selectBottomBarSize`（`:178`）、`selectBottomBarForm`（`:187`）、`selectWideScreenNavigation`（`:193`）。写序固定为「比较现值 → 写内存态 → 进程作用域落盘」，落盘唯一出口为私有 `persist`（`:201-207`，内部用 `runCatchingSuspending` 并只记日志）；四个入口里只有 `selectPaginationMode` 在写内存态后额外调 `sessionCache.forgetPages()`（`:170`），因为只有它改变了分页语义，其余三项照抄会白清缓存。屏幕不得自行拼这套顺序。
+- 偏好读面是 `ScreenDeps` 上的四个扁平只读属性 `paginationMode`（`ScreenDeps.kt:118`）、`bottomBarSize`（`:122`）、`bottomBarForm`（`:126`）、`wideScreenNavigation`（`:130`），屏幕拿不到 `SettingsDomain` 本体；写偏好只允许经 `selectPaginationMode`（`:139`）、`selectBottomBarSize`（`:151`）、`selectBottomBarForm`（`:160`）、`selectWideScreenNavigation`（`:166`）。写序固定为「比较现值 → 写内存态 → 进程作用域落盘」，落盘唯一出口为私有 `persist`（`:174`，内部用 `runCatchingSuspending` 并只记日志）；四个入口里只有 `selectPaginationMode` 在写内存态后额外调 `sessionCache.forgetPages()`（`:143`），因为只有它改变了分页语义，其余三项照抄会白清缓存。屏幕不得自行拼这套顺序。
 - 读面按关心点继续切窄：只要线路可观测信息的屏幕用 `routes`（`:95-96`），只要图片域名或相册封面地址的屏幕用 `images`（`:99-100`），两者都由网关对象转发，屏幕不必认识内容方法。
 - `Jm3Graph` 成员仅允许 `Jm3Application`（`Jm3App.kt:150`）、`MainActivity`（`MainActivity.kt:29`、`:54`、`:58`、`:79`）、`DownloadService`（`data/download/DownloadService.kt:95`、`:147`、`:177`、`:184-185`、`:214`）与装配处 `ScreenDeps(...)`（`Jm3App.kt:341-350`）读取，且禁止在读取处写编排逻辑。
 
@@ -44,8 +44,8 @@
 - 唯一长期协程作用域为 `appScope`（`Jm3App.kt:164`，`SupervisorJob() + Dispatchers.IO`）。禁止使用 `GlobalScope`。
 - 现有用途限于装配注入、`ScreenDeps.appScope`、`ApiDomain`（`:29`、`:119`）、`UpdateDomain`（`:16`、`:39`）、`DownloadManager`（`:28`、`:57`、`:62`）、`DownloadService`（`:147`、`:177`、`:184`）、`MainActivity.onStop`（`:79`）、`ReaderScreen` 退出补记页码（`:609`）、`CouiReaderScreen` 退出补记页码（`ui/coui/page/CouiReaderScreen.kt:645`）与设置页偏好写盘（经 `ScreenDeps.select*` 内部的 `persist`，见 `ScreenDeps.kt:201-207`；因退出设置页会取消 `rememberCoroutineScope`，导致内存状态与 DataStore 半途不一致，故须挂载至进程作用域）。新增使用点必须说明为何无法挂载至 `rememberCoroutineScope`。
 - 本仓库不引入 `ViewModel`。屏幕数据状态使用 `remember` 与 `LaunchedEffect` 编排，状态复杂时抽离纯 Kotlin 状态容器（如 `AlbumDetailStateHolder`）。
-- 路由目标只在 `AppRoutes`（`app/src/main/kotlin/com/jm3/app/miuix/ui/route/AppRoutes.kt:15`）拼装：构造只收两个出口 `push`（`:16`，普通压栈）与 `replaceTop`（`:17`，栈顶同层替换），对外是 24 个语义动作（`:19-69`；例 `album` `:46`、`reader` `:49`、`readerAt` `:52`、`nextChapter` 换章替换 `:55`、`search` `:69`）。表在 `Jm3App.kt:490-497` 构造一次（`remember(backStack)`，`push` 实现为 `backStack.add`、`replaceTop` 实现为栈顶赋值）。
-- 屏幕只认识语义动作，不拼 `Route`：屏幕形参统一为 `nav: AppRoutes`（例 `ui/MainScreen.kt:92`、`ui/AlbumDetailScreen.kt:139`、`ui/coui/page/CouiMainScreen.kt:88`），`Jm3NavHost.kt` 的屏幕调用点一律传 `nav = nav`（`Jm3NavHost.kt:89` 起 23 个 `entry`，每个 entry 的两种皮肤各一次调用），`ui/MainScreen.kt:245`、`:250`、`:255`、`:261` 再把同一个 `nav` 转发给四个页签。路由改名、加参数或把二级页改成同层替换只改表内一行，屏幕侧零改动。
+- 路由目标只在 `AppRoutes`（`app/src/main/kotlin/com/jm3/app/miuix/ui/route/AppRoutes.kt:15`）拼装：构造只收两个出口 `push`（`:16`，普通压栈）与 `replaceTop`（`:17`，栈顶同层替换），对外是 24 个语义动作（`:19-69`；例 `album` `:46`、`reader` `:49`、`readerAt` `:52`、`nextChapter` 换章替换 `:55`、`search` `:69`）。表在 `Jm3App.kt:491-497` 构造一次（`remember(backStack)`，`push` 实现为 `backStack.add`、`replaceTop` 实现为栈顶赋值）。
+- 屏幕只认识语义动作，不拼 `Route`：屏幕形参统一为 `nav: AppRoutes`（例 `ui/MainScreen.kt:92`、`ui/AlbumDetailScreen.kt:152`、`ui/coui/page/CouiMainScreen.kt:89`），`Jm3NavHost.kt` 的屏幕调用点一律传 `nav = nav`（`Jm3NavHost.kt:89` 起 23 个 `entry`，每个 entry 的两种皮肤各一次调用），`ui/MainScreen.kt:247`、`:252`、`:257`、`:263` 再把同一个 `nav` 转发给四个页签。路由改名、加参数或把二级页改成同层替换只改表内一行，屏幕侧零改动。
 - 网关调用一律经 `AuthCall.call`（`core/src/main/kotlin/com/jm3/core/session/AuthCall.kt:36`）。禁止在屏幕内自写 `withContext(Dispatchers.IO)` 调网关，禁止跳过启动闸门与统一失效回调。
 
 ### 1.3 持久化与单真源
@@ -87,7 +87,7 @@
 ### 2.2 线路切换与域名来源
 
 - 网关实例切换走 `ApiDomain.gatewayOverride`（`data/ApiDomain.kt:51`，双检读写在 `:59`、`:88`、`:92`）与 `GatewayFactory`（`core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:17`）。域名清洗一律经 `Domains`（`core/src/main/kotlin/com/jm3/core/settings/Domains.kt:6`），禁止在屏幕硬编码 URL。
-- 线路可观测面收在 `DomainRoutes`（`Jm3Gateway.kt:54`）：只暴露 `usedDomain`（`:56`）、`domainsReady`（`:59`）、`domainLatency`（`:62`）与 `reprobeDomains`（`:65`）；网关侧四个 override 只做转发（`:513-519`），生产实现 `LibraryDomainControls`（`:641-662`）直接委托库客户端。屏幕经 `ScreenDeps.routes`（`ScreenDeps.kt:95-96`）读取，现有消费点为 `ui/SettingsScreen.kt:90`、`ui/coui/page/CouiSettingsScreen.kt:150`、`ui/TasksScreen.kt:172`、`ui/coui/page/CouiTasksScreen.kt:135` 与 `ui/CheckInLoadPolicy.kt:457`；禁止为读线路信息而持有整张网关。图片域名与封面地址另走 `ImageAddressing`（`Jm3Gateway.kt:74`，`coverUrl` `:76`、`imageHost` `:79`），屏幕经 `ScreenDeps.images`（`ScreenDeps.kt:99-100`）读取，消费点为 `ui/ShelfScreen.kt:76`、`ui/TasksScreen.kt:170`、`ui/ReaderScreen.kt:204`、`ui/coui/page/CouiShelfScreen.kt:104`、`ui/coui/page/CouiTasksScreen.kt:131` 与 `ui/coui/page/CouiReaderScreen.kt:170`；禁止只为一个封面地址而持有整张网关。
+- 线路可观测面收在 `DomainRoutes`（`Jm3Gateway.kt:54`）：只暴露 `usedDomain`（`:56`）、`domainsReady`（`:59`）、`domainLatency`（`:62`）与 `reprobeDomains`（`:65`）；网关侧四个 override 只做转发（`:513-519`），生产实现 `LibraryDomainControls`（`:641-662`）直接委托库客户端。屏幕经 `ScreenDeps.routes`（`ScreenDeps.kt:72`）读取，现有消费点为 `ui/SettingsScreen.kt`、`ui/coui/page/CouiSettingsScreen.kt`、`ui/TasksScreen.kt`、`ui/coui/page/CouiTasksScreen.kt` 与 `ui/CheckInLoadPolicy.kt`；禁止为读线路信息而持有整张网关。图片域名与封面地址另走 `ImageAddressing`（`Jm3Gateway.kt:74`，`coverUrl` `:76`、`imageHost` `:79`），屏幕经 `ScreenDeps.images`（`ScreenDeps.kt:76`）读取，消费点为 `ui/ShelfScreen.kt`、`ui/TasksScreen.kt`、`ui/ReaderScreen.kt`、`ui/coui/page/CouiShelfScreen.kt`、`ui/coui/page/CouiTasksScreen.kt` 与 `ui/coui/page/CouiReaderScreen.kt`；禁止只为一个封面地址而持有整张网关。
 - 启动期域名仅来自自定义线路与上次刷新落盘的 `DomainPoolCache`。官方线路表在 `DomainTable.kt` 运行时拉取解密；仅当两者皆空（如首次安装）时回退至库内初始化链并在完成后落盘。
 
 ### 2.3 图片缓存与超采样链路
@@ -110,7 +110,7 @@
 2. **单任务失败隔离**：下载 worker 捕获普通异常后仅标记当前任务失败，禁止因单个任务异常中断整个队列循环（`DownloadQueue.kt:159`）。
 3. **状态机硬断言**：非法状态转移使用 `check` 显式抛出，例如 `DownloadTask.kt:48` 的 `check(status.canTransitionTo(next))`，禁止以条件跳过掩盖状态错乱。
 4. **用户错误可重试**：全屏错误态统一复用 `ErrorScreen`（`ui/components/StatusViews.kt`），列表加载脚部统一复用 `LoadMoreFooter`（`ui/components/ListContainers.kt`）。COUI 皮肤对应复用 `CouiErrorGroup`（`ui/coui/component/CouiLoadingStates.kt:65`）与 `CouiLoadMoreFooter`（`:97`）。禁止屏幕自造错误布局。
-5. **跟手动画取消**：阅读器翻页与复位动画统一调用 `springAnimateToPage`（两皮肤共用 `reader/ReaderActions.kt:41` 的手动翻页与 `:64` 的跳页编排），避免另起协程争夺滚动状态；分页器目标页夹取统一经 `clampPagerTarget`（`reader/ReaderPagerTarget.kt:4-5`）。
+5. **跟手动画取消**：阅读器翻页与复位动画统一调用 `springAnimateToPage`（两皮肤共用 `reader/ReaderActions.kt:43` 的手动翻页与 `:59` 的跳页编排），避免另起协程争夺滚动状态；分页器目标页夹取统一经 `clampPagerTarget`（`reader/ReaderPagerTarget.kt:4-5`）。
 6. **文案与日志事实性**：日志只输出任务标识、文件路径或异常类型，不夹带私密数据；用户提示统一使用简体中文与全角标点。
 
 ---
@@ -149,32 +149,32 @@
 
 - **手势状态机**（`reader/ReaderEdgeDrag.kt`、`ui/ReaderZoomLogic.kt`）：
   - 缩放态仅由当前页通过 `isPageZoomed`（`ReaderZoomLogic.kt:13`）回写，翻页后自动复位。
-  - 横向 `HorizontalPager` 挂载 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ui/ReaderPageHost.kt:97`、`ui/coui/page/CouiReaderPageContent.kt:106`），确保放大平移时不触发翻页。
-  - 放大贴边翻页由 `collectHorizontalEdgeDrag`（`reader/ReaderEdgeDrag.kt:18`）在 `PointerEventPass.Initial`（`:27`）采集原始位移，多指直接退出（`:29`），交由 `EdgeDragTracker`（`ReaderZoomLogic.kt:58`）与 `decideEdgePageTurn`（`:23`）判定；松手后等 `EDGE_CONFIRM_DELAY_MS` 复核内容静止（`:40-44`，判定下沉至 `reader/ReaderEdgeConfirm.kt` 的 `edgeDragStillPinned`），通过再经 `ReaderActions.turnPage` 弹性翻页。
-  - 两皮肤逐字重复的阅读器编排收在 `reader` 包：`ReaderActions`（`reader/ReaderActions.kt:19`，`turnPage` `:36`、`goToPage` `:45`、`persistProgress` `:73`）、双页同框单缩放层的 `ReaderSpreadPage`（`reader/ReaderSpreadPage.kt:35`，`rememberZoomableState` `:44`、缩放态判定 `:46`、翻走复位 `:50-52`、排布分支 `when (spreadArrangeFor(...))` `:74-89`）、页码夹取 `ReaderPagerTarget.kt:4-5`。两屏只剩参数接线（`ui/ReaderPageHost.kt:114`、`ui/coui/page/CouiReaderPageContent.kt:123`），禁止把编排再抄回屏幕。
+  - 横向 `HorizontalPager` 挂载 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ui/ReaderPageHost.kt:99`、`ui/coui/page/CouiReaderPageContent.kt:107`），确保放大平移时不触发翻页。
+  - 放大贴边翻页由 `collectHorizontalEdgeDrag`（`reader/ReaderEdgeDrag.kt:18`）在 `PointerEventPass.Initial`（`:27`）采集原始位移，多指直接退出（`:29`），交由 `EdgeDragTracker`（`ReaderZoomLogic.kt:58`）与 `decideEdgePageTurn`（`:23`）判定；松手后等 `EDGE_CONFIRM_DELAY_MS` 复核内容静止（`:40-46`，判定下沉至 `reader/ReaderEdgeConfirm.kt` 的 `edgeDragStillPinned`），通过再经 `ReaderActions.turnPage` 弹性翻页。
+  - 两皮肤逐字重复的阅读器编排收在 `reader` 包：`ReaderActions`（`reader/ReaderActions.kt:19`，`turnPage` `:36`、`goToPage` `:48`、`persistProgress` `:76`）、双页同框单缩放层的 `ReaderSpreadPage`（`reader/ReaderSpreadPage.kt:35`，`rememberZoomableState` `:44`、缩放态判定 `:46`、翻走复位 `:50-52`、排布分支 `when (spreadArrangeFor(...))` `:74-89`）、页码夹取 `ReaderPagerTarget.kt:4-5`。两屏只剩参数接线（`ui/ReaderPageHost.kt:116`、`ui/coui/page/CouiReaderPageContent.kt:124`），禁止把编排再抄回屏幕。
   - 纯常量（`ZOOMED_THRESHOLD = 0.02f`、`EDGE_PAGE_DISTANCE_RATIO = 0.18f`、`CONTENT_PIN_TOLERANCE_PX = 24f`、`EDGE_CONFIRM_DELAY_MS = 120L`、`EDGE_CONFIRM_MOVE_PX = 8f`）集中于 `ReaderZoomLogic.kt:4-49`，禁止散落回 Composable。
 - **比例与解码**（`ui/ReaderPageLogic.kt`、`ui/ReaderImages.kt`）：
   - 布局比例与解码请求尺寸由 `readerPageFrame`（`ReaderPageLogic.kt:108`）同源算出，展示与预取共用同一换算，确保内存缓存键一致。
   - 像素预算派生自 `ReaderImageQuality.STANDARD.maxDecodePixels`（4,000,000 px，`ReaderPreferences.kt:6`），单边上限 `MAX_PAGE_DECODE_EDGE_PX = 8192`（`ReaderPageLogic.kt:33`）。
   - 统一通过 `configureReaderDefaults()`（`ReaderImages.kt:266`）指定 `Bitmap.Config.RGB_565` 解码，4 MP 标准档单页位图内存约 `8 MB`（较 `ARGB_8888` 降低 50%）。
   - 比例回填走 `readerPageBackfill`（`ReaderPageLogic.kt:155`）：`pageRatios` 无条件更新，`decodeRatios` 仅在 `isBoxLimited`（`:126`）为真时回填。
-  - 纵向长图模式不做就地缩放，双击打开全屏缩放覆盖层（`zoomOverlayIndex`，`ui/ReaderPages.kt:129`；COUI 侧 `ui/coui/page/CouiReaderPages.kt:144`）；章节种子仅接受不窄于 `MIN_SEED_ASPECT_RATIO = 0.5f`（`ReaderPageLogic.kt:40`）的常规页比例。
-- **页码与恢复真源**：页码、跳页冻结与可见页回写统一收口于 `ReaderPagePlan`（`core/src/main/kotlin/com/jm3/core/reader/ReaderPagePlan.kt:17`、`jumpTo` `:53`、`settleJump` `:65`、`visiblePage` `:74`）。屏幕侧会话状态收口于 `ReaderSession`（`app/src/main/kotlin/com/jm3/app/miuix/reader/ReaderSession.kt:52`，两皮肤共用：`ui/ReaderPages.kt:122`、`ui/coui/page/CouiReaderPages.kt:137`）：
+  - 纵向长图模式不做就地缩放，双击打开全屏缩放覆盖层（`zoomOverlayIndex`，`ui/ReaderPages.kt:130`；COUI 侧 `ui/coui/page/CouiReaderPages.kt:144`）；章节种子仅接受不窄于 `MIN_SEED_ASPECT_RATIO = 0.5f`（`ReaderPageLogic.kt:40`）的常规页比例。
+- **页码与恢复真源**：页码、跳页冻结与可见页回写统一收口于 `ReaderPagePlan`（`core/src/main/kotlin/com/jm3/core/reader/ReaderPagePlan.kt:17`、`jumpTo` `:53`、`settleJump` `:65`、`visiblePage` `:74`）。屏幕侧会话状态收口于 `ReaderSession`（`app/src/main/kotlin/com/jm3/app/miuix/reader/ReaderSession.kt:52`，两皮肤共用：`ui/ReaderPages.kt:123`、`ui/coui/page/CouiReaderPages.kt:137`）：
   - 恢复时序为三态 `ReaderRestorePhase`（`ReaderSession.kt:15`，`AWAITING_LAYOUT` `:17`、`RESTORING` `:20`、`SETTLED` `:23`），`restore`（`:136`）先读旧进度、再置 `restored` 并开写盘闸门，最后解出目标页 `ReaderRestoreOutcome`（`:32`）。
   - 跳页与预取各自只留一个入口：`requestJump`（`:86`）/ `onJumpSettled`（`:94`）与 `onVisibleIndex`（`:103`）/ `resetPrefetchLedger`（`:114`）。页码语义沿用 `:core` 纯函数，禁止在屏幕复制换算。
 
 ### 5.4 动效、共享元素与大屏窗口
 
 - **封面骨架与微光**：骨架屏仅挂载于 `AlbumCoverImage`（`ui/AlbumHero.kt:385`），外部卡片不再重复套用骨架修饰符。
-- **edge-to-edge 与音量键**：`MainActivity.kt:27` 开启沉浸式，`MainActivity.kt:83-85` 将音量键分发给 `ReaderVolumeKeys`（`ui/ReaderScreen.kt:41`）。长图缩放覆盖层打开时须消费并返回 `false` 屏蔽翻页，销毁时须校验回调归属后再置空。
+- **edge-to-edge 与音量键**：`MainActivity.kt:27` 开启沉浸式，`MainActivity.kt:83-85` 将音量键分发给 `ReaderVolumeKeys`（`ui/ReaderScreen.kt:44`）。长图缩放覆盖层打开时须消费并返回 `false` 屏蔽翻页，销毁时须校验回调归属后再置空。
 - **共享元素飞行**：列表侧挂 `.albumHeroCover`（`AlbumHero.kt:538`）、详情侧挂 `.albumHeroHeader`（`:642`），圆角读取 `LocalSkin.current.shapes.cardCorner`，行卡缩略图 `HERO_THUMB_CORNER_DP = 8f`（`:425`）、角标 `HERO_BADGE_CORNER_DP = 6f`（`:428`）。详情路由转场固定为纯 alpha 渐变（`albumDetailTransitionFor`，`Jm3App.kt:370`），禁止改为水平位移动画。
 - **窗口断点与大屏策略**：窗口尺寸统一读取 `rememberWindowDpSize()`（`ui/AdaptiveLayout.kt:76`），整数断点使用 `Dp.toLayoutDpInt()`（`:83`）向下取整，禁止使用 `Configuration.screenWidthDp`。大屏布局阈值集中于 `WideLayoutPolicy`（`core/src/main/kotlin/com/jm3/core/layout/WideLayoutPolicy.kt:22`）：中屏 `600 dp`（`:25`）、大屏 `840 dp`（`:28`），中屏正文列上限 `720 dp`（`:45`）、大屏正文列上限 `1,120 dp`（`:53`）、详情双栏条件（`:149-151`）、侧栏宽高双条件（`:154-155`）、行卡两列与网格列数均从此处派生。
 
 ### 5.5 玻璃表面与运行时能力门槛
 
-- **能力门槛唯一**：运行时着色器是否可用只问 `isRuntimeShaderSupported`（`app/src/main/kotlin/com/jm3/app/miuix/ui/effect/ShaderCapability.kt:44`，带 `@ChecksSdkIntAtLeast` `:43`），禁止再 import `miuix` 库内同名函数或另写 `SDK_INT` 判断。现有调用点收敛在 `ui/effect/RuntimeShaderCompat.kt:21`、`:35`、`:44`、`ui/effect/BgEffectBackground.kt:37`、`ui/glass/BackdropSupport.kt:21`、`ui/glass/FloatingBottomBar.kt:224`、`:236`、`:447`、`ui/glass/GlassScaffold.kt:135`、`ui/glass/GlassSurface.kt:250`、`ui/glass/Lens.kt:26`、`ui/glass/InteractiveHighlight.kt:55`。纯查询形态 `ShaderCapability`（`:15`）与 `resolveShaderCapability`（`:22`）供需要把「为什么不可用」展示出来的场景使用（`ShaderUnavailableReason` `:9`）。
-- **顶栏玻璃计划唯一**：顶栏磨砂由 `GlassScaffold` 内部渐进模糊承担，不画 `glassSurface`。形态只解析一次：`resolveTopBarGlass`（`ui/glass/TopBarGlass.kt:35`）返回 `TopBarGlass`（`:20`，字段 `:21-24`），`GlassScaffold.kt:132-140` 以它决定模糊层与兜底色，绘制路径不再回查角色表。顶栏 tint 常量 `TOP_BAR_BLUR_TINT_ALPHA = 0.3f`（`TopBarGlass.kt:28`）。
-- **背景采样源**：需要真实内容作模糊源的页面统一调用 `rememberBlurBackdrop()`（`ui/glass/BackdropSupport.kt:20`）并挂 `Modifier.layerBackdropSource`（`:30`），现有页面为 `ui/MainScreen.kt:159`（`:228` 挂采样源）、`ui/LibraryScreens.kt:1011`（创作者页头图，`:1015` 挂采样源，`progressiveTextureBlur` 见 `:1023`）、`ui/ReaderPages.kt:174`（悬浮工具栏，采样源先垫主题底色避免透明区黑边）与 `GlassScaffold.kt:129`（`:198` 挂采样源）。禁止页面各自用 `graphicsLayer` 手搭采样层。
+- **能力门槛唯一**：运行时着色器是否可用只问 `isRuntimeShaderSupported`（`app/src/main/kotlin/com/jm3/app/miuix/ui/effect/ShaderCapability.kt:44`，带 `@ChecksSdkIntAtLeast` `:43`），禁止再 import `miuix` 库内同名函数或另写 `SDK_INT` 判断。现有调用点收敛在 `ui/effect/RuntimeShaderCompat.kt:21`、`:35`、`:44`、`ui/effect/BgEffectBackground.kt:37`、`ui/glass/BackdropSupport.kt:21`、`ui/glass/FloatingBottomBar.kt:224`、`:236`、`:447`、`ui/glass/GlassScaffold.kt:130`、`ui/glass/GlassSurface.kt:253`、`ui/glass/Lens.kt:26`、`ui/glass/InteractiveHighlight.kt:55`。纯查询形态 `ShaderCapability`（`:15`）与 `resolveShaderCapability`（`:22`）供需要把「为什么不可用」展示出来的场景使用（`ShaderUnavailableReason` `:9`）。
+- **顶栏玻璃计划唯一**：顶栏磨砂由 `GlassScaffold` 内部渐进模糊承担，不画 `glassSurface`。形态只解析一次：`resolveTopBarGlass`（`ui/glass/TopBarGlass.kt:35`）返回 `TopBarGlass`（`:20`，字段 `:21-24`），`GlassScaffold.kt:127-135` 以它决定模糊层与兜底色，绘制路径不再回查角色表。顶栏 tint 常量 `TOP_BAR_BLUR_TINT_ALPHA = 0.3f`（`TopBarGlass.kt:28`）。
+- **背景采样源**：需要真实内容作模糊源的页面统一调用 `rememberBlurBackdrop()`（`ui/glass/BackdropSupport.kt:20`）并挂 `Modifier.layerBackdropSource`（`:30`），现有页面为 `ui/MainScreen.kt:159`（`:230` 挂采样源）、`ui/LibraryScreens.kt:1026`（创作者页头图，`:1030` 挂采样源，`progressiveTextureBlur` 见 `:1038`）、`ui/ReaderPages.kt:175`（悬浮工具栏，采样源先垫主题底色避免透明区黑边）与 `GlassScaffold.kt:124`（`:196` 挂采样源）。禁止页面各自用 `graphicsLayer` 手搭采样层。
 
 ---
 
@@ -223,8 +223,8 @@
 
 后续改动若与以下既定决策冲突，必须先更新决策再修改代码，禁止暗中绕过：
 
-1. **阅读器缩放选用 `telephoto`**：使用 `me.saket.telephoto:zoomable-image-coil3:0.19.0`（`gradle/libs.versions.toml:16`、`:30`），以同时获得分块超采样与缩放感知解码，避免放大模糊。
-2. **手势让渡显式关闭翻页拦截**：Miuix `PagerSwipeNode` 在 `Initial` 阶段判消费，而 `telephoto` 在 `Main` 阶段消费。因此横向 `HorizontalPager` 恒挂 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ui/ReaderPageHost.kt:97`、`ui/coui/page/CouiReaderPageContent.kt:106`），防止平移与翻页同时触发。
+1. **阅读器缩放选用 `telephoto`**：使用 `me.saket.telephoto:zoomable-image-coil3:0.19.0`（`gradle/libs.versions.toml:19`、`:33`），以同时获得分块超采样与缩放感知解码，避免放大模糊。
+2. **手势让渡显式关闭翻页拦截**：Miuix `PagerSwipeNode` 在 `Initial` 阶段判消费，而 `telephoto` 在 `Main` 阶段消费。因此横向 `HorizontalPager` 恒挂 `.pagerGestureOverride(pagerState, enabled = !pageZoomed)`（`ui/ReaderPageHost.kt:99`、`ui/coui/page/CouiReaderPageContent.kt:107`），防止平移与翻页同时触发。
 3. **放大贴边翻页采用 `Initial` 旁路**：`telephoto` 越过触摸阈值后会消费全部位移，故在 `ReaderPage` 的 `PointerEventPass.Initial` 阶段采集原始位移并减去内容偏移，松手 `120 ms` 后复核内容静止方判定翻页。
 4. **长图模式禁止就地缩放**：层内缩放会与纵向列表滚动冲突并裁切内容，故双击弹出全屏缩放覆盖层，单击或返回键退出。页框跟随页内真实比例，避免 3:4 强制裁切导致条幅拉伸模糊。
 5. **阅读器图片强制走磁盘快照**：`telephoto` 分块超采样依赖 `FileImageSource` 的 `diskCacheKey`。禁止将内存 `okio.Buffer` 作为常规路径返回；缓存键统一由 `ReaderKeyer.keyOf` 生成。
@@ -243,7 +243,7 @@
 18. **下载状态语义枚举与展示分离**：活动/终态/重排判定直接挂于 `DownloadStatus` 枚举，书架行与通知栏展示形状分别由纯函数 `presentRow` 与 `present` 生成。
 19. **封面三态模型 `Cover`**：`Cover` 区分 `Ready`、`Unready` 与 `None`（分别对应有址、域名未就绪、无封面），`CoverResolver` 与 `coverCacheKeyText` 互逆校验。列表 DTO 现阶段仍透传可空地址。
 20. **反射成员表唯一登记处 `LibraryReflection`**：成员名、所属类、字段/方法形状与参数类型集中为 `members` 表（`LibraryReflection.kt:88-99`），解析、降级与异常包装（`:102`、`:122`、`:129`、`:146`）也在同一处；`ReflectiveLibraryBridge` 与 `CustomDomainPool` 只持句柄，不再各自 `getDeclaredField`。库升级的影响面被压缩成一张 10 行表，单成员缺失只降级不抛异常。
-21. **组装根只做装配、屏幕只见窄面**：`Jm3Graph` 仅负责六大域按序初始化，页面全面通过 `ScreenDeps`（`ScreenDeps.kt:73`）单容器获取依赖；读面按关心点切成 `routes`（`:95`）与 `images`（`:99`），偏好读面收窄为 `PagingPreference` / `BottomBarPreference`，写面只经 `select*`，禁止半注入半全局的混合签名。
+21. **组装根只做装配、屏幕只见窄面**：`Jm3Graph` 仅负责六大域按序初始化，页面全面通过 `ScreenDeps`（`ScreenDeps.kt:73`）单容器获取依赖；读面按关心点切成 `routes`（`:72`）与 `images`（`:76`），偏好读面收窄为四个扁平只读属性，写面只经 `select*`，禁止半注入半全局的混合签名。
 22. **版本号比对出口唯一化**：版本号规范化、解析与等价判断统一使用 `VersionText`（`core/update/VersionText.kt:11`），设置项去空处理明确命名为 `VersionSettingText`（`SettingsRules.kt:59`）。
 23. **下载页落盘原子替换**：`FileDownloadStore` 先写入 `.tmp` 临时文件并加锁执行 `Files.move(..., REPLACE_EXISTING)`，异常时清理 `.tmp`，满足跨平台重下覆盖契约。
 24. **复杂屏幕状态进 Holder**：`AlbumDetailStateHolder` 将详情页复杂状态与交互抽离至纯 Kotlin 容器，确保核心界面业务脱离 Compose 运行时直接测试。
@@ -251,7 +251,7 @@
 26. **跨文件换算单一出口**：比例回填（`readerPageBackfill`）、预取步进（`advancePrefetch`）、版本解析与反射成员等规则均保留唯一纯函数出口，避免双写漂移。
 27. **偏好写入必须连动作带副作用**：`ScreenDeps.select*`（`:166`、`:178`、`:187`、`:193`）把「比较现值 → 内存态 → 进程作用域落盘」封成一个动作，屏幕只表达意图。分页模式是唯一改变分页语义的入口，故只有 `selectPaginationMode` 额外调 `sessionCache.forgetPages()`（`:170`）；其余三项不得照抄。否则每个设置入口都要重抄这套顺序，漏掉该清的 `forgetPages` 就会让旧分页继续渲染。
 28. **加载结局只有一个翻译出口**：`planLoad` + `applyLoadPlan` 承担 `Expired`/`Failed` 分派与 Snackbar 落点（现有 25 个文件消费），屏幕只写差异文案与两处钩子，避免每屏重写「有内容保内容、无内容整屏」的分支。
-29. **阅读器会话状态收进 `ReaderSession`**：两套皮肤共用同一状态机（`ui/ReaderPages.kt:122`、`ui/coui/page/CouiReaderPages.kt:137`），恢复时序、跳页冻结、写盘闸门与预取去重只有一份；页码语义仍引用 `:core` 纯函数，不在状态容器里复制换算。
+29. **阅读器会话状态收进 `ReaderSession`**：两套皮肤共用同一状态机（`ui/ReaderPages.kt:123`、`ui/coui/page/CouiReaderPages.kt:137`），恢复时序、跳页冻结、写盘闸门与预取去重只有一份；页码语义仍引用 `:core` 纯函数，不在状态容器里复制换算。
 30. **运行时能力与顶栏形态各收一处**：着色器能力只问 `isRuntimeShaderSupported`（`ShaderCapability.kt:44`），顶栏玻璃形态只经 `resolveTopBarGlass`（`TopBarGlass.kt:35`）解析一次；否则同一判断散在六个玻璃文件与绘制分支，降级档位会不一致。
 31. **测试替身按被测面收窄、越界即失败**：`:core` 用只实现 6 方法的 `FakeSessionAuth`，`:app` 需要整张网关时用 `FakeGateway`（未配置方法一律 `error`，见 `FakeGateway.kt:60`）。替身不得返回兜底值，也不得用反射代理按方法名分派。
 32. **路由目标集中在 `AppRoutes`、屏幕只表达语义**：`AppRoutes`（`AppRoutes.kt:15`）把 24 个语义动作与 `push` / `replaceTop` 两个出口封在一起，屏幕形参收成 `nav: AppRoutes`；否则 46 个屏幕调用点各自拼 `Route`，改一次路由要扫全仓调用点。语义动作也让「换章是同层替换」这类栈行为只在一处表达（`:55`）。
