@@ -13,7 +13,7 @@
 开始任何功能或重构前，先回答以下三问：
 
 1. **分层归属**：能进 `:core` 的逻辑禁止写进 `:app`；能写成纯函数的判定禁止藏在 Composable 内。`:core` 为纯 JVM 模块（`core/build.gradle.kts:1-4`），严禁引入 Android 类型。
-2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 195 个测试类（`:core` 80 个、`:app` 115 个）。无法测试说明分层有误，须先拆层。
+2. **可测路径**：纯判定、换算、状态机与编解码必须可测。现有全仓共 203 个测试类（`:core` 80 个、`:app` 123 个）。无法测试说明分层有误，须先拆层。
 3. **红线冲击**：核对是否破坏单一网关、单一状态真源、双皮肤组件隔离、阅读器手势优先级及 Release 混淆签名规则。
 
 ---
@@ -109,8 +109,8 @@
 1. **禁止吞掉 `CancellationException`**：参考 `DownloadQueue.kt:156-158` 与 `:220-222`。挂起调用收成 `Result` 时一律使用 `runCatchingSuspending`（`core/src/main/kotlin/com/jm3/core/Cancellation.kt:11`），禁止直接使用 `runCatching { suspendCall() }`。
 2. **单任务失败隔离**：下载 worker 捕获普通异常后仅标记当前任务失败，禁止因单个任务异常中断整个队列循环（`DownloadQueue.kt:159`）。
 3. **状态机硬断言**：非法状态转移使用 `check` 显式抛出，例如 `DownloadTask.kt:48` 的 `check(status.canTransitionTo(next))`，禁止以条件跳过掩盖状态错乱。
-4. **用户错误可重试**：全屏错误态统一复用 `ErrorScreen`（`ui/Common.kt:308`），列表加载脚部统一复用 `LoadMoreFooter`（`:418`）。COUI 皮肤对应复用 `CouiErrorGroup`（`ui/coui/component/CouiLoadingStates.kt:65`）与 `CouiLoadMoreFooter`（`:97`）。禁止屏幕自造错误布局。
-5. **跟手动画取消**：阅读器翻页与复位动画统一调用 `springAnimateToPage`（两皮肤共用 `reader/ReaderActions.kt:36` 的手动翻页与 `:45` 的跳页编排），避免另起协程争夺滚动状态；分页器目标页夹取统一经 `clampPagerTarget`（`reader/ReaderPagerTarget.kt:4-5`）。
+4. **用户错误可重试**：全屏错误态统一复用 `ErrorScreen`（`ui/components/StatusViews.kt`），列表加载脚部统一复用 `LoadMoreFooter`（`ui/components/ListContainers.kt`）。COUI 皮肤对应复用 `CouiErrorGroup`（`ui/coui/component/CouiLoadingStates.kt:65`）与 `CouiLoadMoreFooter`（`:97`）。禁止屏幕自造错误布局。
+5. **跟手动画取消**：阅读器翻页与复位动画统一调用 `springAnimateToPage`（两皮肤共用 `reader/ReaderActions.kt:41` 的手动翻页与 `:64` 的跳页编排），避免另起协程争夺滚动状态；分页器目标页夹取统一经 `clampPagerTarget`（`reader/ReaderPagerTarget.kt:4-5`）。
 6. **文案与日志事实性**：日志只输出任务标识、文件路径或异常类型，不夹带私密数据；用户提示统一使用简体中文与全角标点。
 
 ---
@@ -138,7 +138,7 @@
 
 ### 5.2 公共控件与滚动条
 
-- HyperOS 侧三态与基础组件统一复用 `ui/Common.kt`：`LoadingScreen`（`:294`）、`ErrorScreen`（`:308`）、`EmptyState`（`:368`）、`CenteredEmptyState`（`:388`）、`LoadMoreFooter`（`:418`）、`PagerBar`（`:624`）、`TrackedLazyColumn`（`:512`）、`rememberSelectionHaptic`（`:778`）与 `CoverSkeletonState`（`:873`，配套 `rememberCoverSkeletonState` `:887`、`Modifier.coverSkeleton` `:892`）。
+- HyperOS 侧三态与基础组件统一复用 `ui/components/`：`LoadingScreen`、`ErrorScreen`、`EmptyState`、`CenteredEmptyState` 在 `StatusViews.kt`；`LoadMoreFooter`、`PagerBar`、`TrackedLazyColumn` 在 `ListContainers.kt`；`rememberSelectionHaptic` 与 `CoverSkeletonState`（配套 `rememberCoverSkeletonState`、`Modifier.coverSkeleton`）在 `InteractionModifiers.kt`。
 - 长列表一律使用 `TrackedLazyColumn`，由其内部统一承载 `ListScrollBar` 并共享 `contentPadding`，禁止在页面层自拼滚动条。
 - COUI 侧统一复用 `CouiAppComponents.kt` 中的 `CouiAppScaffold`（`:89`）、`Modifier.couiPressable`（`:180`），以及 `CouiLoadingStates.kt` 中的 `CouiLoadingGroup`（`:35`）、`CouiEmptyGroup`（`:50`）、`CouiErrorGroup`（`:65`）与 `CouiLoadMoreFooter`（`:159`）。COUI 页面由 `CouiAppScaffold` 统一留出底栏净空（默认值取自 `couiPageExtraBottomDp`，见 `ui/coui/component/CouiScreenScaffold.kt:75-76`、`:182-183`），禁止页面硬编码底部占位高度。
 - 底部净空只有一处推导 `ui/BottomSpacing.kt`：底栏 contentPadding 由 `bottomBarContentPaddingDp`（`:41`；`DOCKED` 退回条高 `:46`、`FLOATING` 加底距与呼吸 `:56`）算出，`ui/glass/BottomBarTokens.kt:71-75`、`:121-125` 直接调用它而不写字面量；COUI 页额外净空、首页 FAB 让位、玻璃首页与创作者页让位分别是 `couiPageExtraBottomDp`（`:75`，只认 `hasFab` / `isImeVisible` 两个开关）、`couiHomeExtraBottomDp`（`:85`）、`glassHomeExtraBottomDp`（`:103`）与 `creatorWorkExtraBottomDp`（`:123`）。旧的 `ui/BottomClearance.kt` 与其测试已整体删除，禁止再引入第二套净空公式。
@@ -200,9 +200,9 @@
 
 测试基线以 `build/test-results/**/TEST-*.xml` 为准（最近一次全量执行 `:core:test` 与 `:app:testDebugUnitTest`）：
 
-- **`:core`**：80 个测试类 / 747 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`；同目录另有一个不含 `@Test` 的共用替身 `FakeSessionAuth.kt`）。
-- **`:app`**：104 个测试类 / 733 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`；同目录另有一个不含 `@Test` 的网关替身 `FakeGateway.kt`）。
-- **全仓合计**：184 个测试类 / 1,480 个测试用例，全部通过，0 失败、0 跳过（184 个 `TEST-*.xml` 与 1,480 个 `@Test` 逐一对齐）。
+- **`:core`**：80 个测试类 / 757 个测试用例（位于 `core/src/test/kotlin/com/jm3/core/`；同目录另有一个不含 `@Test` 的共用替身 `FakeSessionAuth.kt`）。
+- **`:app`**：123 个测试类 / 839 个测试用例（位于 `app/src/test/kotlin/com/jm3/app/miuix/`；同目录另有一个不含 `@Test` 的网关替身 `FakeGateway.kt`）。
+- **全仓合计**：203 个测试类 / 1,596 个测试用例，全部通过，0 失败、0 跳过（203 个 `TEST-*.xml` 与 1,596 个 `@Test` 逐一对齐）。
 
 典型纯逻辑边界测试规模：`AccountManagerTest`（39）、`AlbumHeroLogicTest`（31）、`ReaderPageLogicTest`（31）、`CheckInLoadPolicyTest`（30）、`MappersTest`（29）、`ReaderProgressCodecTest`（27）、`AlbumHeroHostTest`（26）、`CouiWorkCardLayoutTest`（26）、`PagedFeedTest`（22）、`ReaderZoomLogicTest`（22）、`DownloadQueueTest`（22）、`PagingBehaviorTest`（21）、`CouiFeedPolicyTest`（21）、`SessionListLoaderTest`（22）、`SessionCacheTest`（15）。
 
@@ -270,7 +270,7 @@
 3. **放大边缘翻页暂不做跟手拖拽**：跟手拖拽需重构 `HorizontalPager` 滚动源，改动面大于当前收益，维持松手判定后弹性翻页方案。
 4. **运行验证缺口**：
    - 已真机验证项：已在小米 15（`targetSdk 36`）实测阅读器缩放与边缘翻页、双击整屏缩放覆盖层、`dataSync` 前台服务与进度通知（含提升型通知分支）。
-   - 未真机验证项：全仓目前主要依赖编译、184 个测试类（1,480 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
+   - 未真机验证项：全仓目前主要依赖编译、203 个测试类（1,596 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）验证。以下路径仍待真机逐项补测：共享元素飞行轨迹与返回落点、封面骨架屏下沉后的转场观感、主界面切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调、窄屏与多折叠窗口下的双栏/列表边界、Android 13+ 通知拒权回退路径、超长条漫真机内存与清晰度实测、Keystore 密钥损毁重建日志路径、真实会话过期后的协议库自动重登链路。
 5. **COUI 皮肤暂不实现下拉刷新**：当前 `COUI-Kit` 未提供下拉刷新容器，COUI 页面刷新入口统一由错误态重试与页面操作按钮承担，不在页面层手拼手势容器。
 6. **小说列表不做分页**：上游小说列表接口一次返回全量数据且无分页参数，屏幕按全量渲染，不强套 `PagedFeed`。
-7. **阅读器共性件的 Compose 编排仍待真机验证**：`reader/ReaderActions.kt`、`reader/ReaderSpreadPage.kt` 与 `reader/ReaderEdgeDrag.kt` 的可判定部分已抽成纯函数——`planJumpPage` / `planPagerIndex` / `planListIndex` / `planEdgeTurnPagerIndex`（`reader/ReaderNavigationLogic.kt`）由 `ReaderNavigationLogicTest`（12 个用例）覆盖，`edgeDragStillPinned`（`reader/ReaderEdgeConfirm.kt`）由 `ReaderEdgeConfirmTest`（3 个用例）覆盖，`spreadArrangeFor`（`reader/ReaderSpreadArrange.kt`）由 `ReaderSpreadArrangeTest`（2 个用例）覆盖，页码夹取 `clampPagerTarget` 另有 `ReaderPagerTargetTest`（4 个用例）。剩余部分只负责调用 `PagerState.springAnimateToPage`、`LazyListState.scrollToItem` 与指针事件采集，依赖 Compose 运行时，须靠真机逐项验证。「读到末页即清进度键」的落盘规则在 `core/src/main/kotlin/com/jm3/core/reader/ReaderProgress.kt` 的 `persistReaderProgress`，由 `ReaderProgressPersistTest`（5 个用例）覆盖。
+7. **阅读器共性件只测得到纯函数部分**：`reader/ReaderActions.kt`、`reader/ReaderSpreadPage.kt` 与 `reader/ReaderEdgeDrag.kt` 由两屏共享，行为依赖 Compose 运行时（`PagerState` / `LazyListState` / 指针事件），编排本身没有测试类。可判定的部分已抽成纯函数并覆盖：`planReaderTurnEntry`（`ReaderTurnEntryTest`，8 例）、`planJumpTarget`（`ReaderJumpTargetTest`，4 例）、`pagerGestureEnabled`（`ReaderGesturePolicyTest`，3 例）、`clampPagerTarget`（`ReaderPagerTargetTest`，4 例）；`ReaderActions` 的冻结与解冻顺序由 `ReaderWiringContractTest`（3 例、源码契约）固定。库里的 `springAnimateToPage` 依赖帧时钟、`pagerGestureOverride` 只能经 Compose 生效，两者仍只能真机验证。其中「读到末页即清进度键」的落盘规则已下沉到 `core/src/main/kotlin/com/jm3/core/reader/ReaderProgress.kt` 的 `persistReaderProgress`，由 `ReaderProgressPersistTest`（5 个用例）覆盖，本项仅剩 Compose 状态编排部分。
