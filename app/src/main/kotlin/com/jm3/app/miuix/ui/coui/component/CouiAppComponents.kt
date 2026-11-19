@@ -17,10 +17,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +59,7 @@ import com.itos.coui.effect.rememberCouiSpotlight
 import com.itos.coui.input.CouiHapticFeedback
 import com.itos.coui.input.performCouiHapticFeedback
 import com.itos.coui.layout.Scaffold
+import com.itos.coui.layout.rememberCouiImeInsets
 import com.itos.coui.motion.couiPressMotion
 import com.itos.coui.motion.rememberCouiPressMotion
 import com.itos.coui.navigation.NavigationBar
@@ -95,9 +96,12 @@ fun CouiAppScaffold(
 ) {
     // 净空值不含系统导航栏 inset，占位也要让出同一条底部安全区
     val barClearance = LocalFloatingBarContentPadding.current
-    // 库 Scaffold 的 windowInsets 只含系统栏，IME 避让按库要求由宿主缩小视口（Scaffold.kt:45）
+    // 库 Scaffold 的 windowInsets 只含系统栏，IME 避让按库要求由宿主缩小视口（Scaffold.kt:45）。
+    // 避让必须带窗口焦点门控：弹窗持有输入焦点时宿主窗口同样读得到 IME 尺寸，
+    // 直接吃会让本页在键盘升起前提前空出整块底部；库的 rememberCouiImeInsets 自带这条判据，
+    // 并把窗口切到 ADJUST_RESIZE + 滚动容器，键盘动画期间按测量期读数收缩视口。
     Scaffold(
-        modifier = modifier.imePadding(),
+        modifier = modifier.windowInsetsPadding(rememberCouiImeInsets()),
         topBar = {
             CompositionLocalProvider(LocalCouiAppBackdrop provides contentBackdrop) {
                 // 顶栏不跟随正文限宽：大屏上返回键与标题贴窗口两边，导航入口不会被推到屏幕中部。

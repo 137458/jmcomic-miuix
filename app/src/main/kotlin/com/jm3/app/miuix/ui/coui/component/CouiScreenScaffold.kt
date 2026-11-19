@@ -7,13 +7,10 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -60,7 +57,6 @@ private val CouiTopBarIconSize = 22.dp
  * @param scrollBehavior 需要按列表滚动范围控制折叠时传入（见 [rememberCouiScreenScrollBehavior]）。
  * @param horizontalPadding 正文左右边距；铺满屏幕的内容（整幅栅格、全出血轮播）传 0.dp。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CouiScreenScaffold(
     title: String,
@@ -74,7 +70,7 @@ fun CouiScreenScaffold(
     horizontalPadding: Dp = 0.dp,
     extraBottom: Dp = couiPageExtraBottomDp(
         hasFab = floatingActionButton != null,
-        isImeVisible = WindowInsets.isImeVisible,
+        imeOccupiesPage = rememberCouiImeOccupiesPage(),
     ).dp,
     content: @Composable (PaddingValues) -> Unit,
 ) {
@@ -172,7 +168,6 @@ fun rememberCouiScreenScrollBehavior(canScroll: () -> Boolean = { true }): CouiT
  * （[CouiWorkCardTokens]）提供。传 null 才保留 Scaffold 自己的左右净空，仅供确实需要 inset 的整页内容使用。
  * @param extraBottom 页面在底栏净空之外补的尾部间隙。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun couiScreenContentPadding(
     scrollBehavior: CouiTopAppBarScrollBehavior,
@@ -180,7 +175,7 @@ fun couiScreenContentPadding(
     horizontalPadding: Dp? = 0.dp,
     extraBottom: Dp = couiPageExtraBottomDp(
         hasFab = false,
-        isImeVisible = WindowInsets.isImeVisible,
+        imeOccupiesPage = rememberCouiImeOccupiesPage(),
     ).dp,
 ): PaddingValues {
     val density = LocalDensity.current

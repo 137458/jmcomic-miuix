@@ -14,14 +14,12 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -135,6 +133,7 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
 import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.rememberCouiImeOccupiesPage
 import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
@@ -430,7 +429,10 @@ private fun CouiAlbumDetailScreenBody(
                 val contentPadding = appBarBehavior.state
                     .contentPadding(innerPadding, density)
                     .couiWithBottomPadding(
-                        couiPageExtraBottomDp(hasFab = false, isImeVisible = WindowInsets.isImeVisible).dp,
+                        couiPageExtraBottomDp(
+                            hasFab = false,
+                            imeOccupiesPage = rememberCouiImeOccupiesPage(),
+                        ).dp,
                     )
                 // 章节树摊平成惰性项：每个组头、每一话各自成项，几百话也只组合可见的十几行
                 val chaptersPlan = remember(

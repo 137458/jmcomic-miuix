@@ -132,7 +132,7 @@
 
 ### 5.1 双皮肤组件边界
 
-- 皮肤组件严格按界面风格分工：HyperOS 使用 `Miuix`，ColorOS 使用 `COUI-Kit`（`io.github.itoseo:coui:0.0.1-alpha10`，`app/build.gradle.kts:108`，入口 `ui/coui/theme/CouiTheme.kt`）。禁止跨皮肤混用页面骨架与卡片组件。
+- 皮肤组件严格按界面风格分工：HyperOS 使用 `Miuix`，ColorOS 使用 `COUI-Kit`（`io.github.itoseo:coui:0.0.1-alpha12`，`app/build.gradle.kts:108`，入口 `ui/coui/theme/CouiTheme.kt`）。禁止跨皮肤混用页面骨架与卡片组件。
 - COUI 页面仅允许从 Miuix 借用图标组合件与 `SnackbarHostState` 等库内缺件，禁止在全仓引入 `androidx.compose.material3`。
 - 两套皮肤的圆角与颜色统一取自 `LocalSkin`（`ui/skin/SkinTokens.kt:201`）：HyperOS 卡片圆角 `16 dp`、控件 `12 dp`（`:63-64`）；ColorOS 卡片圆角 `18 dp`、控件 `14 dp`（`:174-175`）。
 

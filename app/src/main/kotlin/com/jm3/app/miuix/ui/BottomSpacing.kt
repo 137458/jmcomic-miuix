@@ -69,15 +69,18 @@ internal const val COUI_SINGLE_FAB_EXTRA_BOTTOM_DP = 72f
 /**
  * COUI 页面底部额外净空：按有无 FAB 与软键盘态收敛。
  *
- * 有 FAB 固定 72dp；软键盘弹出且没有 FAB 时归零（键盘自己已经让位），
+ * 有 FAB 固定 72dp；键盘真的占用了本页且没有 FAB 时归零（键盘自己已经让位），
  * 其余情况给页面呼吸 24dp。双 FAB 的首页量走 [couiHomeExtraBottomDp]。
+ *
+ * [imeOccupiesPage] 必须来自 `couiImeOccupiesPage`：系统只按窗口上报 IME 尺寸，
+ * 输入弹窗持焦点时宿主窗口同样读得到非零值，直接采信会让页面在键盘升起前提前空出底部。
  */
 internal fun couiPageExtraBottomDp(
     hasFab: Boolean = false,
-    isImeVisible: Boolean = false,
+    imeOccupiesPage: Boolean = false,
 ): Float = when {
     hasFab -> COUI_SINGLE_FAB_EXTRA_BOTTOM_DP
-    isImeVisible -> 0f
+    imeOccupiesPage -> 0f
     else -> COUI_PAGE_BOTTOM_BREATHING_DP
 }
 

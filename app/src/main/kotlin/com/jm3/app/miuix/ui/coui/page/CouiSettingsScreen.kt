@@ -9,13 +9,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -76,6 +74,7 @@ import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiSwitchRow
+import com.jm3.app.miuix.ui.coui.component.rememberCouiImeOccupiesPage
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import top.yukonga.miuix.kmp.basic.Icon
@@ -616,7 +615,10 @@ internal fun CouiSettingsScreen(
                     }
                     Spacer(
                         modifier = Modifier.height(
-                            couiPageExtraBottomDp(hasFab = false, isImeVisible = WindowInsets.isImeVisible).dp,
+                            couiPageExtraBottomDp(
+                            hasFab = false,
+                            imeOccupiesPage = rememberCouiImeOccupiesPage(),
+                        ).dp,
                         ),
                     )
                 }
