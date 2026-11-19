@@ -1184,7 +1184,8 @@ internal fun NovelReaderScreen(
                         fontSize = fontSize.sp,
                         lineHeight = (fontSize * 1.75).sp,
                     )
-                    Spacer(modifier = Modifier.height(96.dp))
+                    // 结尾留白取统一净空推导，正文最后一行才能滚到工具栏与底栏之上
+                    Spacer(modifier = Modifier.height(readerTailClearanceDp().dp))
                 }
             }
         }
