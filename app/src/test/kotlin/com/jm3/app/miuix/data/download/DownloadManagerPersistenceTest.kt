@@ -56,11 +56,30 @@ class DownloadManagerPersistenceTest {
         }
     }
 
-    private class FakeDownloadStore : DownloadStore {
-        override fun exists(photoId: String, index: Int): Boolean = false
-        override fun write(photoId: String, index: Int, bytes: ByteArray) {}
-        override fun delete(photoId: String) {}
-        override fun files(photoId: String): List<Int> = emptyList()
+    /**
+     * 内存文件桩：写入即记账，删除即清账。
+     *
+     * [seeded] 用来摆出"盘上本来就有文件"的样子，[onDelete] 用来记录删除那一刻的现场或抛磁盘错误。
+     */
+    private class FakeDownloadStore(
+        private val seeded: Map<String, List<Int>> = emptyMap(),
+        private val onDelete: (String) -> Unit = {},
+    ) : DownloadStore {
+        private val files = seeded.mapValues { it.value.toMutableSet() }.toMutableMap()
+
+        override fun exists(photoId: String, index: Int): Boolean = files[photoId]?.contains(index) == true
+
+        override fun write(photoId: String, index: Int, bytes: ByteArray) {
+            files.getOrPut(photoId) { mutableSetOf() } += index
+        }
+
+        override fun delete(photoId: String) {
+            onDelete(photoId)
+            files.remove(photoId)
+        }
+
+        override fun files(photoId: String): List<Int> = files[photoId]?.sorted() ?: emptyList()
+
         override fun read(photoId: String, index: Int): ByteArray? = null
     }
 
@@ -418,6 +437,115 @@ class DownloadManagerPersistenceTest {
         advanceUntilIdle()
         assertEquals(1, clearedCount)
         assertNull(store.entries["p2"])
+
+        queue.shutdown()
+        testScope.cancel()
+    }
+
+    @Test
+    fun `删除时先清台账再删文件`() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val store = FakeLedgerStore()
+        store.entries["p1"] = DownloadLedgerEntry(
+            record = DownloadRecord("p1", "a1", "Chap 1", 2, 2, DownloadStatus.DONE, 10L),
+            pagesJson = "PAGES-of-p1",
+        )
+        // 记录删文件那一刻台账里还剩什么：只有「先删台账」才不会留下 DONE 残条
+        val ledgerAtFileDelete = mutableListOf<Set<String>>()
+        val fileStore = FakeDownloadStore(onDelete = { ledgerAtFileDelete += store.entries.keys.toSet() })
+        val queue = DownloadQueue(
+            fetcher = PageFetcher { _, _ -> ByteArray(0) },
+            store = fileStore,
+            resolver = { ResolvedChapter("a1", "Chap 1", 2) },
+            maxConcurrent = 1,
+        )
+        val manager = DownloadManager(
+            queue = queue,
+            fileStore = fileStore,
+            ledger = DownloadLedger(store = store),
+            appScope = testScope,
+        )
+
+        manager.remove("p1")
+
+        assertEquals(
+            listOf(emptySet<String>()),
+            ledgerAtFileDelete,
+            "删文件时台账条目必须已经不在，否则删文件与删台账之间被杀会留下指向空目录的 DONE 记录",
+        )
+        assertNull(store.entries["p1"])
+
+        queue.shutdown()
+        testScope.cancel()
+    }
+
+    @Test
+    fun `删文件失败也要清掉台账记录`() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val store = FakeLedgerStore()
+        store.entries["p1"] = DownloadLedgerEntry(
+            record = DownloadRecord("p1", "a1", "Chap 1", 2, 2, DownloadStatus.DONE, 10L),
+            pagesJson = "PAGES-of-p1",
+        )
+        val fileStore = FakeDownloadStore(onDelete = { throw java.io.IOException("目录被占用") })
+        val queue = DownloadQueue(
+            fetcher = PageFetcher { _, _ -> ByteArray(0) },
+            store = fileStore,
+            resolver = { ResolvedChapter("a1", "Chap 1", 2) },
+            maxConcurrent = 1,
+        )
+        val manager = DownloadManager(
+            queue = queue,
+            fileStore = fileStore,
+            ledger = DownloadLedger(store = store),
+            appScope = testScope,
+        )
+
+        // 删文件是尽力而为：磁盘错误不得把异常抛给点击删除的 UI，也不得把记录留在台账里
+        manager.remove("p1")
+
+        assertNull(store.entries["p1"], "删文件失败后台账记录必须仍然被清掉")
+
+        queue.shutdown()
+        testScope.cancel()
+    }
+
+    @Test
+    fun `启动时清除已完成但文件缺失的台账记录`() = runTest {
+        val testScope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val store = FakeLedgerStore()
+        // orphan：上次删除在「删文件」与「删台账」之间被杀留下的残条
+        store.entries["orphan"] = DownloadLedgerEntry(
+            record = DownloadRecord("orphan", "a1", "Chap 1", 2, 2, DownloadStatus.DONE, 10L),
+            pagesJson = "PAGES-of-orphan",
+        )
+        // kept：文件还在，必须原样保留
+        store.entries["kept"] = DownloadLedgerEntry(
+            record = DownloadRecord("kept", "a2", "Chap 2", 2, 2, DownloadStatus.DONE, 11L),
+            pagesJson = "PAGES-of-kept",
+        )
+        val fileStore = FakeDownloadStore(seeded = mapOf("kept" to listOf(0, 1)))
+        val queue = DownloadQueue(
+            fetcher = PageFetcher { _, _ -> ByteArray(0) },
+            store = fileStore,
+            resolver = { ResolvedChapter("a1", "Chap 1", 2) },
+            maxConcurrent = 1,
+        )
+        // 启动自愈的查目录走 Dispatchers.IO：测试注入同调度器的分发器，否则虚拟时间推不动真实线程
+        val manager = DownloadManager(
+            queue = queue,
+            fileStore = fileStore,
+            ledger = DownloadLedger(store = store),
+            appScope = testScope,
+            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+        )
+
+        manager.ensureStarted()
+        advanceUntilIdle()
+
+        assertNull(store.entries["orphan"], "已完成但文件缺失的记录必须自愈清除，否则界面永远显示已下载却打不开")
+        assertEquals(DownloadStatus.DONE, store.entries["kept"]?.record?.status)
+        assertEquals("PAGES-of-kept", store.entries["kept"]?.pagesJson)
 
         queue.shutdown()
         testScope.cancel()

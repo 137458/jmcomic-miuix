@@ -1,14 +1,18 @@
 package com.jm3.app.miuix.data.download
 
+import com.jm3.core.Jm3Log
 import com.jm3.core.download.DownloadLedger
 import com.jm3.core.download.DownloadLedgerEntry
 import com.jm3.core.download.DownloadQueue
 import com.jm3.core.download.DownloadRecord
+import com.jm3.core.download.DownloadStatus
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.download.DownloadTask
 import com.jm3.core.download.toResumeTask
 import com.jm3.core.runCatchingSuspending
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -29,6 +33,8 @@ class DownloadManager internal constructor(
     private val onEvictPages: (String) -> Unit = {},
     private val onClearPages: () -> Unit = {},
     private val beforeRecordLock: suspend () -> Unit = {},
+    /** 删文件/查目录这类阻塞 IO 的落点；测试注入同调度器的分发器，避免真实线程与虚拟时间打架。 */
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     constructor(
@@ -44,6 +50,7 @@ class DownloadManager internal constructor(
         onEvictPages = {},
         onClearPages = {},
         beforeRecordLock = {},
+        ioDispatcher = Dispatchers.IO,
     )
 
     private val started = AtomicBoolean(false)
@@ -58,6 +65,7 @@ class DownloadManager internal constructor(
             // 恢复中断记录只是台账修复，失败也必须启动 worker；否则整条下载链路永久停摆
             ledgerLock.withLock {
                 runCatchingSuspending { ledger.recoverInterruptedRecords() }
+                runCatchingSuspending { dropOrphanedCompletedRecords() }
             }
             queue.start(appScope)
             queue.updates.collect {
@@ -115,9 +123,12 @@ class DownloadManager internal constructor(
         queue.cancel(photoId)
         ledgerLock.withLock {
             queue.cancel(photoId)
-            withContext(Dispatchers.IO) {
-                fileStore.delete(photoId)
+            withContext(ioDispatcher) {
+                // 顺序不可换：先删台账再删文件。反过来时，两步之间进程被杀会留下「记录 DONE、文件已删」
+                // 的残条，而队列按转移表拒绝复活 DONE，用户会永久卡在一个点开即空的「已下载」条目上；
+                // 当前顺序最坏只是丢掉一份已无人引用的目录，[dropOrphanedCompletedRecords] 还会兜底清理。
                 ledger.delete(photoId)
+                deleteFilesQuietly(photoId)
             }
             onEvictPages(photoId)
         }
@@ -132,13 +143,45 @@ class DownloadManager internal constructor(
             val persistedIds = ledger.all().map { it.photoId }
             val allIds = (memoryIds + currentMemoryIds + persistedIds).distinct()
             allIds.forEach { queue.cancel(it) }
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
+                // 与 [remove] 同序：先清台账再删文件，避免中途被杀后留下打不开的已完成记录。
                 allIds.forEach { photoId ->
-                    fileStore.delete(photoId)
                     ledger.delete(photoId)
+                    deleteFilesQuietly(photoId)
                 }
             }
             onClearPages()
+        }
+    }
+
+    /** 删文件尽力而为：磁盘错误只记日志，不抛给 UI，也不阻断已完成的台账清理。 */
+    private fun deleteFilesQuietly(photoId: String) {
+        try {
+            fileStore.delete(photoId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Jm3Log.warn("Download", "删除下载文件失败（photoId=" + photoId + "），已仅清理台账", e)
+        }
+    }
+
+    /**
+     * 自愈：台账记为已完成、但磁盘上已经没有任何页文件的记录必须清掉。
+     *
+     * 这类残条来自旧版本「先删文件、后删台账」的顺序在两步之间被杀，或外部工具直接删了目录。
+     * 不清掉的话，队列会按转移表拒绝复活 DONE，界面永远显示「已下载」而点开是空的。
+     */
+    private suspend fun dropOrphanedCompletedRecords() {
+        // 先按状态筛：没有完成态记录时不必为查目录切线程，启动路径保持零额外开销。
+        val completed = ledger.all().filter { it.status == DownloadStatus.DONE }
+        if (completed.isEmpty()) return
+        // 查目录是阻塞 IO，与删除动作一样不能占着调用方线程。
+        val orphaned = withContext(ioDispatcher) {
+            completed.filter { fileStore.files(it.photoId).isEmpty() }
+        }
+        for (record in orphaned) {
+            ledger.delete(record.photoId)
+            Jm3Log.warn("Download", "下载记录已完成但文件缺失，已清除残条（photoId=" + record.photoId + "）")
         }
     }
 
