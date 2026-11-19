@@ -4,6 +4,7 @@ import android.graphics.BlendMode
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -22,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,18 +99,34 @@ internal fun rememberCouiReaderBackdrop(diagnosticName: String): CouiBackdrop {
     )
 }
 
-/** 漫画与小说阅读器共用的顶部渐变模糊承托：覆盖状态栏到浮栏下缘，消除内容硬切。 */
+/**
+ * 漫画与小说阅读器共用的顶部渐变模糊承托：覆盖状态栏到浮栏下缘，消除内容硬切。
+ *
+ * 承托层本身参与命中，渐变区的空白处不会再把事件漏给下层页面。因此这里自带点按出口：
+ * 点承托层的非控件区域与点正文一致地收起或唤出工具栏；栏内按钮与页码入口先消费按下，
+ * [detectTapGestures] 只认未被消费的按下事件，不会与它们抢手势。
+ */
 @Composable
 internal fun BoxScope.ReaderTopAppBarSurface(
     visible: Boolean,
     backdrop: CouiBackdrop,
+    onTapChrome: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     if (!visible) return
     val dark = CouiKitTheme.isDark
     val background = CouiKitTheme.colorScheme.background
+    // 回调按最新值读取：调用点每帧新建 lambda，直接当 pointerInput 的 key 会反复重启手势协程
+    val tapChrome by rememberUpdatedState(onTapChrome)
+    val tapModifier = if (onTapChrome != null) {
+        Modifier.pointerInput(Unit) {
+            detectTapGestures(onTap = { tapChrome?.invoke() })
+        }
+    } else {
+        Modifier
+    }
     TopAppBarSurface(
-        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().then(tapModifier),
         backdrop = backdrop,
         fadeHeight = CouiTopAppBarDefaults.fadeHeight,
         bottomExtension = CouiTopAppBarDefaults.bottomExtension,
@@ -423,10 +442,12 @@ internal fun BoxScope.ReaderTopHudBar(
     prevChapter: Chapter?,
     nextChapter: Chapter?,
     onOpenChapter: (String) -> Unit,
+    onToggleChrome: () -> Unit,
 ) {
     ReaderTopAppBarSurface(
         visible = visible,
         backdrop = backdrop,
+        onTapChrome = onToggleChrome,
     ) {
         ReaderHudBar(
             backdrop = backdrop,

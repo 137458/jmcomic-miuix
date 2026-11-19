@@ -451,6 +451,8 @@ private fun CouiNovelReaderContent(
         ReaderTopAppBarSurface(
             visible = topHudVisible,
             backdrop = hudBackdrop,
+            // 顶栏承托层挡住下方正文后，空白区的点按仍要能收起 HUD
+            onTapChrome = { chromeVisible = !chromeVisible },
         ) {
             ReaderHudBar(
                 backdrop = hudBackdrop,

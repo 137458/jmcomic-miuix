@@ -631,6 +631,8 @@ internal fun ReaderPages(
             prevChapter = prevChapter,
             nextChapter = nextChapter,
             onOpenChapter = onOpenChapter,
+            // 顶栏承托层挡住下方页面后，空白区的点按仍要能收起 HUD
+            onToggleChrome = { chromeVisible = !chromeVisible },
         )
 
         // HUD 底栏：等分槽位匹配 CouiCapsuleShape 横向胶囊指示器与触区
