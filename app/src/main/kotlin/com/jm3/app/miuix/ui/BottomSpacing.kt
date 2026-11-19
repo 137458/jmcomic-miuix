@@ -57,6 +57,29 @@ internal fun bottomBarContentPaddingDp(
     }
 }
 
+/** 没有底栏时的净空：宽屏侧栏与不展示底栏的子页面底部没有覆盖层，内容按系统栏收尾即可。 */
+internal const val NO_BOTTOM_BAR_CLEARANCE_DP = 0f
+
+/**
+ * 主框架交给 `LocalFloatingBarContentPadding` 的净空：侧栏模式底部没有底栏，归零；
+ * 底栏模式直接转发 token 净空，调用点不再各写一遍三元判断。
+ */
+internal fun mainBottomBarClearanceDp(useRail: Boolean, contentPaddingDp: Float): Float =
+    if (useRail) NO_BOTTOM_BAR_CLEARANCE_DP else contentPaddingDp
+
+/**
+ * 玻璃脚手架的内容底部净空：系统栏剩余 inset 与底栏净空中较大的一侧，再加内容呼吸。
+ *
+ * 主屏与详情页都经 GlassScaffold 走到这里，呼吸段与 [glassHomeExtraBottomDp] 共用
+ * [GLASS_SCAFFOLD_BREATHING_DP]，不会出现脚手架一套、FAB 一套。
+ */
+internal fun scaffoldBottomPaddingDp(
+    innerBottomDp: Float,
+    systemBarBottomDp: Float,
+    floatingBarContentPaddingDp: Float,
+    breathingDp: Float = GLASS_SCAFFOLD_BREATHING_DP,
+): Float = maxOf(innerBottomDp, systemBarBottomDp) + floatingBarContentPaddingDp + breathingDp
+
 // ── COUI FAB 净空 ──
 
 internal const val COUI_FAB_SIZE_DP = 56f
@@ -117,6 +140,24 @@ internal fun glassHomeExtraBottomDp(
     val scaffoldBottom = floatingBarContentPaddingDp + scaffoldBreathingDp
     return (requiredBottom - scaffoldBottom).coerceAtLeast(0f)
 }
+
+// ── 阅读器尾项净空 ──
+
+/** 阅读器底部工具条净空：胶囊本体 64dp 加上下各 8dp 边距（COUI HUD 底栏就是这个几何）。 */
+internal const val READER_BOTTOM_BAR_CLEARANCE_DP = 80f
+
+/** 阅读器末页之后额外留的呼吸：让末页能完整滚到工具条上方，而不是刚好贴住它。 */
+internal const val READER_TAIL_BREATHING_DP = 16f
+
+/**
+ * 阅读器末页之后的可滚动余量：底部工具条净空 + 尾项呼吸。
+ *
+ * 两套皮肤原先各写一处 96.dp，工具条高度一变就得两处同改且容易漏改一处。
+ */
+internal fun readerTailClearanceDp(
+    barClearanceDp: Float = READER_BOTTOM_BAR_CLEARANCE_DP,
+    tailBreathingDp: Float = READER_TAIL_BREATHING_DP,
+): Float = barClearanceDp + tailBreathingDp
 
 // ── 创作者页浮动工具条 ──
 

@@ -242,8 +242,8 @@ internal fun ReaderVerticalPageList(
                 onTap = onToggleChrome,
             )
         }
-        // 底部悬浮工具栏会遮住最后一页末尾，留出可滚动空间
-        item(key = "toolbar-space") { Spacer(modifier = Modifier.height(96.dp)) }
+        // 底部悬浮工具栏会遮住最后一页末尾，尾项净空与主屏、详情页同源取自 BottomSpacing
+        item(key = "toolbar-space") { Spacer(modifier = Modifier.height(readerTailClearanceDp().dp)) }
     }
     }
 

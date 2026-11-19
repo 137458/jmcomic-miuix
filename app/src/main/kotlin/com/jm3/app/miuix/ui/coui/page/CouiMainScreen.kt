@@ -43,6 +43,7 @@ import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.LocalWideLayout
+import com.jm3.app.miuix.ui.mainBottomBarClearanceDp
 import com.jm3.app.miuix.ui.railAwareWideLayout
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.route.AppRoutes
@@ -63,11 +64,11 @@ private enum class CouiMainTab(val label: String) {
 /**
  * 底栏净空：底栏模式按 token 的净空值让出底部空间，侧栏模式不占底部空间。
  *
- * 这是 [LocalFloatingBarContentPadding] 的唯一来源；玻璃提示条宿主内部会再扣掉自身底边距，
- * 因此这里不能再叠加任何经验常量，否则提示条会被抬两次。
+ * 判定收敛在 [mainBottomBarClearanceDp]，与玻璃皮肤的主框架共用同一推导；玻璃提示条宿主内部
+ * 会再扣掉自身底边距，因此这里不能再叠加任何经验常量，否则提示条会被抬两次。
  */
 internal fun couiBottomBarClearance(useRail: Boolean, tokens: GlassBottomBarTokens): Dp =
-    if (useRail) 0.dp else tokens.contentPadding
+    mainBottomBarClearanceDp(useRail, tokens.contentPadding.value).dp
 
 /**
  * COUI 主框架：只负责皮肤、页签转场与导航容器装配。

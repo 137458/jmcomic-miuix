@@ -157,9 +157,11 @@ internal fun MainScreen(
             )
             // 底栏玻璃采样源：设备不支持 RuntimeShader 时返回 null，底栏自动降级为实色
             val backdrop = rememberBlurBackdrop()
-            // 主框架展示底栏时给列表提供底部净空，内容其余部分穿透底栏持续被采样
+            // 主框架展示底栏时给列表提供底部净空，内容其余部分穿透底栏持续被采样；
+            // 侧栏归零与底栏按 token 让位的判定收敛在 BottomSpacing，主屏与 GlassScaffold 不再各算一套
             CompositionLocalProvider(
-                LocalFloatingBarContentPadding provides if (useRail) 0.dp else barTokens.contentPadding,
+                LocalFloatingBarContentPadding provides
+                    mainBottomBarClearanceDp(useRail, barTokens.contentPadding.value).dp,
                 LocalGlassBottomBarTokens provides barTokens,
                 LocalWideLayout provides contentLayout,
             ) {

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.alignToReadableContent
 import com.jm3.app.miuix.ui.effect.isRuntimeShaderSupported
+import com.jm3.app.miuix.ui.scaffoldBottomPaddingDp
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -95,12 +96,6 @@ private const val TOP_BAR_BLUR_END_FRACTION = 1f
 private val TopBarBlurFadeInDistance = 48.dp
 
 /**
- * 内容底部的隐式呼吸空间。系统导航条 inset 只保证"不被系统遮挡"，末项贴着屏幕底缘仍然拥挤，
- * 因此统一再留一段间距；页面不必各自补 Spacer，子页面与带底栏的主页面因此保持同一收尾节奏。
- */
-private val BottomContentBreathingSpace = 20.dp
-
-/**
  * 玻璃顶栏脚手架：顶栏改为覆盖层，内容穿透到状态栏下方滚动，顶栏实时采样其下方内容，
  * 并随内容滚动折叠成大标题 → 小标题。
  *
@@ -108,7 +103,7 @@ private val BottomContentBreathingSpace = 20.dp
  * 1. 顶栏不再占位，而是作为浮层叠在内容之上；
  * 2. 传给 [content] 的 top 内边距随顶栏折叠实时收缩（等价于顶栏当前高度），调用方需把它作为
  *    滚动容器的 `contentPadding`（而非 `Modifier.padding`），否则内容退到顶栏下方就无法被采样；
- * 3. bottom 内边距额外叠加 [BottomContentBreathingSpace]，末项不会贴到导航条上；
+ * 3. bottom 内边距在系统栏与底栏净空之上再叠加一段呼吸空间，末项不会贴到导航条上；
  * 4. 内容容器挂上折叠行为的嵌套滚动节点，页内任意滚动容器都能驱动顶栏折叠；
  * 5. 顶栏背后的渐变模糊是一个独立图层，随内容滚动淡入，渐变零点落在顶栏下沿，
  *    顶栏内的分类/筛选页签同样处在模糊覆盖范围内。
@@ -166,9 +161,12 @@ fun GlassScaffold(
             },
         ) { innerPadding ->
             // bottom 不含折叠位移，是常量；折叠位移由 CollapsingContentPadding 留到测量期再读。
-            val contentBottomPadding = maxOf(innerPadding.calculateBottomPadding(), systemBarBottom) +
-                floatingBarContentPadding +
-                BottomContentBreathingSpace
+            // 底部净空与主框架底栏净空、FAB 净空共用 BottomSpacing 的同一推导，脚手架不再自带一套呼吸常量
+            val contentBottomPadding = scaffoldBottomPaddingDp(
+                innerBottomDp = innerPadding.calculateBottomPadding().value,
+                systemBarBottomDp = systemBarBottom.value,
+                floatingBarContentPaddingDp = floatingBarContentPadding.value,
+            ).dp
             // 固定实例身份：每次重组都新建 PaddingValues 会让调用侧拿到的参数每次都不相等，
             // 内容子树的测量缓存因此作废，本与折叠无关的重组（主题切换、页面状态刷新）也被放大成整页重新测量。
             val contentPadding = remember(

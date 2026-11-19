@@ -45,6 +45,7 @@ import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.readerPageBackfill
 import com.jm3.app.miuix.ui.readerPageFrame
+import com.jm3.app.miuix.ui.readerTailClearanceDp
 import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.reader.ReaderSpreadPolicy
@@ -235,8 +236,8 @@ internal fun ReaderPageContent(
                     onTap = { onToggleChrome() },
                 )
             }
-            // 底部悬浮工具栏会遮住最后一页末尾，留出可滚动空间
-            item(key = "toolbar-space") { Spacer(modifier = Modifier.height(96.dp)) }
+            // 底部悬浮工具栏会遮住最后一页末尾，尾项净空与主屏、详情页同源取自 BottomSpacing
+            item(key = "toolbar-space") { Spacer(modifier = Modifier.height(readerTailClearanceDp().dp)) }
         }
     }
 
