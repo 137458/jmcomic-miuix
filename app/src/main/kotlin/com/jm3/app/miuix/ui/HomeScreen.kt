@@ -15,21 +15,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -61,22 +55,19 @@ import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.collapsibleSearchScroll
 import com.jm3.app.miuix.ui.glass.rememberCollapsibleSearchState
 import com.jm3.app.miuix.ui.glass.withSpacing
-import com.jm3.app.miuix.ui.list.ListLoadState
-import com.jm3.app.miuix.ui.list.SessionListLoader
-import com.jm3.app.miuix.ui.list.toListState
+import com.jm3.app.miuix.ui.home.HOT_TAG_COLLAPSED
+import com.jm3.app.miuix.ui.home.HomePageJump
+import com.jm3.app.miuix.ui.home.HomePaginationReload
+import com.jm3.app.miuix.ui.home.HomeScaffoldParams
+import com.jm3.app.miuix.ui.home.HomeScrollPolicy
+import com.jm3.app.miuix.ui.home.HomeSearchLoad
+import com.jm3.app.miuix.ui.home.HomeSideLoad
+import com.jm3.app.miuix.ui.home.rememberHomeScaffoldState
 import com.jm3.app.miuix.ui.route.AppRoutes
+import com.jm3.app.miuix.ui.search.searchHeadline
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.albumCodeOf
 import com.jm3.core.model.BrowseOrder
-import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
-import com.jm3.core.model.SearchScope
-import com.jm3.core.toSlice
-import com.jm3.core.paging.PagedFeed
-import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.session.SessionOutcome
-import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -100,19 +91,6 @@ import top.yukonga.miuix.kmp.icon.extended.Weeks
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 连载更新横滑区最多展示的条目数，避免首屏请求体过大。 */
-private const val SERIAL_CAROUSEL_LIMIT = 12
-
-/** 热门标签折叠时展示的标签数。 */
-private const val HOT_TAG_COLLAPSED = 8
-
-/** 搜索 loader 的取数条件：查询词、是否标签检索、排序。loader 只建一次，条件由持有者逐次刷新。 */
-private data class HomeSearchRequest(
-    val query: String,
-    val byTag: Boolean,
-    val order: BrowseOrder,
-)
-
 // 列表三态与会话缓存统一在 SessionCache.kt 定义；loader 快照到页面三态的翻译在 list/ListStateAdapters.kt
 
 /** 首页：固定搜索栏 + 发现流（连载更新/热门标签/随便看看/最新上架）或搜索结果。 */
@@ -122,248 +100,54 @@ internal fun HomeScreen(
     nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
-    var query by rememberSaveable { mutableStateOf("") }
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
-    // 已执行的关键词/标签；空串且未执行时展示发现流，rememberSaveable 保证从详情页返回时保留
-    var activeQuery by rememberSaveable { mutableStateOf("") }
-    var searchByTag by rememberSaveable { mutableStateOf(false) }
-    var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
-    // 列表加载编排（代次/在途标记/翻页游标/失败落点）与缓存读写都收进 loader：首帧有已落定结果就直接渲染
-    val sessionCache = deps.sessionCache
-    var hotTags by remember { mutableStateOf(sessionCache.homeSide.hotTags) }
-    var serialUpdates by remember { mutableStateOf(sessionCache.homeSide.serialUpdates) }
-    var randomPicks by remember { mutableStateOf(sessionCache.homeSide.randomPicks) }
-    var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
-    var showAllTags by rememberSaveable { mutableStateOf(false) }
-    var showSearchHelp by rememberSaveable { mutableStateOf(false) }
     // 下拉阻尼阈值调低：首页内容多，轻拉即可触发刷新
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     // 搜索栏折叠与顶栏折叠各自独立：这里只跟随列表已消费的滚动位移，不改动顶栏行为。
     val searchCollapse = rememberCollapsibleSearchState(listState = listState)
+    // 清焦点与落键盘是 Compose 副作用，只在这里实现；状态机只负责决定「该收起了」
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-
-    val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
-    // 分页模式来自设置域的可观察状态：设置页切换后立即变更控件形态，并触发第一页重载。
-    val mode = deps.paginationMode
-    val clickPaging = mode == PaginationMode.CLICK
-    // 搜索态 = 有活跃关键词 或 缓存里还留着上次结果：后者让从详情页返回时结果先出现
-    var searchActive by remember { mutableStateOf(sessionCache.hasPage(SessionListKey.HomeSearch)) }
-    val searching = activeQuery.isNotBlank() || searchActive
-    // 两个 loader 只在首帧建一次：搜索条件由持有者给，避免按关键词重建 loader 把不同查询串进同一份缓存
-    val searchRequest = remember { mutableStateOf(HomeSearchRequest(activeQuery, searchByTag, order)) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val feedLoader = remember {
-        SessionListLoader<SearchResult>(
-            scope = scope,
-            idOf = { it.id },
-            failureMessage = "加载失败",
-            fetchPage = { page ->
-                val outcome = deps.authCall.call { deps.gateway.latest(page) }
-                when (outcome) {
-                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
-                    SessionOutcome.Expired -> SessionOutcome.Expired
-                    is SessionOutcome.Failed -> outcome
-                }
-            },
-            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            cache = sessionCache,
-            cacheKey = SessionListKey.HomeFeed,
-        )
-    }
-    val searchLoader = remember {
-        SessionListLoader<SearchResult>(
-            scope = scope,
-            idOf = { it.id },
-            failureMessage = "网络错误",
-            fetchPage = { page ->
-                val request = searchRequest.value
-                val outcome = deps.authCall.call {
-                    deps.gateway.search(
-                        request.query,
-                        page,
-                        request.order,
-                        if (request.byTag) SearchScope.TAG else SearchScope.SITE,
-                    )
-                }
-                when (outcome) {
-                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
-                    SessionOutcome.Expired -> SessionOutcome.Expired
-                    is SessionOutcome.Failed -> outcome
-                }
-            },
-            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            cache = sessionCache,
-            cacheKey = SessionListKey.HomeSearch,
-        )
-    }
-    val feedSnapshot by feedLoader.snapshot.collectAsState()
-    val searchSnapshot by searchLoader.snapshot.collectAsState()
-    // 渲染层沿用页面既有的 ListState 四态：列表复用件只吃 feed
-    val feed = feedSnapshot.toListState()
-    val results: ListState? = if (searching) searchSnapshot.toListState() else null
-    val activeSnapshot = if (searching) searchSnapshot else feedSnapshot
-    val refreshing = activeSnapshot.refreshing
-    val activeFeed: PagedFeed<SearchResult>? =
-        if (activeSnapshot.state is ListLoadState.Loaded) activeSnapshot.feed else null
-    var pendingScrollPage by remember { mutableIntStateOf(0) }
-
-    /** 侧栏三份数据一起到达，一起换。 */
-    fun rememberSide(tags: List<String>, updates: List<SearchResult>, picks: List<SearchResult>) {
-        hotTags = tags
-        serialUpdates = updates
-        randomPicks = picks
-        sessionCache.homeSide = HomeSideData(tags, updates, picks)
-    }
-
-    /** 搜索历史读写都在 IO 线程，写入后重新读取，UI 只拿最新快照。 */
-    fun mutateHistory(block: suspend () -> Unit) {
-        scope.launch {
-            searchHistory = mutateSearchHistory(deps.settings, { searchHistory }) { block() }
-        }
-    }
-
-    fun runSearch(text: String, byTag: Boolean, sort: BrowseOrder) {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return
-        activeQuery = trimmed
-        searchByTag = byTag
-        orderValue = sort.apiValue
-        // 请求条件先落到持有者，再让 loader 去取：loader 只认这一份条件
-        searchRequest.value = HomeSearchRequest(trimmed, byTag, sort)
-        searchActive = true
-        // 提交即记录：标签检索与排序切换也会把当前关键词前移。
-        mutateHistory { deps.settings.addSearchHistory(trimmed) }
-        searchLoader.loadFirstPage()
-    }
-
-    fun clearSearch() {
-        query = ""
-        activeQuery = ""
-        searchActive = false
-        sessionCache.forget(SessionListKey.HomeSearch)
-        searchByTag = false
-        // 首屏发现流请求可能被搜索态丢弃；退出搜索时补一次，避免发现流一直停在加载态
-        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
-    }
+    // 状态编排（两个 loader、搜索条件、侧栏与历史、动作口径）全部来自共享骨架；
+    // 这里只保留视觉结构、滚动容器与返回键。
+    val state = rememberHomeScaffoldState(
+        deps = deps,
+        snackbarHostState = snackbarHostState,
+        onDismissInput = {
+            // 只藏键盘不清焦点的话，任何一次状态刷新都会让输入框把键盘再拉回来
+            focusManager.clearFocus()
+            keyboard?.hide()
+        },
+        onOpenAlbum = { albumId -> nav.album(albumId) },
+        params = HomeScaffoldParams(
+            searchLoad = HomeSearchLoad.Sticky,
+            jump = HomePageJump.Clamped,
+            paginationReload = HomePaginationReload.BothLoaders,
+            sideLoad = HomeSideLoad.Sequential,
+            loadRankTrack = false,
+            scrollPolicy = HomeScrollPolicy.ExactPage,
+            searchFailureMessage = "网络错误",
+            feedFailureMessage = "加载失败",
+        ),
+    )
 
     // 处于搜索态时拦截系统返回键，退回主页发现流而非直接退出应用
-    BackHandler(enabled = searching) {
-        clearSearch()
-    }
-
-    /**
-     * 收起搜索输入：清焦点、落键盘、退出展开态。
-     * 只藏键盘不清焦点的话，任何一次状态刷新都会让输入框把键盘再拉回来。
-     */
-    fun dismissSearchInput() {
-        focusManager.clearFocus()
-        keyboard?.hide()
-        searchExpanded = false
-    }
-
-    /** 跳转作品前先收掉搜索入口：焦点不能跟着新页面进栈，否则回来/刷新时键盘会再次弹出。 */
-    fun openAlbum(albumId: String) {
-        dismissSearchInput()
-        nav.album(albumId)
-    }
-
-    fun submitSearch() {
-        val q = query.trim()
-        val code = albumCodeOf(q)
-        when {
-            q.isEmpty() -> Unit
-            // 纯数字默认就是车号，和搜索栏既有的车号直达走同一套判定
-            code != null -> openAlbum(code)
-            else -> runSearch(q, byTag = false, sort = order)
-        }
-    }
-
-    /** 下拉手势保留当前列表，程序化重载整屏换进度条；搜索态与发现流各走自己的 loader。 */
-    fun refresh(byPull: Boolean = false) {
-        val loader = if (searching) searchLoader else feedLoader
-        if (byPull) loader.refresh() else loader.loadFirstPage()
-    }
-
-    /** 失败页重试：整屏换加载态重取第一页。 */
-    fun reload() {
-        if (searching) searchLoader.loadFirstPage() else feedLoader.loadFirstPage()
-    }
-
-    fun loadMore() {
-        if (searching) searchLoader.loadMore() else feedLoader.loadMore()
-    }
-
-    /** 点击分页：用目标页整页替换当前列表，成功后回到列表顶部。 */
-    fun jumpToPage(target: Int) {
-        val loader = if (searching) searchLoader else feedLoader
-        val current = loader.feed
-        val resolved = pagerTargetPage(current.page, target, current.pageCount)
-        if (resolved == current.page) return
-        if (current.pageCount == null && resolved > current.page && !current.hasMore) return
-        pendingScrollPage = resolved
-        loader.goToPage(resolved)
+    BackHandler(enabled = state.searching) {
+        state.clearSearch()
     }
 
     // 换页落地后回顶：目标页在请求前已知，但要等内容真正落地再滚，否则会滚到空列表上
-    LaunchedEffect(activeSnapshot.feed.page, activeSnapshot.state) {
-        val page = pendingScrollPage
-        if (page != 0 && activeSnapshot.state is ListLoadState.Loaded && activeSnapshot.feed.page == page) {
-            pendingScrollPage = 0
-            listState.scrollToItem(0)
-        }
-    }
-
-    // 首屏：最新上架 + 连载更新 + 热门标签 + 随机推荐 + 搜索历史并行加载；若处于搜索态且无缓存结果则自动拉取搜索。
-    LaunchedEffect(deps.gateway, deps.authCall) {
-        // 首帧命中 SessionCache 时 loader 构造即带内容，这里不再补拉，避免先闪一次加载态
-        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
-        // 搜索态可能是恢复出来的（缓存命中则跳过）；确实没有结果时才补一次
-        if (searching && searchLoader.state is ListLoadState.Loading) searchLoader.loadFirstPage()
-        coroutineScope {
-            if (sessionCache.homeSide.isEmpty) {
-                launch {
-                    // 三份侧栏数据都是可降级内容：接口失败或会话失效一律留空，主列表与整屏错误态不受影响。
-                    val tags = deps.authCall.call { deps.gateway.hotTags() }.orDegrade(emptyList())
-                    val picks = deps.authCall.call { deps.gateway.randomRecommend() }.orDegrade(emptyList())
-                    val updates = deps.authCall
-                        .call { deps.gateway.serialization(1) }
-                        .orDegrade<SearchPage?>(null)
-                        ?.items
-                        ?.take(SERIAL_CAROUSEL_LIMIT)
-                        .orEmpty()
-                    // 搜索历史是本地 DataStore，不走网关，因此不进 AuthCall，直接留在 IO 线程读。
-                    val storedHistory = readSearchHistory(deps.settings) { emptyList() }
-                    rememberSide(tags = tags, updates = updates, picks = picks)
-                    searchHistory = storedHistory
-                }
-            } else {
-                launch {
-                    // 同上：本地历史读取与网关无关，仍在 IO 线程读取并保留取消传播。
-                    searchHistory = readSearchHistory(deps.settings) { searchHistory }
-                }
-            }
-        }
-    }
-
-    // 分页模式切换后清掉已追加内容并回到第 1 页重取，避免两种翻页语义混用；非激活列表同步复位。
-    PaginationModeReloadEffect(mode) {
-        if (searching) {
-            searchLoader.loadFirstPage()
-            feedLoader.loadFirstPage()
-        } else {
-            feedLoader.loadFirstPage()
-            searchActive = false
-            sessionCache.forget(SessionListKey.HomeSearch)
-        }
+    LaunchedEffect(state.activeSnapshot.feed.page, state.activeSnapshot.state) {
+        if (state.scrollRequestedAfterLanding()) listState.scrollToItem(0)
     }
 
     // 接近列表尾部时自动加载下一页；点击分页模式下改由页码控件驱动。
-    if (!clickPaging && activeFeed != null) {
-        LoadMoreOnScroll(listState = listState, feed = activeFeed, onLoadMore = ::loadMore)
+    val activeFeed = state.activeFeed
+    if (!state.clickPaging && activeFeed != null) {
+        LoadMoreOnScroll(listState = listState, feed = activeFeed, onLoadMore = state::loadMore)
     }
 
     // 与原版一致：列表滚动后出现悬浮操作（随机一部/回到顶部）
@@ -381,11 +165,6 @@ internal fun HomeScreen(
         16.dp
     } else {
         bottomBarTokens.height + 21.dp
-    }
-
-    fun openRandom() {
-        val candidates = randomPicks.ifEmpty { activeFeed?.items.orEmpty() }
-        candidates.randomOrNull()?.let { openAlbum(it.id) }
     }
 
     val selectionHaptic = rememberSelectionHaptic()
@@ -412,15 +191,12 @@ internal fun HomeScreen(
                         insideMargin = DpSize(16.dp, 0.dp),
                         inputField = {
                             GlassSearchInputField(
-                                query = query,
-                                onQueryChange = {
-                                    query = it
-                                    // 清空输入即退出搜索态，回到发现流
-                                    if (it.isBlank() && searching) clearSearch()
-                                },
-                                onSearch = { submitSearch() },
-                                expanded = searchExpanded,
-                                onExpandedChange = { searchExpanded = it },
+                                query = state.query,
+                                // 清空输入即退出搜索态，回到发现流
+                                onQueryChange = { state.editedInput(it) },
+                                onSearch = { state.submitSearch() },
+                                expanded = state.searchExpanded,
+                                onExpandedChange = { state.searchExpanded = it },
                                 interactionSource = searchCollapse.interactionSource,
                                 label = "搜索 / 车号",
                                 // 自绘尾部动作：保留清空入口，并常驻「?」语法帮助。
@@ -429,12 +205,9 @@ internal fun HomeScreen(
                                         modifier = Modifier.padding(end = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        if (query.isNotEmpty()) {
+                                        if (state.query.isNotEmpty()) {
                                             IconButton(
-                                                onClick = {
-                                                    query = ""
-                                                    if (searching) clearSearch()
-                                                },
+                                                onClick = { state.editedInput("") },
                                                 minWidth = 44.dp,
                                                 minHeight = 44.dp,
                                             ) {
@@ -447,7 +220,7 @@ internal fun HomeScreen(
                                             }
                                         }
                                         IconButton(
-                                            onClick = { showSearchHelp = true },
+                                            onClick = { state.showSearchHelp = true },
                                             minWidth = 44.dp,
                                             minHeight = 44.dp,
                                         ) {
@@ -463,11 +236,11 @@ internal fun HomeScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         },
-                        onExpandedChange = { searchExpanded = it },
+                        onExpandedChange = { state.searchExpanded = it },
                         modifier = Modifier.fillMaxWidth(),
-                        expanded = searchExpanded,
+                        expanded = state.searchExpanded,
                         outsideEndAction = {
-                            IconButton(onClick = ::submitSearch) {
+                            IconButton(onClick = state::submitSearch) {
                                 Icon(
                                     imageVector = MiuixIcons.Search,
                                     contentDescription = "搜索",
@@ -477,14 +250,14 @@ internal fun HomeScreen(
                     ) {}
                 }
                 // 搜索结果排序常驻玻璃顶栏：与内容同处玻璃采样区，列表滚动时背景随之实时更新
-                if (searching) {
+                if (state.searching) {
                     GlassChipRow(
                         tabs = BrowseOrder.entries.map { it.label },
-                        selectedTabIndex = BrowseOrder.entries.indexOf(order),
+                        selectedTabIndex = BrowseOrder.entries.indexOf(state.order),
                         onTabSelected = {
                             BrowseOrder.entries.getOrNull(it)?.let { selected ->
                                 selectionHaptic()
-                                runSearch(activeQuery, searchByTag, selected)
+                                state.runSearch(state.activeQuery, state.searchByTag, selected)
                             }
                         },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -499,7 +272,7 @@ internal fun HomeScreen(
                         GlassFabItem(
                             icon = MiuixIcons.Promotions,
                             contentDescription = "随机看一部",
-                            onClick = ::openRandom,
+                            onClick = state::openRandom,
                         ),
                         GlassFabItem(
                             // 库里没有现成的向上箭头，用标准返回箭头顺时针转 90° 得到有箭杆的「↑」
@@ -527,8 +300,8 @@ internal fun HomeScreen(
         }
         // 列表内容滚到玻璃顶栏（顶栏 + 搜索栏）下方，顶栏才能采样到真实背景
         GlassPullToRefresh(
-            isRefreshing = refreshing,
-            onRefresh = { refresh(byPull = true) },
+            isRefreshing = state.refreshing,
+            onRefresh = state::refresh,
             modifier = Modifier.fillMaxSize(),
             pullToRefreshState = refreshState,
             // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
@@ -542,33 +315,33 @@ internal fun HomeScreen(
                 contentPadding = listContentPadding,
                 modifier = Modifier.fillMaxSize().readableWidth().collapsibleSearchScroll(searchCollapse),
             ) {
-                if (searching) {
+                if (state.searching) {
                     item(key = "search-header") {
                         SearchResultHeader(
-                            query = activeQuery,
-                            byTag = searchByTag,
-                            total = (results as? ListState.Loaded)?.feed?.total ?: 0,
+                            query = state.activeQuery,
+                            byTag = state.searchByTag,
+                            total = (state.results as? ListState.Loaded)?.feed?.total ?: 0,
                         )
                     }
-                    when (val s = results) {
-                        null, is ListState.Loading -> if (!refreshing) {
+                    when (val s = state.results) {
+                        null, is ListState.Loading -> if (!state.refreshing) {
                             item(key = "search-loading") { InlineLoading() }
                         }
                         is ListState.Failed -> item(key = "search-error") {
                             ScreenFailureOrLogin(
                                 message = s.message,
                                 expired = s.sessionExpired,
-                                onRetry = { runSearch(activeQuery, searchByTag, order) },
+                                onRetry = { state.runSearch(state.activeQuery, state.searchByTag, state.order) },
                                 onOpenLogin = nav::login,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
                         is ListState.Loaded -> resultItems(
                             feed = s.feed,
-                            clickPaging = clickPaging,
-                            onLoadMore = ::loadMore,
-                            onPageChange = ::jumpToPage,
-                            onOpenAlbum = { openAlbum(it) },
+                            clickPaging = state.clickPaging,
+                            onLoadMore = state::loadMore,
+                            onPageChange = state::jumpToPage,
+                            onOpenAlbum = { state.openAlbum(it) },
                             columns = feedColumns,
                         )
                     }
@@ -579,46 +352,42 @@ internal fun HomeScreen(
                     item(key = "discovery-header") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             // 仅当搜索框为空且未进入搜索态时展示搜索记录
-                            if (query.isBlank() && searchHistory.isNotEmpty()) {
+                            if (state.query.isBlank() && state.searchHistory.isNotEmpty()) {
                                 SearchHistoryCard(
-                                    history = searchHistory,
+                                    history = state.searchHistory,
                                     onPick = { word ->
-                                        query = word
-                                        runSearch(word, byTag = false, sort = order)
+                                        state.query = word
+                                        state.runSearch(word, byTag = false, sort = state.order)
                                     },
-                                    onRemove = { word ->
-                                        mutateHistory { deps.settings.removeSearchHistory(word) }
-                                    },
-                                    onClear = {
-                                        mutateHistory { deps.settings.clearSearchHistory() }
-                                    },
+                                    onRemove = state::removeHistory,
+                                    onClear = state::clearHistory,
                                 )
                             }
-                            if (serialUpdates.isNotEmpty()) {
+                            if (state.serialUpdates.isNotEmpty()) {
                                 SmallTitle(text = "连载更新")
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    items(serialUpdates, key = { it.id }) { update ->
-                                        SerialUpdateCard(update = update, onClick = { openAlbum(update.id) })
+                                    items(state.serialUpdates, key = { it.id }) { update ->
+                                        SerialUpdateCard(update = update, onClick = { state.openAlbum(update.id) })
                                     }
                                 }
                             }
-                            if (hotTags.isNotEmpty()) {
+                            if (state.hotTags.isNotEmpty()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     SmallTitle(text = "热门标签", modifier = Modifier.weight(1f))
-                                    if (hotTags.size > HOT_TAG_COLLAPSED) {
+                                    if (state.hotTags.size > HOT_TAG_COLLAPSED) {
                                         MinTouchTarget(
-                                            onClick = { showAllTags = !showAllTags },
+                                            onClick = { state.showAllTags = !state.showAllTags },
                                             modifier = Modifier.padding(end = 16.dp),
                                         ) {
                                             TextButton(
-                                                text = if (showAllTags) "收起" else "更多",
-                                                onClick = { showAllTags = !showAllTags },
+                                                text = if (state.showAllTags) "收起" else "更多",
+                                                onClick = { state.showAllTags = !state.showAllTags },
                                                 minWidth = 0.dp,
                                                 minHeight = 36.dp,
                                                 insideMargin = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
@@ -629,48 +398,48 @@ internal fun HomeScreen(
                                 // 卡内 FlowRow 自带 12dp：外缘保持 16dp，标签胶囊与标题同在 28dp
                                 Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                                     HotTagFlow(
-                                        tags = hotTags,
-                                        expanded = showAllTags,
+                                        tags = state.hotTags,
+                                        expanded = state.showAllTags,
                                         onClick = { tag ->
-                                            query = tag
-                                            runSearch(tag, byTag = true, sort = order)
+                                            state.query = tag
+                                            state.runSearch(tag, byTag = true, sort = state.order)
                                         },
                                     )
                                 }
                             }
-                            if (randomPicks.isNotEmpty()) {
+                            if (state.randomPicks.isNotEmpty()) {
                                 SmallTitle(text = "随便看看")
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = SectionHorizontalPadding),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    items(randomPicks, key = { it.id }) { pick ->
-                                        RandomPickCard(pick = pick, onClick = { openAlbum(pick.id) })
+                                    items(state.randomPicks, key = { it.id }) { pick ->
+                                        RandomPickCard(pick = pick, onClick = { state.openAlbum(pick.id) })
                                     }
                                 }
                             }
                         }
                     }
                     item(key = "latest-title") { SmallTitle(text = "最新上架") }
-                    when (val s = feed) {
-                        is ListState.Loading -> if (!refreshing) {
+                    when (val s = state.feed) {
+                        is ListState.Loading -> if (!state.refreshing) {
                             item(key = "feed-loading") { InlineLoading() }
                         }
                         is ListState.Failed -> item(key = "feed-error") {
                             ScreenFailureOrLogin(
                                 message = s.message,
                                 expired = s.sessionExpired,
-                                onRetry = { reload() },
+                                onRetry = state::reload,
                                 onOpenLogin = nav::login,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                             )
                         }
                         is ListState.Loaded -> resultItems(
                             feed = s.feed,
-                            clickPaging = clickPaging,
-                            onLoadMore = ::loadMore,
-                            onPageChange = ::jumpToPage,
-                            onOpenAlbum = { openAlbum(it) },
+                            clickPaging = state.clickPaging,
+                            onLoadMore = state::loadMore,
+                            onPageChange = state::jumpToPage,
+                            onOpenAlbum = { state.openAlbum(it) },
                             columns = feedColumns,
                         )
                     }
@@ -680,12 +449,12 @@ internal fun HomeScreen(
 
         // 原版搜索语法帮助：空格=同时包含，+ 必须包含，- 排除；按钮沿用 HyperOS 纵向全宽惯例。
         OverlayDialog(
-            show = showSearchHelp,
+            show = state.showSearchHelp,
             maxWidth = overlayDialogMaxWidth(),
             title = "搜索语法",
             cornerRadius = skin.shapes.dialogCorner,
             summary = "用空格与 +/- 组合关键词，可缩小搜索范围。",
-            onDismissRequest = { showSearchHelp = false },
+            onDismissRequest = { state.showSearchHelp = false },
         ) {
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 BasicComponent(title = "全彩 人妻", summary = "同时包含这两个关键词（空格分隔）")
@@ -696,7 +465,7 @@ internal fun HomeScreen(
             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 TextButton(
                     text = "知道了",
-                    onClick = { showSearchHelp = false },
+                    onClick = { state.showSearchHelp = false },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -813,7 +582,8 @@ private fun SearchResultHeader(
     total: Int,
 ) {
     Text(
-        text = (if (byTag) "标签：$query" else "“$query”") + if (total > 0) " · 共 $total 结果" else "",
+        // 摘要前缀与 COUI 首页同源：标签检索用「标签：」，关键词检索用引号
+        text = searchHeadline(query, byTag) + if (total > 0) " · 共 $total 结果" else "",
         style = MiuixTheme.textStyles.footnote1,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         modifier = Modifier

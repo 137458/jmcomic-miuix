@@ -25,15 +25,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,9 +51,7 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -70,38 +64,30 @@ import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
 import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiWorkCardShape
-import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
-import com.jm3.app.miuix.ui.planLoad
+import com.jm3.app.miuix.ui.notifications.NOTIFICATION_PREVIEW_UPDATES
+import com.jm3.app.miuix.ui.notifications.NotificationTab
+import com.jm3.app.miuix.ui.notifications.notificationEmptyHint
+import com.jm3.app.miuix.ui.notifications.notificationMarkActionText
+import com.jm3.app.miuix.ui.notifications.notificationTypeLabel
+import com.jm3.app.miuix.ui.notifications.notificationUpdatesToggleText
+import com.jm3.app.miuix.ui.notifications.rememberNotificationsScaffoldState
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.app.miuix.ui.route.AppRoutes
-import com.jm3.core.NOTIFICATION_TYPE_FOLLOW
 import com.jm3.core.model.NotificationBody
 import com.jm3.core.model.NotificationItem
-import com.jm3.core.model.NotificationPage
 import com.jm3.core.notificationBody
 import com.jm3.core.notificationDisplayTitle
-import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.UnreadBadge
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
-/** 展开后最多直接铺开的作品更新条数；再多就让用户手动「展开全部」。 */
-private const val NOTIFICATION_PREVIEW_UPDATES = 2
-
 /** 侧滑露出动作的行程：38dp 的融合动作尺寸再留出标签宽度。 */
 private val NotificationsSwipeReach = 96.dp
-
-/** 信箱的分类档位；[type] 为 null 表示不筛。 */
-private enum class NotificationTab(val label: String, val type: String?) {
-    ALL("全部", null),
-    FOLLOW("追更", NOTIFICATION_TYPE_FOLLOW),
-    NOTICE("站内", "site_notice"),
-}
 
 /**
  * COUI 信箱页：行卡 + 融合滑动，签名与原页面一致。
@@ -117,92 +103,26 @@ internal fun CouiNotificationsScreen(
     unreadBadge: UnreadBadge,
     nav: AppRoutes,
 ) {
-    val scope = rememberCoroutineScope()
-    val user by deps.account.user.collectAsState()
-    var page by remember { mutableStateOf<NotificationPage?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var sessionExpired by remember { mutableStateOf(false) }
-    var refreshing by remember { mutableStateOf(false) }
-    var markingId by remember { mutableStateOf<String?>(null) }
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
-    // 展开态要跨配置变更保留，否则换肤一次就全部收起
-    var expandedIds by rememberSaveable(
-        stateSaver = listSaver<Set<String>, String>(
-            save = { it.toList() },
-            restore = { it.toSet() },
-        ),
-    ) { mutableStateOf(emptySet<String>()) }
-
-    fun syncUnread(items: List<NotificationItem>) {
-        unreadBadge.sync(items.count { !it.read })
-    }
-
-    fun applyPlan(outcome: SessionOutcome<*>) {
-        val plan = planLoad(outcome, hasContent = page != null, failureMessage = "信箱加载失败")
-        if (plan.phase == ScreenLoadPhase.Content) {
-            error = null
-            sessionExpired = false
-            plan.notice?.let { notice -> scope.launch { snackbarHostState.showSnackbar(notice) } }
-        } else {
-            sessionExpired = plan.phase == ScreenLoadPhase.Expired
-            error = plan.message
-        }
-    }
-
-    fun load(showLoading: Boolean = true) {
-        if (showLoading) loading = true
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.notifications() }
-            loading = false
-            refreshing = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    error = null
-                    sessionExpired = false
-                    page = outcome.value
-                    syncUnread(outcome.value.items)
-                }
-                else -> applyPlan(outcome)
-            }
-        }
-    }
-
-    fun toggleRead(item: NotificationItem) {
-        // 单条串行：同一行连点两次会打架，用 markingId 挡住
-        if (markingId != null) return
-        val target = !item.read
-        markingId = item.id
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.markNotification(item.id, target) }
-            markingId = null
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    page = page?.let { current ->
-                        current.copy(
-                            items = current.items.map { existing ->
-                                if (existing.id == item.id) existing.copy(read = target) else existing
-                            },
-                        )
-                    }
-                    page?.let { syncUnread(it.items) }
-                }
-                is SessionOutcome.Expired -> snackbarHostState.showSnackbar(
-                    planLoad(outcome, hasContent = false, failureMessage = "标记失败").message.orEmpty(),
-                )
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "标记失败：" + failureCopy(outcome, CouiStrings.RetryLater),
-                )
-            }
-        }
-    }
-
-    LaunchedEffect(user?.uid) { load() }
+    // 装载、标记已读、未读角标与账号切换都在共享骨架里；本皮肤只留行卡与融合滑动
+    val scaffoldState = rememberNotificationsScaffoldState(
+        deps = deps,
+        snackbarHostState = snackbarHostState,
+        unreadBadge = unreadBadge,
+        guardStaleResponses = false,
+        clearFailureOnKeptContent = true,
+    )
+    val page = scaffoldState.page
+    val loading = scaffoldState.loading
+    val error = scaffoldState.error
+    val sessionExpired = scaffoldState.sessionExpired
+    val refreshing = scaffoldState.refreshing
+    val markingId = scaffoldState.markingId
+    val items = scaffoldState.items
 
     CouiTheme {
         val listStates = remember { List(NotificationTab.entries.size) { LazyListState() } }
         val overscroll = rememberCouiOverscrollEffect()
-        val items = page?.items.orEmpty()
         val clampedTabIndex = tabIndex.coerceIn(0, NotificationTab.entries.lastIndex)
         val scrollBehavior = rememberCouiScreenScrollBehavior {
             val active = listStates[clampedTabIndex]
@@ -213,20 +133,8 @@ internal fun CouiNotificationsScreen(
             pageCount = NotificationTab.entries.size,
             onTabSelected = { if (it != tabIndex) tabIndex = it },
         )
-        val unread = items.count { !it.read }
-        val tabLabels = NotificationTab.entries.map { entry ->
-            val count = if (entry.type == null) {
-                unread
-            } else {
-                items.count { !it.read && it.type == entry.type }
-            }
-            if (count > 0) entry.label + " " + count else entry.label
-        }
-        val subtitle = when {
-            page == null -> ""
-            unread > 0 -> unread.toString() + " 条未读"
-            else -> "全部已读"
-        }
+        val tabLabels = scaffoldState.tabLabels
+        val subtitle = scaffoldState.subtitle
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiScreenScaffold(
@@ -236,12 +144,7 @@ internal fun CouiNotificationsScreen(
                 actions = {
                     CouiFeedRefreshAction(
                         refreshing = refreshing,
-                        onRefresh = {
-                            if (!refreshing) {
-                                refreshing = true
-                                load(showLoading = false)
-                            }
-                        },
+                        onRefresh = scaffoldState::refreshIfIdle,
                     )
                 },
                 topBarBottom = {
@@ -257,7 +160,7 @@ internal fun CouiNotificationsScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) { pageIdx ->
                     val pageTab = NotificationTab.entries[pageIdx]
-                    val pageVisible = items.filter { pageTab.type == null || it.type == pageTab.type }
+                    val pageVisible = scaffoldState.itemsFor(pageTab)
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -284,7 +187,7 @@ internal fun CouiNotificationsScreen(
                             error != null -> item(key = "notif-error") {
                                 CouiErrorGroup(
                                     message = error.orEmpty(),
-                                    onRetry = { loading = true; load() },
+                                    onRetry = { scaffoldState.load() },
                                     modifier = Modifier.padding(top = 8.dp),
                                 )
                             }
@@ -296,7 +199,7 @@ internal fun CouiNotificationsScreen(
                                     )
                                 }
                                 item(key = "notif-empty-hint") {
-                                    Footer(text = emptyHint(pageTab))
+                                    Footer(text = notificationEmptyHint(pageTab))
                                 }
                             }
                             pageVisible.isEmpty() -> {
@@ -306,22 +209,16 @@ internal fun CouiNotificationsScreen(
                                         modifier = Modifier.padding(top = 8.dp),
                                     )
                                 }
-                                item(key = "notif-tab-empty-hint") { Footer(text = emptyHint(pageTab)) }
+                                item(key = "notif-tab-empty-hint") { Footer(text = notificationEmptyHint(pageTab)) }
                             }
                             else -> {
                                 itemsIndexed(pageVisible, key = { _, item -> "notif-" + item.id }) { _, item ->
-                                    val expanded = item.id in expandedIds
+                                    val expanded = scaffoldState.isExpanded(item.id)
                                     CouiSwipeRow(
-                                        startAction = if (item.read) "标记未读" else "标记已读",
+                                        startAction = notificationMarkActionText(marking = false, read = item.read),
                                         endAction = if (expanded) "收起" else "展开",
-                                        onStartAction = { toggleRead(item) },
-                                        onEndAction = {
-                                            expandedIds = if (expanded) {
-                                                expandedIds - item.id
-                                            } else {
-                                                expandedIds + item.id
-                                            }
-                                        },
+                                        onStartAction = { scaffoldState.toggleRead(item) },
+                                        onEndAction = { scaffoldState.toggleExpanded(item.id) },
                                         modifier = Modifier
                                             .padding(horizontal = CouiPageDefaults.horizontalMargin)
                                             .padding(bottom = 8.dp),
@@ -330,14 +227,8 @@ internal fun CouiNotificationsScreen(
                                             item = item,
                                             expanded = expanded,
                                             marking = markingId == item.id,
-                                            onToggleExpanded = {
-                                                expandedIds = if (expanded) {
-                                                    expandedIds - item.id
-                                                } else {
-                                                    expandedIds + item.id
-                                                }
-                                            },
-                                            onToggleRead = { toggleRead(item) },
+                                            onToggleExpanded = { scaffoldState.toggleExpanded(item.id) },
+                                            onToggleRead = { scaffoldState.toggleRead(item) },
                                             onOpenAlbum = nav::album,
                                         )
                                     }
@@ -359,13 +250,6 @@ internal fun CouiNotificationsScreen(
             )
         }
     }
-}
-
-/** 空态说明按档位给具体去处，比统一的「暂无」更能指路。 */
-private fun emptyHint(tab: NotificationTab): String = when (tab) {
-    NotificationTab.NOTICE -> "暂无站内消息"
-    NotificationTab.FOLLOW -> "订阅作品更新后会在这里收到通知"
-    NotificationTab.ALL -> "订阅更新与站内消息都会出现在这里"
 }
 
 /** 单条通知卡：类型/时间一行、标题、正文（作品更新列表或纯文本）、已读动作一行。 */
@@ -394,7 +278,7 @@ private fun NotificationCard(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                text = if (item.type == NOTIFICATION_TYPE_FOLLOW) "漫画追踪通知" else "站内通知",
+                text = notificationTypeLabel(item.type),
                 kind = CouiTextKind.GroupFooter,
                 color = scheme.onSurfaceVariant,
                 maxLines = 1,
@@ -477,7 +361,7 @@ private fun NotificationCard(
                     }
                     if (body.items.size > NOTIFICATION_PREVIEW_UPDATES) {
                         Text(
-                            text = if (expanded) "收起" else "展开全部 " + body.items.size + " 条",
+                            text = notificationUpdatesToggleText(expanded, body.items.size),
                             kind = CouiTextKind.ItemValue,
                             color = scheme.accent,
                         )
@@ -506,11 +390,7 @@ private fun NotificationCard(
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Text(
-                    text = when {
-                        marking -> "处理中…"
-                        item.read -> "标记未读"
-                        else -> "标记已读"
-                    },
+                    text = notificationMarkActionText(marking, item.read),
                     kind = CouiTextKind.GroupFooter,
                     color = if (marking) scheme.onSurfaceVariant else scheme.accent,
                 )

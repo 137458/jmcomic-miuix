@@ -27,13 +27,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,13 +62,8 @@ import com.itos.coui.topappbar.rememberCouiCollapsingAppBarState
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
-import com.jm3.app.miuix.ui.HomeSideData
 import com.jm3.app.miuix.ui.ListState
-import com.jm3.app.miuix.ui.list.ListLoadState
-import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.LocalWideLayout
-import com.jm3.app.miuix.ui.PaginationModeReloadEffect
-import com.jm3.app.miuix.ui.SessionListKey
 import com.jm3.app.miuix.ui.couiHomeExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
@@ -97,33 +88,21 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
-import com.jm3.app.miuix.ui.list.toCouiPageSlice
-import com.jm3.app.miuix.ui.list.toListState
-import com.jm3.app.miuix.ui.mutateSearchHistory
-import com.jm3.app.miuix.ui.orDegrade
-import com.jm3.app.miuix.ui.readSearchHistory
+import com.jm3.app.miuix.ui.home.HOT_TAG_COLLAPSED
+import com.jm3.app.miuix.ui.home.HomePageJump
+import com.jm3.app.miuix.ui.home.HomePaginationReload
+import com.jm3.app.miuix.ui.home.HomeScaffoldParams
+import com.jm3.app.miuix.ui.home.HomeScrollPolicy
+import com.jm3.app.miuix.ui.home.HomeSearchLoad
+import com.jm3.app.miuix.ui.home.HomeSideLoad
+import com.jm3.app.miuix.ui.home.rememberHomeScaffoldState
 import com.jm3.app.miuix.ui.readableWidth
-import com.jm3.core.albumCodeOf
-import com.jm3.core.model.BrowseCategory
-import com.jm3.core.model.BrowseFilter
+import com.jm3.app.miuix.ui.search.searchHeadline
 import com.jm3.core.model.BrowseOrder
-import com.jm3.core.model.BrowseTime
-import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
-import com.jm3.core.model.SearchScope
-import com.jm3.core.paging.PagedFeed
-import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-
-private const val SERIAL_CAROUSEL_LIMIT = 12
-private const val HOT_TAG_COLLAPSED = 8
-
-/** 单条横滑轨道最多铺多少张卡：再多也只是多滑几下，收益低于首屏的组装成本。 */
-private const val TRACK_CARD_LIMIT = 12
 
 private const val HOME_LOAD_MORE_FAILED = "更多内容没有加载成功"
 
@@ -169,246 +148,71 @@ fun CouiHomeScreen(
     onOpenRanking: () -> Unit,
     onOpenLogin: () -> Unit = {},
 ) {
-    // 网关与鉴权统一从 ScreenDeps 取，不额外收同源参数
-    val gateway = deps.gateway
-    val authCall = deps.authCall
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
 
-    var query by rememberSaveable { mutableStateOf("") }
-    var activeQuery by rememberSaveable { mutableStateOf("") }
-    var searchByTag by rememberSaveable { mutableStateOf(false) }
-    var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
-    // 展开态必须由页面持有：CouiSearchBarState.expanded 只读，库只按宿主给的目标做动画
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
-    val sessionCache = deps.sessionCache
-    var hotTags by remember { mutableStateOf(sessionCache.homeSide.hotTags) }
-    var serialUpdates by remember { mutableStateOf(sessionCache.homeSide.serialUpdates) }
-    var randomPicks by remember { mutableStateOf(sessionCache.homeSide.randomPicks) }
-    var rankPicks by remember { mutableStateOf(sessionCache.homeSide.rankPicks) }
-    var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
-    var showAllTags by rememberSaveable { mutableStateOf(false) }
-    var showSearchHelp by rememberSaveable { mutableStateOf(false) }
+    // 状态编排（两个 loader、搜索条件、侧栏与历史、动作口径）全部来自共享骨架，
+    // 本页只留视觉结构、折叠顶栏与滚动容器。COUI 的差异全部走参数：搜索 loader 按条件重建、
+    // 跳页只做合法性校验、分页切换只重载激活列表、侧栏并发取数并多一条榜单轨道。
+    val state = rememberHomeScaffoldState(
+        deps = deps,
+        snackbarHostState = snackbarHostState,
+        onDismissInput = {
+            // 只藏键盘不清焦点的话，任何一次状态刷新都会让输入框把键盘再拉回来
+            focusManager.clearFocus()
+            keyboard?.hide()
+        },
+        onOpenAlbum = onOpenAlbum,
+        params = HomeScaffoldParams(
+            searchLoad = HomeSearchLoad.Rebuilt,
+            jump = HomePageJump.CouiGuarded,
+            paginationReload = HomePaginationReload.ActiveOnly,
+            sideLoad = HomeSideLoad.Parallel,
+            loadRankTrack = true,
+            scrollPolicy = HomeScrollPolicy.AnyLoaded,
+            searchFailureMessage = "网络错误",
+            feedFailureMessage = CouiStrings.LoadFailed,
+        ),
+    )
 
     val lazyState = rememberLazyListState()
     // 折叠顶栏只在列表还能滚的时候才收，短页保持展开
     val header = rememberCouiCollapsingAppBarState(
         canScroll = { lazyState.canScrollForward || lazyState.canScrollBackward },
     )
-    val searchState = rememberCouiSearchBarState(expanded = searchExpanded)
+    // 展开态由状态机持有：CouiSearchBarState.expanded 只读，库只按宿主给的目标做动画
+    val searchState = rememberCouiSearchBarState(expanded = state.searchExpanded)
 
-    val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
-    val mode = deps.paginationMode
-    val clickPaging = mode == PaginationMode.CLICK
-
-    // 加载编排交给共享的 SessionListLoader：首屏 / 下拉刷新 / 翻页 / 跳页 / 失败分派只有一份实现，
-    // 本页只留渲染用的 ListState 与「换页后归顶」这种纯视觉决策。
-    val feedLoader = remember {
-        SessionListLoader(
-            scope = scope,
-            idOf = { item: SearchResult -> item.id },
-            failureMessage = CouiStrings.LoadFailed,
-            fetchPage = { page ->
-                authCall.call { gateway.latest(page) }.toCouiPageSlice()
-            },
-            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            cache = sessionCache,
-            cacheKey = SessionListKey.HomeFeed,
-        )
-    }
-    // 搜索结果按「查询 + 是否标签 + 排序」重建 loader；HomeSearch 键没有查询维度，
-    // 种缓存会让新查询先闪一眼旧结果，故这里只吃内存态，不接缓存。
-    val searchLoader = remember(activeQuery, searchByTag, order) {
-        SessionListLoader(
-            scope = scope,
-            idOf = { item: SearchResult -> item.id },
-            failureMessage = "网络错误",
-            fetchPage = { page ->
-                authCall.call {
-                    gateway.search(
-                        activeQuery,
-                        page,
-                        order,
-                        if (searchByTag) SearchScope.TAG else SearchScope.SITE,
-                    )
-                }.toCouiPageSlice()
-            },
-            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-        )
+    // 处于搜索栏展开或搜索态时拦截系统返回键：先收搜索入口，再退回发现流
+    BackHandler(enabled = state.searchExpanded || state.searching) {
+        state.collapseSearch()
     }
 
-    val feedSnapshot by feedLoader.snapshot.collectAsState()
-    val searchSnapshotAll by searchLoader.snapshot.collectAsState()
-    // 查询为空即首页态：clearSearch 之后结果立即让位，不需要额外的「有没有搜过」标记
-    val searching = activeQuery.isNotEmpty()
-    val searchSnapshot = searchSnapshotAll.takeIf { searching }
-    val feed = feedSnapshot.toListState()
-    val results = searchSnapshot?.toListState()
-    val refreshing = if (searching) searchSnapshotAll.refreshing else feedSnapshot.refreshing
-
-    // 换页后回到顶部：loader 不替页面滚列表，归顶时机仍由本页决定（整页替换落定那一刻）
-    var pendingScrollTop by remember { mutableStateOf(false) }
-
-    fun rememberSide(tags: List<String>, updates: List<SearchResult>, picks: List<SearchResult>) {
-        hotTags = tags
-        serialUpdates = updates
-        randomPicks = picks
-        sessionCache.homeSide = HomeSideData(tags, updates, picks, rankPicks)
-    }
-
-    fun mutateHistory(block: suspend () -> Unit) {
-        scope.launch {
-            searchHistory = mutateSearchHistory(deps.settings, { searchHistory }) { block() }
-        }
-    }
-
-    fun runSearch(text: String, byTag: Boolean, sort: BrowseOrder) {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return
-        // 三个 remember 键一变，searchLoader 就重建并自动拉首屏；重试同一查询要走 loader 的首屏入口
-        activeQuery = trimmed
-        searchByTag = byTag
-        orderValue = sort.apiValue
-        mutateHistory { deps.settings.addSearchHistory(trimmed) }
-    }
-
-    fun clearSearch() {
-        query = ""
-        activeQuery = ""
-        searchByTag = false
-        // 首页流被搜索覆盖期间可能已经换代：回来时若手里没有可用结果，就补一次首屏
-        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
-    }
-
-    fun dismissSearchInput() {
-        focusManager.clearFocus()
-        keyboard?.hide()
-    }
-
-    fun collapseSearch() {
-        searchExpanded = false
-        dismissSearchInput()
-        if (searching) clearSearch()
-    }
-
-    fun openAlbum(albumId: String) {
-        // 跳详情就退出搜索输入态：否则返回首页时顶栏仍是吸顶的搜索形态，
-        // 库侧还会因为 expanded 仍是 true 重新抢焦点、把键盘拉起来
-        searchExpanded = false
-        dismissSearchInput()
-        onOpenAlbum(albumId)
-    }
-
-    fun submitSearch() {
-        val q = query.trim()
-        val code = albumCodeOf(q)
-        when {
-            q.isEmpty() -> Unit
-            code != null -> openAlbum(code)
-            else -> runSearch(q, byTag = false, sort = order)
-        }
-    }
-
-    fun refresh() {
-        if (searching) searchLoader.refresh() else feedLoader.refresh()
-    }
-
-    fun activeFeed(): PagedFeed<SearchResult>? =
-        ((if (searching) results else feed) as? ListState.Loaded)?.feed
-
-    fun loadMore() {
-        if (searching) searchLoader.loadMore() else feedLoader.loadMore()
-    }
-
-    fun jumpToPage(target: Int) {
-        val current = activeFeed() ?: return
-        if (!couiCanJumpFeedPage(current, target)) return
-        pendingScrollTop = true
-        if (searching) searchLoader.goToPage(target) else feedLoader.goToPage(target)
-    }
-
-    fun openRandom() {
-        val candidates = randomPicks.ifEmpty { activeFeed()?.items.orEmpty() }
-        candidates.randomOrNull()?.let { openAlbum(it.id) }
-    }
-
-    BackHandler(enabled = searchExpanded || searching) { collapseSearch() }
-
-    // 命中缓存时种子已是 Loaded：切 tab 回来首帧直接有列表，不退回 Loading 冲掉
-    LaunchedEffect(feedLoader) {
-        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
-    }
-    LaunchedEffect(searchLoader) {
-        if (activeQuery.isNotEmpty()) searchLoader.loadFirstPage()
-    }
-    LaunchedEffect(searchSnapshot?.state, searchSnapshot?.feed?.page, feedSnapshot.state, feedSnapshot.feed.page) {
-        if (!pendingScrollTop) return@LaunchedEffect
-        val target = searchSnapshot ?: feedSnapshot
-        if (target.state !is ListLoadState.Loaded) return@LaunchedEffect
-        pendingScrollTop = false
-        lazyState.scrollToItem(0)
-    }
-    LaunchedEffect(gateway, authCall) {
-        if (sessionCache.homeSide.isEmpty) {
-            // 四份侧栏数据互不依赖，并发取；任何一份失败只退化成空，不拖住首屏发现流
-            coroutineScope {
-                val tags = async { authCall.call { gateway.hotTags() }.orDegrade(emptyList()) }
-                val picks = async { authCall.call { gateway.randomRecommend() }.orDegrade(emptyList()) }
-                val updates = async {
-                    authCall
-                        .call { gateway.serialization(1) }
-                        .orDegrade<SearchPage?>(null)
-                        ?.items
-                        ?.take(SERIAL_CAROUSEL_LIMIT)
-                        .orEmpty()
-                }
-                val history = async { readSearchHistory(deps.settings) { emptyList() } }
-                rememberSide(tags = tags.await(), updates = updates.await(), picks = picks.await())
-                searchHistory = history.await()
-            }
-        } else {
-            searchHistory = readSearchHistory(deps.settings) { searchHistory }
-        }
-    }
-
-    // 榜单轨道单独一次请求：失败就整条轨道不出现（入口是增强项，不能拖住首屏发现流）
-    LaunchedEffect(gateway, authCall) {
-        // 命中缓存就不再请求：切 tab 回来首帧直接有轨道
-        if (sessionCache.homeSide.rankPicks.isNotEmpty()) return@LaunchedEffect
-        val rank = authCall
-            .call {
-                gateway.browse(
-                    BrowseFilter(
-                        category = BrowseCategory.ALL,
-                        order = BrowseOrder.MOST_LIKED,
-                        time = BrowseTime.WEEK,
-                    ),
-                    1,
-                )
-            }
-            .orDegrade<SearchPage?>(null)
-        rankPicks = rank?.items?.take(TRACK_CARD_LIMIT).orEmpty()
-        if (rankPicks.isNotEmpty()) sessionCache.homeSide = sessionCache.homeSide.copy(rankPicks = rankPicks)
-    }
-    PaginationModeReloadEffect(mode) {
-        if (searching) searchLoader.loadFirstPage() else feedLoader.loadFirstPage()
+    // 换页落地后归顶：loader 不替页面滚列表，归顶时机仍由本页决定（整页替换落定那一刻）
+    LaunchedEffect(
+        state.searchSnapshot?.state,
+        state.searchSnapshot?.feed?.page,
+        state.feedSnapshot.state,
+        state.feedSnapshot.feed.page,
+    ) {
+        if (state.scrollRequestedAfterLanding()) lazyState.scrollToItem(0)
     }
     // 轨道条数随数据变化，结果行的起点不能写死：头部一块 + 若干条轨道 + 分组标题
-    val tracks: List<CouiHomeTrackData> = if (searching) {
+    val tracks: List<CouiHomeTrackData> = if (state.searching) {
         emptyList()
     } else {
         buildList {
-            if (serialUpdates.isNotEmpty()) {
-                add(CouiHomeTrackData("serial", "连更追踪", serialUpdates, ranked = false))
+            if (state.serialUpdates.isNotEmpty()) {
+                add(CouiHomeTrackData("serial", "连更追踪", state.serialUpdates, ranked = false))
             }
-            if (randomPicks.isNotEmpty()) {
-                add(CouiHomeTrackData("random", "随机推荐", randomPicks, ranked = false))
+            if (state.randomPicks.isNotEmpty()) {
+                add(CouiHomeTrackData("random", "随机推荐", state.randomPicks, ranked = false))
             }
-            if (rankPicks.isNotEmpty()) {
-                add(CouiHomeTrackData("rank", RANK_TRACK_TITLE, rankPicks, ranked = true))
+            if (state.rankPicks.isNotEmpty()) {
+                add(CouiHomeTrackData("rank", RANK_TRACK_TITLE, state.rankPicks, ranked = true))
             }
         }
     }
@@ -419,12 +223,12 @@ fun CouiHomeScreen(
     // 虚拟化后没有单一滚动位置可读，改看可见项：采集在 CouiFeedPrefetchEffect，
     // 本页只交 feed 与结果行起点；请求幂等仍由 loader 的 canLoadMore 保证。
     CouiFeedPrefetchEffect(
-        feed = activeFeed(),
+        feed = state.activeFeed,
         rowStart = feedRowStart,
         listState = lazyState,
         columns = feedColumns,
-        enabled = !clickPaging,
-        onPrefetch = ::loadMore,
+        enabled = !state.clickPaging,
+        onPrefetch = state::loadMore,
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -440,19 +244,19 @@ fun CouiHomeScreen(
                     searchBar = {
                         SearchBar(
                             state = searchState,
-                            query = query,
+                            query = state.query,
                             onQueryChange = { value ->
-                                query = value
+                                state.query = value
                                 // 清空输入框时退回首页，避免空查询与旧结果同时存在
-                                if (value.isEmpty() && searching) clearSearch()
+                                if (value.isEmpty() && state.searching) state.clearSearch()
                             },
                             onExpandedChange = { expanded ->
-                                if (expanded) searchExpanded = true else collapseSearch()
+                                if (expanded) state.searchExpanded = true else state.collapseSearch()
                             },
                             placeholder = "搜索作品 / 作者 / 标签",
                             cancelText = "取消",
                             clearDescription = "清除搜索内容",
-                            onSearch = { submitSearch() },
+                            onSearch = { state.submitSearch() },
                         )
                     },
                 )
@@ -477,7 +281,7 @@ fun CouiHomeScreen(
                         )
                     }
                     CouiFab(
-                        onClick = { openRandom() },
+                        onClick = state::openRandom,
                     ) {
                         Icon(
                             imageVector = CouiIcons.Shuffle,
@@ -510,7 +314,7 @@ fun CouiHomeScreen(
                         base.calculateBottomPadding() + couiHomeExtraBottomDp().dp
                 }
             }
-            val feedState = if (searching) results else feed
+            val feedState = if (state.searching) state.results else state.feed
             // 大屏按 LocalWideLayout 的断点收窄中栏：readableWidth() 读同一份 readableHorizontalPadding，
             // 页面不再自写宽度常量；窄屏该内衬为 0，行为与旧页一致
             LazyColumn(
@@ -520,27 +324,27 @@ fun CouiHomeScreen(
                 overscrollEffect = rememberCouiOverscrollEffect(),
             ) {
                 item(key = "coui-home-head") {
-                    if (searching) {
+                    if (state.searching) {
                         CouiSearchHeader(
                             sortLabels = SortLabels,
-                            selectedSort = order.ordinal.coerceIn(0, SortLabels.lastIndex),
+                            selectedSort = state.order.ordinal.coerceIn(0, SortLabels.lastIndex),
                             onSelectSort = { index ->
-                                runSearch(activeQuery, searchByTag, BrowseOrder.entries[index])
+                                state.runSearch(state.activeQuery, state.searchByTag, BrowseOrder.entries[index])
                             },
                             summary = searchSummary(
-                                query = activeQuery,
-                                byTag = searchByTag,
-                                total = (results as? ListState.Loaded)?.feed?.total,
+                                query = state.activeQuery,
+                                byTag = state.searchByTag,
+                                total = (state.results as? ListState.Loaded)?.feed?.total,
                             ),
                         )
                     } else {
                         CouiTagRow(
-                            tags = hotTags,
-                            expanded = showAllTags,
-                            onToggleExpanded = { showAllTags = !showAllTags },
+                            tags = state.hotTags,
+                            expanded = state.showAllTags,
+                            onToggleExpanded = { state.showAllTags = !state.showAllTags },
                             onPick = { tag ->
-                                query = tag
-                                runSearch(tag, byTag = true, sort = order)
+                                state.query = tag
+                                state.runSearch(tag, byTag = true, sort = state.order)
                             },
                         )
                     }
@@ -550,7 +354,7 @@ fun CouiHomeScreen(
                     item(key = "coui-home-track-${track.key}") {
                         CouiHomeTrackSection(
                             track = track,
-                            onOpenAlbum = ::openAlbum,
+                            onOpenAlbum = state::openAlbum,
                             // 进榜入口只挂在排名轨道：其余轨道不摆一个没有去处的按钮
                             onOpenRanking = if (track.ranked) onOpenRanking else null,
                         )
@@ -558,21 +362,21 @@ fun CouiHomeScreen(
                 }
                 item(key = "coui-home-title") {
                     CouiGroupTitle(
-                        title = if (searching) "搜索结果" else "最近更新",
+                        title = if (state.searching) "搜索结果" else "最近更新",
                         actions = {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                if (!searching) {
+                                if (!state.searching) {
                                     CouiHeaderCapsuleAction(text = "每周必看", onClick = onOpenWeek)
                                 }
                                 CouiHeaderCapsuleAction(
                                     text = "帮助",
                                     tinted = false,
-                                    onClick = { showSearchHelp = true },
+                                    onClick = { state.showSearchHelp = true },
                                 )
-                                CouiFeedRefreshAction(refreshing = refreshing, onRefresh = { refresh() })
+                                CouiFeedRefreshAction(refreshing = state.refreshing, onRefresh = state::refresh)
                             }
                         },
                     )
@@ -580,18 +384,16 @@ fun CouiHomeScreen(
                 when (val current = feedState) {
                     null, is ListState.Loading -> item(key = "coui-home-loading") {
                         CouiLoadingGroup(
-                            text = if (searching) "正在搜索…" else "正在加载最新上架…",
+                            text = if (state.searching) "正在搜索…" else "正在加载最新上架…",
                         )
                     }
 
                     is ListState.Failed -> item(key = "coui-home-error") {
-                        val failureMessage = current.message.ifBlank { if (searching) "搜索失败" else CouiStrings.LoadFailed }
+                        val failureMessage = current.message.ifBlank { if (state.searching) "搜索失败" else CouiStrings.LoadFailed }
                         CouiScreenFailureGroup(
                             message = failureMessage,
                             expired = current.sessionExpired,
-                            onRetry = {
-                                if (searching) searchLoader.loadFirstPage() else feedLoader.loadFirstPage()
-                            },
+                            onRetry = state::reload,
                             onOpenLogin = onOpenLogin,
                         )
                     }
@@ -602,12 +404,12 @@ fun CouiHomeScreen(
                         if (items.isEmpty()) {
                             item(key = "coui-home-empty") {
                                 CouiEmptyGroup(
-                                    text = if (searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent,
+                                    text = if (state.searching) CouiStrings.EmptySearch else CouiStrings.EmptyContent,
                                 )
                             }
                             item(key = "coui-home-empty-hint") {
                                 Footer(
-                                    text = if (searching) {
+                                    text = if (state.searching) {
                                         "换个关键词或标签再试"
                                     } else {
                                         "点右上角刷新再试一次"
@@ -633,27 +435,27 @@ fun CouiHomeScreen(
                                             top = if (index == 0) 0.dp else CouiWorkCardTokens.RowSpacing,
                                         ),
                                 ) {
-                                    CouiWorkFeedRow(album = album, onClick = { openAlbum(album.id) })
+                                    CouiWorkFeedRow(album = album, onClick = { state.openAlbum(album.id) })
                                 }
                             }
                             item(key = "coui-home-paging") {
-                                if (clickPaging) {
+                                if (state.clickPaging) {
                                     CouiPagingGroup(
                                         page = loadedFeed.page,
                                         pageCount = loadedFeed.pageCount,
                                         hasMore = loadedFeed.hasMore,
-                                        onJumpPage = ::jumpToPage,
+                                        onJumpPage = state::jumpToPage,
                                     )
                                 } else {
                                     CouiLoadMoreFooter(
                                         loading = loadedFeed.loadingMore,
                                         error = if (loadedFeed.loadMoreFailed) {
-                                            if (searching) SEARCH_LOAD_MORE_FAILED else HOME_LOAD_MORE_FAILED
+                                            if (state.searching) SEARCH_LOAD_MORE_FAILED else HOME_LOAD_MORE_FAILED
                                         } else {
                                             null
                                         },
                                         endReached = !loadedFeed.hasMore,
-                                        onRetry = { loadMore() },
+                                        onRetry = state::loadMore,
                                     )
                                 }
                             }
@@ -661,22 +463,22 @@ fun CouiHomeScreen(
                     }
                 }
                 // 搜索历史与更多入口只在首页态出现，搜索结果下保持与旧页一致的清爽
-                if (!searching) {
+                if (!state.searching) {
                     item(key = "coui-home-history") {
                         Group(
                             title = "首页发现",
                             headerActions = {
-                                if (searchHistory.isNotEmpty()) {
+                                if (state.searchHistory.isNotEmpty()) {
                                     CouiHeaderTextAction(text = "清除") {
-                                        mutateHistory { deps.settings.clearSearchHistory() }
+                                        state.clearHistory()
                                     }
                                 }
                             },
                         ) {
-                            if (searchHistory.isEmpty()) {
+                            if (state.searchHistory.isEmpty()) {
                                 CouiMessageRow(title = "还没有搜索记录", summary = "搜索或点热词后，关键词会留在这里")
                             } else {
-                                searchHistory.forEachIndexed { index, word ->
+                                state.searchHistory.forEachIndexed { index, word ->
                                     if (index > 0) Divider()
                                     Item(
                                         title = {
@@ -694,14 +496,12 @@ fun CouiHomeScreen(
                                             CouiRowIconAction(
                                                 icon = CouiIcons.Close,
                                                 description = "删除这条搜索记录",
-                                                onClick = {
-                                                    mutateHistory { deps.settings.removeSearchHistory(word) }
-                                                },
+                                                onClick = { state.removeHistory(word) },
                                             )
                                         },
                                         onClick = {
-                                            query = word
-                                            runSearch(word, byTag = false, sort = order)
+                                            state.query = word
+                                            state.runSearch(word, byTag = false, sort = state.order)
                                         },
                                     )
                                 }
@@ -716,7 +516,7 @@ fun CouiHomeScreen(
                             title = { Text(text = "每周必看", kind = CouiTextKind.ItemTitle) },
                             summary = { Text(text = "按周汇总的连载更新", kind = CouiTextKind.ItemSummary) },
                             onClick = {
-                                dismissSearchInput()
+                                state.dismissSearchInput()
                                 onOpenWeek()
                             },
                         )
@@ -725,7 +525,7 @@ fun CouiHomeScreen(
                             icon = { CouiAccentIcon(CouiIcons.Info) },
                             title = { Text(text = "搜索语法", kind = CouiTextKind.ItemTitle) },
                             summary = { Text(text = "空格 / + / - 组合关键词", kind = CouiTextKind.ItemSummary) },
-                            onClick = { showSearchHelp = true },
+                            onClick = { state.showSearchHelp = true },
                         )
                     }
                 }
@@ -733,11 +533,11 @@ fun CouiHomeScreen(
         }
 
         Dialog(
-            onDismissRequest = { showSearchHelp = false },
+            onDismissRequest = { state.showSearchHelp = false },
             material = couiDialogMaterial(),
             // visible 非空时退场窗口由库持有；外层 if 会在关闭瞬间把弹窗抽走，动画来不及播
-            visible = showSearchHelp,
-            confirmAction = CouiDialogAction(text = "知道了", onClick = { showSearchHelp = false }),
+            visible = state.showSearchHelp,
+            confirmAction = CouiDialogAction(text = "知道了", onClick = { state.showSearchHelp = false }),
             title = "搜索语法",
             message = "空格、加号与减号决定关键词之间的关系。",
         ) {
@@ -969,6 +769,6 @@ private fun CouiSyntaxRow(expression: String, meaning: String) {
 
 /** 搜索摘要：标签搜索要标明是标签，结果总数只在服务端给出时显示。 */
 internal fun searchSummary(query: String, byTag: Boolean, total: Int?): String {
-    val head = if (byTag) "标签：$query" else "“$query”"
+    val head = searchHeadline(query, byTag)
     return if (total != null && total > 0) "$head · 共 $total 个结果" else head
 }

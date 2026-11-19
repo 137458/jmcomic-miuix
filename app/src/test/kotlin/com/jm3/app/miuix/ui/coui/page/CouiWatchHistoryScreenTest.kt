@@ -2,6 +2,7 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import com.jm3.app.miuix.ui.watchhistory.toWatchSlice
 import com.jm3.core.model.SearchResult
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.session.SessionOutcome

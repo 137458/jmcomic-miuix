@@ -74,16 +74,14 @@ import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.BrowseMode
-import com.jm3.app.miuix.ui.BrowsePageKey
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ListState
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
-import com.jm3.app.miuix.ui.SessionListKey
+import com.jm3.app.miuix.ui.browse.rememberBrowseScaffoldState
 import com.jm3.app.miuix.ui.browseTagCacheKey
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.list.toCouiPageSlice
-import com.jm3.app.miuix.ui.list.toListState
 import com.jm3.app.miuix.ui.normalizeBrowseTagKeyword
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
@@ -119,19 +117,15 @@ import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
-import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.model.BrowseCategory
-import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.CategoryBlock
-import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -182,45 +176,26 @@ internal fun CouiBrowseScreen(
     val lazyState = rememberLazyListState()
     val colors = CouiTheme.colorScheme
 
-    var categoryValue by rememberSaveable { mutableStateOf(BrowseCategory.ALL.apiValue) }
-    var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
-    var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
-
-    val category = BrowseCategory.entries.firstOrNull { it.apiValue == categoryValue } ?: BrowseCategory.ALL
-    val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
-    val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
-
-    // 缓存键带上筛选口径：不同口径各自缓存，切回来才不会先闪一份别人的列表
-    val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
-    val listKey = SessionListKey.Browse(pageKey)
-
-    // 加载编排交给共享的 SessionListLoader：首屏 / 下拉刷新 / 翻页 / 跳页 / 失败分派都只有一份实现，
-    // 本页只留渲染用的 ListState，以及「换页后归顶」这种纯视觉决策。
-    // 分类只认分类 + 排序，榜单只认时间 + 排序：两套口径与旧页一致
-    val currentFilter = when (mode) {
-        BrowseMode.CATEGORY -> BrowseFilter(category = category, order = order, time = BrowseTime.ALL)
-        BrowseMode.RANK -> BrowseFilter(category = BrowseCategory.ALL, order = order, time = time)
-    }
-
-    val feedLoader = remember(pageKey) {
-        SessionListLoader(
-            scope = scope,
-            idOf = { item: SearchResult -> item.id },
-            failureMessage = CouiStrings.LoadFailed,
-            fetchPage = { page ->
-                authCall.call { gateway.browse(currentFilter, page) }.toCouiPageSlice()
-            },
-            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            cache = sessionCache,
-            cacheKey = listKey,
-        )
-    }
+    // 筛选口径、主列表 loader 与分页动作收在共享状态里：本页只给失败文案、提示去处与归顶动作
+    val browse = rememberBrowseScaffoldState(
+        deps = deps,
+        mode = mode,
+        failureMessage = CouiStrings.LoadFailed,
+        onNotice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+        onScrollToTop = { lazyState.animateScrollToItem(0) },
+    )
+    val feedSnapshot = browse.snapshot
+    val feedState = browse.feedState
+    val clickPaging = browse.clickPaging
+    val category = browse.category
+    val order = browse.order
+    val time = browse.time
+    val categoryTree = browse.categoryTree
+    val hotTags = browse.hotTags
+    val listKey = browse.cacheKey
 
     // 单页条数：只有首页能确定，用于榜单名次跨页续号
-    var pageStride by remember(pageKey) { mutableIntStateOf(0) }
-
-    val pageMode = deps.paginationMode
-    val clickPaging = pageMode == PaginationMode.CLICK
+    var pageStride by remember(browse.pageKey) { mutableIntStateOf(0) }
 
     // 每周连载更新：首页一页 + 用户点「加载更多」追加；分类模式收进顶栏入口弹层
     val weeklyLoader = remember {
@@ -235,16 +210,12 @@ internal fun CouiBrowseScreen(
         )
     }
 
-    // 分类树只用来渲染标签区块；拿不到时不显示顶栏「更多」入口，避免空弹窗
-    var categoryTree by remember { mutableStateOf<CategoryTree?>(null) }
     var weeklyDialogOpen by rememberSaveable { mutableStateOf(false) }
     var moreCategoriesDialogOpen by rememberSaveable { mutableStateOf(false) }
     var tagNavExpanded by rememberSaveable { mutableStateOf(false) }
-    // 热门标签：与子分类一起构成结果列表之前的标签导航；拿不到就整块隐藏
-    var hotTags by remember { mutableStateOf(emptyList<String>()) }
 
     // 激活标签保留在 Saveable 状态中；loader 用 BrowseTag 键自取缓存种子，退栈重建后首帧即可恢复
-    var tagKeyword by rememberSaveable { mutableStateOf<String?>(null) }
+    val tagKeyword = browse.tagKeyword
     val tagLoader = remember(tagKeyword, order) {
         tagKeyword?.let { keyword ->
             SessionListLoader(
@@ -268,30 +239,11 @@ internal fun CouiBrowseScreen(
         }
     }
 
-    val feedSnapshot by feedLoader.snapshot.collectAsState()
     val tagSnapshot = tagLoader?.snapshot?.collectAsState()?.value
     val weeklySnapshot by weeklyLoader.snapshot.collectAsState()
 
-    // 换页后回到顶部：loader 不替页面滚列表，归顶时机仍由本页决定（整页替换落定那一刻）
-    var pendingFeedScrollTop by remember { mutableStateOf(false) }
+    // 标签视图换页后回到顶部：主列表的归顶时机已由共享状态统一调度
     var pendingTagScrollTop by remember { mutableStateOf(false) }
-
-    fun refresh() {
-        feedLoader.refresh()
-    }
-
-    fun loadMore() {
-        feedLoader.loadMore()
-    }
-
-    /** 点击分页：整页替换，沿用同一筛选口径与首屏缓存。 */
-    fun jumpToPage(target: Int) {
-        val current = feedSnapshot.feed
-        val resolved = pagerTargetPage(current.page, target, current.pageCount)
-        if (resolved == current.page) return
-        pendingFeedScrollTop = true
-        feedLoader.goToPage(resolved)
-    }
 
     fun loadWeekly() {
         weeklyLoader.loadFirstPage()
@@ -307,8 +259,8 @@ internal fun CouiBrowseScreen(
             // 同一个标签：loader 已被 remember 复用，重试要走它的首屏入口
             tagLoader?.loadFirstPage()
         } else {
-            // 换标签：tagKeyword 一变就重建 loader，首屏由 LaunchedEffect(tagLoader) 触发
-            tagKeyword = trimmed
+            // 换标签：检索词一变就重建 loader，首屏由 LaunchedEffect(tagLoader) 触发
+            browse.openTag(trimmed)
         }
     }
 
@@ -325,23 +277,10 @@ internal fun CouiBrowseScreen(
         loader.goToPage(resolved)
     }
 
-    fun openTag(keyword: String) {
-        tagKeyword = normalizeBrowseTagKeyword(keyword) ?: return
-    }
-
-    // 命中缓存时种子已是 Loaded：同一口径切回来直接渲染，不退回 Loading 冲掉
-    LaunchedEffect(feedLoader) {
-        if (feedLoader.state !is ListLoadState.Loaded) feedLoader.loadFirstPage()
-    }
     // 首页条数落定即可用于榜单名次续号；续页与跳页不改写这个基准
     LaunchedEffect(feedSnapshot.feed.page, feedSnapshot.feed.items.size) {
         val feed = feedSnapshot.feed
         if (feed.page == 1 && feed.items.isNotEmpty()) pageStride = feed.items.size
-    }
-    LaunchedEffect(feedSnapshot.state, feedSnapshot.feed.page) {
-        if (!pendingFeedScrollTop || feedSnapshot.state !is ListLoadState.Loaded) return@LaunchedEffect
-        pendingFeedScrollTop = false
-        lazyState.animateScrollToItem(0)
     }
     LaunchedEffect(tagLoader) {
         val loader = tagLoader ?: return@LaunchedEffect
@@ -352,15 +291,15 @@ internal fun CouiBrowseScreen(
         pendingTagScrollTop = false
         lazyState.animateScrollToItem(0)
     }
-    PaginationModeReloadEffect(pageMode) {
-        feedLoader.loadFirstPage()
+    // 分页模式切换后，主列表由共享状态按新形态重载，当前标签结果也要跟着重拉
+    PaginationModeReloadEffect(deps.paginationMode) {
         normalizeBrowseTagKeyword(tagKeyword)?.let(::loadTag)
     }
     LaunchedEffect(deps.gateway, deps.authCall) {
         weeklyLoader.loadFirstPage()
         // 分类树失败只让「更多分类」退化成一行提示，不打断主列表
-        categoryTree = authCall.call { gateway.categoriesList() }.orDegrade<CategoryTree?>(null)
-        hotTags = authCall.call { gateway.hotTags() }.orDegrade(emptyList())
+        browse.loadCategoryTree()
+        browse.loadHotTags()
     }
 
     // 标签导航的数据：当前主分类的子分类 + 热门标签（热门标签只在分类模式给）
@@ -378,7 +317,6 @@ internal fun CouiBrowseScreen(
     val weeklyIsLoading = weeklySnapshot.state is ListLoadState.Loading
     val weeklyFail = weeklySnapshot.state as? ListLoadState.Failed
     val tagFeed = tagSnapshot?.feed ?: PagedFeed()
-    val feedState = feedSnapshot.toListState()
     val browseHeadCount = couiBrowseHeadCount(
         isCategoryMode = mode == BrowseMode.CATEGORY,
         hasTagNav = hasTagNav,
@@ -401,14 +339,14 @@ internal fun CouiBrowseScreen(
         columns = feedColumns,
         enabled = !clickPaging,
         restartKey = listKey to tagKeyword,
-        onPrefetch = { if (browseTagView) loadMoreTag() else loadMore() },
+        onPrefetch = { if (browseTagView) loadMoreTag() else browse.loadMore() },
     )
 
     val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
         canScroll = { lazyState.canScrollForward || lazyState.canScrollBackward },
     )
 
-    BackHandler(enabled = tagKeyword != null) { tagKeyword = null }
+    BackHandler(enabled = tagKeyword != null) { browse.closeTag() }
 
     /*
      * 分支判据与行数据都在组合体里读一次：LazyColumn 的 item 结构由这些局部值决定，
@@ -440,7 +378,7 @@ internal fun CouiBrowseScreen(
                         title = { CouiTopBarTitle(text = if (keyword == null) mode.title else "标签：$keyword") },
                         navigationIcon = {
                             if (keyword != null) {
-                                CouiTopBarBackButton(onClick = { tagKeyword = null })
+                                CouiTopBarBackButton(onClick = { browse.closeTag() })
                             }
                         },
                         actions = {
@@ -459,7 +397,7 @@ internal fun CouiBrowseScreen(
                         CouiBrowseCategoryBar(
                             options = BrowseCategory.entries,
                             selected = category,
-                            onSelect = { categoryValue = it.apiValue },
+                            onSelect = { browse.selectCategory(it.apiValue) },
                             showMoreAction = categoryBlocks.isNotEmpty(),
                             onOpenMore = { moreCategoriesDialogOpen = true },
                         )
@@ -472,7 +410,7 @@ internal fun CouiBrowseScreen(
                     contentDescription = "刷新",
                     onClick = {
                         // 标签视图里的刷新重发标签检索，不把用户弹回分类浏览
-                        if (keyword == null) refresh() else loadTag(keyword)
+                        if (keyword == null) browse.refresh(byPull = true) else loadTag(keyword)
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 )
@@ -576,7 +514,7 @@ internal fun CouiBrowseScreen(
                                 CouiSegmentedCapsules(
                                     items = BrowseOrder.entries.map { it.label },
                                     selectedIndex = BrowseOrder.entries.indexOf(order),
-                                    onSelect = { orderValue = BrowseOrder.entries[it].apiValue },
+                                    onSelect = { browse.selectOrder(BrowseOrder.entries[it].apiValue) },
                                     small = true,
                                     modifier = Modifier.padding(
                                         horizontal = CouiPageDefaults.horizontalMargin,
@@ -587,7 +525,7 @@ internal fun CouiBrowseScreen(
                                 CouiSegmentedCapsules(
                                     items = BrowseTime.entries.map { it.label },
                                     selectedIndex = BrowseTime.entries.indexOf(time),
-                                    onSelect = { timeValue = BrowseTime.entries[it].apiValue },
+                                    onSelect = { browse.selectTime(BrowseTime.entries[it].apiValue) },
                                     small = true,
                                     modifier = Modifier.padding(
                                         horizontal = CouiPageDefaults.horizontalMargin,
@@ -597,7 +535,7 @@ internal fun CouiBrowseScreen(
                                 CouiSegmentedCapsules(
                                     items = BrowseOrder.entries.map { it.label },
                                     selectedIndex = BrowseOrder.entries.indexOf(order),
-                                    onSelect = { orderValue = BrowseOrder.entries[it].apiValue },
+                                    onSelect = { browse.selectOrder(BrowseOrder.entries[it].apiValue) },
                                     small = true,
                                     modifier = Modifier.padding(
                                         horizontal = CouiPageDefaults.horizontalMargin,
@@ -614,7 +552,7 @@ internal fun CouiBrowseScreen(
                                 hotTags = tagNavTags,
                                 expanded = tagNavExpanded,
                                 onToggle = { tagNavExpanded = !tagNavExpanded },
-                                onTagClick = { openTag(it) },
+                                onTagClick = { browse.openTag(it) },
                             )
                         }
                     }
@@ -641,7 +579,7 @@ internal fun CouiBrowseScreen(
                             CouiScreenFailureGroup(
                                 message = feedState.message,
                                 expired = feedState.sessionExpired,
-                                onRetry = { refresh() },
+                                onRetry = { browse.refresh(byPull = true) },
                                 onOpenLogin = onOpenLogin,
                             )
                         }
@@ -708,14 +646,14 @@ internal fun CouiBrowseScreen(
                                             page = feed.page,
                                             pageCount = feed.pageCount,
                                             hasMore = feed.hasMore,
-                                            onJumpPage = { jumpToPage(it) },
+                                            onJumpPage = { browse.jumpToPage(it) },
                                         )
                                     } else {
                                         CouiLoadMoreFooter(
                                             loading = feed.loadingMore,
                                             error = if (feed.loadMoreFailed) BROWSE_LOAD_MORE_FAILED else null,
                                             endReached = !feed.hasMore,
-                                            onRetry = { loadMore() },
+                                            onRetry = { browse.loadMore() },
                                         )
                                     }
                                 }
@@ -734,7 +672,7 @@ internal fun CouiBrowseScreen(
                 onDismiss = { moreCategoriesDialogOpen = false },
                 onTagClick = { tag ->
                     moreCategoriesDialogOpen = false
-                    openTag(tag)
+                    browse.openTag(tag)
                 },
             )
             CouiWeeklyUpdatesDialog(

@@ -22,16 +22,9 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -45,7 +38,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.components.BackButton
 import com.jm3.app.miuix.ui.components.EmptyState
 import com.jm3.app.miuix.ui.components.ErrorScreen
@@ -56,15 +48,17 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.route.AppRoutes
-import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.skin.LocalSkin
+import com.jm3.app.miuix.ui.tasks.TASK_STATE_DONE
+import com.jm3.app.miuix.ui.tasks.TASK_STATE_UNDONE
+import com.jm3.app.miuix.ui.tasks.TaskHostResolution
+import com.jm3.app.miuix.ui.tasks.isTaskEquipped
+import com.jm3.app.miuix.ui.tasks.rememberTasksScaffoldState
+import com.jm3.app.miuix.ui.tasks.tasksEmptyHint
+import com.jm3.app.miuix.ui.tasks.tasksEmptyTitle
 import com.jm3.core.CoverLocator
-import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskItem
 import com.jm3.core.model.TaskType
-import com.jm3.core.paging.PageSlice
-import com.jm3.core.session.SessionOutcome
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
@@ -85,11 +79,7 @@ private val TaskGridMinCellWidth = 72.dp
  */
 private val TaskCellMinHeight = 124.dp
 
-/** 成就状态的无障碍描述：达成与否原本只体现在配色和透明度上，TalkBack 读不到。 */
-private const val TASK_STATE_DONE = "已达成"
-private const val TASK_STATE_UNDONE = "未达成"
-
-/** 成就/任务：称号与勋章两个维度，支持「我的/全部」筛选。 */
+/** 成就/任务：称号与勋章两个维度，支持「我的/全部」筛选。状态编排在 [rememberTasksScaffoldState]。 */
 @Composable
 internal fun TasksScreen(
     deps: ScreenDeps,
@@ -97,115 +87,30 @@ internal fun TasksScreen(
     nav: AppRoutes,
     snackbarHostState: SnackbarHostState,
 ) {
-    val types = TaskType.entries
-    val filters = TaskFilter.entries
-    var typeIndex by rememberSaveable { mutableIntStateOf(0) }
-    var filterIndex by rememberSaveable { mutableIntStateOf(0) }
-    val clampedTypeIndex = typeIndex.coerceIn(0, types.lastIndex)
-    val clampedFilterIndex = filterIndex.coerceIn(0, filters.lastIndex)
-    val gridStates = remember { List(types.size) { LazyGridState() } }
-    var lastFilterIndex by remember { mutableIntStateOf(clampedFilterIndex) }
-    // 佩戴状态以本地覆盖优先：切换成功后服务端已更新，但账号缓存不会立刻刷新
-    var equippedTitleOverride by remember { mutableStateOf<String?>(null) }
-    var equippedBadgeId by remember { mutableStateOf<String?>(null) }
-    var claimingId by remember { mutableStateOf<String?>(null) }
     val selectionHaptic = rememberSelectionHaptic()
-    val scope = rememberCoroutineScope()
-    val user by deps.account.user.collectAsState()
+    // 每档列表一个滚动状态：换筛选时整组复位，避免旧筛选的滚动位置串到新列表
+    val gridStates = remember { List(TaskType.entries.size) { LazyGridState() } }
+    val scaffold = rememberTasksScaffoldState(
+        deps = deps,
+        nav = nav,
+        snackbarHostState = snackbarHostState,
+        haptic = selectionHaptic,
+        failureMessage = "成就列表加载失败",
+        failureFallback = "请稍后重试",
+        hostResolution = TaskHostResolution.BeforeRequest,
+        pageCount = 1,
+        reloadOnAccount = true,
+        onFilterReset = { gridStates.forEach { it.requestScrollToItem(0) } },
+    )
     val pagerState = rememberSyncedTabPagerState(
-        selectedTab = clampedTypeIndex,
-        pageCount = types.size,
+        selectedTab = scaffold.clampedTypeIndex,
+        pageCount = scaffold.types.size,
         onTabSelected = { next ->
             selectionHaptic()
-            typeIndex = next
+            scaffold.selectType(next)
         },
         useMiuixSpring = true,
     )
-
-    // 换账号后旧账号的佩戴覆盖不能留在界面上
-    LaunchedEffect(user?.uid) {
-        equippedTitleOverride = null
-        equippedBadgeId = null
-    }
-
-    /** 点选已获得的称号/勋章并切换佩戴；失败保留服务端提示，便于区分“没权限”和“网络错”。 */
-    fun claim(type: TaskType, item: TaskItem) {
-        val uid = user?.uid
-        if (uid.isNullOrBlank()) {
-            nav.login()
-            return
-        }
-        if (claimingId != null) return
-        claimingId = item.id
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.claimTask(type, uid, item.id) }
-            claimingId = null
-            val failure = when (outcome) {
-                is SessionOutcome.Ok -> outcome.value
-                SessionOutcome.Expired -> "登录已失效，请重新登录"
-                is SessionOutcome.Failed -> failureCopy(outcome, "请稍后重试")
-            }
-            if (outcome is SessionOutcome.Ok && failure == null) {
-                if (type == TaskType.TITLE) {
-                    equippedTitleOverride = item.content
-                } else {
-                    equippedBadgeId = item.id
-                }
-                selectionHaptic()
-                snackbarHostState.showSnackbar("已佩戴「${item.name}」")
-            } else {
-                snackbarHostState.showSnackbar("切换失败：$failure")
-            }
-        }
-    }
-
-    // 勋章图与 API 同域；封面域名未就绪时退回当前 API 域名，仍为空才不展示图片
-    var imageHost by remember { mutableStateOf("") }
-    // 接口按档位一次取全量：条目进 loader，响应里的 message 留在页内随档位一起用
-    val pageMessages = remember { mutableStateMapOf<Int, String>() }
-    val loaders = remember(types.size, clampedFilterIndex, user?.uid, snackbarHostState) {
-        val filter = filters.getOrNull(clampedFilterIndex) ?: TaskFilter.entries.first()
-        List(types.size) { idx ->
-            val type = types[idx]
-            SessionListLoader<TaskItem>(
-                scope = scope,
-                idOf = { it.id },
-                failureMessage = "成就列表加载失败",
-                fetchPage = {
-                    val host = runCatching { deps.images.imageHost() }
-                        .getOrDefault("")
-                        .ifBlank { runCatching { deps.routes.usedDomain() }.getOrNull().orEmpty() }
-                    val outcome = deps.authCall.call { deps.gateway.tasks(type, filter) }
-                    imageHost = host
-                    when (outcome) {
-                        is SessionOutcome.Ok -> {
-                            val page = outcome.value
-                            pageMessages[idx] = page.message.orEmpty()
-                            SessionOutcome.Ok(
-                                PageSlice(items = page.items, hasMore = false, page = 1, pageCount = 1),
-                            )
-                        }
-
-                        SessionOutcome.Expired -> SessionOutcome.Expired
-                        is SessionOutcome.Failed -> outcome
-                    }
-                },
-                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            )
-        }
-    }
-
-    LaunchedEffect(loaders, clampedTypeIndex) {
-        // 换筛选会换掉整组 loader：滚动位置与旧响应文案一起清掉
-        if (lastFilterIndex != clampedFilterIndex) {
-            lastFilterIndex = clampedFilterIndex
-            gridStates.forEach { it.requestScrollToItem(0) }
-            pageMessages.clear()
-        }
-        // 只在首次进入该档位时取数据；划回来命中 Loaded/Failed 就不再重取
-        val current = loaders.getOrNull(clampedTypeIndex) ?: return@LaunchedEffect
-        if (current.state is ListLoadState.Loading) current.loadFirstPage()
-    }
 
     GlassScaffold(
         topBar = {
@@ -218,23 +123,23 @@ internal fun TasksScreen(
                 )
                 // 两组筛选页签固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切换
                 GlassChipRow(
-                    tabs = types.map { it.label },
-                    selectedTabIndex = clampedTypeIndex,
+                    tabs = scaffold.types.map { it.label },
+                    selectedTabIndex = scaffold.clampedTypeIndex,
                     onTabSelected = {
-                        if (types.getOrNull(it) != null) {
+                        if (scaffold.types.getOrNull(it) != null) {
                             selectionHaptic()
-                            typeIndex = it
+                            scaffold.selectType(it)
                         }
                     },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 )
                 GlassChipRow(
-                    tabs = filters.map { it.label },
-                    selectedTabIndex = clampedFilterIndex,
+                    tabs = scaffold.filters.map { it.label },
+                    selectedTabIndex = scaffold.clampedFilterIndex,
                     onTabSelected = {
-                        if (filters.getOrNull(it) != null) {
+                        if (scaffold.filters.getOrNull(it) != null) {
                             selectionHaptic()
-                            filterIndex = it
+                            scaffold.selectFilter(it)
                         }
                     },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -247,15 +152,15 @@ internal fun TasksScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
         ) { pageIdx ->
-            val pageType = types.getOrNull(pageIdx) ?: return@HorizontalPager
-            val loader = loaders.getOrNull(pageIdx) ?: return@HorizontalPager
+            val pageType = scaffold.types.getOrNull(pageIdx) ?: return@HorizontalPager
+            val loader = scaffold.loaders.getOrNull(pageIdx) ?: return@HorizontalPager
             val snapshot by loader.snapshot.collectAsState()
             Column(modifier = Modifier.fillMaxSize().readableWidth()) {
                 when (val state = snapshot.state) {
                     ListLoadState.Loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
                     is ListLoadState.Failed -> if (state.sessionExpired) {
                         LoginExpiredScreen(
-                            onOpenLogin = nav::login,
+                            onOpenLogin = scaffold.nav::login,
                             modifier = Modifier.padding(innerPadding),
                         )
                     } else {
@@ -268,16 +173,16 @@ internal fun TasksScreen(
                     ListLoadState.Loaded -> TaskGrid(
                         type = pageType,
                         items = snapshot.feed.items,
-                        message = pageMessages[pageIdx]?.takeIf { it.isNotBlank() },
-                        imageHost = imageHost,
+                        message = scaffold.extra(pageIdx)?.message?.takeIf { it.isNotBlank() },
+                        imageHost = scaffold.imageHost,
                         gridState = gridStates[pageIdx],
-                        equippedTitle = equippedTitleOverride ?: user?.levelName,
-                        equippedBadgeId = equippedBadgeId,
-                        claimingId = claimingId,
+                        equippedTitle = scaffold.equippedTitleOverride ?: scaffold.user?.levelName,
+                        equippedBadgeId = scaffold.equippedBadgeId,
+                        claimingId = scaffold.claimingId,
                         contentPadding = innerPadding,
                         refreshing = snapshot.refreshing,
                         onRefresh = loader::refresh,
-                        onClaim = { item -> claim(pageType, item) },
+                        onClaim = { item -> scaffold.claim(pageType, item) },
                     )
                 }
             }
@@ -332,20 +237,13 @@ private fun TaskGrid(
             if (items.isEmpty()) {
                 item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
                     EmptyState(
-                        title = "暂无${type.label}",
-                        hint = if (type == TaskType.TITLE) {
-                            "继续阅读与收藏即可解锁称号"
-                        } else {
-                            "完成成就后可在此获得勋章"
-                        },
+                        title = tasksEmptyTitle(type),
+                        hint = tasksEmptyHint(type),
                     )
                 }
             }
             items(items, key = { it.id }) { item ->
-                val equipped = when (type) {
-                    TaskType.TITLE -> equippedTitle != null && item.content == equippedTitle
-                    TaskType.BADGE -> equippedBadgeId == item.id
-                }
+                val equipped = isTaskEquipped(type, item, equippedTitle, equippedBadgeId)
                 TaskCell(
                     type = type,
                     item = item,

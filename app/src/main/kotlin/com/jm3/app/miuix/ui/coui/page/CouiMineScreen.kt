@@ -24,13 +24,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,7 +33,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -64,7 +58,7 @@ import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.ui.checkInDisplay
+import com.jm3.app.miuix.ui.CheckInViewState
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -75,22 +69,17 @@ import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
+import com.jm3.app.miuix.ui.mine.MineCheckInRow
+import com.jm3.app.miuix.ui.mine.MineEntry
+import com.jm3.app.miuix.ui.mine.rememberMineScaffoldState
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
-import com.jm3.app.miuix.ui.coui.theme.CouiStrings
-import com.jm3.app.miuix.ui.formatCheckInSummary
-import com.jm3.app.miuix.ui.rememberMineCheckInHolder
-import com.jm3.core.download.activeDownloadCount
-import com.jm3.core.model.DailyCheckInStatus
 import com.jm3.core.model.Jm3User
-import com.jm3.core.runCatchingSuspending
 import com.jm3.core.session.UnreadBadge
-import java.time.LocalDate
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
@@ -117,14 +106,18 @@ internal fun CouiMineScreen(
     onOpenNovel: () -> Unit,
     onOpenLibrary: () -> Unit,
 ) {
-    val user by deps.account.user.collectAsState()
-    val unread by unreadBadge.count.collectAsState()
-    val downloads by deps.downloadManager.queue.updates.collectAsState()
-    val activeDownloads = downloads.activeDownloadCount()
-    val scope = rememberCoroutineScope()
-    val checkInHolder = rememberMineCheckInHolder(deps = deps, uid = user?.uid, snackbarHostState = snackbarHostState)
-    val checkInState = checkInHolder.viewState
-    var confirmLogout by remember { mutableStateOf(false) }
+    // 账号取值、未读与在途计数、签到行推导、入口守卫与登出编排都来自共享骨架；本文件只剩分组与视觉。
+    // 登出失败要弹提示（HyperOS 皮肤是直接抛），差异经 logoutFailureNotice 传入。
+    val state = rememberMineScaffoldState(
+        deps = deps,
+        unreadBadge = unreadBadge,
+        snackbarHostState = snackbarHostState,
+        onOpenLogin = onOpenLogin,
+        logoutFailureNotice = "退出登录失败，请稍后重试",
+    )
+    val user = state.user
+    val unread = state.unread
+    val activeDownloads = state.inFlightDownloads
 
     val scrollState = rememberScrollState()
     val topBarBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
@@ -164,16 +157,12 @@ internal fun CouiMineScreen(
                 onOpenProfile = onOpenProfile,
             )
 
-            if (user != null || checkInState.expiredMessage != null) {
+            if (state.showsCheckIn) {
                 MineCheckInGroup(
-                    status = checkInState.status,
-                    loading = checkInState.loading,
-                    busy = checkInState.busy,
-                    error = checkInState.error,
-                    expiredMessage = checkInState.expiredMessage,
-                    checkedInOn = checkInState.checkedInOn,
-                    onCheckIn = { checkInHolder.checkIn(it) },
-                    onReload = { checkInHolder.reload() },
+                    view = state.checkInState,
+                    row = state.checkInRow,
+                    onCheckIn = state::checkIn,
+                    onReload = state::reloadCheckIn,
                     onOpenLogin = onOpenLogin,
                 )
             }
@@ -183,37 +172,37 @@ internal fun CouiMineScreen(
                     icon = CouiIcons.Star,
                     title = "我的收藏",
                     value = user?.albumFavorites?.takeIf { it > 0 }?.toString(),
-                    onClick = onOpenFavorites,
+                    onClick = { state.enter(MineEntry.Favorites, onOpenFavorites) },
                 )
                 Divider(startIndent = MineDividerStartIndent)
-                MineNavRow(icon = CouiIcons.History, title = "阅读历史", onClick = onOpenHistory)
+                MineNavRow(icon = CouiIcons.History, title = "阅读历史", onClick = { state.enter(MineEntry.History, onOpenHistory) })
                 Divider(startIndent = MineDividerStartIndent)
                 // 下载队列在途时行尾留一个圆点，不用进书架页确认进度
                 MineNavRow(
                     icon = CouiIcons.Download,
                     title = "本地书架",
                     dot = activeDownloads > 0,
-                    onClick = onOpenShelf,
+                    onClick = { state.enter(MineEntry.LocalShelf, onOpenShelf) },
                 )
                 Divider(startIndent = MineDividerStartIndent)
                 MineNavRow(
                     icon = CouiIcons.Clock,
                     title = "观看历史",
                     summary = "账号同步的阅读足迹",
-                    onClick = { if (user == null) onOpenLogin() else onOpenWatchHistory() },
+                    onClick = { state.enter(MineEntry.WatchHistory, onOpenWatchHistory) },
                 )
                 Divider(startIndent = MineDividerStartIndent)
                 MineNavRow(
                     icon = CouiIcons.Refresh,
                     title = "连载追踪",
-                    onClick = { if (user == null) onOpenLogin() else onOpenTracking() },
+                    onClick = { state.enter(MineEntry.Tracking, onOpenTracking) },
                 )
                 Divider(startIndent = MineDividerStartIndent)
                 MineNavRow(
                     icon = CouiIcons.Check,
                     title = "成就任务",
                     summary = "称号与勋章",
-                    onClick = { if (user == null) onOpenLogin() else onOpenTasks() },
+                    onClick = { state.enter(MineEntry.Tasks, onOpenTasks) },
                 )
             }
 
@@ -223,27 +212,27 @@ internal fun CouiMineScreen(
                     icon = CouiIcons.Comment,
                     title = "社区论坛",
                     summary = "全部讨论 · 漫画评论 · 闲聊",
-                    onClick = onOpenForum,
+                    onClick = { state.enter(MineEntry.Forum, onOpenForum) },
                 )
                 Divider(startIndent = MineDividerStartIndent)
                 MineNavRow(
                     icon = CouiIcons.Book,
                     title = "小说",
                     summary = "连载小说阅读",
-                    onClick = onOpenNovel,
+                    onClick = { state.enter(MineEntry.Novel, onOpenNovel) },
                 )
                 Divider(startIndent = MineDividerStartIndent)
                 MineNavRow(
                     icon = CouiIcons.Folder,
                     title = "禁漫书库",
                     summary = "创作者与作品",
-                    onClick = onOpenLibrary,
+                    onClick = { state.enter(MineEntry.Library, onOpenLibrary) },
                 )
                 Divider(startIndent = MineDividerStartIndent)
                 MineNavRow(
                     icon = CouiIcons.Mine,
                     title = "个人资料",
-                    onClick = { if (user == null) onOpenLogin() else onOpenProfile() },
+                    onClick = { state.enter(MineEntry.Profile, onOpenProfile) },
                 )
                 Divider(startIndent = MineDividerStartIndent)
                 MineNavRow(
@@ -256,19 +245,19 @@ internal fun CouiMineScreen(
                     },
                     // 角标只做展示：清理由通知页负责，返回本页时自然归零
                     badge = unread,
-                    onClick = { if (user == null) onOpenLogin() else onOpenNotifications() },
+                    onClick = { state.enter(MineEntry.Notifications, onOpenNotifications) },
                 )
             }
 
             Group(title = "其他") {
-                MineNavRow(icon = CouiIcons.Settings, title = "设置", onClick = onOpenSettings)
+                MineNavRow(icon = CouiIcons.Settings, title = "设置", onClick = { state.enter(MineEntry.Settings, onOpenSettings) })
                 if (user != null) {
                     Divider(startIndent = MineDividerStartIndent)
                     MineNavRow(
                         icon = CouiIcons.LogOut,
                         title = "退出登录",
                         titleColor = CouiDialogDefaults.themeColors(CouiTheme.isDark).destructive,
-                        onClick = { confirmLogout = true },
+                        onClick = state::askLogout,
                     )
                 }
             }
@@ -277,27 +266,16 @@ internal fun CouiMineScreen(
 
     // 登出属于会话级操作：与清空本地数据一致，采用二次确认
     Dialog(
-        onDismissRequest = { confirmLogout = false },
+        onDismissRequest = state::dismissLogout,
         // 退场动画由库按 visible 驱动，外层 if 会让弹窗在关闭瞬间直接消失
-        visible = confirmLogout,
+        visible = state.logoutDialogVisible,
         material = couiDialogMaterial(),
         title = "退出登录",
         message = "确定要登出账号吗？",
         // 会话级强确认走居中弹窗，与「选择/输入」类底部弹窗区分开
         placement = CouiDialogPlacement.Center,
-        confirmAction = couiDestructiveConfirmAction(text = "确认退出") {
-            confirmLogout = false
-            scope.launch {
-                if (runCatchingSuspending { deps.account.logout() }.isSuccess) {
-                    // 登出后账号维度的列表缓存、侧栏与喜欢状态都属于上一个账号，必须整份作废
-                    deps.sessionCache.clear()
-                    snackbarHostState.showSnackbar("已退出登录")
-                } else {
-                    snackbarHostState.showSnackbar("退出登录失败，请稍后重试")
-                }
-            }
-        },
-        dismissAction = CouiDialogAction(text = "取消", onClick = { confirmLogout = false }),
+        confirmAction = couiDestructiveConfirmAction(text = "确认退出", onClick = state::submitLogout),
+        dismissAction = CouiDialogAction(text = "取消", onClick = state::dismissLogout),
     )
 }
 
@@ -475,57 +453,45 @@ private fun MineNavRow(
 /** 签到组：一行主操作加月度进度；失效态只解释原因并给登录入口。 */
 @Composable
 private fun MineCheckInGroup(
-    status: DailyCheckInStatus?,
-    loading: Boolean,
-    busy: Boolean,
-    error: String?,
-    expiredMessage: String?,
-    checkedInOn: LocalDate?,
-    onCheckIn: (DailyCheckInStatus) -> Unit,
+    view: CheckInViewState,
+    row: MineCheckInRow?,
+    onCheckIn: () -> Unit,
     onReload: () -> Unit,
     onOpenLogin: () -> Unit,
 ) {
     val scheme = CouiTheme.colorScheme
     val errorColor = CouiDialogDefaults.themeColors(CouiTheme.isDark).destructive
-    val today = LocalDate.now()
     when {
         // 会话失效时重试必然再吃一次 401，唯一动作只能是去登录
-        expiredMessage != null -> CouiFeedLoginGroup(
+        view.expiredMessage != null -> CouiFeedLoginGroup(
             title = "每日签到",
-            message = expiredMessage,
+            message = view.expiredMessage,
             onOpenLogin = onOpenLogin,
         )
 
-        status != null -> Group(title = "每日签到") {
-            // 今日已签、漏签天数与进度统一交给纯函数推导，与 Miuix 我的页共用同一口径
-            val display = checkInDisplay(status, checkedInOn, today)
-            val signedToday = display.signedToday
-            val checkInAction: () -> Unit = { onCheckIn(status) }
-            val rowClick: (() -> Unit)? = if (busy || signedToday) null else checkInAction
+        row != null -> Group(title = "每日签到") {
+            // 今日已签、漏签天数、进度与行文案统一由共享骨架推导，与 Miuix 我的页共用同一口径
+            val display = row.display
             Item(
-                icon = { MineGroupIcon(if (signedToday) CouiIcons.CalendarCheck else CouiIcons.Calendar) },
+                icon = { MineGroupIcon(if (row.signedToday) CouiIcons.CalendarCheck else CouiIcons.Calendar) },
                 title = {
                     Text(
-                        text = when {
-                            busy -> "签到中…"
-                            signedToday -> "今日已签到"
-                            else -> "立即签到"
-                        },
+                        text = row.title,
                         kind = CouiTextKind.ItemTitle,
                     )
                 },
                 summary = {
                     Text(
-                        text = formatCheckInSummary(status.eventName, signedToday),
+                        text = row.summary,
                         kind = CouiTextKind.ItemSummary,
                         color = scheme.onSurfaceVariant,
                     )
                 },
                 // 已签到只去掉点击、不置灰：禁用态会让人以为这一行坏了
                 trailing = {
-                    if (busy) {
+                    if (row.busy) {
                         MineBusySpinner()
-                    } else if (signedToday) {
+                    } else if (row.signedToday) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = CouiIcons.Check,
@@ -538,11 +504,11 @@ private fun MineCheckInGroup(
                         }
                     }
                 },
-                onClick = rowClick,
+                onClick = if (row.enabled) onCheckIn else null,
             )
             // 进度按 signedDays/totalDays 换算，不用接口返回的 currentProgress 文案百分比，两者会互相矛盾；
             // totalDays 为 0 时不画 0/0，避免读成「签到坏了」
-            if (status.totalDays > 0) {
+            if (row.showsProgress) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -592,12 +558,12 @@ private fun MineCheckInGroup(
                     }
                 }
             }
-            if (error != null) {
+            if (view.error != null) {
                 Text(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = CouiPageDefaults.rowPadding, end = CouiPageDefaults.rowPadding, bottom = 12.dp),
-                    text = error,
+                    text = view.error,
                     kind = CouiTextKind.ItemSummary,
                     color = errorColor,
                     textAlign = TextAlign.Start,
@@ -606,8 +572,8 @@ private fun MineCheckInGroup(
         }
 
         // 首屏加载、失败与空态统一用公共状态卡片，避免各页自造一套壳子
-        loading -> CouiLoadingGroup(text = "正在加载签到状态…")
-        error != null -> CouiErrorGroup(message = error, onRetry = onReload)
+        view.loading -> CouiLoadingGroup(text = "正在加载签到状态…")
+        view.error != null -> CouiErrorGroup(message = view.error, onRetry = onReload)
         // 回读成功却没有状态：按取数失败处理，保留重试入口
         else -> CouiErrorGroup(message = "没有取到签到信息，可能是网络波动", onRetry = onReload)
     }

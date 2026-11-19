@@ -25,11 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,10 +54,8 @@ import com.itos.coui.text.Text
 import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
-import com.jm3.app.miuix.ui.CommentItemNullableSaver
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
@@ -86,9 +80,17 @@ import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.forum.FORUM_LOAD_FAILED
+import com.jm3.app.miuix.ui.forum.FORUM_PAGE_SIZE
+import com.jm3.app.miuix.ui.forum.FORUM_RULES_HINT
+import com.jm3.app.miuix.ui.forum.FORUM_RULES_TEXT
+import com.jm3.app.miuix.ui.forum.FORUM_STALE_PREFIX
+import com.jm3.app.miuix.ui.forum.forumEmptyHint
+import com.jm3.app.miuix.ui.forum.forumEmptyTitle
+import com.jm3.app.miuix.ui.forum.forumSlice
+import com.jm3.app.miuix.ui.forum.rememberForumScaffoldState
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.list.SessionListLoader
-import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
@@ -110,12 +112,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-
-/** 论坛每页条数：接口固定一页 10 条，总页数由 total 折算。 */
-private const val FORUM_PAGE_SIZE = 10
-
-/** 闲聊区规则正文：折叠态只显示提要，展开态显示全文。 */
-private const val FORUM_RULES_TEXT = "禁止发布违法违规、骚扰与剧透内容；发言限 200 字，违规内容会被删除。"
 
 /** 论坛正文限行：超长楼层会铺满整屏并顶掉后续话题。 */
 private const val FORUM_BODY_MAX_LINES = 8
@@ -139,18 +135,17 @@ internal fun CouiForumScreen(
     val user by deps.account.user.collectAsState()
     val pageMode = deps.paginationMode
     val selectionHaptic = rememberSelectionHaptic()
-    val scope = rememberCoroutineScope()
+    // 档位、回复/发帖面板与规则卡的状态编排在共享骨架里：两套皮肤原先各写一份
+    val forum = rememberForumScaffoldState(
+        deps = deps,
+        nav = nav,
+        loggedIn = user != null,
+        notify = { message -> snackbarHostState.showSnackbar(message) },
+        failureFallback = CouiStrings.RetryLater,
+    )
+    val scope = forum.scope
     val listStates = remember { List(ForumScope.entries.size) { LazyListState() } }
-
-    var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
-    val clampedScopeIndex = scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)
-    var replyTarget by rememberSaveable(stateSaver = CommentItemNullableSaver) {
-        mutableStateOf<CommentItem?>(null)
-    }
-    var replyBusy by remember { mutableStateOf(false) }
-    var composing by rememberSaveable { mutableStateOf(false) }
-    var composeBusy by remember { mutableStateOf(false) }
-    var rulesExpanded by rememberSaveable { mutableStateOf(false) }
+    val clampedScopeIndex = forum.clampedScopeIndex
     // 重试页码：整屏失败时列表停在上一次成功的页，重试要回到真正失败的那一页
     val retryPages = remember(pageMode) { mutableMapOf<Int, Int>() }
     // 回复后要保留到当前页：先记下目标页，随后的 refresh 由 fetchPage 一次取回 1..N 页合并
@@ -161,7 +156,7 @@ internal fun CouiForumScreen(
             SessionListLoader(
                 scope = scope,
                 idOf = { item: CommentItem -> item.id },
-                failureMessage = "论坛加载失败",
+                failureMessage = FORUM_LOAD_FAILED,
                 fetchPage = { page ->
                     retryPages[tabIndex] = page
                     val mergeThrough = pendingMerge.remove(tabIndex) ?: 0
@@ -194,14 +189,14 @@ internal fun CouiForumScreen(
                         }
                     } else {
                         when (val outcome = deps.authCall.call { deps.gateway.forum(forumScope, page) }) {
-                            is SessionOutcome.Ok -> SessionOutcome.Ok(couiForumSlice(outcome.value, page))
+                            is SessionOutcome.Ok -> SessionOutcome.Ok(forumSlice(outcome.value, page))
                             SessionOutcome.Expired -> SessionOutcome.Expired
                             is SessionOutcome.Failed -> outcome
                         }
                     }
                 },
                 notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-                stalePrefix = "加载失败：",
+                stalePrefix = FORUM_STALE_PREFIX,
             )
         }
     }
@@ -222,72 +217,6 @@ internal fun CouiForumScreen(
         }
         pendingMerge[tabIndex] = safeActivePage
         tabLoader.refresh()
-    }
-
-    /** 回复楼层：闲聊帖缺少作品归属，无法定位接口实体，直接给出提示。 */
-    fun startReply(target: CommentItem) {
-        when {
-            user == null -> nav.login()
-            target.albumId == null -> scope.launch {
-                snackbarHostState.showSnackbar("该楼层没有作品归属，暂不支持回复")
-            }
-            else -> replyTarget = target
-        }
-    }
-
-    fun sendReply(text: String) {
-        val target = replyTarget ?: return
-        val albumId = target.albumId ?: return
-        if (text.isBlank() || replyBusy) return
-        replyBusy = true
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.replyComment(albumId, text, target.id) }
-            replyBusy = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    replyTarget = null
-                    snackbarHostState.showSnackbar("回复已发送")
-                    reloadAfterReply(clampedScopeIndex, loaders[clampedScopeIndex].feed.page)
-                }
-                SessionOutcome.Expired -> snackbarHostState.showSnackbar(
-                    planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty(),
-                )
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "回复失败：" + failureCopy(outcome, CouiStrings.RetryLater),
-                )
-            }
-        }
-    }
-
-    /** 发帖：全站发帖不带 aid，按空串提交，由服务端按账号归属落库。 */
-    fun postTopic(text: String) {
-        if (text.isBlank() || composeBusy) return
-        composeBusy = true
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.postComment("", text) }
-            composeBusy = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    composing = false
-                    snackbarHostState.showSnackbar("发布成功")
-                    // 新帖落在第一页首位，回到顶部才能看到刚发的内容
-                    val activeTab = clampedScopeIndex
-                    listStates[activeTab].requestScrollToItem(0)
-                    loaders[activeTab].goToPage(1)
-                }
-                SessionOutcome.Expired -> snackbarHostState.showSnackbar(
-                    planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty(),
-                )
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "发布失败：" + failureCopy(outcome, CouiStrings.RetryLater),
-                )
-            }
-        }
-    }
-
-    /** 发帖入口的登录门禁：顶栏按钮与空态按钮共用同一判定。 */
-    fun openCompose() {
-        if (user == null) nav.login() else composing = true
     }
 
     // 切档或换分页模式（loader 重建）时：没加载过的档位走首屏加载，已加载过的静默刷新
@@ -312,9 +241,9 @@ internal fun CouiForumScreen(
             selectedTab = clampedScopeIndex,
             pageCount = ForumScope.entries.size,
             onTabSelected = {
-                if (it != scopeIndex) {
+                if (it != forum.scopeIndex) {
                     selectionHaptic()
-                    scopeIndex = it
+                    forum.selectScope(it)
                 }
             },
         )
@@ -328,7 +257,7 @@ internal fun CouiForumScreen(
                 CouiTopBarAction(
                     icon = CouiIcons.Comment,
                     contentDescription = "发帖",
-                    onClick = { openCompose() },
+                    onClick = forum::openCompose,
                     modifier = Modifier.padding(end = 4.dp),
                 )
                 CouiFeedRefreshAction(
@@ -341,9 +270,9 @@ internal fun CouiForumScreen(
                     items = ForumScope.entries.map { it.label },
                     selectedIndex = clampedScopeIndex,
                     onSelect = {
-                        if (it != scopeIndex) {
+                        if (it != forum.scopeIndex) {
                             selectionHaptic()
-                            scopeIndex = it
+                            forum.selectScope(it)
                         }
                     },
                 )
@@ -412,26 +341,20 @@ internal fun CouiForumScreen(
                             if (pageScope == ForumScope.CHAT) {
                                 item(key = "forum-rules") {
                                     CouiForumRulesRow(
-                                        expanded = rulesExpanded,
-                                        onToggle = { rulesExpanded = !rulesExpanded },
+                                        expanded = forum.rulesExpanded,
+                                        onToggle = forum::toggleRules,
                                     )
                                 }
                             }
                             if (pageItems.isEmpty()) {
                                 item(key = "forum-empty") {
                                     CouiEmptyGroup(
-                                        text = if (pageScope == ForumScope.CHAT) "闲聊区还没有帖子" else "暂无话题",
+                                        text = forumEmptyTitle(pageScope),
                                         modifier = Modifier.padding(top = 8.dp),
                                     )
                                 }
                                 item(key = "forum-empty-hint") {
-                                    Footer(
-                                        text = if (pageScope == ForumScope.CHAT) {
-                                            "来开第一帖，聊聊作品之外的事"
-                                        } else {
-                                            "换个档位看看，或发一条新帖"
-                                        },
-                                    )
+                                    Footer(text = forumEmptyHint(pageScope))
                                 }
                                 item(key = "forum-empty-action") {
                                     Box(
@@ -440,7 +363,7 @@ internal fun CouiForumScreen(
                                             .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 8.dp),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        ForumCapsuleButton(text = "发布新帖", onClick = { openCompose() })
+                                        ForumCapsuleButton(text = "发布新帖", onClick = forum::openCompose)
                                     }
                                 }
                             } else {
@@ -454,7 +377,7 @@ internal fun CouiForumScreen(
                                     ) {
                                         CouiForumTopic(
                                             item = item,
-                                            onReply = { startReply(it) },
+                                            onReply = forum::startReply,
                                             onOpenAlbum = nav::album,
                                         )
                                     }
@@ -501,26 +424,37 @@ internal fun CouiForumScreen(
         }
 
         CouiForumInputDialog(
-            visible = composing,
+            visible = forum.composing,
             title = "发布新帖",
-            busy = composeBusy,
+            busy = forum.composeBusy,
             confirmText = "发布",
             busyConfirmText = "发布中…",
             placeholder = "说点什么（最多 " + COMMENT_REPLY_MAX_LENGTH + " 字）",
-            onDismiss = { composing = false },
-            onSend = { postTopic(it) },
+            onDismiss = forum::dismissCompose,
+            onSend = { text ->
+                forum.postTopic(text) {
+                    // 新帖落在第一页首位，回到顶部才能看到刚发的内容
+                    val activeTab = forum.clampedScopeIndex
+                    listStates[activeTab].requestScrollToItem(0)
+                    loaders[activeTab].goToPage(1)
+                }
+            },
         )
-        val retainedReplyAuthor = rememberRetainedTarget(replyTarget?.author?.takeIf { it.isNotBlank() })
+        val retainedReplyAuthor = rememberRetainedTarget(forum.replyTarget?.author?.takeIf { it.isNotBlank() })
         CouiForumInputDialog(
-            visible = replyTarget != null,
+            visible = forum.replyTarget != null,
             title = if (retainedReplyAuthor != null) "回复 $retainedReplyAuthor" else "回复",
-            targetKey = replyTarget?.id,
-            busy = replyBusy,
+            targetKey = forum.replyTarget?.id,
+            busy = forum.replyBusy,
             confirmText = "发送",
             busyConfirmText = "发送中…",
             placeholder = "写下你的回复（最多 " + COMMENT_REPLY_MAX_LENGTH + " 字）",
-            onDismiss = { replyTarget = null },
-            onSend = { sendReply(it) },
+            onDismiss = forum::dismissReply,
+            onSend = { text ->
+                forum.sendReply(text) {
+                    reloadAfterReply(forum.clampedScopeIndex, loaders[forum.clampedScopeIndex].feed.page)
+                }
+            },
         )
 
     }
@@ -551,7 +485,7 @@ private fun CouiForumRulesRow(expanded: Boolean, onToggle: () -> Unit) {
                     textAlign = TextAlign.Start,
                 )
                 Text(
-                    text = if (expanded) FORUM_RULES_TEXT else "闲聊区发言前请先了解规则",
+                    text = if (expanded) FORUM_RULES_TEXT else FORUM_RULES_HINT,
                     kind = CouiTextKind.GroupFooter,
                     color = scheme.onSurfaceVariant,
                     textAlign = TextAlign.Start,
@@ -661,18 +595,9 @@ internal fun flattenForumReplies(root: CommentItem): List<Pair<CommentItem, Int>
     return rows
 }
 
-/** 评论页没有页码字段：页码与总页数由请求页和 total 补上，末页之后不再多打一次空页。 */
-internal fun couiForumSlice(page: CommentPage, requestPage: Int): PageSlice<CommentItem> {
-    val pageCount = pageCountOf(page.total, FORUM_PAGE_SIZE)
-    return PageSlice(
-        items = page.items,
-        // total 为 0 时页数未知，只能按本页有没有条目推断是否还有下一页
-        hasMore = if (pageCount == null) page.items.isNotEmpty() else requestPage < pageCount,
-        total = page.total.takeIf { it > 0 },
-        page = requestPage,
-        pageCount = pageCount,
-    )
-}
+/** 评论页没有页码字段：页码与总页数由请求页和 total 补上，与 Miuix 皮肤共用同一份折算。 */
+internal fun couiForumSlice(page: CommentPage, requestPage: Int): PageSlice<CommentItem> =
+    forumSlice(page, requestPage)
 
 /** 无限滚动回复后重拉已加载的 1..activePage 页，保留前序页面条目与游标。 */
 internal fun mergeCouiForumPages(

@@ -9,14 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -34,11 +26,11 @@ import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.model.WeeklyPeriod
-import com.jm3.core.model.WeeklyPicksDetail
+import com.jm3.app.miuix.ui.week.WeekDetailLoadingStyle
+import com.jm3.app.miuix.ui.week.WeekPeriodsFailureStyle
+import com.jm3.app.miuix.ui.week.WeekRefreshReset
+import com.jm3.app.miuix.ui.week.rememberWeekScaffoldState
 import com.jm3.core.paging.PagedFeed
-import com.jm3.core.session.SessionOutcome
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -58,86 +50,15 @@ internal fun WeekScreen(
     nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
-    var periods by remember { mutableStateOf<List<WeeklyPeriod>>(emptyList()) }
-    var selected by rememberSaveable { mutableIntStateOf(0) }
-    var detail by remember { mutableStateOf<WeeklyPicksDetail?>(null) }
-    var periodsLoading by remember { mutableStateOf(true) }
-    // 失败与失效的落点用同一份计划：失效要换成「去登录」，普通失败才给重试
-    var periodsFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-    var detailLoading by remember { mutableStateOf(false) }
-    var detailFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-    var refreshing by remember { mutableStateOf(false) }
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
-    // 快速切期时旧响应不能覆盖当前期的结果
-    var detailToken by remember { mutableIntStateOf(0) }
-    var periodsToken by remember { mutableIntStateOf(0) }
-    val scope = rememberCoroutineScope()
-
-    fun loadDetail(period: WeeklyPeriod, showLoading: Boolean = true) {
-        detailToken++
-        val current = detailToken
-        if (showLoading) detailLoading = true
-        detailFailure = null
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.weeklyPicksDetail(period.id) }
-            if (current != detailToken) return@launch
-            detailLoading = false
-            refreshing = false
-            when (outcome) {
-                is SessionOutcome.Ok -> detail = outcome.value
-                SessionOutcome.Expired -> detailFailure = planLoad(outcome, hasContent = false, failureMessage = "")
-                is SessionOutcome.Failed -> detailFailure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
-            }
-        }
-    }
-
-    // 期数列表只在进入页面/下拉刷新时取一次；切期只重取当期，避免每次切期都请求列表
-    fun loadPeriods(showLoading: Boolean = true) {
-        periodsToken++
-        val current = periodsToken
-        if (showLoading) periodsLoading = true
-        periodsFailure = null
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.weeklyPicks() }
-            if (current != periodsToken) return@launch
-            periodsLoading = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val picks = outcome.value
-                    periods = picks.periods
-                    val index = selected.coerceIn(0, (periods.size - 1).coerceAtLeast(0))
-                    selected = index
-                    val period = periods.getOrNull(index)
-                    if (period == null) {
-                        refreshing = false
-                        detail = null
-                    } else {
-                        loadDetail(period, showLoading = detail == null)
-                    }
-                }
-
-                SessionOutcome.Expired -> {
-                    refreshing = false
-                    if (periods.isEmpty()) {
-                        periodsFailure = planLoad(outcome, hasContent = false, failureMessage = "")
-                    } else if (detail == null) {
-                        detailFailure = planLoad(outcome, hasContent = false, failureMessage = "")
-                    }
-                }
-
-                is SessionOutcome.Failed -> {
-                    refreshing = false
-                    if (periods.isEmpty()) {
-                        periodsFailure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
-                    } else if (detail == null) {
-                        detailFailure = planLoad(outcome, hasContent = false, failureMessage = "加载失败")
-                    }
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) { loadPeriods() }
+    // 取期数、按期取详情、切期、失败落点都在共享状态里，本页只负责画
+    val week = rememberWeekScaffoldState(
+        loadPicks = { deps.authCall.call { deps.gateway.weeklyPicks() } },
+        loadPicksDetail = { periodId -> deps.authCall.call { deps.gateway.weeklyPicksDetail(periodId) } },
+        periodsFailureStyle = WeekPeriodsFailureStyle.SplitAcrossSlots,
+        detailLoadingStyle = WeekDetailLoadingStyle.KeepContent,
+        refreshReset = WeekRefreshReset.WithDetail,
+    )
 
     GlassScaffold(
         topBar = {
@@ -149,23 +70,17 @@ internal fun WeekScreen(
                     color = Color.Transparent,
                     navigationIcon = { BackButton(onBack = onBack) },
                 )
-                if (periods.isNotEmpty()) {
-                    val topCurrent = periods[selected.coerceIn(0, periods.lastIndex)]
+                if (week.periods.isNotEmpty()) {
+                    val topCurrent = week.periods[week.selected.coerceIn(0, week.periods.lastIndex)]
                     // 期数选择器固定于列表之外：与顶栏同处玻璃层，列表滚动后仍可切期
                     Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                         OverlaySpinnerPreference(
-                            items = periods.map { DropdownItem(text = it.title, selected = it.id == topCurrent.id) },
-                            selectedIndex = selected.coerceIn(0, periods.lastIndex),
+                            items = week.periods.map { DropdownItem(text = it.title, selected = it.id == topCurrent.id) },
+                            selectedIndex = week.selected.coerceIn(0, week.periods.lastIndex),
                             title = "期数",
                             summary = topCurrent.time.ifBlank { topCurrent.title },
                             showValue = false,
-                            onSelectedIndexChange = { index ->
-                                val period = periods.getOrNull(index) ?: return@OverlaySpinnerPreference
-                                if (index == selected) return@OverlaySpinnerPreference
-                                selected = index
-                                detail = null
-                                loadDetail(period)
-                            },
+                            onSelectedIndexChange = { index -> week.selectPeriod(index) },
                         )
                     }
                     // 期数时间范围紧跟选择器，和原版菜单里的时间文案对应
@@ -183,10 +98,10 @@ internal fun WeekScreen(
         },
     ) { innerPadding ->
         when {
-            periodsLoading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
+            week.periodsLoading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
             // 期数列表都没有时：失效只能去登录，普通失败才给重试
-            periodsFailure != null -> {
-                val failure = periodsFailure
+            week.periodsFailure != null -> {
+                val failure = week.periodsFailure
                 if (failure?.phase == ScreenLoadPhase.Expired) {
                     LoginExpiredScreen(
                         onOpenLogin = nav::login,
@@ -195,23 +110,20 @@ internal fun WeekScreen(
                 } else {
                     ErrorScreen(
                         message = failure?.message.orEmpty(),
-                        onRetry = ::loadPeriods,
+                        onRetry = { week.loadPeriods() },
                         modifier = Modifier.padding(innerPadding),
                     )
                 }
             }
-            periods.isEmpty() -> CenteredEmptyState(
+            week.periods.isEmpty() -> CenteredEmptyState(
                 title = "暂无每周必看",
                 hint = "稍后再来看看",
                 modifier = Modifier.padding(innerPadding),
             )
             else -> Column(modifier = Modifier.fillMaxSize()) {
                 GlassPullToRefresh(
-                    isRefreshing = refreshing,
-                    onRefresh = {
-                        refreshing = true
-                        loadPeriods(showLoading = false)
-                    },
+                    isRefreshing = week.refreshing,
+                    onRefresh = { week.refresh() },
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
@@ -225,13 +137,13 @@ internal fun WeekScreen(
                         contentPadding = innerPadding,
                         modifier = Modifier.fillMaxSize().readableWidth(),
                     ) {
-                        val loaded = detail
+                        val loaded = week.detail
                         when {
-                            detailLoading -> item(key = "loading") {
+                            week.detailLoading -> item(key = "loading") {
                                 LoadingScreen(modifier = Modifier.fillMaxWidth().padding(24.dp))
                             }
-                            detailFailure != null -> item(key = "error") {
-                                val failure = detailFailure
+                            week.detailFailure != null -> item(key = "error") {
+                                val failure = week.detailFailure
                                 if (failure?.phase == ScreenLoadPhase.Expired) {
                                     LoginExpiredScreen(
                                         onOpenLogin = nav::login,
@@ -241,9 +153,7 @@ internal fun WeekScreen(
                                     // 期数列表已成功，只有当期失败：保留下拉选择器重试
                                     ErrorScreen(
                                         message = failure?.message.orEmpty(),
-                                        onRetry = {
-                                            loadDetail(periods[selected.coerceIn(0, periods.lastIndex)])
-                                        },
+                                        onRetry = { week.retryDetail() },
                                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                                     )
                                 }

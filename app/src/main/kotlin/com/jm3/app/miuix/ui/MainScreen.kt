@@ -21,12 +21,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,13 +39,16 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.glass.IosLiquidGlassNavigationBar
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
 import com.jm3.app.miuix.ui.glass.LocalGlassBottomBarTokens
-import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.glass.layerBackdropSource
+import com.jm3.app.miuix.ui.mainscreen.MainTab
+import com.jm3.app.miuix.ui.mainscreen.MainTabBadge
+import com.jm3.app.miuix.ui.mainscreen.mainContentWidthDp
+import com.jm3.app.miuix.ui.mainscreen.mainTabBadge
+import com.jm3.app.miuix.ui.mainscreen.rememberMainScaffoldState
+import com.jm3.app.miuix.ui.mainscreen.resolveMainBarLayout
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.glass.rememberBlurBackdrop
 import com.jm3.core.settings.BottomBarForm
-import com.jm3.core.settings.BottomBarPreferencePolicy
-import com.jm3.core.settings.WideScreenNavigation
 
 import com.jm3.core.download.activeDownloadCount
 import com.jm3.core.session.UnreadBadge
@@ -70,13 +71,7 @@ import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Playlist
 import kotlin.math.roundToInt
 
-private enum class MainTab(val label: String) {
-    HOME("首页"),
-    CATEGORY("分类"),
-    RANK("榜单"),
-    MINE("我的"),
-}
-
+/** 分页图标属于皮肤视觉，不进共享骨架。 */
 private fun tabIcon(tab: MainTab): ImageVector = when (tab) {
     MainTab.HOME -> MiuixIcons.Home
     MainTab.CATEGORY -> MiuixIcons.GridView
@@ -91,26 +86,25 @@ internal fun MainScreen(
     snackbarHostState: SnackbarHostState,
     nav: AppRoutes,
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    // 启动即恢复下载队列（中断任务收敛为暂停态），底栏角标才能反映在途任务
-    LaunchedEffect(Unit) { deps.downloadManager.ensureStarted() }
+    // 选页与启动接线（拉起下载队列、登录态变化刷未读）都在共享骨架里
+    val state = rememberMainScaffoldState(deps = deps, unreadBadge = unreadBadge)
+    val tab = state.tab
     // 下载队列进度在“我的”页可见，底栏用角标提示在途任务；在途判定只由 :core 的状态语义给出
     val downloads by deps.downloadManager.queue.updates.collectAsState()
     val activeDownloads = downloads.activeDownloadCount()
-    val user by deps.account.user.collectAsState()
     val unread by unreadBadge.count.collectAsState()
-    // 登录态变化后重算未读；登出时 refresh 内部会归零
-    LaunchedEffect(user?.uid) { unreadBadge.refresh(user != null) }
 
     // 未读优先显示数字；无未读时用圆点提示在途下载
-    fun badgeFor(item: MainTab): (@Composable () -> Unit)? = when {
-        item == MainTab.MINE && unread > 0 -> {
-            { Badge { Text(text = if (unread > 99) "99+" else unread.toString()) } }
+    fun badgeFor(item: MainTab): (@Composable () -> Unit)? = when (
+        val badge = mainTabBadge(tab = item, unread = unread, activeDownloads = activeDownloads)
+    ) {
+        MainTabBadge.None -> null
+        is MainTabBadge.Unread -> {
+            { Badge { Text(text = badge.text) } }
         }
-        item == MainTab.MINE && activeDownloads > 0 -> {
+        MainTabBadge.Downloads -> {
             { Badge() }
         }
-        else -> null
     }
 
     // 弹窗层必须压在悬浮底栏之上：Miuix 的 Overlay* 默认注册到最外层 Scaffold 的弹窗层，
@@ -125,35 +119,35 @@ internal fun MainScreen(
             val heightDp = maxHeight.toLayoutDpInt()
             // 宽屏导航偏好与底栏 token 同源：600dp 以下设置项不可见，布局一律按底栏渲染；
             // 大屏未设置时默认底栏，用户显式选侧栏才切成 NavigationRail。
-            val wideScreenNavigation = remember(deps.wideScreenNavigation, widthDp, heightDp) {
-                BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
-                    deps.wideScreenNavigation,
-                    widthDp,
-                    heightDp,
-                )
-            }
-            // 底栏尺寸/形态档在组合期一次性解析：未显式设置时按窗口宽度断点取默认值，
-            // 切换偏好只会重建这份 token，不进入滚动或测量热路径。
-            val barTokens = remember(
+            val barLayout = remember(
+                deps.wideScreenNavigation,
                 deps.bottomBarSize,
                 deps.bottomBarForm,
                 widthDp,
+                heightDp,
             ) {
-                resolveBottomBarTokens(
+                resolveMainBarLayout(
+                    wideScreenNavigation = deps.wideScreenNavigation,
                     explicitSize = deps.bottomBarSize,
                     explicitForm = deps.bottomBarForm,
                     widthDp = widthDp,
+                    heightDp = heightDp,
                 )
             }
+            val barTokens = barLayout.tokens
             // 侧栏只占横向空间，底部净空留给系统栏；底栏（含宽屏）按 token 扣除
-            val useRail = wideScreenNavigation == WideScreenNavigation.RAIL
+            val useRail = barLayout.useRail
             // 侧栏展开/收起由库的连续动画驱动，占宽随时变化。正文的限宽留白必须按侧栏之外的
             // 剩余宽度推导：直接拿窗口宽度算，限宽后的内容列会在窗口里整体右偏半个侧栏。
             // 这里量一次侧栏实际宽度（dp）再下发，页面本身不需要知道侧栏存在。
             val density = LocalDensity.current
             var railWidthDp by remember { mutableIntStateOf(0) }
             val contentLayout = railAwareWideLayout(
-                availableWidthDp = if (useRail && railWidthDp > 0) widthDp - railWidthDp else widthDp,
+                availableWidthDp = mainContentWidthDp(
+                    widthDp = widthDp,
+                    useRail = useRail,
+                    railWidthDp = railWidthDp,
+                ),
             )
             // 底栏玻璃采样源：设备不支持 RuntimeShader 时返回 null，底栏自动降级为实色
             val backdrop = rememberBlurBackdrop()
@@ -211,7 +205,7 @@ internal fun MainScreen(
                                 MainTab.entries.forEachIndexed { index, item ->
                                     NavigationRailItem(
                                         selected = tab == index,
-                                        onClick = { tab = index },
+                                        onClick = { state.selectTab(index) },
                                         icon = tabIcon(item),
                                         label = item.label,
                                         badge = badgeFor(item),
@@ -274,7 +268,7 @@ internal fun MainScreen(
                         MiuixDockedNavigationBar(
                             items = MainTab.entries.map { MiuixDockedNavItem(label = it.label, icon = tabIcon(it)) },
                             selectedIndex = tab,
-                            onSelect = { tab = it },
+                            onSelect = state::selectTab,
                             badge = { index -> MainTab.entries.getOrNull(index)?.let(::badgeFor) },
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
@@ -285,7 +279,7 @@ internal fun MainScreen(
                         IosLiquidGlassNavigationBar(
                             items = MainTab.entries.map { NavigationItem(label = it.label, icon = tabIcon(it)) },
                             selectedIndex = tab,
-                            onItemClick = { tab = it },
+                            onItemClick = state::selectTab,
                             backdrop = backdrop,
                             modifier = Modifier.align(Alignment.BottomCenter),
                             badge = { index -> MainTab.entries.getOrNull(index)?.let(::badgeFor) },

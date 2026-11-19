@@ -25,12 +25,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,14 +59,12 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.ProfileDraftPolicy
-import com.jm3.app.miuix.ui.ProfileDraftState
-import com.jm3.app.miuix.ui.ProfileDraftStateSaver
-import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
-import com.jm3.app.miuix.ui.trackedProfileFieldMap
+import com.jm3.app.miuix.ui.profile.ProfileSelector
+import com.jm3.app.miuix.ui.profile.ProfileUiState
+import com.jm3.app.miuix.ui.profile.options
+import com.jm3.app.miuix.ui.profile.rememberProfileScaffoldState
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
@@ -85,50 +79,14 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.rememberCouiImeOccupiesPage
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
-import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
-import com.jm3.app.miuix.ui.applyLoadPlan
-import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
-import com.jm3.core.session.SessionOutcome
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 输入行与卡片同源的圆角：由库的卡片半径派生，避免另写字面量。 */
 private val ProfileInputShape = CouiShape(radius = CouiPageDefaults.shape.radius / 2)
-
-/** 资料里只有这两项是固定枚举，其余都是自由文本。 */
-private enum class ProfileSelector(val title: String, val field: String) {
-    RELATIONS("感情状态", "relations"),
-    SEXUALITY("性取向", "sexuality"),
-}
-
-private val RelationOptions = listOf(
-    "" to "未填写",
-    "Single" to "单身",
-    "Taken" to "非单身",
-    "Open" to "开放关系",
-)
-
-private val SexualityOptions = listOf(
-    "" to "未填写",
-    "Guys" to "男性",
-    "Girls" to "女性",
-    "Guys + Girls" to "男女皆可",
-)
-
-private fun ProfileSelector.options(): List<Pair<String, String>> = when (this) {
-    ProfileSelector.RELATIONS -> RelationOptions
-    ProfileSelector.SEXUALITY -> SexualityOptions
-}
-
-private sealed interface ProfileUiState {
-    data object Loading : ProfileUiState
-    data object Loaded : ProfileUiState
-    data class Failed(val message: String, val sessionExpired: Boolean = false) : ProfileUiState
-}
 
 /**
  * COUI 个人资料页：顶部头图卡 + 四组资料行。
@@ -144,70 +102,11 @@ internal fun CouiProfileScreen(
     snackbarHostState: SnackbarHostState,
     nav: AppRoutes,
 ) {
-    val user by deps.account.user.collectAsState()
-    var state by remember { mutableStateOf<ProfileUiState>(ProfileUiState.Loading) }
-    var saving by remember { mutableStateOf(false) }
-    var savedUidToken by rememberSaveable { mutableStateOf(ProfileDraftPolicy.UID_UNSET) }
-    // 服务端资料、脏字段、未保存草稿与编辑缓冲同属一份草稿状态：两套皮肤共用，跨旋转由 Saver 保留
-    val draft = rememberSaveable(saver = ProfileDraftStateSaver) { ProfileDraftState() }
-    val fields = remember { trackedProfileFieldMap(draft.backingFields, draft::noteEdit) }
-    val scope = rememberCoroutineScope()
-
-    fun load(showLoading: Boolean = true) {
-        val uid = user?.uid
-        if (uid == null) {
-            state = ProfileUiState.Failed("请先登录后查看个人资料", sessionExpired = true)
-            return
-        }
-        if (showLoading) state = ProfileUiState.Loading
-        scope.launch {
-            when (val outcome = deps.authCall.call { deps.gateway.userProfile(uid) }) {
-                is SessionOutcome.Ok -> {
-                    draft.apply(outcome.value)
-                    state = ProfileUiState.Loaded
-                }
-                else -> scope.applyLoadPlan(
-                    outcome, hasContent = draft.profile != null, failureMessage = "个人资料加载失败",
-                    snackbarHostState = snackbarHostState,
-                ) { plan ->
-                    state = ProfileUiState.Failed(
-                        message = plan.message.orEmpty(),
-                        sessionExpired = plan.phase == ScreenLoadPhase.Expired,
-                    )
-                }
-            }
-        }
-    }
-
-    fun save() {
-        val uid = user?.uid ?: return
-        if (saving) return
-        saving = true
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.editUserProfile(uid, fields.toMap()) }
-            saving = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    draft.apply(outcome.value, resetDrafts = true)
-                    snackbarHostState.showSnackbar("资料已保存")
-                }
-                is SessionOutcome.Expired -> snackbarHostState.showSnackbar(
-                    planLoad(outcome, hasContent = false, failureMessage = "保存失败").message.orEmpty(),
-                )
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "保存失败：" + failureCopy(outcome, CouiStrings.RetryLater),
-                )
-            }
-        }
-    }
-
-    LaunchedEffect(user?.uid) {
-        if (ProfileDraftPolicy.shouldResetOnUidEffect(savedUidToken, user?.uid)) {
-            savedUidToken = ProfileDraftPolicy.uidToken(user?.uid)
-            draft.reset()
-        }
-        load()
-    }
+    // 装载/保存编排与草稿缓冲都来自共享骨架；本文件只剩头图卡、四组行与锚点气泡
+    val state = rememberProfileScaffoldState(deps = deps, snackbarHostState = snackbarHostState)
+    val user = state.user
+    val fields = state.fields
+    val saving = state.saving
 
     CouiTheme {
         val scrollState = rememberScrollState()
@@ -236,7 +135,7 @@ internal fun CouiProfileScreen(
                         .padding(scrollBehavior.state.contentPadding(innerPadding, LocalDensity.current))
                         .consumeWindowInsets(innerPadding),
                 ) {
-                    when (val current = state) {
+                    when (val current = state.uiState) {
                         ProfileUiState.Loading -> CouiLoadingGroup(
                             modifier = Modifier.padding(top = 8.dp),
                             text = "正在加载个人资料…",
@@ -251,7 +150,7 @@ internal fun CouiProfileScreen(
                         } else {
                             CouiErrorGroup(
                                 message = current.message,
-                                onRetry = { load() },
+                                onRetry = { state.load() },
                                 modifier = Modifier.padding(top = 8.dp),
                             )
                         }
@@ -261,7 +160,7 @@ internal fun CouiProfileScreen(
                             photoUrl = user?.photoUrl,
                             fields = fields,
                             saving = saving,
-                            onSave = ::save,
+                            onSave = state::save,
                         )
                     }
                 }

@@ -34,53 +34,22 @@ import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.list.ListLoadState
-import com.jm3.app.miuix.ui.list.SessionListLoader
-import com.jm3.app.miuix.ui.list.SessionListSnapshot
+import com.jm3.app.miuix.ui.list.toListState
 import com.jm3.app.miuix.ui.route.AppRoutes
+import com.jm3.app.miuix.ui.search.SearchCriteria
+import com.jm3.app.miuix.ui.search.clampedPageJumpTarget
+import com.jm3.app.miuix.ui.search.searchListLoader
+import com.jm3.app.miuix.ui.search.searchOrderOf
+import com.jm3.app.miuix.ui.search.searchPageTitle
+import com.jm3.app.miuix.ui.search.searchTimeOf
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
-import com.jm3.core.model.SearchPage
-import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
-import com.jm3.core.paging.PagedFeed
-import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.replacedBy
-import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import com.jm3.core.toSlice
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
-
-internal sealed interface SearchUiState {
-    data object Loading : SearchUiState
-    data class Loaded(val feed: PagedFeed<SearchResult>) : SearchUiState
-    data class Failed(
-        val message: String,
-        val sessionExpired: Boolean = false,
-    ) : SearchUiState
-}
-
-/** 空列表起手：第一页由 [replacedBy] 落进来。 */
-private fun emptyFeed() = PagedFeed<SearchResult>()
-
-/** 结局 → 页面状态：成功整页替换，失败与会话失效都落错误文案（文案统一由 [planLoad] 给出）。 */
-internal fun searchStateOf(outcome: SessionOutcome<SearchPage>, failureMessage: String): SearchUiState =
-    when (outcome) {
-        is SessionOutcome.Ok -> SearchUiState.Loaded(emptyFeed().replacedBy(outcome.value))
-        else -> SearchUiState.Failed(
-            message = planLoad(outcome, hasContent = false, failureMessage = failureMessage).message.orEmpty(),
-            sessionExpired = outcome is SessionOutcome.Expired,
-        )
-    }
-
-/** loader 快照 → 本屏渲染状态：三档一一对应，失败文案与失效标记原样搬过来。 */
-private fun SessionListSnapshot<SearchResult>.toUiState(): SearchUiState = when (val s = state) {
-    ListLoadState.Loading -> SearchUiState.Loading
-    ListLoadState.Loaded -> SearchUiState.Loaded(feed)
-    is ListLoadState.Failed -> SearchUiState.Failed(message = s.message, sessionExpired = s.sessionExpired)
-}
 
 /** 独立搜索结果页：标签/作者/作品/人物点击与外部入口共用，支持排序与分页。 */
 @Composable
@@ -100,33 +69,30 @@ internal fun SearchScreen(
     val selectionHaptic = rememberSelectionHaptic()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
-    val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
+    val order = searchOrderOf(orderValue)
+    val time = searchTimeOf(timeValue)
     // 分页模式是全局可观察状态，设置页切换后本页立即变更控件形态。
     val mode = deps.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
 
     // 关键词/范围/排序/时间任一变化就是另一份结果：loader 跟着重建，在途请求与页游标从零起算。
+    // 取数口径（结局翻译、失败文案、缓存键）与首页搜索共用同一份构造器。
     val loader = remember(query, scope, order, time) {
-        SessionListLoader<SearchResult>(
+        searchListLoader(
             scope = coroutineScope,
-            idOf = { it.id },
+            authCall = deps.authCall,
+            gateway = deps.gateway,
+            criteria = { SearchCriteria(query = query, order = order) },
             failureMessage = "搜索失败",
-            fetchPage = { page ->
-                val outcome = deps.authCall.call { deps.gateway.search(query, page, order, scope, time) }
-                when (outcome) {
-                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
-                    SessionOutcome.Expired -> SessionOutcome.Expired
-                    is SessionOutcome.Failed -> outcome
-                }
-            },
             notice = { message -> coroutineScope.launch { snackbarHostState.showSnackbar(message) } },
+            searchScope = { scope },
+            time = time,
             cache = sessionCache,
             cacheKey = SessionListKey.Search(query = query, scope = scope, order = order, time = time),
         )
     }
     val snapshot by loader.snapshot.collectAsState()
-    val state = snapshot.toUiState()
+    val state = snapshot.toListState()
     // 下拉指示器状态由 loader 给：刷新只保留内容，不再由本屏另置一份
     val refreshing = snapshot.refreshing
     // 跳页成功后回顶：loader 只认页号，回顶时点由本屏登记
@@ -149,10 +115,7 @@ internal fun SearchScreen(
 
     /** 点击分页：按目标页整页替换并回到列表顶部。 */
     fun jumpToPage(target: Int) {
-        val current = snapshot.feed
-        val resolved = pagerTargetPage(current.page, target, current.pageCount)
-        if (resolved == current.page) return
-        if (current.pageCount == null && resolved > current.page && !current.hasMore) return
+        val resolved = clampedPageJumpTarget(snapshot.feed, target) ?: return
         pendingScrollPage = resolved
         loader.goToPage(resolved)
     }
@@ -161,7 +124,7 @@ internal fun SearchScreen(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 GlassTopAppBar(
-                    title = if (scope == SearchScope.SITE) "搜索：$query" else "${scope.label}：$query",
+                    title = searchPageTitle(query, scope),
                     navigationIcon = { BackButton(onBack = onBack) },
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                     color = Color.Transparent,
@@ -205,7 +168,7 @@ internal fun SearchScreen(
         ) {
             // 触底判定全在 PagedFeed.shouldLoadMore 里；点击翻页模式不订阅滚动
             if (!clickPaging) {
-                val paging = state as? SearchUiState.Loaded
+                val paging = state as? ListState.Loaded
                 if (paging != null) {
                     LoadMoreOnScroll(
                         listState = listState,
@@ -222,7 +185,7 @@ internal fun SearchScreen(
                 modifier = Modifier.fillMaxSize().readableWidth(),
             ) {
                 when (val s = state) {
-                    is SearchUiState.Loading -> if (!refreshing) {
+                    is ListState.Loading -> if (!refreshing) {
                         item(key = "loading") {
                             Box(
                                 modifier = Modifier.fillMaxWidth().padding(24.dp),
@@ -232,7 +195,7 @@ internal fun SearchScreen(
                             }
                         }
                     }
-                    is SearchUiState.Failed -> item(key = "error") {
+                    is ListState.Failed -> item(key = "error") {
                         ScreenFailureOrLogin(
                             message = s.message,
                             expired = s.sessionExpired,
@@ -241,7 +204,7 @@ internal fun SearchScreen(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                         )
                     }
-                    is SearchUiState.Loaded -> if (clickPaging) {
+                    is ListState.Loaded -> if (clickPaging) {
                         pagedSearchResultItems(
                             feed = s.feed,
                             onPageChange = ::jumpToPage,

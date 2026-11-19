@@ -15,13 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -30,7 +26,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.components.BackButton
 import com.jm3.app.miuix.ui.components.EmptyState
 import com.jm3.app.miuix.ui.components.ErrorScreen
@@ -41,33 +36,26 @@ import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.notifications.NOTIFICATION_PREVIEW_UPDATES
+import com.jm3.app.miuix.ui.notifications.NotificationTab
+import com.jm3.app.miuix.ui.notifications.notificationEmptyHint
+import com.jm3.app.miuix.ui.notifications.notificationMarkActionText
+import com.jm3.app.miuix.ui.notifications.notificationTypeLabel
+import com.jm3.app.miuix.ui.notifications.notificationUpdatesToggleText
+import com.jm3.app.miuix.ui.notifications.rememberNotificationsScaffoldState
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.NOTIFICATION_TYPE_FOLLOW
 import com.jm3.core.model.NotificationBody
 import com.jm3.core.model.NotificationItem
-import com.jm3.core.model.NotificationPage
 import com.jm3.core.notificationBody
 import com.jm3.core.notificationDisplayTitle
-import com.jm3.core.session.SessionOutcome
 import com.jm3.core.session.UnreadBadge
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-
-/** 信箱分类：全部 / 漫画追更 / 站内通知，与原版页签一致。 */
-private enum class NotificationTab(val label: String, val type: String?) {
-    ALL("全部", null),
-    FOLLOW("追更", NOTIFICATION_TYPE_FOLLOW),
-    NOTICE("站内", "site_notice"),
-}
-
-/** 追更通知折叠时最多展示的更新条目数。 */
-private const val NOTIFICATION_PREVIEW_UPDATES = 2
 
 /** 信箱：通知列表、按类型筛选、标记已读/未读；底栏未读数随列表状态同步。 */
 @Composable
@@ -79,29 +67,11 @@ internal fun NotificationsScreen(
     // 未读角标的唯一真源：与 MainScreen 注入同一个实例，避免这里写一份、底栏读另一份
     unreadBadge: UnreadBadge,
 ) {
-    val user by deps.account.user.collectAsState()
-    var page by remember { mutableStateOf<NotificationPage?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    // 会话失效与「刷新失败」要分开：前者给重试按钮是骗人的，只能去登录
-    var sessionExpired by remember { mutableStateOf(false) }
-    var refreshing by remember { mutableStateOf(false) }
-    var requestToken by remember { mutableIntStateOf(0) }
-    var loadedUid by remember { mutableStateOf<String?>(null) }
-    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
-    var markingId by remember { mutableStateOf<String?>(null) }
-    // 展开态要跟相邻页签一样熬过旋屏重建：Set 不在 Bundle 可存类型里，拆成 List 存取
-    var expandedIds by rememberSaveable(
-        stateSaver = listSaver(
-            save = { it.toList() },
-            restore = { it.toSet() },
-        ),
-    ) { mutableStateOf(emptySet<String>()) }
     var tabValue by rememberSaveable { mutableStateOf(NotificationTab.ALL.name) }
     val selectionHaptic = rememberSelectionHaptic()
     val tab = NotificationTab.entries.firstOrNull { it.name == tabValue } ?: NotificationTab.ALL
     val tabIndex = NotificationTab.entries.indexOf(tab).coerceAtLeast(0)
-    val scope = rememberCoroutineScope()
+    val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val listStates = remember { List(NotificationTab.entries.size) { LazyListState() } }
     val pagerState = rememberSyncedTabPagerState(
         selectedTab = tabIndex,
@@ -114,113 +84,28 @@ internal fun NotificationsScreen(
         },
         useMiuixSpring = true,
     )
-
-    fun syncUnread(items: List<NotificationItem>) {
-        unreadBadge.sync(items.count { !it.read })
-    }
-
-    /** 失效与失败共用一条落点：有数据就保留列表、只弹提示，没有数据才整屏。 */
-    fun applyPlan(outcome: SessionOutcome<*>) {
-        val plan = planLoad(outcome, hasContent = page != null, failureMessage = "信箱加载失败")
-        if (plan.phase == ScreenLoadPhase.Content) {
-            plan.notice?.let { notice -> scope.launch { snackbarHostState.showSnackbar(notice) } }
-        } else {
-            sessionExpired = plan.phase == ScreenLoadPhase.Expired
-            error = plan.message
-        }
-    }
-
-    fun load(showLoading: Boolean = true) {
-        val token = ++requestToken
-        if (showLoading) loading = true
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.notifications() }
-            if (token != requestToken) return@launch
-            loading = false
-            refreshing = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    error = null
-                    sessionExpired = false
-                    page = outcome.value
-                    syncUnread(outcome.value.items)
-                }
-
-                SessionOutcome.Expired -> applyPlan(outcome)
-
-                // 已有数据时保留列表，只用 Snackbar 提示刷新失败，避免整屏被错误态替换
-                is SessionOutcome.Failed -> applyPlan(outcome)
-            }
-        }
-    }
-
-    /** 已读/未读可双向切换：原版格子上的读信图标同样按当前状态取反。 */
-    fun toggleRead(item: NotificationItem) {
-        if (markingId != null) return
-        val uidAtStart = user?.uid
-        val tokenAtStart = requestToken
-        markingId = item.id
-        scope.launch {
-            val target = !item.read
-            val outcome = deps.authCall.call { deps.gateway.markNotification(item.id, target) }
-            markingId = null
-            if (user?.uid != uidAtStart || tokenAtStart != requestToken) return@launch
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    val updated = page?.items
-                        ?.map { if (it.id == item.id) it.copy(read = target) else it }
-                        .orEmpty()
-                    page = page?.copy(items = updated)
-                    syncUnread(updated)
-                }
-
-                SessionOutcome.Expired -> snackbarHostState.showSnackbar(
-                    planLoad(outcome, hasContent = false, failureMessage = "标记失败").message.orEmpty(),
-                )
-
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("标记失败：" + failureCopy(outcome, "请稍后重试"))
-            }
-        }
-    }
-
-    val uid = user?.uid
-    LaunchedEffect(uid) {
-        if (uid == null) {
-            requestToken++
-            page = null
-            error = null
-            sessionExpired = false
-            loading = false
-            refreshing = false
-            markingId = null
-            expandedIds = emptySet()
-            loadedUid = null
-            load()
-        } else if (page == null || sessionExpired || error != null || loadedUid != uid) {
-            if (loadedUid != null && loadedUid != uid) {
-                page = null
-                error = null
-                sessionExpired = false
-                expandedIds = emptySet()
-            }
-            loadedUid = uid
-            load()
-        }
-    }
-
-    val items = page?.items.orEmpty()
-    val unread = items.count { !it.read }
-    val tabLabels = NotificationTab.entries.map { entry ->
-        val count = items.count { !it.read && (entry.type == null || it.type == entry.type) }
-        if (count > 0) "${entry.label} $count" else entry.label
-    }
+    // 装载、标记已读、未读角标同步与账号切换清空都在共享骨架里，本皮肤只留玻璃控件与页签
+    val scaffoldState = rememberNotificationsScaffoldState(
+        deps = deps,
+        snackbarHostState = snackbarHostState,
+        unreadBadge = unreadBadge,
+        guardStaleResponses = true,
+        clearFailureOnKeptContent = false,
+    )
+    val loading = scaffoldState.loading
+    val error = scaffoldState.error
+    val sessionExpired = scaffoldState.sessionExpired
+    val refreshing = scaffoldState.refreshing
+    val markingId = scaffoldState.markingId
+    val items = scaffoldState.items
+    val tabLabels = scaffoldState.tabLabels
 
     GlassScaffold(
         topBar = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 GlassTopAppBar(
                     title = "信箱",
-                    subtitle = if (page == null) "" else if (unread > 0) "$unread 条未读" else "全部已读",
+                    subtitle = scaffoldState.subtitle,
                     // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                     color = Color.Transparent,
                     navigationIcon = { BackButton(onBack = onBack) },
@@ -245,7 +130,7 @@ internal fun NotificationsScreen(
             sessionExpired -> LoginExpiredScreen(onOpenLogin = nav::login, modifier = Modifier.padding(innerPadding))
             error != null -> ErrorScreen(
                 message = error.orEmpty(),
-                onRetry = { load() },
+                onRetry = { scaffoldState.load() },
                 modifier = Modifier.padding(innerPadding),
             )
             loading -> LoadingScreen(modifier = Modifier.padding(innerPadding))
@@ -257,10 +142,7 @@ internal fun NotificationsScreen(
                 val pageVisible = items.filter { pageTab.type == null || it.type == pageTab.type }
                 GlassPullToRefresh(
                     isRefreshing = refreshing && tabIndex == pageIndex,
-                    onRefresh = {
-                        refreshing = true
-                        load(showLoading = false)
-                    },
+                    onRefresh = scaffoldState::refresh,
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
@@ -276,27 +158,17 @@ internal fun NotificationsScreen(
                                 EmptyState(
                                     title = if (items.isEmpty()) "暂无消息" else "暂无此类消息",
                                     // 站内页签下不存在「订阅作品更新」，提示语要按当前页签区分
-                                    hint = when (pageTab) {
-                                        NotificationTab.NOTICE -> "暂无站内消息"
-                                        NotificationTab.FOLLOW -> "订阅作品更新后会在这里收到通知"
-                                        NotificationTab.ALL -> "订阅更新与站内消息都会出现在这里"
-                                    },
+                                    hint = notificationEmptyHint(pageTab),
                                 )
                             }
                         }
                         items(pageVisible, key = { it.id }) { item ->
                             NotificationCard(
                                 item = item,
-                                expanded = item.id in expandedIds,
+                                expanded = scaffoldState.isExpanded(item.id),
                                 marking = markingId == item.id,
-                                onToggleExpanded = {
-                                    expandedIds = if (item.id in expandedIds) {
-                                        expandedIds - item.id
-                                    } else {
-                                        expandedIds + item.id
-                                    }
-                                },
-                                onToggleRead = { toggleRead(item) },
+                                onToggleExpanded = { scaffoldState.toggleExpanded(item.id) },
+                                onToggleRead = { scaffoldState.toggleRead(item) },
                                 onOpenAlbum = nav::album,
                             )
                         }
@@ -322,7 +194,6 @@ private fun NotificationCard(
     val body = remember(item.id, item.content) { notificationBody(item.content) }
     val title = remember(item.id, item.title, item.type, item.content) { notificationDisplayTitle(item) }
     val updates = (body as? NotificationBody.Updates)?.items.orEmpty()
-    val typeLabel = if (item.type == NOTIFICATION_TYPE_FOLLOW) "漫画追踪通知" else "站内通知"
     Card(
         cornerRadius = skin.shapes.cardCorner,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
@@ -331,7 +202,7 @@ private fun NotificationCard(
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = typeLabel,
+                    text = notificationTypeLabel(item.type),
                     style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -386,7 +257,7 @@ private fun NotificationCard(
                         }
                         if (updates.size > NOTIFICATION_PREVIEW_UPDATES) {
                             Text(
-                                text = if (expanded) "收起" else "展开全部 ${updates.size} 条",
+                                text = notificationUpdatesToggleText(expanded, updates.size),
                                 style = MiuixTheme.textStyles.footnote1,
                                 color = MiuixTheme.colorScheme.primary,
                                 modifier = Modifier.pressScale().clickable(onClick = onToggleExpanded),
@@ -414,7 +285,7 @@ private fun NotificationCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (marking) "处理中…" else if (item.read) "标记未读" else "标记已读",
+                        text = notificationMarkActionText(marking, item.read),
                         style = MiuixTheme.textStyles.footnote1,
                         color = if (marking) {
                             MiuixTheme.colorScheme.onSurfaceVariantSummary

@@ -8,12 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -21,9 +15,11 @@ import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.components.BackButton
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
+import com.jm3.app.miuix.ui.login.LOGIN_BUSY_LABEL
+import com.jm3.app.miuix.ui.login.LOGIN_SUBMIT_LABEL
+import com.jm3.app.miuix.ui.login.rememberLoginScaffoldState
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.session.AccountManager
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -34,11 +30,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
     val skin = LocalSkin.current
-    var username by rememberSaveable { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val login = rememberLoginScaffoldState(account, onBack)
 
     GlassScaffold(
         topBar = {
@@ -64,21 +56,21 @@ fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     TextField(
-                        value = username,
-                        onValueChange = { username = it },
+                        value = login.username,
+                        onValueChange = { login.username = it },
                         label = "用户名",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     TextField(
-                        value = password,
-                        onValueChange = { password = it },
+                        value = login.password,
+                        onValueChange = { login.password = it },
                         label = "密码",
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    error?.let { message ->
+                    login.error?.let { message ->
                         Text(
                             text = message,
                             style = MiuixTheme.textStyles.footnote1,
@@ -87,25 +79,12 @@ fun LoginScreen(account: AccountManager, onBack: () -> Unit) {
                     }
                     // 主操作使用 Miuix 主色按钮，与设置页的次级 TextButton 区分层级。
                     Button(
-                        onClick = {
-                            if (busy) return@Button
-                            if (username.isBlank() || password.isBlank()) {
-                                error = "请输入用户名和密码"
-                                return@Button
-                            }
-                            busy = true
-                            error = null
-                            scope.launch {
-                                val failure = account.login(username.trim(), password)
-                                busy = false
-                                if (failure == null) onBack() else error = failure
-                            }
-                        },
-                        enabled = !busy,
+                        onClick = { login.submit() },
+                        enabled = !login.busy,
                         colors = ButtonDefaults.buttonColorsPrimary(),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(text = if (busy) "登录中…" else "登录")
+                        Text(text = if (login.busy) LOGIN_BUSY_LABEL else LOGIN_SUBMIT_LABEL)
                     }
                 }
             }

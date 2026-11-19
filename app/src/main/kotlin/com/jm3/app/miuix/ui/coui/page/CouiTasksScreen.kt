@@ -19,16 +19,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -46,7 +38,6 @@ import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
@@ -63,32 +54,28 @@ import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.list.ListLoadState
-import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.app.miuix.ui.route.AppRoutes
+import com.jm3.app.miuix.ui.tasks.TASK_STATE_DONE
+import com.jm3.app.miuix.ui.tasks.TASK_STATE_UNDONE
+import com.jm3.app.miuix.ui.tasks.TaskHostResolution
+import com.jm3.app.miuix.ui.tasks.isTaskEquipped
+import com.jm3.app.miuix.ui.tasks.rememberTasksScaffoldState
+import com.jm3.app.miuix.ui.tasks.tasksEmptyHint
+import com.jm3.app.miuix.ui.tasks.tasksEmptyTitle
 import com.jm3.core.CoverLocator
-import com.jm3.core.model.TaskFilter
 import com.jm3.core.model.TaskType
 import com.jm3.core.model.TaskItem
-import com.jm3.core.paging.PageSlice
-import com.jm3.core.session.SessionOutcome
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-
-private const val TASK_STATE_DONE = "已达成"
-private const val TASK_STATE_UNDONE = "未达成"
-
-/** 成就页的非分页附加字段：服务端 message 与勋章图 host。 */
-private data class TasksExtra(val message: String?, val imageHost: String)
 
 /**
  * COUI 成就页：称号/勋章按行卡排布，类型与筛选用分段胶囊切换。
  *
  * 接口不返回总数，所以顶栏只写"成就"不写统计；勋章图走 imageHost 拼相对路径，
- * host 取不到时退化为纯文字行，不阻塞整页。
+ * host 取不到时退化为纯文字行，不阻塞整页。状态编排在 [rememberTasksScaffoldState]。
  */
 @Composable
 internal fun CouiTasksScreen(
@@ -97,112 +84,28 @@ internal fun CouiTasksScreen(
     snackbarHostState: SnackbarHostState,
     nav: AppRoutes,
 ) {
-    val scope = rememberCoroutineScope()
     val haptic = rememberSelectionHaptic()
-    val user by deps.account.user.collectAsState()
-
-    val types = TaskType.entries
-    val filters = TaskFilter.entries
-    var typeIndex by rememberSaveable { mutableIntStateOf(0) }
-    var filterIndex by rememberSaveable { mutableIntStateOf(0) }
-    val clampedTypeIndex = typeIndex.coerceIn(0, types.lastIndex)
-    val clampedFilterIndex = filterIndex.coerceIn(0, filters.lastIndex)
-    val listStates = remember { List(types.size) { LazyListState() } }
-    // 佩戴结果由本地覆盖，避免为了一个字段重新拉整页
-    var equippedTitleOverride by remember { mutableStateOf<String?>(null) }
-    var equippedBadgeId by remember { mutableStateOf<String?>(null) }
-    var claimingId by remember { mutableStateOf<String?>(null) }
-    // 成就接口不分页，服务端 message 与勋章图 host 没有能装进 PageSlice 的位置，按 Tab 另记一份
-    val pageExtras = remember(clampedFilterIndex) { mutableStateMapOf<Int, TasksExtra>() }
-    // 每个 Tab 是否已发起首屏请求；筛选变化时和 loader 一起换新
-    val startedTabs = remember(clampedFilterIndex) { mutableStateMapOf<Int, Boolean>() }
-    // 称号与勋章各一个 loader：两类条目互斥，切 Tab 时不会打断另一类的在途请求
-    val loaders = remember(clampedFilterIndex, snackbarHostState) {
-        types.mapIndexed { typeIdx, taskType ->
-            SessionListLoader(
-                scope = scope,
-                idOf = { item: TaskItem -> item.id },
-                failureMessage = "成就加载失败",
-                fetchPage = {
-                    val requestFilter = filters[clampedFilterIndex]
-                    when (val outcome = deps.authCall.call { deps.gateway.tasks(taskType, requestFilter) }) {
-                        is SessionOutcome.Ok -> {
-                            // 勋章图走 imageHost 拼相对路径；host 取不到就退化为纯文字行
-                            val host = (deps.authCall.call { deps.images.imageHost() } as? SessionOutcome.Ok)
-                                ?.value
-                                .orEmpty()
-                                .ifBlank {
-                                    (deps.authCall.call { deps.routes.usedDomain() } as? SessionOutcome.Ok)
-                                        ?.value
-                                        .orEmpty()
-                                }
-                            pageExtras[typeIdx] = TasksExtra(message = outcome.value.message, imageHost = host)
-                            SessionOutcome.Ok(PageSlice(items = outcome.value.items, hasMore = false, page = 1))
-                        }
-
-                        SessionOutcome.Expired -> SessionOutcome.Expired
-                        is SessionOutcome.Failed -> outcome
-                    }
-                },
-                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            )
-        }
-    }
-    val snapshots = loaders.map { it.snapshot.collectAsState().value }
+    // 每档列表一个滚动状态：首次进入该档时回到顶部
+    val listStates = remember { List(TaskType.entries.size) { LazyListState() } }
+    val scaffold = rememberTasksScaffoldState(
+        deps = deps,
+        nav = nav,
+        snackbarHostState = snackbarHostState,
+        haptic = haptic,
+        failureMessage = "成就加载失败",
+        failureFallback = CouiStrings.RetryLater,
+        hostResolution = TaskHostResolution.AfterSuccess,
+        onTabStarted = { tab -> listStates.getOrNull(tab)?.requestScrollToItem(0) },
+    )
+    val snapshots = scaffold.loaders.map { it.snapshot.collectAsState().value }
     val pagerState = rememberSyncedTabPagerState(
-        selectedTab = clampedTypeIndex,
-        pageCount = types.size,
+        selectedTab = scaffold.clampedTypeIndex,
+        pageCount = scaffold.types.size,
         onTabSelected = { next ->
             haptic()
-            typeIndex = next
+            scaffold.selectType(next)
         },
     )
-
-    // 换账号后旧的佩戴态不再成立
-    LaunchedEffect(user?.uid) {
-        equippedTitleOverride = null
-        equippedBadgeId = null
-    }
-
-    fun claim(targetType: TaskType, item: TaskItem) {
-        val uid = user?.uid
-        if (uid.isNullOrBlank()) {
-            nav.login()
-            return
-        }
-        if (claimingId != null) return
-        claimingId = item.id
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.claimTask(targetType, uid, item.id) }
-            claimingId = null
-            val failure = when (outcome) {
-                is SessionOutcome.Ok -> outcome.value
-                is SessionOutcome.Expired -> "登录已失效，请重新登录"
-                is SessionOutcome.Failed -> failureCopy(outcome, CouiStrings.RetryLater)
-            }
-            if (failure == null) {
-                // 佩戴成功：称号记内容文本，勋章记 id，两者互斥
-                if (targetType == TaskType.TITLE) {
-                    equippedTitleOverride = item.content
-                } else {
-                    equippedBadgeId = item.id
-                }
-                haptic()
-                snackbarHostState.showSnackbar("已佩戴「" + item.name + "」")
-            } else {
-                snackbarHostState.showSnackbar("切换失败：" + failure)
-            }
-        }
-    }
-
-    // 每个 Tab 只在自己第一次被切到时拉一次；换筛选后 loader 是新的，进度条也回到顶部
-    LaunchedEffect(clampedTypeIndex, loaders) {
-        if (startedTabs[clampedTypeIndex] != true) {
-            startedTabs[clampedTypeIndex] = true
-            listStates[clampedTypeIndex].requestScrollToItem(0)
-            loaders[clampedTypeIndex].loadFirstPage()
-        }
-    }
 
     CouiTheme {
         val overscroll = rememberCouiOverscrollEffect()
@@ -213,15 +116,15 @@ internal fun CouiTasksScreen(
                 onBack = onBack,
                 actions = {
                     CouiFeedRefreshAction(
-                        refreshing = snapshots[clampedTypeIndex].refreshing,
-                        onRefresh = loaders[clampedTypeIndex]::refresh,
+                        refreshing = snapshots[scaffold.clampedTypeIndex].refreshing,
+                        onRefresh = scaffold.loaders[scaffold.clampedTypeIndex]::refresh,
                     )
                 },
                 topBarBottom = {
                     CouiTopBarSegmentedTabs(
-                        items = types.map { it.label },
-                        selectedIndex = clampedTypeIndex,
-                        onSelect = { typeIndex = it },
+                        items = scaffold.types.map { it.label },
+                        selectedIndex = scaffold.clampedTypeIndex,
+                        onSelect = { index -> scaffold.selectType(index) },
                     )
                 },
             ) { innerPadding ->
@@ -229,10 +132,10 @@ internal fun CouiTasksScreen(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                 ) { pageIdx ->
-                    val pageType = types[pageIdx]
+                    val pageType = scaffold.types[pageIdx]
                     val pageSnapshot = snapshots[pageIdx]
                     val pageItems = pageSnapshot.feed.items
-                    val pageExtra = pageExtras[pageIdx]
+                    val pageExtra = scaffold.extra(pageIdx)
 
                     LazyColumn(
                         modifier = Modifier
@@ -245,9 +148,9 @@ internal fun CouiTasksScreen(
                     ) {
                         item(key = "tasks-filter") {
                             CouiSegmentedCapsules(
-                                items = filters.map { it.label },
-                                selectedIndex = clampedFilterIndex,
-                                onSelect = { filterIndex = it },
+                                items = scaffold.filters.map { it.label },
+                                selectedIndex = scaffold.clampedFilterIndex,
+                                onSelect = { index -> scaffold.selectFilter(index) },
                                 small = true,
                                 modifier = Modifier.padding(
                                     horizontal = CouiPageDefaults.horizontalMargin,
@@ -278,26 +181,20 @@ internal fun CouiTasksScreen(
                                 CouiScreenFailureGroup(
                                     message = pageUiState.message,
                                     expired = pageUiState.sessionExpired,
-                                    onRetry = loaders[pageIdx]::loadFirstPage,
-                                    onOpenLogin = nav::login,
+                                    onRetry = scaffold.loaders[pageIdx]::loadFirstPage,
+                                    onOpenLogin = scaffold.nav::login,
                                     modifier = Modifier.padding(top = 8.dp),
                                 )
                             }
                             ListLoadState.Loaded -> if (pageItems.isEmpty()) {
                                 item(key = "tasks-empty") {
                                     CouiEmptyGroup(
-                                        text = "暂无" + pageType.label,
+                                        text = tasksEmptyTitle(pageType),
                                         modifier = Modifier.padding(top = 8.dp),
                                     )
                                 }
                                 item(key = "tasks-empty-hint") {
-                                    Footer(
-                                        text = if (pageType == TaskType.TITLE) {
-                                            "继续阅读与收藏即可解锁称号"
-                                        } else {
-                                            "完成成就后可在此获得勋章"
-                                        },
-                                    )
+                                    Footer(text = tasksEmptyHint(pageType))
                                 }
                             } else {
                                 item(key = "tasks-group-title") {
@@ -312,14 +209,15 @@ internal fun CouiTasksScreen(
                                             item = item,
                                             type = pageType,
                                             imageHost = pageExtra?.imageHost.orEmpty(),
-                                            equipped = if (pageType == TaskType.TITLE) {
-                                                equippedTitleOverride == item.content
-                                            } else {
-                                                equippedBadgeId == item.id
-                                            },
-                                            claiming = claimingId == item.id,
-                                            claimEnabled = claimingId == null,
-                                            onClaim = { claim(pageType, item) },
+                                            equipped = isTaskEquipped(
+                                                type = pageType,
+                                                item = item,
+                                                equippedTitle = scaffold.equippedTitleOverride,
+                                                equippedBadgeId = scaffold.equippedBadgeId,
+                                            ),
+                                            claiming = scaffold.claimingId == item.id,
+                                            claimEnabled = scaffold.claimingId == null,
+                                            onClaim = { scaffold.claim(pageType, item) },
                                         )
                                     }
                                 }

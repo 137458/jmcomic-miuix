@@ -17,12 +17,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,10 +46,12 @@ import com.jm3.app.miuix.ui.coui.component.CouiPrimaryActionButton
 import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.login.LOGIN_BUSY_LABEL
+import com.jm3.app.miuix.ui.login.LOGIN_SUBMIT_LABEL
+import com.jm3.app.miuix.ui.login.rememberLoginScaffoldState
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.session.AccountManager
-import kotlinx.coroutines.launch
 
 /**
  * COUI 登录页：沿用 [AccountManager.login] 会话入口与错误回传约定，
@@ -66,26 +62,7 @@ internal fun CouiLoginScreen(
     account: AccountManager,
     onBack: () -> Unit,
 ) {
-    var username by rememberSaveable { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    fun submit() {
-        if (busy) return
-        if (username.isBlank() || password.isBlank()) {
-            error = "请输入用户名和密码"
-            return
-        }
-        busy = true
-        error = null
-        scope.launch {
-            val failure = account.login(username.trim(), password)
-            busy = false
-            if (failure == null) onBack() else error = failure
-        }
-    }
+    val login = rememberLoginScaffoldState(account, onBack)
 
     CouiTheme {
         val errorColor = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive
@@ -118,14 +95,14 @@ internal fun CouiLoginScreen(
                             },
                             summary = {
                                 CouiLoginField(
-                                    value = username,
+                                    value = login.username,
                                     onValueChange = {
-                                        username = it
-                                        if (error != null) error = null
+                                        login.username = it
+                                        login.clearError()
                                     },
                                     placeholder = "请输入用户名",
                                     label = "用户名",
-                                    enabled = !busy,
+                                    enabled = !login.busy,
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                                 )
                             },
@@ -141,27 +118,27 @@ internal fun CouiLoginScreen(
                             },
                             summary = {
                                 CouiLoginField(
-                                    value = password,
+                                    value = login.password,
                                     onValueChange = {
-                                        password = it
-                                        if (error != null) error = null
+                                        login.password = it
+                                        login.clearError()
                                     },
                                     placeholder = "请输入密码",
                                     label = "密码",
-                                    enabled = !busy,
+                                    enabled = !login.busy,
                                     visualTransformation = PasswordVisualTransformation(),
                                     keyboardOptions = KeyboardOptions(
                                         keyboardType = KeyboardType.Password,
                                         imeAction = ImeAction.Done,
                                     ),
-                                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                                    keyboardActions = KeyboardActions(onDone = { login.submit() }),
                                 )
                             },
                         )
                     }
                 }
 
-                error?.let { message ->
+                login.error?.let { message ->
                     item(key = "coui-login-error") {
                         Footer(
                             text = message,
@@ -180,10 +157,10 @@ internal fun CouiLoginScreen(
                             ),
                     ) {
                         CouiPrimaryActionButton(
-                            title = if (busy) "登录中…" else "登录",
-                            enabled = !busy,
+                            title = if (login.busy) LOGIN_BUSY_LABEL else LOGIN_SUBMIT_LABEL,
+                            enabled = !login.busy,
                             shape = CouiCapsuleShape,
-                            onClick = ::submit,
+                            onClick = { login.submit() },
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }

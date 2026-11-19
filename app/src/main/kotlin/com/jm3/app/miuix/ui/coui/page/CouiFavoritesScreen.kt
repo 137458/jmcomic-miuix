@@ -27,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,7 +54,6 @@ import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.IntStringPairNullableSaver
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.authorNames
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
@@ -81,25 +79,42 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.favorites.FAVORITE_ADD_CONFIRM
+import com.jm3.app.miuix.ui.favorites.FAVORITE_ADD_FOLDER_TITLE
+import com.jm3.app.miuix.ui.favorites.FAVORITE_ADD_TAG_TITLE
+import com.jm3.app.miuix.ui.favorites.FAVORITE_CANCEL_LABEL
+import com.jm3.app.miuix.ui.favorites.FAVORITE_CLOSE_LABEL
+import com.jm3.app.miuix.ui.favorites.FAVORITE_CREATE_CONFIRM
+import com.jm3.app.miuix.ui.favorites.FAVORITE_DELETE_CONFIRM
+import com.jm3.app.miuix.ui.favorites.FAVORITE_DELETE_FOLDER_TITLE
+import com.jm3.app.miuix.ui.favorites.FAVORITE_DELETE_TAG_TITLE
+import com.jm3.app.miuix.ui.favorites.FAVORITE_EDIT_CONFIRM
+import com.jm3.app.miuix.ui.favorites.FAVORITE_EDIT_FOLDER_TITLE
+import com.jm3.app.miuix.ui.favorites.FAVORITE_FOLDER_ALL_ID
+import com.jm3.app.miuix.ui.favorites.FAVORITE_FOLDER_NAME_LABEL
+import com.jm3.app.miuix.ui.favorites.FAVORITE_MOVE_EMPTY_HINT
+import com.jm3.app.miuix.ui.favorites.FAVORITE_MOVE_TITLE
+import com.jm3.app.miuix.ui.favorites.FAVORITE_TAB_FOLDERS
+import com.jm3.app.miuix.ui.favorites.FAVORITE_TAB_TAGS
+import com.jm3.app.miuix.ui.favorites.FAVORITE_TAG_NAME_LABEL
+import com.jm3.app.miuix.ui.favorites.favoriteDeleteFolderMessage
+import com.jm3.app.miuix.ui.favorites.favoriteDeleteTagMessage
+import com.jm3.app.miuix.ui.favorites.favoriteFixedFailure
+import com.jm3.app.miuix.ui.favorites.favoritePageSliceKeepingPageCount
+import com.jm3.app.miuix.ui.favorites.rememberFavoriteScaffoldState
 import com.jm3.app.miuix.ui.list.ListLoadState
-import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.model.FavoriteFolderAction
-import com.jm3.core.model.SearchPage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.TagFavorite
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
-import com.jm3.core.toSlice
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-
-private val COUI_FAVORITE_TABS = listOf("收藏夹", "标签收藏")
 
 /**
  * 我的收藏（COUI 栅格版）：收藏夹与标签收藏两个分段，参数与旧 Miuix 页一比一。
@@ -126,145 +141,12 @@ internal fun CouiFavoritesScreen(
         val scheme = CouiKitTheme.colorScheme
         val destructive = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive
 
-        // 0 = 收藏夹；1 = 标签收藏
-        var tabIndex by rememberSaveable { mutableIntStateOf(0) }
-        var folderId by rememberSaveable { mutableIntStateOf(0) }
-        var folders by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+        // COUI 独有：收藏夹选择走底部弹窗，开关自己留在这里
         var folderPickerOpen by rememberSaveable { mutableStateOf(false) }
-        var showCreate by rememberSaveable { mutableStateOf(false) }
-        var editTarget by rememberSaveable(stateSaver = IntStringPairNullableSaver) {
-            mutableStateOf<Pair<Int, String>?>(null)
-        }
-        var deleteTarget by rememberSaveable(stateSaver = IntStringPairNullableSaver) {
-            mutableStateOf<Pair<Int, String>?>(null)
-        }
-        var folderNameInput by rememberSaveable { mutableStateOf("") }
-        var folderBusy by remember { mutableStateOf(false) }
-        var folderError by remember { mutableStateOf<String?>(null) }
 
-        // 移动到收藏夹：待移动作品与请求状态
-        var moveTarget by remember { mutableStateOf<SearchResult?>(null) }
-        var moveBusy by remember { mutableStateOf(false) }
-        var moveError by remember { mutableStateOf<String?>(null) }
-
-        // 标签收藏：null 表示加载中，空列表表示无数据
+        // 标签收藏：null 表示加载中，空列表表示无数据；COUI 页手写这份加载，语义与旧页一致（会话失效静默）
         var tags by remember { mutableStateOf<List<TagFavorite>?>(null) }
         var tagsError by remember { mutableStateOf<String?>(null) }
-        var tagBusy by remember { mutableStateOf(false) }
-        var tagError by remember { mutableStateOf<String?>(null) }
-        var showAddTag by rememberSaveable { mutableStateOf(false) }
-        var tagInput by rememberSaveable { mutableStateOf("") }
-        var tagDeleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
-
-        // 收藏夹列表：收藏夹 id 与账号都是 remember 键，切夹时重建 loader 等于丢掉旧夹内容
-        val loader = remember(folderId, mode, user?.uid, snackbarHostState) {
-            SessionListLoader(
-                scope = scope,
-                idOf = { item: SearchResult -> item.id },
-                failureMessage = "收藏加载失败",
-                fetchPage = { page ->
-                    when (val outcome = deps.authCall.call { deps.gateway.favorites(folderId, page) }) {
-                        is SessionOutcome.Ok -> {
-                            val next = outcome.value
-                            // 收藏夹名册随任一页返回，顺手更新；空名册不覆盖已有映射
-                            if (next.folders.isNotEmpty()) folders = next.folders
-                            SessionOutcome.Ok(
-                                SearchPage(next.currentPage, next.totalPages, next.items).toSlice(),
-                            )
-                        }
-
-                        SessionOutcome.Expired -> SessionOutcome.Expired
-                        is SessionOutcome.Failed -> outcome
-                    }
-                },
-                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            )
-        }
-        val snapshot by loader.snapshot.collectAsState()
-        val feed = snapshot.feed
-
-        fun switchFolder(targetFolderId: Int) {
-            if (targetFolderId == folderId) return
-            folderId = targetFolderId
-        }
-
-        /** 收藏夹增删改：成功后关闭弹窗并重拉列表；失败把服务端消息留在弹窗内。 */
-        fun manageFolder(action: FavoriteFolderAction, targetId: String, name: String = "") {
-            if (folderBusy) return
-            folderBusy = true
-            folderError = null
-            scope.launch {
-                val outcome = deps.authCall.call {
-                    deps.gateway.manageFavoriteFolder(action, targetId, name)
-                }
-                folderBusy = false
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        val operation = outcome.value
-                        if (!operation.ok) {
-                            folderError = operation.message ?: "操作失败"
-                            return@launch
-                        }
-                        showCreate = false
-                        editTarget = null
-                        deleteTarget = null
-                        folderNameInput = ""
-                        // 删除当前所在收藏夹后回落到全部，避免停留在已不存在的夹；
-                        // folderId 变化会重建 loader 并自动重拉，没变化才显式刷新一次
-                        if (action == FavoriteFolderAction.DELETE && targetId.toIntOrNull() == folderId && folderId != 0) {
-                            folderId = 0
-                        } else {
-                            loader.loadFirstPage()
-                        }
-                    }
-
-                    // 账号态操作失效：提示一次并直接给登录入口，不让用户对着按钮重试
-                    SessionOutcome.Expired -> {
-                        snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        nav.login()
-                    }
-
-                    is SessionOutcome.Failed -> folderError = "操作失败，请稍后重试"
-                }
-            }
-        }
-
-        /** 移动作品：成功后关闭弹窗、提示并静默刷新当前列表；失败把消息留在弹窗内。 */
-        fun moveAlbum(albumId: String, folderName: String, targetFolderId: Int) {
-            if (moveBusy) return
-            moveBusy = true
-            moveError = null
-            scope.launch {
-                val outcome = deps.authCall.call {
-                    deps.gateway.manageFavoriteFolder(
-                        FavoriteFolderAction.MOVE,
-                        targetFolderId.toString(),
-                        "",
-                        albumId,
-                    )
-                }
-                moveBusy = false
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        val operation = outcome.value
-                        if (!operation.ok) {
-                            moveError = operation.message ?: "移动失败"
-                            return@launch
-                        }
-                        moveTarget = null
-                        snackbarHostState.showSnackbar("已移动到「" + folderName + "」")
-                        loader.refresh()
-                    }
-
-                    SessionOutcome.Expired -> {
-                        snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        nav.login()
-                    }
-
-                    is SessionOutcome.Failed -> moveError = "移动失败，请稍后重试"
-                }
-            }
-        }
 
         /** 标签收藏列表；未登录不发请求，由界面直接展示登录提示。 */
         fun loadTags() {
@@ -284,95 +166,40 @@ internal fun CouiFavoritesScreen(
             }
         }
 
-        /** 添加标签：空值与重复只做轻提示，不打断输入框。 */
-        fun addTag() {
-            val tag = tagInput.trim()
-            if (tag.isEmpty()) {
-                scope.launch { snackbarHostState.showSnackbar("标签不能为空") }
-                return
-            }
-            if (tags.orEmpty().any { it.tag == tag }) {
-                scope.launch { snackbarHostState.showSnackbar("该标签已收藏") }
-                return
-            }
-            if (tagBusy) return
-            tagBusy = true
-            tagError = null
-            scope.launch {
-                val outcome = deps.authCall.call { deps.gateway.addFavoriteTags(listOf(tag)) }
-                tagBusy = false
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        showAddTag = false
-                        tagInput = ""
-                        snackbarHostState.showSnackbar("已添加标签 #" + tag)
-                        loadTags()
-                    }
-
-                    SessionOutcome.Expired -> {
-                        snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        nav.login()
-                    }
-
-                    is SessionOutcome.Failed -> tagError = "添加标签失败，请稍后重试"
-                }
-            }
-        }
-
-        /** 删除标签：确认后调用接口并刷新列表。 */
-        fun deleteTag(tag: String) {
-            if (tagBusy) return
-            tagBusy = true
-            tagError = null
-            scope.launch {
-                val outcome = deps.authCall.call { deps.gateway.removeFavoriteTags(listOf(tag)) }
-                tagBusy = false
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        tagDeleteTarget = null
-                        snackbarHostState.showSnackbar("已删除标签 #" + tag)
-                        loadTags()
-                    }
-
-                    SessionOutcome.Expired -> {
-                        snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        nav.login()
-                    }
-
-                    is SessionOutcome.Failed -> tagError = "删除标签失败，请稍后重试"
-                }
-            }
-        }
-
-        // 账号、收藏夹或翻页模式变化时 remember 会重建 loader，这里只负责首屏加载
-        LaunchedEffect(loader) { loader.loadFirstPage() }
+        // 分段、收藏夹名册、四个弹窗与三条网络动作的编排都在骨架里，本屏只留栅格与弹窗外观；
+        // 旧页的固定失败文案、页码切片口径与「换号不回落收藏夹」按参数注入
+        val state = rememberFavoriteScaffoldState(
+            deps = deps,
+            onLoginRequired = nav::login,
+            onNotice = { message -> snackbarHostState.showSnackbar(message) },
+            favoriteTags = { tags.orEmpty() },
+            onTagsChanged = { loadTags() },
+            failureText = ::favoriteFixedFailure,
+            pageSlice = ::favoritePageSliceKeepingPageCount,
+            resetSelectionOnAccountChange = false,
+        )
+        val snapshot by state.loader.snapshot.collectAsState()
+        val feed = snapshot.feed
 
         // 首次切到标签页才加载；登录态变化时清空旧数据，避免登出后残留
-        LaunchedEffect(tabIndex, user?.uid) {
+        LaunchedEffect(state.tabIndex, user?.uid) {
             if (user == null) {
                 tags = null
                 tagsError = null
-            } else if (tabIndex == 1 && tags == null && tagsError == null) {
+            } else if (state.tabIndex == FAVORITE_TAB_TAGS && tags == null && tagsError == null) {
                 loadTags()
             }
         }
 
-        val folderOptions = buildList {
-            add(0 to "全部")
-            folders.entries
-                .mapNotNull { (key, name) -> key.toIntOrNull()?.let { it to name } }
-                .filter { it.first != 0 }
-                .sortedBy { it.first }
-                .forEach { add(it) }
-        }
-        val currentFolderName = folderOptions.firstOrNull { it.first == folderId }?.second ?: "全部"
+        val folderOptions = state.folderOptions
+        val currentFolderName = state.currentFolderName
         val pagerState = rememberSyncedTabPagerState(
-            selectedTab = tabIndex,
-            pageCount = COUI_FAVORITE_TABS.size,
-            onTabSelected = { index -> if (index != tabIndex) tabIndex = index },
+            selectedTab = state.tabIndex,
+            pageCount = state.tabs.size,
+            onTabSelected = { index -> state.selectTab(index) },
         )
         val scrollBehavior = rememberCouiScreenScrollBehavior {
-            val activeState = if (tabIndex == 0) gridState else tagsGridState
+            val activeState = if (state.tabIndex == FAVORITE_TAB_FOLDERS) gridState else tagsGridState
             activeState.canScrollForward || activeState.canScrollBackward
         }
 
@@ -383,27 +210,20 @@ internal fun CouiFavoritesScreen(
                 scrollBehavior = scrollBehavior,
                 topBarBottom = {
                     CouiTopBarSegmentedTabs(
-                        items = COUI_FAVORITE_TABS,
-                        selectedIndex = tabIndex,
-                        onSelect = { index -> if (index != tabIndex) tabIndex = index },
+                        items = state.tabs,
+                        selectedIndex = state.tabIndex,
+                        onSelect = { index -> state.selectTab(index) },
                     )
                 },
                 actions = {
-                    val addDesc = if (tabIndex == 0) "新建收藏夹" else "添加标签"
                     CouiTopBarAction(
                         icon = CouiIcons.Copy,
-                        contentDescription = addDesc,
+                        contentDescription = state.addActionLabel,
                         onClick = {
-                            if (tabIndex == 0) {
-                                folderNameInput = ""
-                                folderError = null
-                                showCreate = true
-                            } else if (user == null) {
-                                scope.launch { snackbarHostState.showSnackbar("请先登录后再添加标签") }
+                            if (state.onFoldersTab) {
+                                state.openFolderCreate()
                             } else {
-                                tagInput = ""
-                                tagError = null
-                                showAddTag = true
+                                state.openAddTag()
                             }
                         },
                     )
@@ -442,7 +262,7 @@ internal fun CouiFavoritesScreen(
                                 CouiScreenFailureGroup(
                                     message = currentState.message,
                                     expired = currentState.sessionExpired,
-                                    onRetry = loader::loadFirstPage,
+                                    onRetry = state.loader::loadFirstPage,
                                     onOpenLogin = nav::login,
                                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                                 )
@@ -465,18 +285,14 @@ internal fun CouiFavoritesScreen(
                                             modifier = Modifier.weight(1f),
                                         )
                                         // 仅自建收藏夹可改名/删除；「全部」是聚合视图，不提供操作
-                                        if (folderId != 0) {
+                                        if (state.folderId != FAVORITE_FOLDER_ALL_ID) {
                                             CouiFavoritesChipButton(
                                                 label = "重命名",
-                                                onClick = {
-                                                    folderNameInput = currentFolderName
-                                                    folderError = null
-                                                    editTarget = folderId to currentFolderName
-                                                },
+                                                onClick = { state.openFolderRename() },
                                             )
                                             CouiFavoritesChipButton(
                                                 label = "删除",
-                                                onClick = { deleteTarget = folderId to currentFolderName },
+                                                onClick = { state.openFolderDelete() },
                                             )
                                         }
                                     }
@@ -500,10 +316,7 @@ internal fun CouiFavoritesScreen(
                                             CouiFavoritesAlbumCard(
                                                 result = result,
                                                 onClick = { nav.album(result.id) },
-                                                onMove = {
-                                                    moveError = null
-                                                    moveTarget = result
-                                                },
+                                                onMove = { state.openMove(result) },
                                             )
                                         }
                                     }
@@ -524,16 +337,16 @@ internal fun CouiFavoritesScreen(
                                                     if (resolved != gridFeed.page) {
                                                         scope.launch {
                                                             gridState.scrollToItem(0)
-                                                            loader.goToPage(resolved)
+                                                            state.loader.goToPage(resolved)
                                                         }
                                                     }
                                                 },
                                             )
                                         } else {
-                                            CouiAutoLoadMoreEffect(feed = gridFeed, onLoadMore = loader::loadMore)
+                                            CouiAutoLoadMoreEffect(feed = gridFeed, onLoadMore = state.loader::loadMore)
                                             CouiLoadMoreFooter(
                                                 feed = gridFeed,
-                                                onRetry = loader::loadMore,
+                                                onRetry = state.loader::loadMore,
                                             )
                                         }
                                     }
@@ -578,11 +391,7 @@ internal fun CouiFavoritesScreen(
                                 item(key = "coui-tags-add", span = { GridItemSpan(maxLineSpan) }) {
                                     CouiFavoritesChipButton(
                                         label = "添加标签 · 共 " + tagList.size + " 个收藏标签",
-                                        onClick = {
-                                            tagInput = ""
-                                            tagError = null
-                                            showAddTag = true
-                                        },
+                                        onClick = { state.openAddTag() },
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 4.dp),
@@ -596,18 +405,12 @@ internal fun CouiFavoritesScreen(
                                         CouiWorkGridCard(
                                             title = "#" + item.tag,
                                             coverUrl = null,
-                                            onClick = {
-                                                tagError = null
-                                                tagDeleteTarget = item.tag
-                                            },
+                                            onClick = { state.openTagDelete(item.tag) },
                                             subtitle = item.updatedAt?.let { "更新于 " + it } ?: "更新时间未知",
                                             badge = {
                                                 CouiFavoritesDeleteBadge(
                                                     contentDescription = "删除标签",
-                                                    onClick = {
-                                                        tagError = null
-                                                        tagDeleteTarget = item.tag
-                                                    },
+                                                    onClick = { state.openTagDelete(item.tag) },
                                                     modifier = Modifier
                                                         .align(Alignment.TopEnd)
                                                         .padding(CouiWorkCardTokens.BadgeInset),
@@ -646,131 +449,94 @@ internal fun CouiFavoritesScreen(
             ) {
                 folderOptions.forEach { option ->
                     CouiFavoritesPickerRow(
-                        label = option.second,
-                        selected = option.first == folderId,
+                        label = option.name,
+                        selected = option.id == state.folderId,
                         onClick = {
                             folderPickerOpen = false
-                            switchFolder(option.first)
+                            state.switchFolder(option.id)
                         },
                     )
                 }
             }
 
-            val folderDialogMode = when {
-                showCreate -> true to 0
-                editTarget != null -> false to editTarget!!.first
-                else -> null
-            }
-            val retainedFolderMode = rememberRetainedTarget(folderDialogMode)
+            val folderOps = state.folderOps
+            // 弹窗内容按「最近一次非空的目标」留在屏上，关闭动画里不跳字
+            val retainedFolderMode = rememberRetainedTarget(folderOps.dialogMode)
             if (retainedFolderMode != null) {
                 val creating = retainedFolderMode.first
                 Dialog(
-                    onDismissRequest = {
-                        showCreate = false
-                        editTarget = null
-                        folderError = null
-                    },
-                    visible = folderDialogMode != null,
+                    onDismissRequest = { state.dismissFolderDialogs() },
+                    visible = folderOps.dialogVisible,
                     material = couiDialogMaterial(),
                     confirmAction = CouiDialogAction(
-                        text = if (creating) "新建" else "保存",
-                        onClick = {
-                            val name = folderNameInput.trim()
-                            if (name.isEmpty()) {
-                                folderError = "名称不能为空"
-                            } else if (creating) {
-                                manageFolder(FavoriteFolderAction.ADD, targetId = "", name = name)
-                            } else {
-                                manageFolder(FavoriteFolderAction.EDIT, retainedFolderMode.second.toString(), name)
-                            }
-                        },
-                        enabled = !folderBusy,
+                        text = if (creating) FAVORITE_CREATE_CONFIRM else FAVORITE_EDIT_CONFIRM,
+                        onClick = { state.submitFolderDialog() },
+                        enabled = !folderOps.busy,
                         style = CouiDialogActionStyle.Primary,
                         colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
                     ),
-                    title = if (creating) "新建收藏夹" else "重命名收藏夹",
+                    title = if (creating) FAVORITE_ADD_FOLDER_TITLE else FAVORITE_EDIT_FOLDER_TITLE,
                     dismissAction = CouiDialogAction(
-                        text = "取消",
-                        onClick = {
-                            showCreate = false
-                            editTarget = null
-                            folderError = null
-                        },
+                        text = FAVORITE_CANCEL_LABEL,
+                        onClick = { state.dismissFolderDialogs() },
                         style = CouiDialogActionStyle.Secondary,
                     ),
                     placement = CouiDialogPlacement.Bottom,
                 ) {
                     CouiFavoritesTextField(
-                        value = folderNameInput,
-                        onValueChange = { folderNameInput = it.take(20) },
-                        placeholder = "收藏夹名称（最多 20 字）",
+                        value = folderOps.nameInput,
+                        onValueChange = state::setFolderName,
+                        placeholder = FAVORITE_FOLDER_NAME_LABEL,
                     )
-                    CouiFavoritesInlineError(message = folderError, color = destructive)
+                    CouiFavoritesInlineError(message = folderOps.errorMessage, color = destructive)
                 }
             }
 
-            val deleting = rememberRetainedTarget(deleteTarget)
+            val deleting = rememberRetainedTarget(folderOps.deleteTarget)
             if (deleting != null) {
                 Dialog(
-                    onDismissRequest = {
-                        deleteTarget = null
-                        folderError = null
-                    },
-                    visible = deleteTarget != null,
+                    onDismissRequest = { state.dismissFolderDialogs() },
+                    visible = folderOps.deleteVisible,
                     material = couiDialogMaterial(),
                     confirmAction = couiDestructiveConfirmAction(
-                        text = "确认删除",
-                        enabled = !folderBusy,
-                        onClick = {
-                            manageFolder(FavoriteFolderAction.DELETE, deleting.first.toString())
-                        },
+                        text = FAVORITE_DELETE_CONFIRM,
+                        enabled = !folderOps.busy,
+                        onClick = { state.confirmFolderDelete() },
                     ),
-                    title = "删除收藏夹",
-                    message = "将删除收藏夹「" + deleting.second + "」，夹内作品不会取消收藏。",
+                    title = FAVORITE_DELETE_FOLDER_TITLE,
+                    message = favoriteDeleteFolderMessage(deleting.second),
                     dismissAction = CouiDialogAction(
-                        text = "取消",
-                        onClick = {
-                            deleteTarget = null
-                            folderError = null
-                        },
+                        text = FAVORITE_CANCEL_LABEL,
+                        onClick = { state.dismissFolderDialogs() },
                         style = CouiDialogActionStyle.Secondary,
                     ),
                     placement = CouiDialogPlacement.Center,
                 ) {
-                    CouiFavoritesInlineError(message = folderError, color = destructive)
+                    CouiFavoritesInlineError(message = folderOps.errorMessage, color = destructive)
                 }
             }
 
-            val moving = rememberRetainedTarget(moveTarget)
+            val moveOps = state.moveOps
+            val moving = rememberRetainedTarget(moveOps.target)
             if (moving != null) {
-                val movableFolders = folderOptions.filter { it.first != 0 }
+                val movableFolders = state.movableFolders
                 Dialog(
-                    onDismissRequest = {
-                        if (!moveBusy) {
-                            moveTarget = null
-                            moveError = null
-                        }
-                    },
-                    visible = moveTarget != null,
+                    onDismissRequest = { state.dismissMove() },
+                    visible = moveOps.visible,
                     material = couiDialogMaterial(),
                     confirmAction = CouiDialogAction(
-                        text = "关闭",
-                        onClick = {
-                            if (!moveBusy) {
-                                moveTarget = null
-                                moveError = null
-                            }
-                        },
-                        enabled = !moveBusy,
+                        text = FAVORITE_CLOSE_LABEL,
+                        onClick = { state.dismissMove() },
+                        enabled = !moveOps.busy,
                         style = CouiDialogActionStyle.Secondary,
                     ),
-                    title = "移动到收藏夹",
+                    title = FAVORITE_MOVE_TITLE,
                     placement = CouiDialogPlacement.Bottom,
                 ) {
-                    CouiFavoritesInlineError(message = moveError, color = destructive)
+                    CouiFavoritesInlineError(message = moveOps.errorMessage, color = destructive)
                     if (movableFolders.isEmpty()) {
                         Text(
-                            text = "暂无其他收藏夹，请先新建收藏夹",
+                            text = FAVORITE_MOVE_EMPTY_HINT,
                             kind = CouiTextKind.GroupFooter,
                             color = scheme.onSurfaceVariant,
                             maxLines = 2,
@@ -778,12 +544,12 @@ internal fun CouiFavoritesScreen(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         )
                     } else {
-                        movableFolders.forEach { (id, name) ->
+                        movableFolders.forEach { folder ->
                             CouiFavoritesPickerRow(
-                                label = name,
+                                label = folder.name,
                                 selected = false,
                                 onClick = {
-                                    if (!moveBusy) moveAlbum(moving.id, name, id)
+                                    if (!moveOps.busy) state.moveToFolder(folder.id, folder.name)
                                 },
                             )
                         }
@@ -791,71 +557,56 @@ internal fun CouiFavoritesScreen(
                 }
             }
 
+            val tagOps = state.tagOps
             Dialog(
-                onDismissRequest = {
-                    if (!tagBusy) {
-                        showAddTag = false
-                        tagError = null
-                    }
-                },
-                visible = showAddTag,
+                onDismissRequest = { state.dismissTagAdd() },
+                visible = tagOps.addVisible,
                 material = couiDialogMaterial(),
                 confirmAction = CouiDialogAction(
-                    text = "添加",
-                    onClick = { addTag() },
-                    enabled = !tagBusy,
+                    text = FAVORITE_ADD_CONFIRM,
+                    onClick = { state.submitTag() },
+                    enabled = !tagOps.busy,
                     style = CouiDialogActionStyle.Primary,
                     colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
                 ),
-                title = "添加标签",
+                title = FAVORITE_ADD_TAG_TITLE,
                 dismissAction = CouiDialogAction(
-                    text = "取消",
-                    onClick = {
-                        showAddTag = false
-                        tagError = null
-                    },
-                    enabled = !tagBusy,
+                    text = FAVORITE_CANCEL_LABEL,
+                    onClick = { state.dismissTagAdd() },
+                    enabled = !tagOps.busy,
                     style = CouiDialogActionStyle.Secondary,
                 ),
                 placement = CouiDialogPlacement.Bottom,
             ) {
                 CouiFavoritesTextField(
-                    value = tagInput,
-                    onValueChange = { tagInput = it.take(20) },
-                    placeholder = "标签名称（最多 20 字）",
+                    value = tagOps.input,
+                    onValueChange = state::setTagInput,
+                    placeholder = FAVORITE_TAG_NAME_LABEL,
                 )
-                CouiFavoritesInlineError(message = tagError, color = destructive)
+                CouiFavoritesInlineError(message = tagOps.errorMessage, color = destructive)
             }
 
-            val deletingTag = rememberRetainedTarget(tagDeleteTarget)
+            val deletingTag = rememberRetainedTarget(tagOps.deleteTarget)
             if (deletingTag != null) {
                 Dialog(
-                    onDismissRequest = {
-                        if (!tagBusy) {
-                            tagDeleteTarget = null
-                            tagError = null
-                        }
-                    },
-                    visible = tagDeleteTarget != null,
+                    onDismissRequest = { state.dismissTagDelete() },
+                    visible = tagOps.deleteVisible,
                     material = couiDialogMaterial(),
                     confirmAction = couiDestructiveConfirmAction(
-                        text = "确认删除",
-                        enabled = !tagBusy,
-                        onClick = { deleteTag(deletingTag) },
+                        text = FAVORITE_DELETE_CONFIRM,
+                        enabled = !tagOps.busy,
+                        onClick = { state.confirmTagDelete() },
                     ),
-                    title = "删除标签",
-                    message = "将取消收藏标签「#" + deletingTag + "」。",
+                    title = FAVORITE_DELETE_TAG_TITLE,
+                    message = favoriteDeleteTagMessage(deletingTag),
                     dismissAction = CouiDialogAction(
-                        text = "取消",
-                        onClick = {
-                            tagDeleteTarget = null
-                            tagError = null
-                        },
+                        text = FAVORITE_CANCEL_LABEL,
+                        onClick = { state.dismissTagDelete() },
                         style = CouiDialogActionStyle.Secondary,
                     ),
                     placement = CouiDialogPlacement.Center,
                 ) {
-                    CouiFavoritesInlineError(message = tagError, color = destructive)
+                    CouiFavoritesInlineError(message = tagOps.errorMessage, color = destructive)
                 }
             }
 

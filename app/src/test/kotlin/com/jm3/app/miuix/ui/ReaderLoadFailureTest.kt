@@ -1,5 +1,7 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.app.miuix.ui.reader.readerLoadFailure
+import com.jm3.app.miuix.ui.reader.resolveReaderLoadedState
 import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadStatus
 import com.jm3.core.model.AlbumDetail

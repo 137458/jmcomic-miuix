@@ -1,5 +1,9 @@
 package com.jm3.app.miuix.ui
 
+import com.jm3.app.miuix.ui.history.HistoryListState
+import com.jm3.app.miuix.ui.history.removeAlbumFromFeed
+import com.jm3.app.miuix.ui.history.resolveClearAllOutcome
+import com.jm3.app.miuix.ui.history.restoreAlbumToFeed
 import com.jm3.core.history.HistoryEntry
 import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed

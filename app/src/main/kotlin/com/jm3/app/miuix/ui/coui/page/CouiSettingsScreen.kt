@@ -84,6 +84,8 @@ import com.jm3.app.miuix.ui.settings.SETTINGS_DOMAIN_UNRESOLVED
 import com.jm3.app.miuix.ui.settings.SETTINGS_LATENCY_PLACEHOLDER
 import com.jm3.app.miuix.ui.settings.SETTINGS_OPEN_SOURCE_SUMMARY
 import com.jm3.app.miuix.ui.settings.SettingsClearTarget
+import com.jm3.app.miuix.ui.settings.SettingsOptions
+import com.jm3.app.miuix.ui.settings.SettingsSections
 import com.jm3.app.miuix.ui.settings.bottomBarFormSummary
 import com.jm3.app.miuix.ui.settings.paginationModeSummary
 import com.jm3.app.miuix.ui.settings.rememberSettingsLayout
@@ -92,14 +94,11 @@ import com.jm3.app.miuix.ui.settings.themeModeSummary
 import com.jm3.app.miuix.ui.settings.uiSkinSummary
 import com.jm3.app.miuix.ui.settings.wideScreenNavigationSummary
 import com.jm3.app.miuix.ui.settingsSummary
-import com.jm3.core.settings.BottomBarForm
-import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ReaderSpreadMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
-import com.jm3.core.settings.WideScreenNavigation
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
@@ -155,7 +154,7 @@ internal fun CouiSettingsScreen(
                     // 顶栏必须写在 Scaffold 的 topBar 槽位：库在那里提供 backdrop，
                     // 自己提到外面会拿不到采样源，直接抛 checkNotNull。
                     LargeTopAppBar(
-                        title = { CouiTopBarTitle(text = "设置", textAlign = TextAlign.Start) },
+                        title = { CouiTopBarTitle(text = SettingsSections.title, textAlign = TextAlign.Start) },
                         navigationIcon = { CouiTopBarBackButton(onClick = scaffold.onBack) },
                         scrollBehavior = scrollBehavior,
                         colors = couiTopAppBarColors(),
@@ -175,9 +174,9 @@ internal fun CouiSettingsScreen(
                         .padding(scrollBehavior.state.contentPadding(innerPadding, LocalDensity.current))
                         .consumeWindowInsets(innerPadding),
                 ) {
-                    Group(title = "主题") {
+                    Group(title = SettingsSections.sectionTheme) {
                         Item(
-                            title = { SettingsRowTitle("外观模式") },
+                            title = { SettingsRowTitle(SettingsSections.appearanceTitle) },
                             summary = { SettingsRowSummary(themeModeSummary(themeMode)) },
                         )
                         Box(
@@ -186,10 +185,10 @@ internal fun CouiSettingsScreen(
                                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                         ) {
                             CouiSegmentedCapsules(
-                                items = ThemeMode.entries.map { it.displayName },
-                                selectedIndex = ThemeMode.entries.indexOf(themeMode),
+                                items = SettingsSections.themeMode.labels,
+                                selectedIndex = SettingsSections.themeMode.indexOf(themeMode),
                                 onSelect = { index ->
-                                    ThemeMode.entries.getOrNull(index)
+                                    SettingsSections.themeMode.valueAt(index)
                                         ?.takeIf { it != themeMode }
                                         ?.let(onThemeModeChange)
                                 },
@@ -198,10 +197,10 @@ internal fun CouiSettingsScreen(
                         }
                         Divider()
                         CouiChoiceItem(
-                            title = "界面风格",
+                            title = SettingsSections.uiSkinTitle,
                             summary = uiSkinSummary(uiSkin),
                             value = uiSkin.label,
-                            options = UiSkin.entries.map { it to it.label },
+                            options = SettingsSections.uiSkin,
                             current = uiSkin,
                             onSelect = onUiSkinChange,
                         )
@@ -216,8 +215,8 @@ internal fun CouiSettingsScreen(
                                     value = dynamicColor,
                                     onValueChange = onDynamicColorChange,
                                 ),
-                                title = { SettingsRowTitle("动态取色") },
-                                summary = { SettingsRowSummary("跟随壁纸生成配色（Android 12 及以上）") },
+                                title = { SettingsRowTitle(SettingsSections.dynamicColorTitle) },
+                                summary = { SettingsRowSummary(SettingsSections.dynamicColorSummary(dynamicColorSupported)) },
                                 trailing = {
                                     Switch(
                                         checked = dynamicColor,
@@ -228,34 +227,34 @@ internal fun CouiSettingsScreen(
                         }
                     }
 
-                    Group(title = "通用") {
+                    Group(title = SettingsSections.sectionGeneral) {
                         CouiChoiceItem(
-                            title = "分页模式",
+                            title = SettingsSections.paginationTitle,
                             summary = paginationModeSummary(layout.paginationMode),
                             value = layout.paginationMode.displayName,
-                            options = PaginationMode.entries.map { it to it.displayName },
+                            options = SettingsSections.paginationMode,
                             current = layout.paginationMode,
                             // 选择按枚举下标交给骨架复算，沿用「已是最新则不写盘」的既有语义
                             onSelect = { mode ->
-                                scaffold.applyPaginationIndex(PaginationMode.entries.indexOf(mode))
+                                scaffold.applyPaginationIndex(SettingsSections.paginationMode.indexOf(mode))
                             },
                         )
                         Divider()
                         CouiChoiceItem(
-                            title = "底栏形态",
+                            title = SettingsSections.bottomBarFormTitle,
                             summary = bottomBarFormSummary(layout.bottomBarForm),
                             value = layout.bottomBarForm.label,
-                            options = BottomBarForm.entries.map { it to it.label },
+                            options = SettingsSections.bottomBarForm,
                             current = layout.bottomBarForm,
                             onSelect = scaffold::applyBottomBarForm,
                         )
                         if (layout.showWideScreenNavigation) {
                             Divider()
                             CouiChoiceItem(
-                                title = "宽屏导航",
+                                title = SettingsSections.wideNavigationTitle,
                                 summary = wideScreenNavigationSummary(layout.wideScreenNavigation),
                                 value = layout.wideScreenNavigation.label,
-                                options = WideScreenNavigation.entries.map { it to it.label },
+                                options = SettingsSections.wideScreenNavigation,
                                 current = layout.wideScreenNavigation,
                                 onSelect = scaffold::applyWideScreenNavigation,
                             )
@@ -270,28 +269,28 @@ internal fun CouiSettingsScreen(
                         )
                     }
 
-                    Group(title = "线路") {
+                    Group(title = SettingsSections.sectionLine) {
                         Item(
-                            title = { SettingsRowTitle("当前线路") },
+                            title = { SettingsRowTitle(SettingsSections.activeDomainsTitle) },
                             summary = { SettingsRowSummary(scaffold.activeDomains.value.ifBlank { SETTINGS_DOMAINS_DEFAULT }) },
                         )
                         Divider()
                         Item(
-                            title = { SettingsRowTitle("实际线路") },
+                            title = { SettingsRowTitle(SettingsSections.usedDomainTitle) },
                             summary = { SettingsRowSummary(diagnostics.usedDomain ?: SETTINGS_DOMAIN_UNRESOLVED) },
                         )
                         Divider()
                         // 四态由骨架判定：只有内容态逐行列出延迟，其余三态共用一句占位文案
                         if (!diagnostics.showsLatencyRows) {
                             Item(
-                                title = { SettingsRowTitle("线路延迟") },
+                                title = { SettingsRowTitle(SettingsSections.latencyTitle) },
                                 summary = { SettingsRowSummary(SETTINGS_LATENCY_PLACEHOLDER) },
                             )
                         } else {
                             diagnostics.latency.forEach { row ->
                                 Item(
                                     title = { SettingsRowTitle(row.domain) },
-                                    trailing = { SettingsRowValue(row.latencyMs.toString() + " ms") },
+                                    trailing = { SettingsRowValue(SettingsSections.latencyValueText(row.latencyMs)) },
                                 )
                                 Divider()
                             }
@@ -300,7 +299,7 @@ internal fun CouiSettingsScreen(
                             Item(
                                 title = {
                                     Text(
-                                        text = "线路诊断失败：" + message,
+                                        text = SettingsSections.diagnosticsFailureText(message),
                                         kind = CouiTextKind.ItemSummary,
                                         color = if (CouiKitTheme.isDark) CouiColor.Night.RED else CouiColor.Day.RED,
                                         textAlign = TextAlign.Start,
@@ -310,9 +309,9 @@ internal fun CouiSettingsScreen(
                             Divider()
                         }
                         Item(
-                            title = { SettingsRowTitle("重新探活") },
+                            title = { SettingsRowTitle(SettingsSections.reprobeTitle) },
                             summary = {
-                                SettingsRowSummary(if (diagnostics.probing) "探活中…" else "逐条测速并按延迟排序")
+                                SettingsRowSummary(SettingsSections.reprobeSummary(diagnostics.probing))
                             },
                             onClick = scaffold::requestReprobe,
                             enabled = diagnostics.canRetry,
@@ -327,8 +326,8 @@ internal fun CouiSettingsScreen(
                                     vertical = CouiPageDefaults.contentPadding,
                                 ),
                         ) {
-                            SettingsRowTitle("自定义线路")
-                            SettingsRowSummary("每行一个域名，留空恢复默认")
+                            SettingsRowTitle(SettingsSections.customDomainsTitle)
+                            SettingsRowSummary(SettingsSections.customDomainsSummary)
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -346,7 +345,7 @@ internal fun CouiSettingsScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 64.dp)
-                                        .semantics { contentDescription = "自定义线路" },
+                                        .semantics { contentDescription = SettingsSections.customDomainsTitle },
                                     decorationBox = { innerTextField ->
                                         // 占位文案进装饰槽：视觉与读屏都归属同一个输入框
                                         Box {
@@ -366,51 +365,51 @@ internal fun CouiSettingsScreen(
                         }
                         Divider()
                         Item(
-                            title = { SettingsRowTitle("应用线路") },
+                            title = { SettingsRowTitle(SettingsSections.applyDomainsTitle) },
                             summary = {
-                                SettingsRowSummary(if (scaffold.applying.value) "应用中…" else "保存配置并重建 API 网关")
+                                SettingsRowSummary(SettingsSections.applyDomainsSummary(scaffold.applying.value))
                             },
                             onClick = scaffold::applyDomains,
                             enabled = !scaffold.applying.value,
                         )
                     }
 
-                    Group(title = "数据管理") {
+                    Group(title = SettingsSections.sectionData) {
                         Item(
                             title = { SettingsRowTitle(SettingsClearTarget.HISTORY.title) },
-                            summary = { SettingsRowSummary("移除全部阅读记录") },
+                            summary = { SettingsRowSummary(SettingsSections.clearSummary(SettingsClearTarget.HISTORY)) },
                             onClick = { scaffold.requestClear(SettingsClearTarget.HISTORY) },
                         )
                         Divider()
                         Item(
                             title = { SettingsRowTitle(SettingsClearTarget.DOWNLOADS.title) },
-                            summary = { SettingsRowSummary("清除下载任务与已下载文件") },
+                            summary = { SettingsRowSummary(SettingsSections.clearSummary(SettingsClearTarget.DOWNLOADS)) },
                             onClick = { scaffold.requestClear(SettingsClearTarget.DOWNLOADS) },
                         )
                     }
 
-                    Group(title = "关于") {
+                    Group(title = SettingsSections.sectionAbout) {
                         // 版本行兼作隐藏诊断入口：2 秒内连点 5 次打开诊断面板
                         Item(
-                            title = { SettingsRowTitle("版本") },
+                            title = { SettingsRowTitle(SettingsSections.versionTitle) },
                             summary = { SettingsRowSummary(scaffold.versionName) },
                             onClick = scaffold::tapVersion,
                         )
                         Divider()
                         Item(
-                            title = { SettingsRowTitle("检查更新") },
-                            summary = { SettingsRowSummary("查看远端最新版本，支持应用内下载与安装") },
+                            title = { SettingsRowTitle(SettingsSections.updateTitle) },
+                            summary = { SettingsRowSummary(SettingsSections.updateSummary) },
                             onClick = { scaffold.openUpdate() },
                         )
                         Divider()
                         Item(
-                            title = { SettingsRowTitle("开源组件") },
+                            title = { SettingsRowTitle(SettingsSections.openSourceTitle) },
                             summary = { SettingsRowSummary(SETTINGS_OPEN_SOURCE_SUMMARY) },
                         )
                         Divider()
                         Item(
-                            title = { SettingsRowTitle("免责声明") },
-                            summary = { SettingsRowSummary("第三方客户端，仅供学习交流，包含成人内容") },
+                            title = { SettingsRowTitle(SettingsSections.disclaimerTitle) },
+                            summary = { SettingsRowSummary(SettingsSections.disclaimerSummary) },
                             onClick = scaffold::showDisclaimer,
                         )
                     }
@@ -440,8 +439,8 @@ internal fun CouiSettingsScreen(
             onDismissRequest = scaffold::closeDiagnostics,
             visible = scaffold.diagnosticsVisible.value,
             material = couiDialogMaterial(),
-            title = "诊断信息",
-            confirmAction = CouiDialogAction(text = "知道了", onClick = scaffold::closeDiagnostics),
+            title = SettingsSections.diagnosticsTitle,
+            confirmAction = CouiDialogAction(text = SettingsSections.dialogAck, onClick = scaffold::closeDiagnostics),
         ) {
             Column(
                 modifier = Modifier
@@ -466,7 +465,7 @@ internal fun CouiSettingsScreen(
                 message = pendingClear.description,
                 placement = CouiDialogPlacement.Center,
                 confirmAction = couiDestructiveConfirmAction(
-                    text = if (scaffold.clearing.value) "清空中…" else "确认清空",
+                    text = SettingsSections.clearConfirmLabel(scaffold.clearing.value),
                     enabled = !scaffold.clearing.value,
                 ) { scaffold.confirmClear() },
                 dismissAction = CouiDialogAction(text = "取消", onClick = scaffold::dismissClear),
@@ -477,9 +476,9 @@ internal fun CouiSettingsScreen(
             onDismissRequest = scaffold::hideDisclaimer,
             visible = scaffold.disclaimerVisible.value,
             material = couiDialogMaterial(),
-            title = "免责声明",
+            title = SettingsSections.disclaimerTitle,
             message = SETTINGS_DISCLAIMER_TEXT,
-            confirmAction = CouiDialogAction(text = "知道了", onClick = scaffold::hideDisclaimer),
+            confirmAction = CouiDialogAction(text = SettingsSections.dialogAck, onClick = scaffold::hideDisclaimer),
         )
     }
 }
@@ -541,7 +540,7 @@ private fun CouiReaderSettingsSection(
         title = "默认阅读方向",
         summary = if (state.horizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",
         value = if (state.horizontal) "左右翻页" else "纵向长图",
-        options = listOf(false to "纵向长图", true to "左右翻页"),
+        options = SettingsOptions(listOf(false, true)) { if (it) "左右翻页" else "纵向长图" },
         current = state.horizontal,
         onSelect = { horizontal -> scope.launch { state.applyHorizontal(horizontal) } },
     )
@@ -556,7 +555,7 @@ private fun CouiReaderSettingsSection(
                 "单页显示，可按左右翻页"
             },
             value = state.spread.label,
-            options = ReaderSpreadMode.entries.map { it to it.label },
+            options = SettingsOptions(ReaderSpreadMode.entries) { it.label },
             current = state.spread,
             onSelect = { mode -> scope.launch { state.applySpread(mode) } },
         )
@@ -612,7 +611,7 @@ private fun CouiReaderSettingsSection(
         title = "图片质量",
         summary = state.imageQuality.settingsSummary(),
         value = state.imageQuality.label,
-        options = ReaderImageQuality.entries.map { it to it.label },
+        options = SettingsOptions(ReaderImageQuality.entries) { it.label },
         current = state.imageQuality,
         onSelect = { quality -> scope.launch { state.applyImageQuality(quality) } },
     )
@@ -625,7 +624,7 @@ private fun CouiReaderSettingsSection(
             "提前加载当前页之后的 " + state.prefetchPages + " 页"
         },
         value = prefetchPagesLabel(state.prefetchPages),
-        options = ReaderPreferences.PREFETCH_OPTIONS.map { it to prefetchPagesLabel(it) },
+        options = SettingsOptions(ReaderPreferences.PREFETCH_OPTIONS) { prefetchPagesLabel(it) },
         current = state.prefetchPages,
         onSelect = { pages -> scope.launch { state.applyPrefetchPages(pages) } },
     )
@@ -643,7 +642,7 @@ private fun <T> CouiChoiceItem(
     title: String,
     summary: String,
     value: String,
-    options: List<Pair<T, String>>,
+    options: SettingsOptions<T>,
     current: T,
     onSelect: (T) -> Unit,
 ) {
@@ -678,8 +677,8 @@ private fun <T> CouiChoiceItem(
             onDismissRequest = { expanded = false },
             anchor = anchor,
             headerText = title,
-            items = options.map { (option, label) ->
-                CouiMenuItem(value = option, text = label, selected = option == current)
+            items = options.items.map { option ->
+                CouiMenuItem(value = option.value, text = option.label, selected = option.value == current)
             },
             onItemClick = { item ->
                 expanded = false

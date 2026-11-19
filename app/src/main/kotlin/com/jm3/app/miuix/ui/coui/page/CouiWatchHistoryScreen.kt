@@ -16,13 +16,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,7 +29,6 @@ import com.itos.coui.dialog.Dialog
 import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.authorNames
@@ -52,31 +47,26 @@ import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
-import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.list.ListLoadState
-import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
-import com.jm3.core.model.SearchResult
-import com.jm3.core.paging.PageSlice
-import com.jm3.core.paging.pageLooksFull
-import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.session.SessionOutcome
+import com.jm3.app.miuix.ui.watchhistory.WATCH_DELETE_CONFIRM
+import com.jm3.app.miuix.ui.watchhistory.WATCH_DELETE_DISMISS
+import com.jm3.app.miuix.ui.watchhistory.WATCH_DELETE_TITLE
+import com.jm3.app.miuix.ui.watchhistory.watchDeleteMessage
+import com.jm3.app.miuix.ui.watchhistory.rememberWatchHistoryScaffoldState
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
-/** 观看记录每页条数：与旧页保持一致，hasMore 用它反推。 */
-private const val WATCH_PAGE_SIZE = 20
-
 /**
  * 观看记录（COUI 栅格版）：形参与其他 COUI 页一致收成 [AppRoutes]，数据与分页语义由
- * SessionListLoader 统一，本页只负责栅格渲染与删除确认。
+ * WatchHistoryScaffoldState 统一，本页只负责栅格渲染与删除确认。
  *
  * 栅格触底不用预取组件（COUI 预取只支持 LazyListState），改为页脚项进入组合即取下一页；
- * loader 的 beginLoadMore 自带防抖，重复触发不会重发请求。
+ * 骨架的 loadMore 自带防抖（canLoadMore 里的 loadingMore 守卫），重复触发不会重发请求。
  */
 @Composable
 internal fun CouiWatchHistoryScreen(
@@ -87,58 +77,17 @@ internal fun CouiWatchHistoryScreen(
 ) {
     CouiTheme {
         val scope = rememberCoroutineScope()
-        val user by deps.account.user.collectAsState()
         val mode = deps.paginationMode
         val clickPaging = mode == PaginationMode.CLICK
         val gridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
-
-        var deletingId by remember { mutableStateOf<String?>(null) }
-        var pendingDeleteItem by remember { mutableStateOf<SearchResult?>(null) }
-
-        val loader = remember(mode, user?.uid, snackbarHostState) {
-            SessionListLoader(
-                scope = scope,
-                idOf = { item: SearchResult -> item.id },
-                failureMessage = "观看记录加载失败",
-                fetchPage = { page ->
-                    deps.authCall.call { deps.gateway.watchHistory(page) }
-                        .toWatchSlice(page, WATCH_PAGE_SIZE)
-                },
-                notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            )
-        }
-        val snapshot by loader.snapshot.collectAsState()
+        val state = rememberWatchHistoryScaffoldState(
+            deps = deps,
+            snackbarHostState = snackbarHostState,
+            onOpenLogin = nav::login,
+        )
+        val snapshot by state.snapshot.collectAsState()
         val feed = snapshot.feed
-
-        fun delete(item: SearchResult) {
-            if (deletingId != null) return
-            deletingId = item.id
-            scope.launch {
-                val outcome = deps.authCall.call { deps.gateway.deleteWatchHistory(item.id) }
-                deletingId = null
-                when (outcome) {
-                    is SessionOutcome.Ok -> {
-                        loader.removeWhere { it.id == item.id }
-                        snackbarHostState.showSnackbar("已删除观看记录")
-                    }
-
-                    SessionOutcome.Expired -> {
-                        snackbarHostState.showSnackbar(SessionOutcome.Expired.message)
-                        nav.login()
-                    }
-
-                    is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                        "删除失败：" + failureCopy(outcome, CouiStrings.RetryLater),
-                    )
-                }
-            }
-        }
-
-        // 账号变化或翻页模式切换时重置到第一页重拉，避免跨账号残影与页码语义错乱
-        LaunchedEffect(loader) {
-            loader.loadFirstPage()
-        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiScreenScaffold(
@@ -157,7 +106,7 @@ internal fun CouiWatchHistoryScreen(
                     verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
                     overscrollEffect = rememberCouiOverscrollEffect(),
                 ) {
-                    when (val state = snapshot.state) {
+                    when (val load = snapshot.state) {
                         ListLoadState.Loading -> item(
                             key = "coui-watch-loading",
                             span = { GridItemSpan(maxLineSpan) },
@@ -170,9 +119,9 @@ internal fun CouiWatchHistoryScreen(
                             span = { GridItemSpan(maxLineSpan) },
                         ) {
                             CouiScreenFailureGroup(
-                                message = state.message,
-                                expired = state.sessionExpired,
-                                onRetry = loader::loadFirstPage,
+                                message = load.message,
+                                expired = load.sessionExpired,
+                                onRetry = state::loadFirstPage,
                                 onOpenLogin = nav::login,
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                             )
@@ -203,7 +152,7 @@ internal fun CouiWatchHistoryScreen(
                                             badge = {
                                                 CouiGridDeleteBadge(
                                                     contentDescription = "删除该观看记录",
-                                                    onClick = { pendingDeleteItem = item },
+                                                    onClick = { state.requestDelete(item) },
                                                     modifier = Modifier
                                                         .align(Alignment.TopEnd)
                                                         .padding(CouiWorkCardTokens.BadgeInset),
@@ -219,20 +168,20 @@ internal fun CouiWatchHistoryScreen(
                                             pageCount = feed.pageCount,
                                             hasMore = feed.hasMore,
                                             onJumpPage = { target ->
-                                                val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
-                                                if (resolved != feed.page) {
+                                                val resolved = state.pageToLoad(target)
+                                                if (resolved != null) {
                                                     scope.launch {
                                                         gridState.scrollToItem(0)
-                                                        loader.goToPage(resolved)
+                                                        state.goToPage(resolved)
                                                     }
                                                 }
                                             },
                                         )
                                     } else {
-                                        CouiAutoLoadMoreEffect(feed = feed, onLoadMore = loader::loadMore)
+                                        CouiAutoLoadMoreEffect(feed = feed, onLoadMore = state::loadMore)
                                         CouiLoadMoreFooter(
                                             feed = feed,
-                                            onRetry = loader::loadMore,
+                                            onRetry = state::loadMore,
                                         )
                                     }
                                 }
@@ -246,25 +195,22 @@ internal fun CouiWatchHistoryScreen(
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
-            val toDelete = rememberRetainedTarget(pendingDeleteItem)
+            val toDelete = rememberRetainedTarget(state.pendingDeleteItem)
             if (toDelete != null) {
                 Dialog(
-                    onDismissRequest = { pendingDeleteItem = null },
-                    visible = pendingDeleteItem != null,
+                    onDismissRequest = state::dismissDelete,
+                    visible = state.pendingDeleteItem != null,
                     material = couiDialogMaterial(),
-                    title = "删除观看记录",
-                    message = "确定要删除《" + toDelete.title + "》的观看记录吗？",
+                    title = WATCH_DELETE_TITLE,
+                    message = watchDeleteMessage(toDelete),
                     placement = CouiDialogPlacement.Center,
                     confirmAction = couiDestructiveConfirmAction(
-                        text = "删除",
-                        onClick = {
-                            delete(toDelete)
-                            pendingDeleteItem = null
-                        },
+                        text = WATCH_DELETE_CONFIRM,
+                        onClick = state::confirmDelete,
                     ),
                     dismissAction = CouiDialogAction(
-                        text = "取消",
-                        onClick = { pendingDeleteItem = null },
+                        text = WATCH_DELETE_DISMISS,
+                        onClick = state::dismissDelete,
                     ),
                 )
             }
@@ -300,22 +246,4 @@ private fun CouiGridDeleteBadge(
             tint = scheme.onSurfaceVariant,
         )
     }
-}
-
-/** 接口不返回总数，用本页条数推断是否还有下一页。 */
-internal fun SessionOutcome<List<SearchResult>>.toWatchSlice(
-    page: Int,
-    pageSize: Int,
-): SessionOutcome<PageSlice<SearchResult>> = when (this) {
-    is SessionOutcome.Ok -> SessionOutcome.Ok(
-        PageSlice(
-            items = value,
-            hasMore = pageLooksFull(value.size, pageSize),
-            page = page,
-        ),
-    )
-
-    SessionOutcome.Expired -> SessionOutcome.Expired
-
-    is SessionOutcome.Failed -> this
 }

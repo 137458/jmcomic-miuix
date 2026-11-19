@@ -22,18 +22,12 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,17 +49,14 @@ import com.jm3.app.miuix.ui.effect.BgEffectBackground
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.app.miuix.update.ApkInstaller
+import com.jm3.app.miuix.ui.update.rememberUpdateScaffoldState
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.ReleaseInfo
-import com.jm3.core.update.UpdateCenter
 import com.jm3.core.update.UpdateChecker
 import com.jm3.core.update.UpdateOutcome
 import com.jm3.core.update.UpdatePrompt
-import com.jm3.core.update.UpdatePromptState
 import java.io.File
 import java.util.Locale
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -92,19 +83,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val center = remember { UpdateCenter() }
     val applicationName = remember(context) { loadApplicationName(context) }
     val currentVersion = remember(context) { loadCurrentVersion(context) }
-
-    var attempt by remember { mutableIntStateOf(0) }
-    // null 表示正在检查：检查结论由 core 的 [UpdateOutcome] 承载，页面不再另立一套状态机
-    var state by remember { mutableStateOf<UpdateOutcome?>(null) }
-    var showDialog by rememberSaveable { mutableStateOf(false) }
-    var autoCheckUpdate by remember { mutableStateOf(true) }
-    var ignoredVersion by remember { mutableStateOf<String?>(null) }
-    val downloadState by deps.updateDownloader.state.collectAsState()
+    // 检查、弹窗与设置编排都在共享骨架里，本皮肤只做视觉结构与 slot 转发
+    val scaffoldState = rememberUpdateScaffoldState(
+        deps = deps,
+        snackbarHostState = snackbarHostState,
+        currentVersion = currentVersion,
+    )
+    val downloadState by scaffoldState.downloadState
 
     val listState = rememberLazyListState()
     val heroHeightPx = remember { mutableFloatStateOf(1f) }
@@ -118,77 +106,7 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
         }
     }
 
-    // 设置与检查放在同一个副作用里：拆成两个 LaunchedEffect 时检查可能读到尚未加载的忽略版本，
-    // 导致已忽略的版本又弹一次窗。
-    LaunchedEffect(attempt) {
-        autoCheckUpdate = deps.settings.autoCheckUpdate()
-        ignoredVersion = deps.settings.ignoredUpdateVersion()
-        state = null
-        showDialog = false
-        val outcome = center.evaluate(
-            localVersion = currentVersion,
-            prompt = UpdatePromptState(
-                ignoredVersion = ignoredVersion,
-                promptedVersion = deps.promptedVersion,
-            ),
-        )
-        state = outcome
-        // 只有"该提醒"时才弹窗并记下本次会话已提示：与启动期检查共用同一条规则，
-        // 免得启动期弹过的版本进页面又被弹一次。记录只存在内存里，下次冷启动仍会提醒。
-        if (outcome is UpdateOutcome.Available && outcome.notify) {
-            showDialog = true
-            deps.promptedVersion = outcome.release.version
-        }
-    }
-
-    fun openReleasePage(url: String) {
-        if (!openUpdateReleasePage(context, url)) {
-            scope.launch { snackbarHostState.showSnackbar("无法打开链接：$url") }
-        }
-    }
-
-    fun startDownload(release: ReleaseInfo) {
-        val asset = release.apk ?: return
-        deps.updateDownloader.start(asset)
-    }
-
-    fun installApk(file: File) {
-        when (val result = deps.installUpdate(file)) {
-            is ApkInstaller.Result.Launched -> Unit
-            is ApkInstaller.Result.PermissionRequired ->
-                scope.launch { snackbarHostState.showSnackbar("请先允许本应用安装未知来源应用") }
-
-            is ApkInstaller.Result.Failed ->
-                scope.launch { snackbarHostState.showSnackbar(result.message) }
-
-            // 签名不一致不可能靠重试解决，直接把原因摆给用户，而不是让系统安装器弹一句装不上的错。
-            is ApkInstaller.Result.SignerMismatch ->
-                scope.launch { snackbarHostState.showSnackbar(result.message) }
-        }
-    }
-
-    fun setAutoCheck(enabled: Boolean) {
-        autoCheckUpdate = enabled
-        scope.launch { deps.settings.setAutoCheckUpdate(enabled) }
-    }
-
-    fun toggleIgnoredVersion(latestVersion: String) {
-        val next = UpdatePrompt.toggleIgnored(ignoredVersion, latestVersion)
-        ignoredVersion = next
-        scope.launch { deps.settings.setIgnoredUpdateVersion(next) }
-    }
-
-    val snapshot = state
-    val latestRelease = when (snapshot) {
-        is UpdateOutcome.Available -> snapshot.release
-        is UpdateOutcome.UpToDate -> snapshot.release
-        else -> null
-    }
-    val latestVersion = latestRelease?.version
-    val hasNewVersion = snapshot is UpdateOutcome.Available
-    val checking = snapshot == null
-    val statusText = updateStatusText(currentVersion, snapshot)
-    val statusColor = when (snapshot) {
+    val statusColor = when (scaffoldState.outcome) {
         is UpdateOutcome.Available -> MiuixTheme.colorScheme.primary
         is UpdateOutcome.Failed -> MiuixTheme.colorScheme.error
         else -> MiuixTheme.colorScheme.onSurfaceVariantSummary
@@ -218,74 +136,63 @@ fun UpdateScreen(deps: ScreenDeps, onBack: () -> Unit) {
                     UpdateHero(
                         progress = heroProgress,
                         applicationName = applicationName,
-                        statusText = statusText,
+                        statusText = scaffoldState.statusText,
                         statusColor = statusColor,
                         onHeightChange = { heroHeightPx.floatValue = it.toFloat() },
                     )
                 }
                 item(key = "changelog") {
                     UpdateChangelogSection(
-                        state = snapshot,
+                        state = scaffoldState.outcome,
                         downloadState = downloadState,
-                        onStartDownload = ::startDownload,
-                        onCancelDownload = { deps.updateDownloader.cancel() },
-                        onResetDownload = { deps.updateDownloader.reset() },
-                        onInstall = ::installApk,
-                        onOpenRelease = ::openReleasePage,
-                        onRecheck = { attempt++ },
+                        onStartDownload = scaffoldState::startDownload,
+                        onCancelDownload = scaffoldState::cancelDownload,
+                        onResetDownload = scaffoldState::resetDownload,
+                        onInstall = scaffoldState::install,
+                        onOpenRelease = scaffoldState::openRelease,
+                        onRecheck = scaffoldState::recheck,
                     )
                 }
                 item(key = "settings") {
                     UpdateSettingsSection(
-                        autoCheckUpdate = autoCheckUpdate,
-                        ignoredVersion = ignoredVersion,
-                        latestVersion = latestVersion,
-                        checking = checking,
-                        hasNewVersion = hasNewVersion,
-                        onAutoCheckChange = ::setAutoCheck,
-                        onIgnoreChange = { if (latestVersion != null) toggleIgnoredVersion(latestVersion) },
+                        autoCheckUpdate = scaffoldState.autoCheck,
+                        ignoredVersion = scaffoldState.ignoredVersion,
+                        latestVersion = scaffoldState.latestVersion,
+                        checking = scaffoldState.checking,
+                        hasNewVersion = scaffoldState.hasNewVersion,
+                        onAutoCheckChange = scaffoldState::setAutoCheck,
+                        onIgnoreChange = { scaffoldState.latestVersion?.let(scaffoldState::toggleIgnored) },
                     )
                 }
                 item(key = "actions") {
                     UpdateActionsSection(
                         currentVersion = currentVersion,
-                        release = latestRelease,
-                        checking = checking,
-                        onRecheck = { attempt++ },
-                        onOpenRelease = { openReleasePage(UpdateChecker.RELEASES_PAGE_URL) },
+                        release = scaffoldState.release,
+                        checking = scaffoldState.checking,
+                        onRecheck = scaffoldState::recheck,
+                        onOpenRelease = { scaffoldState.openRelease(UpdateChecker.RELEASES_PAGE_URL) },
                     )
                 }
             }
         }
     }
 
-    val dialogRelease = (snapshot as? UpdateOutcome.Available)?.release
-    // 下载落定（完成或失败）就收起弹窗：安装与重试都在页面的下载卡上，弹窗只负责把进度显示完。
-    // key 用布尔而不是整个 state，否则每个进度 tick 都会重启一次 effect。
-    val downloadSettled =
-        downloadState is UpdateDownloadState.Done || downloadState is UpdateDownloadState.Failed
-    LaunchedEffect(downloadSettled) {
-        if (downloadSettled) showDialog = false
-    }
-    if (showDialog && dialogRelease != null) {
+    val dialogRelease = scaffoldState.dialogRelease
+    if (scaffoldState.dialogVisible && dialogRelease != null) {
         UpdateAvailableDialog(
-            show = showDialog,
+            show = scaffoldState.dialogVisible,
             currentVersion = currentVersion,
             release = dialogRelease,
             downloadState = downloadState,
-            onDismiss = { showDialog = false },
+            onDismiss = scaffoldState::dismissDialog,
             // 不关弹窗：刚点下去的主按钮原地变成"下载中 xx%"，进度不必回页面才看得到
-            onDownload = { startDownload(dialogRelease) },
+            onDownload = { scaffoldState.startDownload(dialogRelease) },
             onOpenRelease = {
-                showDialog = false
-                openReleasePage(dialogRelease.htmlUrl)
+                scaffoldState.dismissDialog()
+                scaffoldState.openRelease(dialogRelease.htmlUrl)
             },
-            onIgnore = { version ->
-                showDialog = false
-                ignoredVersion = version
-                scope.launch { deps.settings.setIgnoredUpdateVersion(version) }
-            },
-            onCancelDownload = { deps.updateDownloader.cancel() },
+            onIgnore = scaffoldState::ignoreVersion,
+            onCancelDownload = scaffoldState::cancelDownload,
         )
     }
 }

@@ -72,17 +72,18 @@ import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.list.ListLoadState
-import com.jm3.app.miuix.ui.list.SessionListLoader
-import com.jm3.app.miuix.ui.list.toCouiPageSlice
 import com.jm3.app.miuix.ui.list.toListState
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
+import com.jm3.app.miuix.ui.search.SearchCriteria
+import com.jm3.app.miuix.ui.search.clampedPageJumpTarget
+import com.jm3.app.miuix.ui.search.searchListLoader
+import com.jm3.app.miuix.ui.search.searchPageTitle
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
-import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
@@ -145,16 +146,18 @@ private fun CouiSearchBody(
     var order by rememberSaveable(query, scope.name) { mutableStateOf(BrowseOrder.LATEST) }
     var time by rememberSaveable(query, scope.name) { mutableStateOf(BrowseTime.ALL) }
 
-    // 代次、在途标记、翻页游标与失败落点都收进 loader：本页只交「取哪一页」与重试入口
+    // 代次、在途标记、翻页游标与失败落点都收进 loader：本页只交「取哪一页」与重试入口。
+    // 取数口径（结局翻译、失败文案、缓存键）与其余三处搜索入口共用同一份构造器。
     val loader = remember(query, scope, order, time) {
-        SessionListLoader(
+        searchListLoader(
             scope = coroutineScope,
-            idOf = { item: SearchResult -> item.id },
+            authCall = authCall,
+            gateway = gateway,
+            criteria = { SearchCriteria(query = query, order = order) },
             failureMessage = CouiStrings.LoadFailed,
-            fetchPage = { page ->
-                authCall.call { gateway.search(query, page, order, scope, time) }.toCouiPageSlice()
-            },
             notice = { message -> coroutineScope.launch { snackbarHostState.showSnackbar(message) } },
+            searchScope = { scope },
+            time = time,
             cache = sessionCache,
             cacheKey = SessionListKey.Search(query = query, scope = scope, order = order, time = time),
         )
@@ -179,9 +182,8 @@ private fun CouiSearchBody(
 
     fun jumpToPage(targetPage: Int) {
         if (snapshot.state !is ListLoadState.Loaded) return
-        val current = snapshot.feed
-        val resolved = pagerTargetPage(current.page, targetPage, current.pageCount)
-        if (resolved == current.page) return
+        // 本页没有首页那道「总页数未知且没有下一页」的守卫：夹取后同页即不跳
+        val resolved = clampedPageJumpTarget(snapshot.feed, targetPage, requireMoreWhenUnknown = false) ?: return
         pendingScrollTop = true
         loader.goToPage(resolved)
     }
@@ -201,7 +203,7 @@ private fun CouiSearchBody(
     val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
         canScroll = { lazyState.canScrollForward || lazyState.canScrollBackward },
     )
-    val title = if (scope == SearchScope.SITE) "搜索：$query" else "${scope.label}：$query"
+    val title = searchPageTitle(query, scope)
 
     Box(modifier = Modifier.fillMaxSize()) {
         CouiAppScaffold(

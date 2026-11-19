@@ -1,6 +1,5 @@
 package com.jm3.app.miuix.ui
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -27,12 +26,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -47,7 +44,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +54,7 @@ import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.data.download.DownloadManager
+import com.jm3.app.miuix.ui.album.rememberAlbumDetailScaffoldState
 import com.jm3.app.miuix.ui.components.ActionCell
 import com.jm3.app.miuix.ui.components.BackButton
 import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
@@ -81,27 +78,22 @@ import com.jm3.app.miuix.ui.skin.SkinShapes
 import com.jm3.core.AlbumPreviewPlan
 import com.jm3.core.ChapterLabels
 import com.jm3.core.Jm3Gateway
-import com.jm3.core.albumPreviewPlan
 import com.jm3.core.download.DownloadStore
 import com.jm3.core.history.HistoryRepository
 import com.jm3.core.layout.WideLayoutPolicy
 import com.jm3.core.session.AccountManager
 import com.jm3.core.session.AuthCall
-import com.jm3.core.session.SessionOutcome
-import com.jm3.core.asAlbumDetailPort
 import com.jm3.core.model.AlbumDetail
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
 import com.jm3.core.model.CommentSegment
 import com.jm3.core.model.FavoriteFolderAction
-import com.jm3.core.model.PageImage
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.reader.ChapterGroups
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
@@ -159,120 +151,42 @@ internal fun AlbumDetailScreen(
     account: AccountManager,
     sessionCache: SessionCache,
 ) {
-    val context = LocalContext.current
-    val user by account.user.collectAsState()
-    val scope = rememberCoroutineScope()
     val skin = LocalSkin.current
     // 预览图与阅读页共用同一套图片加载器（含同一份缓存），避免再建第二个 loader
     val previewImageLoader = rememberReaderImageLoader(gateway, downloadFiles, authCall)
-
-    var uiSnapshot by rememberSaveable(albumId, stateSaver = AlbumDetailUiSnapshotSaver) {
-        mutableStateOf(AlbumDetailUiSnapshot())
-    }
-    val stateHolder = remember(albumId) {
-        AlbumDetailStateHolder(
-            albumId = albumId,
-            gateway = gateway.asAlbumDetailPort(),
-            authCall = authCall,
-            history = history,
-            scope = scope,
-            showMessage = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
-            onOpenLogin = nav::login,
-            engagement = sessionCache.engagement,
-        ).apply { restoreUiSnapshot(uiSnapshot) }
-    }
-    val uiState by stateHolder.uiState.collectAsState()
-    val commentDraftSnapshot by stateHolder.commentDraft.collectAsState()
-    LaunchedEffect(
-        albumId,
-        commentDraftSnapshot,
-        uiState.replyTarget,
-        uiState.descriptionExpanded,
-        uiState.expandedGroups,
-        uiState.showFolderSheet,
-    ) {
-        uiSnapshot = stateHolder.saveUiSnapshot()
-    }
-    LaunchedEffect(albumId) {
-        if (uiSnapshot.showFolderSheet && uiState.folders.isEmpty()) stateHolder.openFolderSheet()
-    }
+    // 页面级状态编排（登录态、快照、进页装载、预览取图、下载/复制/分享、收藏与关注）与 COUI 详情页共用一份
+    val scaffold = rememberAlbumDetailScaffoldState(
+        albumId = albumId,
+        initialTitle = initialTitle,
+        initialCoverUrl = initialCoverUrl,
+        snackbarHostState = snackbarHostState,
+        gateway = gateway,
+        authCall = authCall,
+        history = history,
+        account = account,
+        sessionCache = sessionCache,
+        downloadManager = downloadManager,
+        onOpenLogin = nav::login,
+        shareHost = { authCall.call { gateway.usedDomain() }.orDegrade<String?>(null) },
+    )
+    val stateHolder = scaffold.stateHolder
+    val uiState = scaffold.uiState
+    val user = scaffold.user
+    val loadedDetail = scaffold.loadedDetail
+    val previewPlan = scaffold.previewPlan
+    val currentTitle = scaffold.currentTitle
+    val resumeId = scaffold.resumeId
+    val effectiveTitle = scaffold.effectiveTitle
+    val effectiveCoverUrl = scaffold.effectiveCoverUrl
 
     val listState = rememberLazyListState()
     // 大屏分栏时右栏独立滚动，不跟随左栏的封面与信息
     val rightListState = rememberLazyListState()
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val selectionHaptic = rememberSelectionHaptic()
-
-    /** 批量下载：只有全部章节都已在队列/已下载时才提示“无新增”，否则报告本次实际入队数量。 */
-    fun downloadAll(albumId: String, chapters: List<Chapter>) {
-        if (chapters.isEmpty()) return
-        var accepted = 0
-        chapters.forEachIndexed { index, chapter ->
-            val title = ChapterLabels.chapterTitle(chapter.title, index)
-            if (downloadManager.enqueueChapter(chapter.id, albumId, title)) accepted++
-        }
-        scope.launch {
-            snackbarHostState.showSnackbar(
-                if (accepted > 0) "已加入下载队列（$accepted 个章节）" else "这些章节已在下载队列或已下载",
-            )
-        }
-    }
-
-    fun downloadChapter(chapter: Chapter, albumId: String, title: String) {
-        val accepted = downloadManager.enqueueChapter(chapter.id, albumId, title)
-        scope.launch {
-            snackbarHostState.showSnackbar(
-                if (accepted) "已加入下载队列" else "该章节已在下载队列或已下载",
-            )
-        }
-    }
-
-    fun copyText(label: String, value: String) {
-        copyTextToClipboard(context, scope, snackbarHostState, label, value)
-    }
-
-    fun share(detail: AlbumDetail) {
-        scope.launch {
-            val host = authCall.call { gateway.usedDomain() }.orDegrade<String?>(null)
-            val link = host?.takeIf { it.isNotBlank() }?.let { "https://" + it + "/album/" + detail.id }
-            val text = buildString {
-                append(detail.title)
-                if (link != null) append('\n').append(link)
-            }
-            val send = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, text)
-            }
-            context.startActivity(Intent.createChooser(send, "分享作品"))
-        }
-    }
-
-    LaunchedEffect(albumId, user?.uid) {
-        stateHolder.loadAll(user?.uid)
-    }
-
-    val heroHost = LocalAlbumHeroHost.current
     // 预测性返回：封面逆向飞行的编排（退出进度 → 起飞/推进/收场）与 COUI 详情页共用一份，
     // 判定在 planHeroBackwardCommand，这里只负责接线。
     AlbumDetailHeroFlightEffect(albumId)
-    val effectiveCoverUrl = initialCoverUrl?.takeIf { it.isNotBlank() } ?: heroHost?.coverUrl(albumId)?.takeIf { it.isNotBlank() }
-    val effectiveTitle = initialTitle?.takeIf { it.isNotBlank() } ?: heroHost?.albumTitle(albumId)?.takeIf { it.isNotBlank() }
-
-    val loadedDetail = (uiState.albumState as? AlbumUiState.Loaded)?.detail
-    // 详情页预览：登录且详情就绪后取首章前几页；未登录、无章节、请求失败一律隐藏整块
-    var previewPages by remember(albumId) { mutableStateOf<List<PageImage>>(emptyList()) }
-    val firstChapterId = loadedDetail?.chapters?.firstOrNull()?.id
-    LaunchedEffect(albumId, user?.uid, firstChapterId) {
-        previewPages = emptyList()
-        if (user == null || firstChapterId == null) return@LaunchedEffect
-        val outcome = authCall.call { gateway.photo(firstChapterId) }
-        previewPages = (outcome as? SessionOutcome.Ok)?.value?.images.orEmpty()
-    }
-    val previewPlan = remember(loadedDetail?.chapters, previewPages) {
-        loadedDetail?.let { albumPreviewPlan(it.chapters, previewPages) }
-    }
-    val currentTitle = loadedDetail?.title?.takeIf { it.isNotBlank() } ?: effectiveTitle?.takeIf { it.isNotBlank() } ?: "详情"
-    val resumeId = uiState.latestPhotoId?.takeIf { id -> loadedDetail?.chapters?.any { it.id == id } == true }
 
     // 单栏与大屏两栏共用同一套条目构建：这些函数只描述放置哪些区块，
     // 是否拆到左右两栏由外部布局决定，避免两套列表逻辑各自漂移。
@@ -293,15 +207,15 @@ internal fun AlbumDetailScreen(
                 tracking = uiState.tracking,
                 trackingBusy = uiState.trackingBusy,
                 onRead = { photoId -> nav.readerAt(photoId, null) },
-                onFavorite = { stateHolder.onFavoriteClick(user != null, nav::login) },
-                onLike = { stateHolder.like(user != null, nav::login) },
-                onTrack = { stateHolder.toggleTracking(user != null, nav::login) },
+                onFavorite = scaffold::favorite,
+                onLike = scaffold::like,
+                onTrack = scaffold::track,
                 onOpenSearch = nav::search,
                 onDownloadAll = if (loadedDetail == null || loadedDetail.chapters.isEmpty()) {
                     null
                 } else {
                     // 与顶栏「下载全部」共用同一套动作与反馈，避免两处行为分叉
-                    { downloadAll(loadedDetail.id, loadedDetail.chapters) }
+                    { scaffold.downloadAll(loadedDetail.id, loadedDetail.chapters) }
                 },
             )
         }
@@ -349,7 +263,7 @@ internal fun AlbumDetailScreen(
                     },
                     onRead = { photoId -> nav.readerAt(photoId, null) },
                     onDownload = { chapter, title ->
-                        downloadChapter(chapter, detail.id, title)
+                        scaffold.downloadChapter(chapter, detail.id, title)
                     },
                 )
             }
@@ -363,7 +277,7 @@ internal fun AlbumDetailScreen(
                     text = detail.description,
                     expanded = uiState.descriptionExpanded,
                     onToggle = { stateHolder.setDescriptionExpanded(!uiState.descriptionExpanded) },
-                    onCopy = { copyText("简介", detail.description) },
+                    onCopy = { scaffold.copyText("简介", detail.description) },
                 )
             }
         }
@@ -393,7 +307,7 @@ internal fun AlbumDetailScreen(
             AlbumInfoCard(
                 albumId = albumId,
                 detail = detail,
-                onCopy = { label, value -> copyText(label, value) },
+                onCopy = { label, value -> scaffold.copyText(label, value) },
                 onOpenSearch = nav::search,
             )
         }
@@ -510,14 +424,14 @@ internal fun AlbumDetailScreen(
                             if (loadedDetail != null) {
                                 // 纯图标动作挂 Tooltip：长按即可确认语义，避免误触分享/批量下载
                                 TooltipBox(text = "分享") {
-                                    IconButton(onClick = { share(loadedDetail) }) {
+                                    IconButton(onClick = { scaffold.share(loadedDetail) }) {
                                         Icon(MiuixIcons.Share, contentDescription = "分享")
                                     }
                                 }
                                 if (loadedDetail.chapters.size > 1) {
                                     TooltipBox(text = "下载全部") {
                                         IconButton(
-                                            onClick = { downloadAll(loadedDetail.id, loadedDetail.chapters) },
+                                            onClick = { scaffold.downloadAll(loadedDetail.id, loadedDetail.chapters) },
                                         ) {
                                             Icon(imageVector = MiuixIcons.Download, contentDescription = "下载全部")
                                         }

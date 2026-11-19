@@ -19,15 +19,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,16 +61,15 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
-import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
-import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
+import com.jm3.app.miuix.ui.week.WeekDetailLoadingStyle
+import com.jm3.app.miuix.ui.week.WeekPeriodsFailureStyle
+import com.jm3.app.miuix.ui.week.WeekRefreshReset
+import com.jm3.app.miuix.ui.week.rememberWeekScaffoldState
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.WeeklyPeriod
-import com.jm3.core.model.WeeklyPicksDetail
-import com.jm3.core.session.SessionOutcome
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
@@ -91,8 +84,7 @@ private val WeekRailDotRadius = 4.dp
 /**
  * COUI 每周必看页：期数胶囊条 + 时间轴列表，签名与原页面一致。
  *
- * 数据链路不变：先取期数（[WeeklyPicks]），再按期取详情（[WeeklyPicksDetail]）。
- * 快速切期用代际号丢弃旧响应，否则慢响应会把当前期覆盖成上一期内容。
+ * 数据链路不变：先取期数，再按期取详情；请求编排与代际号守卫在共享状态里，本页只负责画。
  */
 @Composable
 internal fun CouiWeekScreen(
@@ -101,90 +93,28 @@ internal fun CouiWeekScreen(
     nav: AppRoutes,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
-    val scope = rememberCoroutineScope()
     val user by deps.account.user.collectAsState()
-    var periods by remember { mutableStateOf<List<WeeklyPeriod>>(emptyList()) }
-    var periodsLoading by remember { mutableStateOf(true) }
-    var periodsFailure by remember { mutableStateOf<String?>(null) }
-    var periodsExpired by remember { mutableStateOf(false) }
-    var selected by rememberSaveable { mutableIntStateOf(0) }
-    var detail by remember { mutableStateOf<WeeklyPicksDetail?>(null) }
-    var detailLoading by remember { mutableStateOf(false) }
-    var detailFailure by remember { mutableStateOf<String?>(null) }
-    var detailExpired by remember { mutableStateOf(false) }
-    var refreshing by remember { mutableStateOf(false) }
-    // 期数与切期代际号：只认最后一次请求的响应
-    var periodsToken by remember { mutableIntStateOf(0) }
-    var detailToken by remember { mutableIntStateOf(0) }
-
-    fun loadDetail(index: Int, showLoading: Boolean = true) {
-        val period = periods.getOrNull(index) ?: return
-        val token = ++detailToken
-        if (showLoading) {
-            detailLoading = true
-            detail = null
-        }
-        detailFailure = null
-        detailExpired = false
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.weeklyPicksDetail(period.id) }
-            if (token != detailToken) return@launch
-            detailLoading = false
-            when (outcome) {
-                is SessionOutcome.Ok -> detail = outcome.value
-                else -> {
-                    val plan = planLoad(outcome, hasContent = false, failureMessage = CouiStrings.LoadFailed)
-                    detailExpired = plan.phase == ScreenLoadPhase.Expired
-                    detailFailure = plan.message
-                }
-            }
-        }
-    }
-
-    fun loadPeriods() {
-        val token = ++periodsToken
-        periodsFailure = null
-        periodsExpired = false
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.weeklyPicks() }
-            if (token != periodsToken) return@launch
-            refreshing = false
-            periodsLoading = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    periods = outcome.value.periods
-                    val index = selected.coerceIn(0, (periods.size - 1).coerceAtLeast(0))
-                    selected = index
-                    if (periods.isEmpty()) {
-                        detail = null
-                        detailLoading = false
-                    } else {
-                        loadDetail(index)
-                    }
-                }
-                else -> {
-                    val plan = planLoad(outcome, hasContent = periods.isNotEmpty(), failureMessage = CouiStrings.LoadFailed)
-                    if (plan.keepContent) {
-                        // 有旧期数时刷新失败只降级提示，不把已有内容清空
-                        periodsFailure = null
-                        plan.notice?.let { notice -> snackbarHostState.showSnackbar(notice) }
-                    } else {
-                        periodsExpired = plan.phase == ScreenLoadPhase.Expired
-                        periodsFailure = plan.message
-                    }
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(user?.uid) { loadPeriods() }
+    // 取期数、按期取详情、切期、刷新、失败落点都在共享状态里，本页只负责画
+    val week = rememberWeekScaffoldState(
+        loadPicks = { deps.authCall.call { deps.gateway.weeklyPicks() } },
+        loadPicksDetail = { periodId -> deps.authCall.call { deps.gateway.weeklyPicksDetail(periodId) } },
+        periodsFailureStyle = WeekPeriodsFailureStyle.KeepContentNotice,
+        detailLoadingStyle = WeekDetailLoadingStyle.ClearContent,
+        refreshReset = WeekRefreshReset.WithPeriods,
+        showMessage = { message -> snackbarHostState.showSnackbar(message) },
+        // 账号变了期数可能跟着变：登录态是重取期数的时机
+        reloadKey = user?.uid,
+        showLoadingOnEnter = false,
+    )
 
     CouiTheme {
         val listState = rememberLazyListState()
         val overscroll = rememberCouiOverscrollEffect()
         val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior()
         val scheme = CouiKitTheme.colorScheme
-        val currentPeriod = periods.getOrNull(selected)
+        val currentPeriod = week.currentPeriod
+        val periodsFailure = week.periodsFailure
+        val detailFailure = week.detailFailure
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiAppScaffold(
@@ -195,12 +125,10 @@ internal fun CouiWeekScreen(
                     navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
                     actions = {
                         CouiFeedRefreshAction(
-                            refreshing = refreshing,
+                            refreshing = week.refreshing,
                             onRefresh = {
-                                if (!refreshing) {
-                                    refreshing = true
-                                    loadPeriods()
-                                }
+                                // 刷新中不重复触发：指示器已经在转
+                                if (!week.refreshing) week.refresh()
                             },
                         )
                     },
@@ -219,17 +147,12 @@ internal fun CouiWeekScreen(
                 contentPadding = couiScreenContentPadding(scrollBehavior, innerPadding),
                 overscrollEffect = overscroll,
             ) {
-                if (periods.isNotEmpty()) {
+                if (week.periods.isNotEmpty()) {
                     item(key = "week-periods") {
                         WeekPeriodRow(
-                            periods = periods,
-                            selected = selected,
-                            onSelect = { index ->
-                                if (index != selected) {
-                                    selected = index
-                                    loadDetail(index)
-                                }
-                            },
+                            periods = week.periods,
+                            selected = week.selected,
+                            onSelect = { index -> week.selectPeriod(index) },
                         )
                     }
                 }
@@ -247,23 +170,23 @@ internal fun CouiWeekScreen(
                 }
 
                 when {
-                    periodsLoading -> item(key = "week-loading") {
+                    week.periodsLoading -> item(key = "week-loading") {
                         CouiLoadingGroup(
                             modifier = Modifier.padding(top = 8.dp),
                             text = "正在加载每周必看…",
                         )
                     }
-                    periodsExpired -> item(key = "week-expired") {
-                        CouiFeedLoginGroup(message = periodsFailure.orEmpty(), onOpenLogin = nav::login)
+                    periodsFailure?.phase == ScreenLoadPhase.Expired -> item(key = "week-expired") {
+                        CouiFeedLoginGroup(message = periodsFailure?.message.orEmpty(), onOpenLogin = nav::login)
                     }
                     periodsFailure != null -> item(key = "week-failed") {
                         CouiErrorGroup(
-                            message = periodsFailure.orEmpty(),
-                            onRetry = { periodsLoading = true; loadPeriods() },
+                            message = periodsFailure?.message.orEmpty(),
+                            onRetry = { week.loadPeriods() },
                             modifier = Modifier.padding(top = 8.dp),
                         )
                     }
-                    periods.isEmpty() -> {
+                    week.periods.isEmpty() -> {
                         item(key = "week-empty") {
                             CouiEmptyGroup(
                                 text = "暂无每周必看",
@@ -272,24 +195,24 @@ internal fun CouiWeekScreen(
                         }
                         item(key = "week-empty-hint") { Footer(text = "稍后再来看看") }
                     }
-                    detailLoading -> item(key = "week-detail-loading") {
+                    week.detailLoading -> item(key = "week-detail-loading") {
                         CouiLoadingGroup(
                             modifier = Modifier.padding(top = 8.dp),
                             text = "正在加载本期内容…",
                         )
                     }
-                    detailExpired -> item(key = "week-detail-expired") {
-                        CouiFeedLoginGroup(message = detailFailure.orEmpty(), onOpenLogin = nav::login)
+                    detailFailure?.phase == ScreenLoadPhase.Expired -> item(key = "week-detail-expired") {
+                        CouiFeedLoginGroup(message = detailFailure?.message.orEmpty(), onOpenLogin = nav::login)
                     }
                     detailFailure != null -> item(key = "week-detail-failed") {
                         CouiErrorGroup(
-                            message = detailFailure.orEmpty(),
-                            onRetry = { loadDetail(selected) },
+                            message = detailFailure?.message.orEmpty(),
+                            onRetry = { week.retryDetail() },
                             modifier = Modifier.padding(top = 8.dp),
                         )
                     }
                     else -> {
-                        val items = detail?.items.orEmpty()
+                        val items = week.detail?.items.orEmpty()
                         if (items.isEmpty()) {
                             item(key = "week-detail-empty") {
                                 CouiEmptyGroup(

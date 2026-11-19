@@ -28,6 +28,7 @@ import com.jm3.app.miuix.ui.settings.SETTINGS_DOMAIN_UNRESOLVED
 import com.jm3.app.miuix.ui.settings.SETTINGS_LATENCY_PLACEHOLDER
 import com.jm3.app.miuix.ui.settings.SETTINGS_OPEN_SOURCE_SUMMARY
 import com.jm3.app.miuix.ui.settings.SettingsClearTarget
+import com.jm3.app.miuix.ui.settings.SettingsSections
 import com.jm3.app.miuix.ui.settings.bottomBarFormSummary
 import com.jm3.app.miuix.ui.settings.paginationModeSummary
 import com.jm3.app.miuix.ui.settings.rememberSettingsLayout
@@ -36,12 +37,9 @@ import com.jm3.app.miuix.ui.settings.themeModeSummary
 import com.jm3.app.miuix.ui.settings.uiSkinSummary
 import com.jm3.app.miuix.ui.settings.wideScreenNavigationSummary
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
-import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
-import com.jm3.core.settings.WideScreenNavigation
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -95,7 +93,7 @@ internal fun SettingsScreen(
     GlassScaffold(
         topBar = {
             GlassTopAppBar(
-                title = "设置",
+                title = SettingsSections.title,
                 // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                 color = Color.Transparent,
                 navigationIcon = { BackButton(onBack = scaffold.onBack) },
@@ -112,17 +110,17 @@ internal fun SettingsScreen(
         ) {
             // 顶栏是浮层：内容从顶栏下沿起排，滚动时可穿过顶栏继续被玻璃采样
             TopBarContentSpacer(paddingValues = innerPadding)
-            SmallTitle(text = "主题")
+            SmallTitle(text = SettingsSections.sectionTheme)
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 BasicComponent(
-                    title = "外观模式",
+                    title = SettingsSections.appearanceTitle,
                     summary = themeModeSummary(themeMode),
                 )
                 TabRow(
-                    tabs = ThemeMode.entries.map { it.displayName },
-                    selectedTabIndex = ThemeMode.entries.indexOf(themeMode),
+                    tabs = SettingsSections.themeMode.labels,
+                    selectedTabIndex = SettingsSections.themeMode.indexOf(themeMode),
                     onTabSelected = { index ->
-                        ThemeMode.entries.getOrNull(index)?.let(onThemeModeChange)
+                        SettingsSections.themeMode.valueAt(index)?.let(onThemeModeChange)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -135,39 +133,35 @@ internal fun SettingsScreen(
                     ),
                 )
                 OverlaySpinnerPreference(
-                    title = "界面风格",
+                    title = SettingsSections.uiSkinTitle,
                     summary = uiSkinSummary(uiSkin),
-                    items = UiSkin.entries.mapIndexed { index, skin ->
-                        DropdownItem(text = skin.label, selected = skin == uiSkin)
+                    items = SettingsSections.uiSkin.items.map { option ->
+                        DropdownItem(text = option.label, selected = option.value == uiSkin)
                     },
-                    selectedIndex = UiSkin.entries.indexOf(uiSkin),
+                    selectedIndex = SettingsSections.uiSkin.indexOf(uiSkin),
                     showValue = false,
                     onSelectedIndexChange = { index ->
-                        UiSkin.entries.getOrNull(index)?.takeIf { it != uiSkin }?.let(onUiSkinChange)
+                        SettingsSections.uiSkin.valueAt(index)?.takeIf { it != uiSkin }?.let(onUiSkinChange)
                     },
                 )
                 SwitchPreference(
-                    title = "动态取色",
-                    summary = if (dynamicColorSupported) {
-                        "跟随壁纸生成配色（Android 12 及以上）"
-                    } else {
-                        "ColorOS 皮肤固定自有色板，动态取色不生效"
-                    },
+                    title = SettingsSections.dynamicColorTitle,
+                    summary = SettingsSections.dynamicColorSummary(dynamicColorSupported),
                     checked = dynamicColor,
                     onCheckedChange = onDynamicColorChange,
                     enabled = dynamicColorSupported,
                 )
             }
 
-            SmallTitle(text = "通用")
+            SmallTitle(text = SettingsSections.sectionGeneral)
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 OverlaySpinnerPreference(
-                    title = "分页模式",
+                    title = SettingsSections.paginationTitle,
                     summary = paginationModeSummary(layout.paginationMode),
-                    items = PaginationMode.entries.mapIndexed { index, mode ->
-                        DropdownItem(text = mode.displayName, selected = mode == layout.paginationMode)
+                    items = SettingsSections.paginationMode.items.map { option ->
+                        DropdownItem(text = option.label, selected = option.value == layout.paginationMode)
                     },
-                    selectedIndex = PaginationMode.entries.indexOf(layout.paginationMode),
+                    selectedIndex = SettingsSections.paginationMode.indexOf(layout.paginationMode),
                     showValue = false,
                     onSelectedIndexChange = scaffold::applyPaginationIndex,
                 )
@@ -192,28 +186,28 @@ internal fun SettingsScreen(
                     },
                 )
                 OverlaySpinnerPreference(
-                    title = "底栏形态",
+                    title = SettingsSections.bottomBarFormTitle,
                     summary = bottomBarFormSummary(layout.bottomBarForm),
-                    items = BottomBarForm.entries.mapIndexed { index, form ->
-                        DropdownItem(text = form.label, selected = form == layout.bottomBarForm)
+                    items = SettingsSections.bottomBarForm.items.map { option ->
+                        DropdownItem(text = option.label, selected = option.value == layout.bottomBarForm)
                     },
-                    selectedIndex = BottomBarForm.entries.indexOf(layout.bottomBarForm),
+                    selectedIndex = SettingsSections.bottomBarForm.indexOf(layout.bottomBarForm),
                     showValue = false,
                     onSelectedIndexChange = { index ->
-                        BottomBarForm.entries.getOrNull(index)?.let { scaffold.applyBottomBarForm(it) }
+                        SettingsSections.bottomBarForm.valueAt(index)?.let { scaffold.applyBottomBarForm(it) }
                     },
                 )
                 if (layout.showWideScreenNavigation) {
                     OverlaySpinnerPreference(
-                        title = "宽屏导航",
+                        title = SettingsSections.wideNavigationTitle,
                         summary = wideScreenNavigationSummary(layout.wideScreenNavigation),
-                        items = WideScreenNavigation.entries.mapIndexed { index, navigation ->
-                            DropdownItem(text = navigation.label, selected = navigation == layout.wideScreenNavigation)
+                        items = SettingsSections.wideScreenNavigation.items.map { option ->
+                            DropdownItem(text = option.label, selected = option.value == layout.wideScreenNavigation)
                         },
-                        selectedIndex = WideScreenNavigation.entries.indexOf(layout.wideScreenNavigation),
+                        selectedIndex = SettingsSections.wideScreenNavigation.indexOf(layout.wideScreenNavigation),
                         showValue = false,
                         onSelectedIndexChange = { index ->
-                            WideScreenNavigation.entries.getOrNull(index)?.let { scaffold.applyWideScreenNavigation(it) }
+                            SettingsSections.wideScreenNavigation.valueAt(index)?.let { scaffold.applyWideScreenNavigation(it) }
                         },
                     )
                 }
@@ -223,36 +217,36 @@ internal fun SettingsScreen(
                 )
             }
 
-            SmallTitle(text = "线路")
+            SmallTitle(text = SettingsSections.sectionLine)
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 // Card 内统一用 BasicComponent 行式布局承载诊断信息与操作，替代散落的小号正文与全宽按钮。
                 BasicComponent(
-                    title = "当前线路",
+                    title = SettingsSections.activeDomainsTitle,
                     summary = scaffold.activeDomains.value.ifBlank { SETTINGS_DOMAINS_DEFAULT },
                 )
                 BasicComponent(
-                    title = "实际线路",
+                    title = SettingsSections.usedDomainTitle,
                     summary = diagnostics.usedDomain ?: SETTINGS_DOMAIN_UNRESOLVED,
                 )
                 // 四态由骨架判定：只有内容态逐行列出延迟，其余三态共用一句占位文案
                 if (!diagnostics.showsLatencyRows) {
-                    BasicComponent(title = "线路延迟", summary = SETTINGS_LATENCY_PLACEHOLDER)
+                    BasicComponent(title = SettingsSections.latencyTitle, summary = SETTINGS_LATENCY_PLACEHOLDER)
                 } else {
                     diagnostics.latency.forEach { row ->
-                        BasicComponent(title = row.domain, summary = "${row.latencyMs} ms")
+                        BasicComponent(title = row.domain, summary = SettingsSections.latencyValueText(row.latencyMs))
                     }
                 }
                 diagnostics.errorMessage?.let { message ->
                     Text(
-                        text = "线路诊断失败：$message",
+                        text = SettingsSections.diagnosticsFailureText(message),
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.error,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
                 BasicComponent(
-                    title = "重新探活",
-                    summary = if (diagnostics.probing) "探活中…" else "逐条测速并按延迟排序",
+                    title = SettingsSections.reprobeTitle,
+                    summary = SettingsSections.reprobeSummary(diagnostics.probing),
                     enabled = diagnostics.canRetry,
                     endActions = {
                         if (diagnostics.probing) {
@@ -262,8 +256,8 @@ internal fun SettingsScreen(
                     onClick = scaffold::requestReprobe,
                 )
                 BasicComponent(
-                    title = "自定义线路",
-                    summary = "每行一个域名，留空恢复默认",
+                    title = SettingsSections.customDomainsTitle,
+                    summary = SettingsSections.customDomainsSummary,
                     bottomAction = {
                         TextField(
                             value = scaffold.domainsInput.value,
@@ -274,47 +268,47 @@ internal fun SettingsScreen(
                     },
                 )
                 BasicComponent(
-                    title = "应用线路",
-                    summary = if (scaffold.applying.value) "应用中…" else "保存配置并重建 API 网关",
+                    title = SettingsSections.applyDomainsTitle,
+                    summary = SettingsSections.applyDomainsSummary(scaffold.applying.value),
                     enabled = !scaffold.applying.value,
                     onClick = scaffold::applyDomains,
                 )
             }
 
-            SmallTitle(text = "数据管理")
+            SmallTitle(text = SettingsSections.sectionData)
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 ArrowPreference(
                     title = SettingsClearTarget.HISTORY.title,
-                    summary = "移除全部阅读记录",
+                    summary = SettingsSections.clearSummary(SettingsClearTarget.HISTORY),
                     onClick = { scaffold.requestClear(SettingsClearTarget.HISTORY) },
                 )
                 ArrowPreference(
                     title = SettingsClearTarget.DOWNLOADS.title,
-                    summary = "清除下载任务与已下载文件",
+                    summary = SettingsSections.clearSummary(SettingsClearTarget.DOWNLOADS),
                     onClick = { scaffold.requestClear(SettingsClearTarget.DOWNLOADS) },
                 )
             }
 
-            SmallTitle(text = "关于")
+            SmallTitle(text = SettingsSections.sectionAbout)
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
                 // 版本行兼作隐藏诊断入口：2 秒内连点 5 次打开诊断面板
                 BasicComponent(
-                    title = "版本",
+                    title = SettingsSections.versionTitle,
                     summary = scaffold.versionName,
                     onClick = scaffold::tapVersion,
                 )
                 ArrowPreference(
-                    title = "检查更新",
-                    summary = "查看远端最新版本，支持应用内下载与安装",
+                    title = SettingsSections.updateTitle,
+                    summary = SettingsSections.updateSummary,
                     onClick = { scaffold.openUpdate() },
                 )
                 BasicComponent(
-                    title = "开源组件",
+                    title = SettingsSections.openSourceTitle,
                     summary = SETTINGS_OPEN_SOURCE_SUMMARY,
                 )
                 ArrowPreference(
-                    title = "免责声明",
-                    summary = "第三方客户端，仅供学习交流，包含成人内容",
+                    title = SettingsSections.disclaimerTitle,
+                    summary = SettingsSections.disclaimerSummary,
                     onClick = scaffold::showDisclaimer,
                 )
             }
@@ -325,7 +319,7 @@ internal fun SettingsScreen(
         // 隐藏诊断：版本号连点 5 次打开，只读汇总运行环境与线路状态
         OverlayBottomSheet(
             show = scaffold.diagnosticsVisible.value,
-            title = "诊断信息",
+            title = SettingsSections.diagnosticsTitle,
             cornerRadius = skin.shapes.sheetCorner,
             onDismissRequest = scaffold::closeDiagnostics,
         ) {
@@ -355,7 +349,7 @@ internal fun SettingsScreen(
         ) {
             // 按钮横排、取消在左、主操作在右；内边距已由弹窗内置的 insideMargin 提供
             DialogActionRow(
-                primaryText = if (scaffold.clearing.value) "清空中…" else "确认清空",
+                primaryText = SettingsSections.clearConfirmLabel(scaffold.clearing.value),
                 primaryEnabled = !scaffold.clearing.value,
                 destructive = true,
                 onSecondary = scaffold::dismissClear,
@@ -366,7 +360,7 @@ internal fun SettingsScreen(
         OverlayDialog(
             show = scaffold.disclaimerVisible.value,
             maxWidth = overlayDialogMaxWidth(),
-            title = "免责声明",
+            title = SettingsSections.disclaimerTitle,
             cornerRadius = skin.shapes.dialogCorner,
             onDismissRequest = scaffold::hideDisclaimer,
         ) {
@@ -375,7 +369,7 @@ internal fun SettingsScreen(
                 style = MiuixTheme.textStyles.body2,
             )
             TextButton(
-                text = "知道了",
+                text = SettingsSections.dialogAck,
                 onClick = scaffold::hideDisclaimer,
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             )

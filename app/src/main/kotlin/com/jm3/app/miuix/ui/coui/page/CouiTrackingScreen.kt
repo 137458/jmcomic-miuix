@@ -10,19 +10,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,7 +31,6 @@ import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
@@ -49,32 +41,25 @@ import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
-import top.yukonga.miuix.kmp.basic.SnackbarResult
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
-import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
 import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.formatEpochSeconds
-import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
 import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.list.ListLoadState
-import com.jm3.app.miuix.ui.list.SessionListLoader
 import com.jm3.app.miuix.ui.route.AppRoutes
-import com.jm3.core.model.TrackingItem
-import com.jm3.core.paging.PageSlice
-import com.jm3.core.paging.hasMoreByLoaded
-import com.jm3.core.paging.loadedThrough
-import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.session.SessionOutcome
+import com.jm3.app.miuix.ui.tracking.TrackingUndoReload
+import com.jm3.app.miuix.ui.tracking.rememberTrackingScaffoldState
 import com.jm3.core.settings.PaginationMode
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
@@ -83,6 +68,8 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 /**
  * COUI 连载追踪页：分组行卡 + 分页，签名与原页面一致。
  *
+ * 加载编排、取消追踪与撤销都在 TrackingScaffoldState；本屏只留 ColorOS 的视觉与两处皮肤差异：
+ * 每页条数提示随后续页变大（非末页估算已浏览条数），取消成功触发一次触感。
  * 分页两种模式都保留：点击分页给 [CouiPagingGroup]，滚动分页给
  * [CouiFeedPrefetchEffect] 的触底预取，切换模式会按旧页语义回到对应页码。
  */
@@ -94,98 +81,21 @@ internal fun CouiTrackingScreen(
     snackbarHostState: SnackbarHostState,
 ) {
     val scope = rememberCoroutineScope()
-    val user by deps.account.user.collectAsState()
     val haptic = rememberSelectionHaptic()
     val dateFormat = rememberDateFormatter()
     val mode = deps.paginationMode
     val clickPaging = mode == PaginationMode.CLICK
     val listState = rememberLazyListState()
 
-    var removingId by remember { mutableStateOf<String?>(null) }
-    // 首页条数：非末页时用来估算当前已浏览的条数，决定 hasMore
-    var pageSizeHint by remember { mutableIntStateOf(0) }
-    // removeWhere 只删条目、不回写 total：取消追踪后本地先扣一个，任一次成功拉取即清零
-    var removedCount by remember { mutableIntStateOf(0) }
-
-    val loader = remember(mode, user?.uid, snackbarHostState) {
-        SessionListLoader(
-            scope = scope,
-            idOf = { item: TrackingItem -> item.id },
-            failureMessage = "追踪列表加载失败",
-            fetchPage = { page ->
-                when (val outcome = deps.authCall.call { deps.gateway.trackingList(page) }) {
-                    is SessionOutcome.Ok -> {
-                        val value = outcome.value
-                        pageSizeHint = if (page == 1) {
-                            value.items.size
-                        } else {
-                            pageSizeHint.coerceAtLeast(value.items.size)
-                        }
-                        removedCount = 0
-                        SessionOutcome.Ok(
-                            PageSlice(
-                                items = value.items,
-                                hasMore = hasMoreByLoaded(
-                                    value.items.size,
-                                    loadedThrough(page, pageSizeHint, value.items.size),
-                                    value.total,
-                                ),
-                                total = value.total,
-                                page = page,
-                            ),
-                        )
-                    }
-
-                    SessionOutcome.Expired -> SessionOutcome.Expired
-                    is SessionOutcome.Failed -> outcome
-                }
-            },
-            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-        )
-    }
-    val snapshot by loader.snapshot.collectAsState()
+    val state = rememberTrackingScaffoldState(
+        deps = deps,
+        snackbarHostState = snackbarHostState,
+        hintGrowsWithLaterPages = true,
+        undoReload = TrackingUndoReload.CurrentPage,
+        onUnfollowed = haptic,
+    )
+    val snapshot by state.snapshot.collectAsState()
     val feed = snapshot.feed
-
-    fun unfollow(item: TrackingItem) {
-        if (removingId != null) return
-        removingId = item.id
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.setTracking(item.id) }
-            removingId = null
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    haptic()
-                    loader.removeWhere { it.id == item.id }
-                    removedCount += 1
-                    val result = snackbarHostState.showSnackbar(
-                        message = "已取消追踪",
-                        actionLabel = "撤销",
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        when (val undoOutcome = deps.authCall.call { deps.gateway.setTracking(item.id) }) {
-                            // loader 只有 removeWhere、没有插回通道：撤销成功后重拉当前页，条目回到原位
-                            is SessionOutcome.Ok -> loader.goToPage(feed.page)
-                            is SessionOutcome.Expired -> snackbarHostState.showSnackbar(
-                                planLoad(undoOutcome, hasContent = false, failureMessage = "撤销失败").message.orEmpty(),
-                            )
-                            is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                                "撤销失败：" + failureCopy(undoOutcome, CouiStrings.RetryLater),
-                            )
-                        }
-                    }
-                }
-                is SessionOutcome.Expired -> snackbarHostState.showSnackbar(
-                    planLoad(outcome, hasContent = false, failureMessage = "操作失败").message.orEmpty(),
-                )
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar(
-                    "操作失败：" + failureCopy(outcome, CouiStrings.RetryLater),
-                )
-            }
-        }
-    }
-
-    // 账号或翻页模式变化时 remember 会重建 loader，这里只负责首屏加载
-    LaunchedEffect(loader) { loader.loadFirstPage() }
     // 行卡列数只读 policy 的派生值：手机断点为 1，内容宽够 840dp 才排两列
     val feedColumns = LocalWideLayout.current.feedColumns
     // 只有滚动分页才预取：点击分页下提前拉下一页会让页码与内容对不上
@@ -195,7 +105,7 @@ internal fun CouiTrackingScreen(
         listState = listState,
         columns = feedColumns,
         enabled = !clickPaging,
-        onPrefetch = loader::loadMore,
+        onPrefetch = state::loadMore,
     )
 
     CouiTheme {
@@ -213,7 +123,7 @@ internal fun CouiTrackingScreen(
                         actions = {
                             CouiFeedRefreshAction(
                                 refreshing = snapshot.refreshing,
-                                onRefresh = loader::refresh,
+                                onRefresh = state::refresh,
                             )
                         },
                         scrollBehavior = scrollBehavior,
@@ -233,7 +143,7 @@ internal fun CouiTrackingScreen(
                 ) {
                     if (items.isNotEmpty()) {
                         item(key = "tracking-subtitle") {
-                            val shownTotal = feed.total?.minus(removedCount)?.coerceAtLeast(items.size)
+                            val shownTotal = feed.total?.minus(state.removedCount)?.coerceAtLeast(items.size)
                                 ?: items.size
                             Footer(text = "共 " + shownTotal + " 部")
                         }
@@ -249,7 +159,7 @@ internal fun CouiTrackingScreen(
                             CouiScreenFailureGroup(
                                 message = current.message,
                                 expired = current.sessionExpired,
-                                onRetry = loader::loadFirstPage,
+                                onRetry = state::loadFirstPage,
                                 onOpenLogin = nav::login,
                                 modifier = Modifier.padding(top = 8.dp),
                             )
@@ -286,8 +196,8 @@ internal fun CouiTrackingScreen(
                                         subtitle = item.updateAt.toReadableUpdateTime(dateFormat),
                                         trailing = {
                                             TrackingCancelAction(
-                                                busy = removingId == item.id,
-                                                onClick = { unfollow(item) },
+                                                busy = state.removingId == item.id,
+                                                onClick = { state.unfollow(item) },
                                             )
                                         },
                                     )
@@ -300,11 +210,11 @@ internal fun CouiTrackingScreen(
                                         pageCount = feed.pageCount,
                                         hasMore = feed.hasMore,
                                         onJumpPage = { target ->
-                                            val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
-                                            if (resolved != feed.page) {
+                                            val resolved = state.pageToLoad(target)
+                                            if (resolved != null) {
                                                 scope.launch {
                                                     listState.scrollToItem(0)
-                                                    loader.goToPage(resolved)
+                                                    state.goToPage(resolved)
                                                 }
                                             }
                                         },
@@ -314,7 +224,7 @@ internal fun CouiTrackingScreen(
                                     CouiLoadMoreFooter(
                                         feed = feed,
                                         errorMessage = CouiStrings.LoadFailed,
-                                        onRetry = loader::loadMore,
+                                        onRetry = state::loadMore,
                                         modifier = Modifier.padding(top = 8.dp),
                                     )
                                 }

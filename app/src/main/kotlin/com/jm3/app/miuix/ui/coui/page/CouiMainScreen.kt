@@ -14,14 +14,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -41,25 +35,19 @@ import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
-import com.jm3.app.miuix.ui.glass.resolveBottomBarTokens
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.mainBottomBarClearanceDp
+import com.jm3.app.miuix.ui.mainscreen.MainTab
+import com.jm3.app.miuix.ui.mainscreen.mainContentWidthDp
+import com.jm3.app.miuix.ui.mainscreen.rememberMainScaffoldState
+import com.jm3.app.miuix.ui.mainscreen.resolveMainBarLayout
 import com.jm3.app.miuix.ui.railAwareWideLayout
 import com.jm3.app.miuix.ui.rememberWindowDpSize
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.settings.UiSkin
 import com.jm3.core.session.UnreadBadge
-import com.jm3.core.settings.BottomBarPreferencePolicy
-import com.jm3.core.settings.WideScreenNavigation
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-
-private enum class CouiMainTab(val label: String) {
-    HOME("首页"),
-    CATEGORY("分类"),
-    RANK("榜单"),
-    MINE("我的"),
-}
 
 /**
  * 底栏净空：底栏模式按 token 的净空值让出底部空间，侧栏模式不占底部空间。
@@ -89,50 +77,53 @@ internal fun CouiMainScreen(
     nav: AppRoutes,
 ) {
     CouiTheme {
-        var tab by rememberSaveable { mutableIntStateOf(0) }
-        LaunchedEffect(Unit) { deps.downloadManager.ensureStarted() }
-        val user by deps.account.user.collectAsState()
-        // 登录态变化后重算未读；登出时 refresh 内部会归零
-        LaunchedEffect(user?.uid) { unreadBadge.refresh(user != null) }
-
+        // 选页与启动接线（拉起下载队列、登录态变化刷未读）都在共享骨架里
+        val state = rememberMainScaffoldState(deps = deps, unreadBadge = unreadBadge)
+        val tab = state.tab
         // 与全 app 断点同一取整方式：599.6dp 不能被四舍五入成 600 提前进入平板布局
         val windowSize = rememberWindowDpSize()
         val widthDp = windowSize.width.toLayoutDpInt()
         val heightDp = windowSize.height.toLayoutDpInt()
         // 宽屏导航偏好与底栏 token 同源：600dp 以下设置项不可见，布局一律按底栏渲染；
-        // 够宽够高时未设置默认侧栏，矮横屏一律回落底栏。
-        val wideScreenNavigation = remember(deps.wideScreenNavigation, widthDp, heightDp) {
-            BottomBarPreferencePolicy.resolveActiveWideScreenNavigation(
-                deps.wideScreenNavigation,
-                widthDp,
-                heightDp,
-            )
-        }
-        // 尺寸档与形态档在组合期一次性解析成 token，切换偏好只重建这份数值，不进入测量热路径
-        val tokens = remember(deps.bottomBarSize, deps.bottomBarForm, widthDp) {
-            resolveBottomBarTokens(
+        // 够宽够高时未设置默认侧栏，矮横屏一律回落底栏。ColorOS 的尺寸档恒为标准档。
+        val barLayout = remember(
+            deps.wideScreenNavigation,
+            deps.bottomBarSize,
+            deps.bottomBarForm,
+            widthDp,
+            heightDp,
+        ) {
+            resolveMainBarLayout(
+                wideScreenNavigation = deps.wideScreenNavigation,
                 explicitSize = deps.bottomBarSize,
                 explicitForm = deps.bottomBarForm,
                 widthDp = widthDp,
+                heightDp = heightDp,
                 skin = UiSkin.COLOROS,
             )
         }
-        val useRail = wideScreenNavigation == WideScreenNavigation.RAIL
+        val tokens = barLayout.tokens
+        val useRail = barLayout.useRail
         // 侧栏占掉 88dp 定宽，正文的限宽留白要按剩下的宽度算，否则内容列整体右偏半个侧栏
         val contentLayout = railAwareWideLayout(
-            availableWidthDp = if (useRail) (widthDp - CouiRailWidth.value).toInt() else widthDp,
+            availableWidthDp = mainContentWidthDp(
+                widthDp = widthDp,
+                useRail = useRail,
+                railWidthDp = CouiRailWidth.value.toInt(),
+            ),
         )
 
         // 导航项只随枚举变化：不 remember 会让主框架每次重组都新建列表，连带四页整树重组
         val navItems = remember {
-            CouiMainTab.entries.map { item ->
+            MainTab.entries.map { item ->
                 CouiNavigationItem(
                     title = item.label,
+                    // 分页图标属于皮肤视觉，不进共享骨架
                     icon = when (item) {
-                        CouiMainTab.HOME -> CouiIcons.Home
-                        CouiMainTab.CATEGORY -> CouiIcons.Category
-                        CouiMainTab.RANK -> CouiIcons.Rank
-                        CouiMainTab.MINE -> CouiIcons.Mine
+                        MainTab.HOME -> CouiIcons.Home
+                        MainTab.CATEGORY -> CouiIcons.Category
+                        MainTab.RANK -> CouiIcons.Rank
+                        MainTab.MINE -> CouiIcons.Mine
                     },
                 )
             }
@@ -157,7 +148,7 @@ internal fun CouiMainScreen(
                     CouiNavigationRail(
                         items = navItems,
                         selectedIndex = tab,
-                        onSelect = { tab = it },
+                        onSelect = state::selectTab,
                         tokens = tokens,
                     )
                 }
@@ -181,7 +172,7 @@ internal fun CouiMainScreen(
                                     deps = deps,
                                     onOpenAlbum = nav::album,
                                     onOpenWeek = nav::week,
-                                    onOpenRanking = { tab = CouiMainTab.RANK.ordinal },
+                                    onOpenRanking = { state.selectTab(MainTab.RANK.ordinal) },
                                     onOpenLogin = nav::login,
                                 )
                                 1 -> CouiBrowseScreen(
@@ -222,7 +213,7 @@ internal fun CouiMainScreen(
                         CouiNavigationBar(
                             items = navItems,
                             selectedIndex = tab,
-                            onSelect = { tab = it },
+                            onSelect = state::selectTab,
                             tokens = tokens,
                             backdrop = backdrop,
                             modifier = Modifier.align(Alignment.BottomCenter),

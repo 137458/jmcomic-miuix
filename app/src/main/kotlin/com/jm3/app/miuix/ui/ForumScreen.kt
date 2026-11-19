@@ -21,12 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,7 +31,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.components.BackButton
 import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.components.CommentReplySheet
@@ -47,6 +43,14 @@ import com.jm3.app.miuix.ui.components.PagerBar
 import com.jm3.app.miuix.ui.components.TrackedLazyColumn
 import com.jm3.app.miuix.ui.components.pressScale
 import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
+import com.jm3.app.miuix.ui.forum.FORUM_LOAD_FAILED
+import com.jm3.app.miuix.ui.forum.FORUM_RULES_HINT
+import com.jm3.app.miuix.ui.forum.FORUM_RULES_TEXT
+import com.jm3.app.miuix.ui.forum.FORUM_STALE_PREFIX
+import com.jm3.app.miuix.ui.forum.forumEmptyHint
+import com.jm3.app.miuix.ui.forum.forumEmptyTitle
+import com.jm3.app.miuix.ui.forum.forumSlice
+import com.jm3.app.miuix.ui.forum.rememberForumScaffoldState
 import com.jm3.app.miuix.ui.glass.GlassPullToRefresh
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
@@ -56,9 +60,7 @@ import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.ForumScope
-import com.jm3.core.paging.PageSlice
 import com.jm3.core.paging.PagedFeed
-import com.jm3.core.paging.pageCountOf
 import com.jm3.core.paging.pagerTargetPage
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.PaginationMode
@@ -78,12 +80,6 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 论坛每页条数：接口固定一页 10 条，原版 ForumList 的 pageSize 也是 10。 */
-private const val FORUM_PAGE_SIZE = 10
-
-/** 闲聊区规则正文：折叠态只显示提要，展开态显示全文。 */
-private const val FORUM_RULES_TEXT = "禁止发布违法违规、骚扰与剧透内容；发言限 200 字，违规内容会被删除。"
-
 /** 点击分页模式是否显示翻页条：总页数大于 1、仍有下一页或当前不在第 1 页时显示。 */
 internal fun shouldShowForumPager(feed: PagedFeed<*>): Boolean =
     (feed.pageCount ?: 0) > 1 || feed.hasMore || feed.page > 1
@@ -102,9 +98,15 @@ internal fun ForumScreen(
 ) {
     val user by deps.account.user.collectAsState()
     val pageMode = deps.paginationMode
-    var scopeIndex by rememberSaveable { mutableIntStateOf(0) }
+    // 档位、回复/发帖面板与规则卡的状态编排在共享骨架里：两套皮肤原先各写一份
+    val forum = rememberForumScaffoldState(
+        deps = deps,
+        nav = nav,
+        loggedIn = user != null,
+        notify = { message -> snackbarHostState.showSnackbar(message) },
+    )
     val selectionHaptic = rememberSelectionHaptic()
-    val clampedScopeIndex = scopeIndex.coerceIn(0, ForumScope.entries.lastIndex)
+    val clampedScopeIndex = forum.clampedScopeIndex
     // 失败重试要回到出错的那一页：loader 不携带目标页，只能在这里按档位登记
     val retryPages = remember { mutableStateMapOf<Int, Int>() }
     // 翻页成功后的回顶：loader 没有成功回调，只能比对 feed 页码后补一次滚动
@@ -117,16 +119,11 @@ internal fun ForumScreen(
         pageCount = ForumScope.entries.size,
         onTabSelected = { next ->
             selectionHaptic()
-            scopeIndex = next
+            forum.selectScope(next)
         },
         useMiuixSpring = true,
     )
-    var replyTarget by rememberSaveable(stateSaver = CommentItemNullableSaver) { mutableStateOf<CommentItem?>(null) }
-    var replyBusy by remember { mutableStateOf(false) }
-    var composing by rememberSaveable { mutableStateOf(false) }
-    var composeBusy by remember { mutableStateOf(false) }
-    var rulesExpanded by rememberSaveable { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val scope = forum.scope
     var lastPageMode by remember { mutableStateOf(pageMode) }
 
     /**
@@ -140,27 +137,15 @@ internal fun ForumScreen(
             SessionListLoader<CommentItem>(
                 scope = scope,
                 idOf = { it.id },
-                failureMessage = "论坛加载失败",
-                stalePrefix = "加载失败：",
+                failureMessage = FORUM_LOAD_FAILED,
+                stalePrefix = FORUM_STALE_PREFIX,
                 fetchPage = { page ->
                     // 失败的页要能原地重试：loader 不携带目标页，取数前先登记
                     retryPages[idx] = page
                     val outcome = deps.authCall.call { deps.gateway.forum(forumScope, page) }
                     when (outcome) {
-                        is SessionOutcome.Ok -> {
-                            val resultPage = outcome.value
-                            // 评论页没有页码字段：页码与总页数由请求页和 total 补上，点击分页条才有得显示
-                            val pageCount = pageCountOf(resultPage.total, FORUM_PAGE_SIZE)
-                            SessionOutcome.Ok(
-                                PageSlice(
-                                    items = resultPage.items,
-                                    hasMore = if (pageCount == null) resultPage.items.isNotEmpty() else page < pageCount,
-                                    total = resultPage.total.takeIf { it > 0 },
-                                    page = page,
-                                    pageCount = pageCount,
-                                ),
-                            )
-                        }
+                        // 评论页没有页码字段：页码与总页数由请求页和 total 补上，点击分页条才有得显示
+                        is SessionOutcome.Ok -> SessionOutcome.Ok(forumSlice(outcome.value, page))
 
                         SessionOutcome.Expired -> SessionOutcome.Expired
 
@@ -185,71 +170,6 @@ internal fun ForumScreen(
         if (resolved > currentFeed.page && currentFeed.pageCount == null && !currentFeed.hasMore) return
         pendingScrollPages[targetTab] = resolved
         loader.goToPage(resolved)
-    }
-
-    /** 回复楼层：闲聊帖缺少作品归属，无法定位接口实体，直接给出提示。 */
-    fun startReply(target: CommentItem) {
-        when {
-            user == null -> nav.login()
-            target.albumId == null -> scope.launch {
-                snackbarHostState.showSnackbar("该楼层没有作品归属，暂不支持回复")
-            }
-            else -> replyTarget = target
-        }
-    }
-
-    fun sendReply(text: String) {
-        val target = replyTarget ?: return
-        val albumId = target.albumId ?: return
-        if (text.isBlank() || replyBusy) return
-        replyBusy = true
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.replyComment(albumId, text, target.id) }
-            replyBusy = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    replyTarget = null
-                    snackbarHostState.showSnackbar("回复已发送")
-                    // 回复落在当前页：停在原页重取，不把用户弹回第一页
-                    val activeLoader = loaders[clampedScopeIndex]
-                    val activePage = activeLoader.feed.page
-                    if (activePage <= 1) activeLoader.refresh() else activeLoader.goToPage(activePage)
-                }
-
-                SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "回复失败").message.orEmpty())
-
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("回复失败：" + failureCopy(outcome, "请稍后重试"))
-            }
-        }
-    }
-
-    /** 发帖：原版全站发帖不带 aid，这里以空串提交，由服务端按账号归属落库。 */
-    fun postTopic(text: String) {
-        if (text.isBlank() || composeBusy) return
-        composeBusy = true
-        scope.launch {
-            val outcome = deps.authCall.call { deps.gateway.postComment("", text) }
-            composeBusy = false
-            when (outcome) {
-                is SessionOutcome.Ok -> {
-                    composing = false
-                    snackbarHostState.showSnackbar("发布成功")
-                    // 新帖落在第一页首位，回到顶部才能看到刚发的内容
-                    val activeTab = clampedScopeIndex
-                    scope.launch { listStates[activeTab].scrollToItem(0) }
-                    loaders[activeTab].refresh()
-                }
-
-                SessionOutcome.Expired -> snackbarHostState.showSnackbar(planLoad(outcome, hasContent = false, failureMessage = "发布失败").message.orEmpty())
-
-                is SessionOutcome.Failed -> snackbarHostState.showSnackbar("发布失败：" + failureCopy(outcome, "请稍后重试"))
-            }
-        }
-    }
-
-    /** 发帖入口的登录门禁：顶栏按钮与空态按钮共用同一判定。 */
-    fun openCompose() {
-        if (user == null) nav.login() else composing = true
     }
 
     // 切换档位或分页模式时按新语义重载第一页：分页模式进 loader 的 remember key，换模式即重建
@@ -277,7 +197,7 @@ internal fun ForumScreen(
                     actions = {
                         GlassActionChip(
                             text = "发帖",
-                            onClick = ::openCompose,
+                            onClick = forum::openCompose,
                             emphasized = true,
                         )
                     },
@@ -290,7 +210,7 @@ internal fun ForumScreen(
                     selectedTabIndex = clampedScopeIndex,
                     onTabSelected = {
                         selectionHaptic()
-                        scopeIndex = it
+                        forum.selectScope(it)
                     },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 )
@@ -353,15 +273,15 @@ internal fun ForumScreen(
                             if (pageScope == ForumScope.CHAT) {
                                 item(key = "rules") {
                                     ForumRulesCard(
-                                        expanded = rulesExpanded,
-                                        onToggle = { rulesExpanded = !rulesExpanded },
+                                        expanded = forum.rulesExpanded,
+                                        onToggle = forum::toggleRules,
                                     )
                                 }
                             }
                             val topicTotal = pageFeed.total ?: 0
                             if (pageFeed.items.isEmpty()) {
                                 item(key = "empty") {
-                                    ForumEmptyState(forumScope = pageScope, onCompose = ::openCompose)
+                                    ForumEmptyState(forumScope = pageScope, onCompose = forum::openCompose)
                                 }
                             } else {
                                 if (topicTotal > 0) {
@@ -379,7 +299,7 @@ internal fun ForumScreen(
                                 items(pageFeed.items, key = { it.id }) { item ->
                                     ForumTopicCard(
                                         item = item,
-                                        onReply = ::startReply,
+                                        onReply = forum::startReply,
                                         onOpenAlbum = nav::album,
                                     )
                                 }
@@ -410,17 +330,31 @@ internal fun ForumScreen(
 
         // 发帖面板与回复面板同级挂载，避免底部抽屉叠加导致高度抖动
         ForumComposeSheet(
-            show = composing,
-            busy = composeBusy,
-            onDismiss = { composing = false },
-            onSend = ::postTopic,
+            show = forum.composing,
+            busy = forum.composeBusy,
+            onDismiss = forum::dismissCompose,
+            onSend = { text ->
+                forum.postTopic(text) {
+                    // 新帖落在第一页首位，回到顶部才能看到刚发的内容
+                    val activeTab = forum.clampedScopeIndex
+                    scope.launch { listStates[activeTab].scrollToItem(0) }
+                    loaders[activeTab].refresh()
+                }
+            },
         )
         CommentReplySheet(
-            show = replyTarget != null,
-            targetAuthor = replyTarget?.author,
-            busy = replyBusy,
-            onDismiss = { replyTarget = null },
-            onSend = ::sendReply,
+            show = forum.replyTarget != null,
+            targetAuthor = forum.replyTarget?.author,
+            busy = forum.replyBusy,
+            onDismiss = forum::dismissReply,
+            onSend = { text ->
+                forum.sendReply(text) {
+                    // 回复落在当前页：停在原页重取，不把用户弹回第一页
+                    val activeLoader = loaders[forum.clampedScopeIndex]
+                    val activePage = activeLoader.feed.page
+                    if (activePage <= 1) activeLoader.refresh() else activeLoader.goToPage(activePage)
+                }
+            },
         )
     }
 }
@@ -534,7 +468,7 @@ private fun ForumRulesCard(expanded: Boolean, onToggle: () -> Unit) {
     ) {
         BasicComponent(
             title = "社区规则",
-            summary = if (expanded) FORUM_RULES_TEXT else "闲聊区发言前请先了解规则",
+            summary = if (expanded) FORUM_RULES_TEXT else FORUM_RULES_HINT,
             onClick = onToggle,
             endActions = {
                 Text(
@@ -555,12 +489,8 @@ private fun ForumEmptyState(forumScope: ForumScope, onCompose: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         EmptyState(
-            title = if (forumScope == ForumScope.CHAT) "闲聊区还没有帖子" else "暂无话题",
-            hint = if (forumScope == ForumScope.CHAT) {
-                "来开第一帖，聊聊作品之外的事"
-            } else {
-                "换个档位看看，或发一条新帖"
-            },
+            title = forumEmptyTitle(forumScope),
+            hint = forumEmptyHint(forumScope),
         )
         Button(
             onClick = onCompose,

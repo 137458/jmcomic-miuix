@@ -2,7 +2,6 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -18,13 +17,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,12 +32,9 @@ import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
-import com.jm3.app.miuix.ui.removeMatching
-import com.jm3.app.miuix.ui.restoreAt
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
@@ -62,60 +52,28 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.formatEpochMillis
+import com.jm3.app.miuix.ui.history.HISTORY_DELETED_MESSAGE
+import com.jm3.app.miuix.ui.history.HISTORY_UNDO_ACTION
+import com.jm3.app.miuix.ui.history.HistoryAlbum
+import com.jm3.app.miuix.ui.history.HistoryListState
+import com.jm3.app.miuix.ui.history.HistoryResponseHandling
+import com.jm3.app.miuix.ui.history.groupByAlbum
+import com.jm3.app.miuix.ui.history.rememberHistoryScaffoldState
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
 import com.jm3.app.miuix.ui.route.AppRoutes
-import com.jm3.core.history.HistoryCursor
-import com.jm3.core.history.HistoryEntry
-import com.jm3.core.paging.PageSlice
-import com.jm3.core.paging.PagedFeed
-import com.jm3.core.paging.pageLooksFull
-import com.jm3.core.paging.pagerTargetPage
-import com.jm3.core.runCatchingSuspending
 import com.jm3.core.settings.PaginationMode
-import kotlinx.coroutines.launch
+import java.time.format.DateTimeFormatter
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.SnackbarResult
 
-/** 阅读历史每页条数：与旧页保持一致，满页即代表还有下一页。 */
-private const val HISTORY_PAGE_SIZE = 20
-
-private sealed interface CouiHistoryListState {
-    data object Loading : CouiHistoryListState
-
-    data object Loaded : CouiHistoryListState
-
-    data class Failed(val message: String) : CouiHistoryListState
-}
-
-/** 按作品聚合的阅读历史：最近一章用于一键续读，chapters 为该作品已读章节数。 */
-internal data class CouiAlbumHistory(
-    val albumId: String,
-    val latest: HistoryEntry,
-    val chapters: Int,
-)
-
-/** 保持最近阅读时间倒序，把同一作品的记录折叠成一条。 */
-internal fun List<HistoryEntry>.couiGroupByAlbum(): List<CouiAlbumHistory> {
-    val order = mutableListOf<String>()
-    val latest = mutableMapOf<String, HistoryEntry>()
-    val counts = mutableMapOf<String, Int>()
-    for (entry in this) {
-        if (entry.albumId !in latest) {
-            latest[entry.albumId] = entry
-            order += entry.albumId
-        }
-        counts[entry.albumId] = (counts[entry.albumId] ?: 0) + 1
-    }
-    return order.map { CouiAlbumHistory(it, latest.getValue(it), counts.getValue(it)) }
-}
-
 /**
- * 阅读历史（COUI 栅格版）：参数与旧 Miuix 页一比一，聚合口径、分页与删除逻辑沿用旧页，
- * 数据来自本机 HistoryRepository，不经过网关。
+ * 阅读历史（COUI 栅格版）：参数与旧 Miuix 页一比一，聚合口径、分页与删除逻辑都与它共用
+ * [rememberHistoryScaffoldState]，数据来自本机 HistoryRepository，不经过网关。
  *
  * 栅格触底不用预取组件（COUI 预取只支持 LazyListState），改为页脚项进入组合即取下一页。
+ * 本皮肤没有请求令牌：骨架按 [HistoryResponseHandling.ApplyAsRequested] 保留它原有的迟到响应落点。
  */
 @Composable
 internal fun CouiHistoryScreen(
@@ -124,137 +82,28 @@ internal fun CouiHistoryScreen(
     nav: AppRoutes,
 ) {
     CouiTheme {
-        val repository = deps.history
         val mode = deps.paginationMode
         val clickPaging = mode == PaginationMode.CLICK
         val gridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
-        val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
+        val history = rememberHistoryScaffoldState(
+            repository = deps.history,
+            responseHandling = HistoryResponseHandling.ApplyAsRequested,
+            showMessage = { message -> snackbarHostState.showSnackbar(message) },
+            showUndoPrompt = {
+                snackbarHostState.showSnackbar(
+                    message = HISTORY_DELETED_MESSAGE,
+                    actionLabel = HISTORY_UNDO_ACTION,
+                ) == SnackbarResult.ActionPerformed
+            },
+            scrollToTop = { gridState.scrollToItem(0) },
+        )
 
-        var feed by remember { mutableStateOf(PagedFeed<HistoryEntry>()) }
-        var state by remember { mutableStateOf<CouiHistoryListState>(CouiHistoryListState.Loading) }
-        var showClearConfirm by rememberSaveable { mutableStateOf(false) }
-        var clearing by remember { mutableStateOf(false) }
-        // 翻页在途守卫：仓库读取期间忽略重复翻页，避免连点重发请求
-        var pageBusy by remember { mutableStateOf(false) }
-
-        fun loadFirstPage() {
-            state = CouiHistoryListState.Loading
-            scope.launch {
-                runCatchingSuspending { repository.page(1, HISTORY_PAGE_SIZE) }
-                    .onSuccess { entries ->
-                        feed = PagedFeed<HistoryEntry>().replace(
-                            PageSlice(
-                                items = entries,
-                                hasMore = pageLooksFull(entries.size, HISTORY_PAGE_SIZE),
-                                page = 1,
-                            ),
-                        ) { entry -> entry.photoId }
-                        state = CouiHistoryListState.Loaded
-                    }
-                    .onFailure { state = CouiHistoryListState.Failed(failureCopy(it, "历史加载失败")) }
-            }
-        }
-
-        fun jumpToPage(target: Int) {
-            if (pageBusy) return
-            val resolved = pagerTargetPage(feed.page, target, feed.pageCount)
-            if (resolved == feed.page) return
-            pageBusy = true
-            scope.launch {
-                try {
-                    runCatchingSuspending { repository.page(resolved, HISTORY_PAGE_SIZE) }
-                        .onSuccess { entries ->
-                            feed = PagedFeed<HistoryEntry>().replace(
-                                PageSlice(
-                                    items = entries,
-                                    hasMore = pageLooksFull(entries.size, HISTORY_PAGE_SIZE),
-                                    page = resolved,
-                                ),
-                            ) { entry -> entry.photoId }
-                            state = CouiHistoryListState.Loaded
-                            gridState.scrollToItem(0)
-                        }
-                        .onFailure { state = CouiHistoryListState.Failed(failureCopy(it, "历史加载失败")) }
-                } finally {
-                    pageBusy = false
-                }
-            }
-        }
-
-        fun loadMore() {
-            if (state != CouiHistoryListState.Loaded) return
-            val requested = feed.beginLoadMore()
-            if (requested === feed) return
-            val nextPage = requested.page + 1
-            // 续页用游标：列表上方随时可能因为读者自己的动作而多出一条，按页码算 OFFSET 会重复或漏条。
-            val cursor = requested.items.lastOrNull()?.let {
-                HistoryCursor(updatedAt = it.updatedAt, photoId = it.photoId)
-            }
-            feed = requested
-            scope.launch {
-                runCatchingSuspending { repository.pageAfter(cursor, HISTORY_PAGE_SIZE) }
-                    .onSuccess { entries ->
-                        feed = requested.append(
-                            PageSlice(
-                                items = entries,
-                                hasMore = pageLooksFull(entries.size, HISTORY_PAGE_SIZE),
-                                page = nextPage,
-                            ),
-                        ) { entry -> entry.photoId }
-                    }
-                    .onFailure { feed = requested.failLoadMore() }
-            }
-        }
-
-        /** 删除整部作品的阅读记录：聚合行删除后按 albumId 从当前列表移除，并提供撤销入口。 */
-        fun removeAlbum(albumId: String) {
-            val slice = feed.items.removeMatching { it.albumId == albumId }
-            if (slice.removed.isEmpty()) return
-            scope.launch {
-                val deleteOutcome = runCatchingSuspending { repository.deleteAlbum(albumId) }
-                if (deleteOutcome.isFailure) {
-                    snackbarHostState.showSnackbar("删除失败")
-                    return@launch
-                }
-                feed = feed.copy(items = slice.remaining)
-                val result = snackbarHostState.showSnackbar(
-                    message = "已删除阅读记录",
-                    actionLabel = "撤销",
-                )
-                if (result == SnackbarResult.ActionPerformed) {
-                    val restoreOutcome = runCatchingSuspending {
-                        slice.removed.forEach { repository.upsert(it) }
-                    }
-                    if (restoreOutcome.isSuccess) {
-                        feed = feed.copy(
-                            items = feed.items.restoreAt(slice.removed, slice.insertIndex) { it.photoId },
-                        )
-                    } else {
-                        snackbarHostState.showSnackbar("撤销失败")
-                    }
-                }
-            }
-        }
-
-        fun clearAll() {
-            if (clearing) return
-            clearing = true
-            scope.launch {
-                runCatchingSuspending { repository.clear() }
-                clearing = false
-                showClearConfirm = false
-                feed = PagedFeed<HistoryEntry>()
-                state = CouiHistoryListState.Loaded
-            }
-        }
-
-        val albums = remember(feed.items) { feed.items.couiGroupByAlbum() }
+        val albums = remember(history.feed.items) { history.feed.items.groupByAlbum() }
         val dateFormat = rememberDateFormatter()
 
-        LaunchedEffect(Unit) { loadFirstPage() }
-        PaginationModeReloadEffect(mode) { loadFirstPage() }
+        PaginationModeReloadEffect(mode) { history.loadFirstPage() }
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiScreenScaffold(
@@ -265,7 +114,7 @@ internal fun CouiHistoryScreen(
                         CouiTopBarAction(
                             icon = CouiIcons.Close,
                             contentDescription = "清空阅读历史",
-                            onClick = { showClearConfirm = true },
+                            onClick = { history.requestClearConfirm() },
                         )
                     }
                 },
@@ -282,26 +131,26 @@ internal fun CouiHistoryScreen(
                     verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
                     overscrollEffect = rememberCouiOverscrollEffect(),
                 ) {
-                    when (val current = state) {
-                        CouiHistoryListState.Loading -> item(
+                    when (val current = history.state) {
+                        HistoryListState.Loading -> item(
                             key = "coui-history-loading",
                             span = { GridItemSpan(maxLineSpan) },
                         ) {
                             CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 24.dp))
                         }
 
-                        is CouiHistoryListState.Failed -> item(
+                        is HistoryListState.Failed -> item(
                             key = "coui-history-failed",
                             span = { GridItemSpan(maxLineSpan) },
                         ) {
                             CouiErrorGroup(
                                 message = current.message,
-                                onRetry = { loadFirstPage() },
+                                onRetry = { history.loadFirstPage() },
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                             )
                         }
 
-                        CouiHistoryListState.Loaded -> {
+                        HistoryListState.Loaded -> {
                             if (albums.isEmpty()) {
                                 item(key = "coui-history-empty", span = { GridItemSpan(maxLineSpan) }) {
                                     CouiEmptyGroup(
@@ -320,23 +169,23 @@ internal fun CouiHistoryScreen(
                                             subtitle = couiHistorySubtitle(album, dateFormat),
                                             onResume = { nav.reader(album.latest.photoId) },
                                             onOpenDetail = { nav.album(album.albumId) },
-                                            onDelete = { removeAlbum(album.albumId) },
+                                            onDelete = { history.removeAlbum(album.albumId) },
                                         )
                                     }
                                 }
                                 item(key = "coui-history-paging", span = { GridItemSpan(maxLineSpan) }) {
                                     if (clickPaging) {
                                         CouiPagingGroup(
-                                            page = feed.page,
-                                            pageCount = feed.pageCount,
-                                            hasMore = feed.hasMore,
-                                            onJumpPage = { target -> jumpToPage(target) },
+                                            page = history.feed.page,
+                                            pageCount = history.feed.pageCount,
+                                            hasMore = history.feed.hasMore,
+                                            onJumpPage = { target -> history.jumpToPage(target) },
                                         )
                                     } else {
-                                        CouiAutoLoadMoreEffect(feed = feed, onLoadMore = { loadMore() })
+                                        CouiAutoLoadMoreEffect(feed = history.feed, onLoadMore = { history.loadMore() })
                                         CouiLoadMoreFooter(
-                                            feed = feed,
-                                            onRetry = { loadMore() },
+                                            feed = history.feed,
+                                            onRetry = { history.loadMore() },
                                         )
                                     }
                                 }
@@ -347,21 +196,21 @@ internal fun CouiHistoryScreen(
             }
 
             Dialog(
-                onDismissRequest = { if (!clearing) showClearConfirm = false },
-                visible = showClearConfirm,
+                onDismissRequest = { if (!history.clearing) history.dismissClearConfirm() },
+                visible = history.showClearConfirm,
                 material = couiDialogMaterial(),
                 title = "清空阅读历史",
                 message = "将删除本机全部阅读记录，已下载的章节不受影响。",
                 placement = CouiDialogPlacement.Center,
                 confirmAction = couiDestructiveConfirmAction(
-                    text = if (clearing) "清空中…" else "清空",
-                    enabled = !clearing,
-                    onClick = { clearAll() },
+                    text = if (history.clearing) "清空中…" else "清空",
+                    enabled = !history.clearing,
+                    onClick = { history.clearAll() },
                 ),
                 dismissAction = CouiDialogAction(
                     text = "取消",
                     style = CouiDialogActionStyle.Secondary,
-                    onClick = { if (!clearing) showClearConfirm = false },
+                    onClick = { if (!history.clearing) history.dismissClearConfirm() },
                 ),
             )
 
@@ -376,7 +225,7 @@ internal fun CouiHistoryScreen(
 /** 聚合卡：封面 + 最近章节 + 已读话数；整卡点击续读，卡内角标删除、footer 进详情。 */
 @Composable
 private fun CouiHistoryCard(
-    album: CouiAlbumHistory,
+    album: HistoryAlbum,
     subtitle: String,
     onResume: () -> Unit,
     onOpenDetail: () -> Unit,
@@ -458,6 +307,6 @@ private fun CouiHistoryDeleteBadge(
 
 /** 聚合行副标题：共读话数 + 最近阅读时间，与旧页文案一致。 */
 private fun couiHistorySubtitle(
-    album: CouiAlbumHistory,
-    dateFormat: java.time.format.DateTimeFormatter,
+    album: HistoryAlbum,
+    dateFormat: DateTimeFormatter,
 ): String = "共读 " + album.chapters + " 话 · " + formatEpochMillis(album.latest.updatedAt, dateFormat)

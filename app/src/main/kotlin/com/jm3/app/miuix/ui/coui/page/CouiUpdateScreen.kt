@@ -28,9 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -103,12 +101,12 @@ import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.formatUpdateSize
 import com.jm3.app.miuix.ui.loadAppIcon
 import com.jm3.app.miuix.ui.loadCurrentVersion
-import com.jm3.app.miuix.ui.openUpdateReleasePage
 import com.jm3.app.miuix.ui.parseInlineNotes
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.update.UpdateNoBrowserMessage
+import com.jm3.app.miuix.ui.update.rememberUpdateScaffoldState
 import com.jm3.app.miuix.ui.updateBrowserFallbackUrl
 import com.jm3.app.miuix.ui.updateDialogDownloadDetail
-import com.jm3.app.miuix.update.ApkInstaller
 import com.jm3.app.miuix.update.UpdateDownloadState
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
@@ -119,7 +117,6 @@ import com.jm3.core.update.UpdateChecker
 import com.jm3.core.update.UpdateOutcome
 import com.jm3.core.update.UpdateProgress
 import com.jm3.core.update.UpdatePrompt
-import com.jm3.core.update.UpdatePromptState
 import com.jm3.core.update.VersionText
 import java.io.File
 import kotlinx.coroutines.delay
@@ -158,53 +155,33 @@ internal fun CouiUpdateScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val center = remember { UpdateCenter() }
     val currentVersion = remember(context) { loadCurrentVersion(context) }
     val appName = remember(context) {
         context.applicationInfo.loadLabel(context.packageManager).toString()
     }
 
-    var attempt by remember { mutableIntStateOf(0) }
-    // null 表示正在检查：与 UpdateOutcome.Failed 区分开，否则首次进入会闪一帧「失败」
-    var state by remember { mutableStateOf<UpdateOutcome?>(null) }
-    var showDialog by rememberSaveable { mutableStateOf(false) }
+    // 预览弹窗是 COUI 独有的验看入口：真实下载之外的模拟进度留在本皮肤，不进共享骨架
     var showPreviewDialog by rememberSaveable { mutableStateOf(false) }
     var previewSimulating by remember { mutableStateOf(false) }
     var previewDownloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
-    var autoCheckUpdate by remember { mutableStateOf(true) }
-    var ignoredVersion by remember { mutableStateOf<String?>(null) }
-    val downloadState by deps.updateDownloader.state.collectAsState()
-
-    val release = when (val current = state) {
-        is UpdateOutcome.Available -> current.release
-        is UpdateOutcome.UpToDate -> current.release
-        else -> null
-    }
-    val hasNewVersion = state is UpdateOutcome.Available
-    val latestVersion = release?.version
-    val ignored = latestVersion?.let { UpdatePrompt.isIgnored(ignoredVersion, it) } ?: false
-
-    LaunchedEffect(attempt) {
-        autoCheckUpdate = deps.settings.autoCheckUpdate()
-        ignoredVersion = deps.settings.ignoredUpdateVersion()
-        state = null
-        showDialog = false
-        val outcome = center.evaluate(
-            localVersion = currentVersion,
-            prompt = UpdatePromptState(
-                ignoredVersion = ignoredVersion,
-                promptedVersion = deps.promptedVersion,
-            ),
-        )
-        state = outcome
-        // 启动时被判定「该提示」才弹窗；被忽略的版本不再打扰，只在页面里留入口
-        if (outcome is UpdateOutcome.Available && outcome.notify) {
+    // 检查、弹窗与设置编排都在共享骨架里；本皮肤只做视觉结构与 slot 转发
+    val scaffoldState = rememberUpdateScaffoldState(
+        deps = deps,
+        snackbarHostState = snackbarHostState,
+        currentVersion = currentVersion,
+        openReleaseFailure = { UpdateNoBrowserMessage },
+        onPrompt = {
             showPreviewDialog = false
             previewSimulating = false
-            showDialog = true
-            deps.promptedVersion = outcome.release.version
-        }
-    }
+        },
+    )
+    val downloadState by scaffoldState.downloadState
+
+    val state = scaffoldState.outcome
+    val release = scaffoldState.release
+    val hasNewVersion = scaffoldState.hasNewVersion
+    val latestVersion = scaffoldState.latestVersion
+    val ignored = scaffoldState.ignored
 
     // 预览弹窗里的模拟下载进度：便于直接验看进度条、取消下载与后台下载槽位，不发起真实网络请求
     LaunchedEffect(previewSimulating) {
@@ -233,30 +210,6 @@ internal fun CouiUpdateScreen(
         snackbarHostState.showSnackbar("预览下载演示完成（未写入文件）")
     }
 
-    // 下载有了结论就收起弹窗：成功进安装、失败回页面看原因，留在弹窗里会挡住状态
-    val downloadSettled = downloadState is UpdateDownloadState.Done ||
-        downloadState is UpdateDownloadState.Failed
-    LaunchedEffect(downloadSettled) {
-        if (downloadSettled) showDialog = false
-    }
-
-    fun setAutoCheck(enabled: Boolean) {
-        autoCheckUpdate = enabled
-        scope.launch { deps.settings.setAutoCheckUpdate(enabled) }
-    }
-
-    fun toggleIgnored(version: String) {
-        val next = UpdatePrompt.toggleIgnored(ignoredVersion, version)
-        ignoredVersion = next
-        scope.launch { deps.settings.setIgnoredUpdateVersion(next) }
-    }
-
-    fun openRelease(url: String) {
-        if (!openUpdateReleasePage(context, url)) {
-            scope.launch { snackbarHostState.showSnackbar("没有可用的浏览器") }
-        }
-    }
-
     fun copyCurrentVersion() {
         copyTextToClipboard(
             context = context,
@@ -266,22 +219,6 @@ internal fun CouiUpdateScreen(
             value = currentVersion,
             successMessage = "已复制版本号 v$currentVersion",
         )
-    }
-
-    fun install(file: File) {
-        when (val result = deps.installUpdate(file)) {
-            is ApkInstaller.Result.Launched -> Unit
-            is ApkInstaller.Result.PermissionRequired -> scope.launch {
-                snackbarHostState.showSnackbar("请先允许本应用安装未知来源应用")
-            }
-            is ApkInstaller.Result.Failed -> scope.launch {
-                snackbarHostState.showSnackbar(result.message)
-            }
-            // 签名不一致不可能靠重试解决，直接把原因摆给用户，而不是让系统安装器弹一句装不上的错。
-            is ApkInstaller.Result.SignerMismatch -> scope.launch {
-                snackbarHostState.showSnackbar(result.message)
-            }
-        }
     }
 
     val ignoreSummary = when {
@@ -322,7 +259,7 @@ internal fun CouiUpdateScreen(
                                 CouiTopBarAction(
                                     icon = CouiIcons.Refresh,
                                     contentDescription = "重新检查",
-                                    onClick = { if (state != null) attempt++ },
+                                    onClick = { if (state != null) scaffoldState.recheck() },
                                 )
                             }
                         },
@@ -349,30 +286,30 @@ internal fun CouiUpdateScreen(
                         currentVersion = currentVersion,
                         state = state,
                         downloadState = downloadState,
-                        onOpenRelease = ::openRelease,
+                        onOpenRelease = scaffoldState::openRelease,
                     )
                     if (release != null) {
                         UpdateNotesGroup(
                             title = changelogTitle(state),
                             state = state,
                             release = release,
-                            onOpenRelease = ::openRelease,
+                            onOpenRelease = scaffoldState::openRelease,
                         )
                     }
                     UpdateSettingsGroup(
-                        autoCheckUpdate = autoCheckUpdate,
+                        autoCheckUpdate = scaffoldState.autoCheck,
                         ignored = ignored,
                         ignoreSummary = ignoreSummary,
-                        ignoreEnabled = hasNewVersion && latestVersion != null,
-                        onAutoCheckChange = ::setAutoCheck,
-                        onIgnoreToggle = { latestVersion?.let(::toggleIgnored) },
+                        ignoreEnabled = scaffoldState.ignoreEnabled,
+                        onAutoCheckChange = scaffoldState::setAutoCheck,
+                        onIgnoreToggle = { scaffoldState.latestVersion?.let(scaffoldState::toggleIgnored) },
                     )
                     UpdateMetaGroup(
                         currentVersion = currentVersion,
                         state = state,
                         release = release,
                         onCopyVersion = ::copyCurrentVersion,
-                        onOpenRelease = { openRelease(UpdateChecker.RELEASES_PAGE_URL) },
+                        onOpenRelease = { scaffoldState.openRelease(UpdateChecker.RELEASES_PAGE_URL) },
                     )
                     UpdateDebugGroup(
                         hasNewVersion = hasNewVersion,
@@ -380,7 +317,7 @@ internal fun CouiUpdateScreen(
                             if (hasNewVersion) {
                                 showPreviewDialog = false
                                 previewSimulating = false
-                                showDialog = true
+                                scaffoldState.showDialog()
                             } else {
                                 previewSimulating = false
                                 previewDownloadState = UpdateDownloadState.Idle
@@ -408,17 +345,17 @@ internal fun CouiUpdateScreen(
                     onContentHeightMeasured = { px ->
                         bottomBarBodyHeight = with(density) { px.toDp() }
                     },
-                    onRecheck = { attempt++ },
-                    onOpenRelease = ::openRelease,
-                    onStartDownload = { asset -> deps.updateDownloader.start(asset) },
-                    onCancelDownload = { deps.updateDownloader.cancel() },
-                    onResetDownload = { deps.updateDownloader.reset() },
-                    onInstall = ::install,
+                    onRecheck = scaffoldState::recheck,
+                    onOpenRelease = scaffoldState::openRelease,
+                    onStartDownload = scaffoldState::startDownload,
+                    onCancelDownload = scaffoldState::cancelDownload,
+                    onResetDownload = scaffoldState::resetDownload,
+                    onInstall = scaffoldState::install,
                 )
             }
         }
 
-        val realRelease = (state as? UpdateOutcome.Available)?.release
+        val realRelease = scaffoldState.dialogRelease
         val usePreview = realRelease == null
         val previewRelease = remember(currentVersion, release) {
             couiPreviewUpdateRelease(currentVersion = currentVersion, remoteRelease = release)
@@ -429,7 +366,7 @@ internal fun CouiUpdateScreen(
             realRelease
         }
         val dialogRelease = rememberRetainedTarget(activeTarget)
-        val dialogVisible = if (usePreview) showPreviewDialog else showDialog
+        val dialogVisible = if (usePreview) showPreviewDialog else scaffoldState.dialogVisible
         if (dialogRelease != null) {
             UpdateAvailableDialog(
                 show = dialogVisible,
@@ -441,14 +378,14 @@ internal fun CouiUpdateScreen(
                         showPreviewDialog = false
                         previewSimulating = false
                     } else {
-                        showDialog = false
+                        scaffoldState.dismissDialog()
                     }
                 },
                 onDownload = {
                     if (usePreview) {
                         previewSimulating = true
                     } else {
-                        dialogRelease.apk?.let { deps.updateDownloader.start(it) }
+                        scaffoldState.startDownload(dialogRelease)
                     }
                 },
                 onOpenRelease = {
@@ -456,9 +393,9 @@ internal fun CouiUpdateScreen(
                         showPreviewDialog = false
                         previewSimulating = false
                     } else {
-                        showDialog = false
+                        scaffoldState.dismissDialog()
                     }
-                    openRelease(dialogRelease.htmlUrl)
+                    scaffoldState.openRelease(dialogRelease.htmlUrl)
                 },
                 onIgnore = { version ->
                     if (usePreview) {
@@ -466,15 +403,15 @@ internal fun CouiUpdateScreen(
                         previewSimulating = false
                         scope.launch { snackbarHostState.showSnackbar("预览模式：未写入忽略版本") }
                     } else {
-                        showDialog = false
-                        if (ignoredVersion != version) toggleIgnored(version)
+                        scaffoldState.dismissDialog()
+                        if (scaffoldState.ignoredVersion != version) scaffoldState.toggleIgnored(version)
                     }
                 },
                 onCancelDownload = {
                     if (usePreview) {
                         previewSimulating = false
                     } else {
-                        deps.updateDownloader.cancel()
+                        scaffoldState.cancelDownload()
                     }
                 },
             )

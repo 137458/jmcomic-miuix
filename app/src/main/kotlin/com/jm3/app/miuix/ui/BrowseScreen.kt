@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ScreenDeps
+import com.jm3.app.miuix.ui.browse.rememberBrowseScaffoldState
 import com.jm3.app.miuix.ui.components.BackButton
 import com.jm3.app.miuix.ui.components.LoadMoreFooter
 import com.jm3.app.miuix.ui.components.LoadMoreOnScroll
@@ -70,11 +71,9 @@ import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.appendedBy
 import com.jm3.core.model.BrowseCategory
-import com.jm3.core.model.BrowseFilter
 import com.jm3.core.model.BrowseOrder
 import com.jm3.core.model.BrowseTime
 import com.jm3.core.model.CategoryBlock
-import com.jm3.core.model.CategoryTree
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.SearchScope
 import com.jm3.core.paging.PagedFeed
@@ -113,13 +112,6 @@ internal fun BrowseScreen(
     nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
-    var categoryValue by rememberSaveable { mutableStateOf(BrowseCategory.ALL.apiValue) }
-    var orderValue by rememberSaveable { mutableStateOf(BrowseOrder.LATEST.apiValue) }
-    var timeValue by rememberSaveable { mutableStateOf(BrowseTime.ALL.apiValue) }
-    // 筛选口径与列表结果一起进缓存：切 tab 回来时按同一口径取回上次的结果，滚动位置才有内容可落
-    val pageKey = BrowsePageKey(mode, categoryValue, orderValue, timeValue)
-    val pageMode = deps.paginationMode
-    val clickPaging = pageMode == PaginationMode.CLICK
     val refreshState = rememberPullToRefreshState(refreshThreshold = 0.18f)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -128,76 +120,37 @@ internal fun BrowseScreen(
     val gridState = rememberLazyStaggeredGridState()
     val selectionHaptic = rememberSelectionHaptic()
 
-    // 原版分类页的三个增强区块：分类树（子分类/更多分类）、热门标签、每周连载更新。
-    // 三者都是可选数据，任一加载失败即隐藏对应区域，不影响主列表。
-    var categoryTree by remember { mutableStateOf<CategoryTree?>(null) }
-    var hotTags by remember { mutableStateOf<List<String>>(emptyList()) }
-    var weeklyFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
-    // 周更区块的三态：空列表既可能是「还没回来」也可能是「回来 0 条」，必须分开
-    var weeklyLoading by remember { mutableStateOf(true) }
-    var weeklyFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
-    var weeklyLoadToken by remember { mutableIntStateOf(0) }
+    // 筛选口径、主列表 loader 与分页动作收在共享状态里；本页只给失败文案、提示去处与归顶动作
+    val browse = rememberBrowseScaffoldState(
+        deps = deps,
+        mode = mode,
+        failureMessage = "加载失败",
+        onNotice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+        onScrollToTop = {
+            if (mode == BrowseMode.RANK) gridState.scrollToItem(0) else listState.scrollToItem(0)
+        },
+    )
+    val state = browse.feedState
+    val refreshing = browse.refreshing
+    val clickPaging = browse.clickPaging
+    val category = browse.category
+    val order = browse.order
+    val time = browse.time
+    val categoryTree = browse.categoryTree
+    val hotTags = browse.hotTags
+    val hasTagBlocks = browse.hasTagBlocks
     // 子分类/标签点击后的检索词；非空时页面切换为标签结果，返回即恢复分类浏览。
-    var tagKeyword by rememberSaveable { mutableStateOf<String?>(null) }
-    BackHandler(enabled = tagKeyword != null) { tagKeyword = null }
+    val tagKeyword = browse.tagKeyword
+    BackHandler(enabled = tagKeyword != null) { browse.closeTag() }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showWeeklySheet by rememberSaveable { mutableStateOf(false) }
 
-    val category = BrowseCategory.entries.firstOrNull { it.apiValue == categoryValue } ?: BrowseCategory.ALL
-    val order = BrowseOrder.entries.firstOrNull { it.apiValue == orderValue } ?: BrowseOrder.LATEST
-    val time = BrowseTime.entries.firstOrNull { it.apiValue == timeValue } ?: BrowseTime.ALL
-
-    // 主分类 slug 与分类树一级节点同值，据此取当前分类的子分类（在列表项内读取，避免闭包捕获过期值）。
-    val hasTagBlocks = categoryTree?.blocks?.isNotEmpty() == true
-
-    // 列表加载编排（请求代次/在途标记/翻页游标/失败落点）收在 loader 内；页面只提供取哪一页与如何提示
-    val loader = remember(pageKey) {
-        SessionListLoader<SearchResult>(
-            scope = scope,
-            idOf = { it.id },
-            failureMessage = "加载失败",
-            fetchPage = { page ->
-                val outcome = deps.authCall.call { deps.gateway.browse(pageKey.toFilter(), page) }
-                when (outcome) {
-                    is SessionOutcome.Ok -> SessionOutcome.Ok(outcome.value.toSlice())
-                    SessionOutcome.Expired -> SessionOutcome.Expired
-                    is SessionOutcome.Failed -> outcome
-                }
-            },
-            notice = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
-            cache = deps.sessionCache,
-            cacheKey = SessionListKey.Browse(pageKey),
-        )
-    }
-    val snapshot by loader.snapshot.collectAsState()
-    // 渲染层沿用页面既有的 ListState 四态：列表复用件只吃 feed，不认加载态
-    val state = snapshot.toListState()
-    val refreshing = snapshot.refreshing
-    // 点击分页换页成功后才滚回顶部
-    var pendingScrollPage by remember(pageKey) { mutableIntStateOf(0) }
-
-    /** 下拉手势走 refresh（保留当前列表），程序化重载走 loadFirstPage（整屏进度）。 */
-    fun refresh(byPull: Boolean = false) {
-        if (byPull) loader.refresh() else loader.loadFirstPage()
-    }
-
-    /** 点击分页：按目标页整页替换，沿用首屏缓存与筛选口径。 */
-    fun jumpToPage(target: Int) {
-        val current = loader.feed
-        val resolved = pagerTargetPage(current.page, target, current.pageCount)
-        if (resolved == current.page) return
-        pendingScrollPage = resolved
-        loader.goToPage(resolved)
-    }
-
-    fun loadMore() {
-        loader.loadMore()
-    }
-
-    // 子分类/标签没有独立的筛选参数，统一按标签检索展示结果。
-    fun openTag(keyword: String) {
-        normalizeBrowseTagKeyword(keyword)?.let { tagKeyword = it }
-    }
+    // 周更区块同样可选：失败即隐藏该区块，不影响主列表。
+    // 它的三态分开存：空列表既可能是「还没回来」也可能是「回来 0 条」。
+    var weeklyFeed by remember { mutableStateOf(PagedFeed<SearchResult>()) }
+    var weeklyLoading by remember { mutableStateOf(true) }
+    var weeklyFailure by remember { mutableStateOf<ScreenLoadPlan?>(null) }
+    var weeklyLoadToken by remember { mutableIntStateOf(0) }
 
     fun loadMoreWeekly() {
         val requested = weeklyFeed.beginLoadMore()
@@ -229,40 +182,24 @@ internal fun BrowseScreen(
         }
     }
 
-    // 三个增强区块并行加载；失败或会话失效只影响各自区域，不影响主列表与整屏错误态。
+    // 周更首屏与两个标签区块并行加载；失败或会话失效只影响各自区域，不影响主列表与整屏错误态。
     LaunchedEffect(deps.gateway, deps.authCall) {
         loadWeekly()
         coroutineScope {
-            val treeRequest = async { deps.authCall.call { deps.gateway.categoriesList() } }
-            val tagsRequest = async { deps.authCall.call { deps.gateway.hotTags() } }
-            categoryTree = treeRequest.await().orDegrade<CategoryTree?>(null)
-            hotTags = tagsRequest.await().orDegrade(emptyList())
+            val treeRequest = async { browse.loadCategoryTree() }
+            val tagsRequest = async { browse.loadHotTags() }
+            treeRequest.await()
+            tagsRequest.await()
         }
     }
-
-    // 首帧命中 SessionCache 时 loader 构造即带内容，这里不再补拉，避免先闪一次加载态
-    LaunchedEffect(loader) {
-        if (loader.state !is ListLoadState.Loaded) loader.loadFirstPage()
-    }
-
-    // 换页落地后回顶，避免停在旧页的滚动位置
-    LaunchedEffect(snapshot.feed.page, snapshot.state) {
-        val page = pendingScrollPage
-        if (page != 0 && snapshot.state is ListLoadState.Loaded && snapshot.feed.page == page) {
-            pendingScrollPage = 0
-            if (mode == BrowseMode.RANK) gridState.scrollToItem(0) else listState.scrollToItem(0)
-        }
-    }
-
-    PaginationModeReloadEffect(pageMode) { loader.loadFirstPage() }
 
     // 触底加载：分类页跟逐行列表，榜单页跟两列瀑布流，判据由 PagedFeed 统一给出
     val browsing = state as? ListState.Loaded
     if (!clickPaging && browsing != null) {
         if (mode == BrowseMode.RANK) {
-            LoadMoreOnScroll(gridState = gridState, feed = browsing.feed, onLoadMore = ::loadMore)
+            LoadMoreOnScroll(gridState = gridState, feed = browsing.feed, onLoadMore = browse::loadMore)
         } else {
-            LoadMoreOnScroll(listState = listState, feed = browsing.feed, onLoadMore = ::loadMore)
+            LoadMoreOnScroll(listState = listState, feed = browsing.feed, onLoadMore = browse::loadMore)
         }
     }
 
@@ -273,10 +210,10 @@ internal fun BrowseScreen(
                 title = if (activeTag != null) "标签：$activeTag" else mode.title,
                 navigationIcon = {
                     // 标签结果页返回分类浏览；分类浏览本身是底部 tab，无需返回键。
-                    if (activeTag != null) BackButton(onBack = { tagKeyword = null })
+                    if (activeTag != null) BackButton(onBack = { browse.closeTag() })
                 },
                 actions = {
-                    IconButton(onClick = { refresh(byPull = true) }, enabled = !refreshing) {
+                    IconButton(onClick = { browse.refresh(byPull = true) }, enabled = !refreshing) {
                         Icon(
                             imageVector = MiuixIcons.Refresh,
                             contentDescription = "刷新",
@@ -303,7 +240,7 @@ internal fun BrowseScreen(
                                     onTabSelected = { index ->
                                         val picked = BrowseTime.entries.getOrNull(index) ?: return@GlassChipRow
                                         selectionHaptic()
-                                        timeValue = picked.apiValue
+                                        browse.selectTime(picked.apiValue)
                                     },
                                     contentPadding = FilterChipsPadding,
                                 )
@@ -313,7 +250,7 @@ internal fun BrowseScreen(
                                     onTabSelected = { index ->
                                         val picked = BrowseOrder.entries.getOrNull(index) ?: return@GlassChipRow
                                         selectionHaptic()
-                                        orderValue = picked.apiValue
+                                        browse.selectOrder(picked.apiValue)
                                     },
                                     contentPadding = FilterChipsPadding,
                                 )
@@ -328,7 +265,7 @@ internal fun BrowseScreen(
                                         onTabSelected = { index ->
                                             val picked = BrowseCategory.entries.getOrNull(index) ?: return@GlassChipRow
                                             selectionHaptic()
-                                            categoryValue = picked.apiValue
+                                            browse.selectCategory(picked.apiValue)
                                         },
                                         modifier = Modifier.weight(1f).chipRowEndFade(),
                                         contentPadding = PaddingValues(vertical = 4.dp),
@@ -348,7 +285,7 @@ internal fun BrowseScreen(
                                     onTabSelected = { index ->
                                         val picked = BrowseOrder.entries.getOrNull(index) ?: return@GlassChipRow
                                         selectionHaptic()
-                                        orderValue = picked.apiValue
+                                        browse.selectOrder(picked.apiValue)
                                     },
                                     contentPadding = FilterChipsPadding,
                                 )
@@ -390,7 +327,7 @@ internal fun BrowseScreen(
                 // 榜单：筛选条常驻玻璃顶栏，内容区只保留两列瀑布流
                 GlassPullToRefresh(
                     isRefreshing = refreshing,
-                    onRefresh = { refresh(byPull = true) },
+                    onRefresh = { browse.refresh(byPull = true) },
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = innerPadding,
@@ -400,19 +337,19 @@ internal fun BrowseScreen(
                         gridState = gridState,
                         contentPadding = innerPadding,
                         refreshing = refreshing,
-                        onRetry = { refresh() },
+                        onRetry = { browse.reload() },
                         onOpenLogin = nav::login,
-                        onLoadMore = ::loadMore,
+                        onLoadMore = browse::loadMore,
                         onOpenAlbum = nav::album,
                         clickPaging = clickPaging,
-                        onPageChange = ::jumpToPage,
+                        onPageChange = browse::jumpToPage,
                     )
                 }
             } else {
                 // 列表内容穿到玻璃顶栏（顶栏 + 筛选条）下方，顶栏才能采样到真实背景
                 GlassPullToRefresh(
                     isRefreshing = refreshing,
-                    onRefresh = { refresh(byPull = true) },
+                    onRefresh = { browse.refresh(byPull = true) },
                     pullToRefreshState = refreshState,
                     modifier = Modifier.fillMaxSize(),
                     // 刷新指示器下移到玻璃顶栏之下，避免被顶栏遮住
@@ -443,10 +380,10 @@ internal fun BrowseScreen(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
                                             items(subCategories, key = { it.name }) { sub ->
-                                                MinTouchTarget(onClick = { openTag(sub.name) }) {
+                                                MinTouchTarget(onClick = { browse.openTag(sub.name) }) {
                                                     TextButton(
                                                         text = sub.name,
-                                                        onClick = { openTag(sub.name) },
+                                                        onClick = { browse.openTag(sub.name) },
                                                         minWidth = 0.dp,
                                                         minHeight = 32.dp,
                                                     )
@@ -463,10 +400,10 @@ internal fun BrowseScreen(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
                                             items(hotTags.take(12), key = { it }) { tag ->
-                                                MinTouchTarget(onClick = { openTag(tag) }) {
+                                                MinTouchTarget(onClick = { browse.openTag(tag) }) {
                                                     TextButton(
                                                         text = tag,
-                                                        onClick = { openTag(tag) },
+                                                        onClick = { browse.openTag(tag) },
                                                         minWidth = 0.dp,
                                                         minHeight = 32.dp,
                                                     )
@@ -493,17 +430,17 @@ internal fun BrowseScreen(
                                 ScreenFailureOrLogin(
                                     message = s.message,
                                     expired = s.sessionExpired,
-                                    onRetry = { refresh() },
+                                    onRetry = { browse.reload() },
                                     onOpenLogin = nav::login,
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 )
                             }
                             is ListState.Loaded -> searchResultItems(
                                 feed = s.feed,
-                                onLoadMore = ::loadMore,
+                                onLoadMore = browse::loadMore,
                                 onOpenAlbum = nav::album,
                                 clickPaging = clickPaging,
-                                onPageChange = ::jumpToPage,
+                                onPageChange = browse::jumpToPage,
                                 columns = feedColumns,
                             )
                         }
@@ -523,7 +460,7 @@ internal fun BrowseScreen(
                 blocks = categoryTree?.blocks.orEmpty(),
                 onTagClick = { tag ->
                     showMoreSheet = false
-                    openTag(tag)
+                    browse.openTag(tag)
                 },
             )
         }
@@ -765,20 +702,6 @@ private fun TagResultSection(
             }
         }
     }
-}
-
-/** 缓存键里的筛选口径还原成请求条件：分类页只认主分类与排序，榜单页只认排序与时间。 */
-private fun BrowsePageKey.toFilter(): BrowseFilter = when (mode) {
-    BrowseMode.CATEGORY -> BrowseFilter(
-        category = BrowseCategory.entries.firstOrNull { it.apiValue == category } ?: BrowseCategory.ALL,
-        order = BrowseOrder.entries.firstOrNull { it.apiValue == order } ?: BrowseOrder.LATEST,
-        time = BrowseTime.ALL,
-    )
-    BrowseMode.RANK -> BrowseFilter(
-        category = BrowseCategory.ALL,
-        order = BrowseOrder.entries.firstOrNull { it.apiValue == order } ?: BrowseOrder.LATEST,
-        time = BrowseTime.entries.firstOrNull { it.apiValue == time } ?: BrowseTime.ALL,
-    )
 }
 
 /**

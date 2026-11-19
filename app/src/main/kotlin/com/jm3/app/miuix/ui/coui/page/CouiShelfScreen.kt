@@ -20,12 +20,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,15 +48,19 @@ import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
-import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
+import com.jm3.app.miuix.ui.shelf.SHELF_DELETE_CONFIRM
+import com.jm3.app.miuix.ui.shelf.SHELF_DELETE_DISMISS
+import com.jm3.app.miuix.ui.shelf.SHELF_DELETE_TITLE
+import com.jm3.app.miuix.ui.shelf.SHELF_TITLE
+import com.jm3.app.miuix.ui.shelf.rememberShelfScaffoldState
+import com.jm3.app.miuix.ui.shelf.shelfAlbumId
+import com.jm3.app.miuix.ui.shelf.shelfDeleteMessage
+import com.jm3.app.miuix.ui.shelf.shelfSummary
 import com.jm3.core.CoverLocator
-import com.jm3.core.download.DownloadAction
-import com.jm3.core.download.DownloadRecord
 import com.jm3.core.download.DownloadRow
 import com.jm3.core.download.presentRow
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 
 /**
@@ -78,49 +77,19 @@ internal fun CouiShelfScreen(
     nav: AppRoutes,
 ) {
     CouiTheme {
-        val scope = rememberCoroutineScope()
         val gridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
 
-        var records by remember { mutableStateOf<List<DownloadRecord>>(emptyList()) }
-        var pendingDeleteRecord by remember { mutableStateOf<DownloadRecord?>(null) }
-        var imageHost by remember { mutableStateOf("") }
+        // 账本订阅、封面域名、主操作分派与删除确认都在共享骨架上；这里只读状态、只画卡片
+        val shelf = rememberShelfScaffoldState(deps)
+        val records = shelf.records
+        val pendingDeleteRecord = shelf.pendingDeleteRecord
+        val imageHost = shelf.imageHost
         // 首帧还没拿到下载快照：先给加载态，避免空列表一闪
-        var loaded by remember { mutableStateOf(false) }
-
-        // 初次加载 + 队列进度驱动刷新
-        LaunchedEffect(Unit) {
-            deps.downloadManager.ensureStarted()
-            records = deps.downloadManager.records()
-            loaded = true
-            deps.downloadManager.queue.updates.collect {
-                records = deps.downloadManager.records()
-            }
-        }
-
-        // 图片域名整个屏幕只取一次：网关取域名是阻塞方法，AuthCall 负责等待会话恢复并切到 IO；
-        // 取不到或会话失效时留空串，封面由 CoverLocator.cover 返回 null 退化为占位，不影响卡片内容与操作
-        LaunchedEffect(deps.images, deps.authCall) {
-            imageHost = deps.authCall.call { deps.images.imageHost() }.orDegrade("")
-        }
-
-        fun performPrimaryAction(record: DownloadRecord, row: DownloadRow) {
-            when (row.action) {
-                DownloadAction.Open -> nav.reader(record.photoId)
-                DownloadAction.Pause -> deps.downloadManager.pause(record.photoId)
-                DownloadAction.Resume, DownloadAction.Retry -> deps.downloadManager.resumeRecord(record)
-            }
-        }
-
-        fun removeRecord(record: DownloadRecord) {
-            scope.launch {
-                deps.downloadManager.remove(record.photoId)
-                records = records.filterNot { it.photoId == record.photoId }
-            }
-        }
+        val loaded = shelf.loaded
 
         CouiScreenScaffold(
-            title = "本地书架",
+            title = SHELF_TITLE,
             onBack = onBack,
         ) { innerPadding ->
             LazyVerticalGrid(
@@ -149,7 +118,7 @@ internal fun CouiShelfScreen(
 
                     else -> {
                         items(items = records, key = { "coui-shelf-" + it.photoId }) { record ->
-                            val albumId = couiShelfAlbumId(record)
+                            val albumId = shelfAlbumId(record)
                             val coverUrl = remember(albumId, imageHost) {
                                 albumId?.let { CoverLocator.of(imageHost).cover(it, "_3x4") }
                             }
@@ -165,9 +134,9 @@ internal fun CouiShelfScreen(
                                     coverUrl = coverUrl,
                                     albumId = albumId,
                                     row = row,
-                                    subtitle = couiShelfSummary(record, row, label),
-                                    onClick = { performPrimaryAction(record, row) },
-                                    onDelete = { pendingDeleteRecord = record },
+                                    subtitle = shelfSummary(record, row, label),
+                                    onClick = { if (shelf.performPrimaryAction(record, row)) nav.reader(record.photoId) },
+                                    onDelete = { shelf.requestDelete(record) },
                                     actionLabel = stringResource(row.action.contentDescriptionRes()),
                                 )
                             }
@@ -189,22 +158,19 @@ internal fun CouiShelfScreen(
         val toDelete = rememberRetainedTarget(pendingDeleteRecord)
         if (toDelete != null) {
             Dialog(
-                onDismissRequest = { pendingDeleteRecord = null },
+                onDismissRequest = { shelf.dismissDelete() },
                 visible = pendingDeleteRecord != null,
                 material = couiDialogMaterial(),
-                title = "删除下载",
-                message = "确定要删除《" + toDelete.title.ifBlank { toDelete.photoId } + "》及已下载的本地文件吗？",
+                title = SHELF_DELETE_TITLE,
+                message = shelfDeleteMessage(toDelete),
                 placement = CouiDialogPlacement.Center,
                 confirmAction = couiDestructiveConfirmAction(
-                    text = "删除",
-                    onClick = {
-                        removeRecord(toDelete)
-                        pendingDeleteRecord = null
-                    },
+                    text = SHELF_DELETE_CONFIRM,
+                    onClick = { shelf.confirmDelete() },
                 ),
                 dismissAction = CouiDialogAction(
-                    text = "取消",
-                    onClick = { pendingDeleteRecord = null },
+                    text = SHELF_DELETE_DISMISS,
+                    onClick = { shelf.dismissDelete() },
                 ),
             )
         }
@@ -306,14 +272,3 @@ private fun CouiShelfDeleteBadge(
         )
     }
 }
-
-/** 卡副标题：状态与进度，前面带禁漫车号；车号缺失时只显示状态，不输出孤立的 “#”。 */
-internal fun couiShelfSummary(record: DownloadRecord, row: DownloadRow, label: String): String {
-    val progress = label + " " + row.donePages + "/" + row.total
-    val albumId = couiShelfAlbumId(record) ?: return progress
-    return "#" + albumId + " · " + progress
-}
-
-/** 车号口径与详情页一致（空 id 与 “-1” 都视为无车号），避免拼出无效封面地址。 */
-internal fun couiShelfAlbumId(record: DownloadRecord): String? =
-    record.albumId.trim().takeIf { it.isNotEmpty() && it != "-1" }

@@ -10,12 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -30,13 +25,18 @@ import com.jm3.app.miuix.ui.components.overlayDialogMaxWidth
 import com.jm3.app.miuix.ui.glass.GlassScaffold
 import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.route.AppRoutes
+import com.jm3.app.miuix.ui.shelf.SHELF_DELETE_CONFIRM
+import com.jm3.app.miuix.ui.shelf.SHELF_DELETE_DISMISS
+import com.jm3.app.miuix.ui.shelf.SHELF_DELETE_TITLE
+import com.jm3.app.miuix.ui.shelf.SHELF_TITLE
+import com.jm3.app.miuix.ui.shelf.rememberShelfScaffoldState
+import com.jm3.app.miuix.ui.shelf.shelfAlbumId
+import com.jm3.app.miuix.ui.shelf.shelfDeleteMessage
+import com.jm3.app.miuix.ui.shelf.shelfSummary
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.CoverLocator
 import com.jm3.core.download.DownloadAction
-import com.jm3.core.download.DownloadRecord
-import com.jm3.core.download.DownloadRow
 import com.jm3.core.download.presentRow
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -60,30 +60,16 @@ internal fun ShelfScreen(
     nav: AppRoutes,
 ) {
     val skin = LocalSkin.current
-    var records by remember { mutableStateOf<List<DownloadRecord>>(emptyList()) }
-    var pendingDeleteRecord by remember { mutableStateOf<DownloadRecord?>(null) }
-    var imageHost by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-
-    // 初次加载 + 队列进度驱动刷新
-    LaunchedEffect(Unit) {
-        deps.downloadManager.ensureStarted()
-        records = deps.downloadManager.records()
-        deps.downloadManager.queue.updates.collect {
-            records = deps.downloadManager.records()
-        }
-    }
-
-    // 图片域名整个屏幕只取一次：网关取域名是阻塞方法，AuthCall 负责等待会话恢复并切到 IO；
-    // 取不到或会话失效时留空串，封面由 CoverLocator.cover 返回 null 退化为占位，不影响行内容与按钮
-    LaunchedEffect(deps.images, deps.authCall) {
-        imageHost = deps.authCall.call { deps.images.imageHost() }.orDegrade("")
-    }
+    // 账本订阅、封面域名、主操作分派与删除确认都在共享骨架上；这里只读状态、只画行
+    val shelf = rememberShelfScaffoldState(deps)
+    val records = shelf.records
+    val pendingDeleteRecord = shelf.pendingDeleteRecord
+    val imageHost = shelf.imageHost
 
     GlassScaffold(
         topBar = {
             GlassTopAppBar(
-                title = "本地书架",
+                title = SHELF_TITLE,
                 // 透明底色：玻璃底色与模糊由 GlassScaffold 统一绘制
                 color = Color.Transparent,
                 navigationIcon = { BackButton(onBack = onBack) },
@@ -149,18 +135,18 @@ internal fun ShelfScreen(
                                     Icon(MiuixIcons.Play, contentDescription = actionLabel)
                                 }
                                 DownloadAction.Pause -> IconButton(
-                                    onClick = { deps.downloadManager.pause(record.photoId) },
+                                    onClick = { shelf.performPrimaryAction(record, row) },
                                 ) {
                                     Icon(MiuixIcons.Pause, contentDescription = actionLabel)
                                 }
                                 DownloadAction.Resume, DownloadAction.Retry -> IconButton(
-                                    onClick = { deps.downloadManager.resumeRecord(record) },
+                                    onClick = { shelf.performPrimaryAction(record, row) },
                                 ) {
                                     Icon(MiuixIcons.Refresh, contentDescription = actionLabel)
                                 }
                             }
                             IconButton(
-                                onClick = { pendingDeleteRecord = record },
+                                onClick = { shelf.requestDelete(record) },
                             ) {
                                 Icon(
                                     MiuixIcons.Delete,
@@ -179,31 +165,25 @@ internal fun ShelfScreen(
             OverlayDialog(
                 show = true,
                 maxWidth = overlayDialogMaxWidth(),
-                title = "删除下载",
+                title = SHELF_DELETE_TITLE,
                 cornerRadius = skin.shapes.dialogCorner,
-                onDismissRequest = { pendingDeleteRecord = null },
+                onDismissRequest = { shelf.dismissDelete() },
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Text(
-                        text = "确定要删除《" + toDelete.title.ifBlank { toDelete.photoId } + "》及已下载的本地文件吗？",
+                        text = shelfDeleteMessage(toDelete),
                         style = MiuixTheme.textStyles.body2,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     TextButton(
-                        text = "取消",
-                        onClick = { pendingDeleteRecord = null },
+                        text = SHELF_DELETE_DISMISS,
+                        onClick = { shelf.dismissDelete() },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     TextButton(
-                        text = "删除",
+                        text = SHELF_DELETE_CONFIRM,
                         colors = ButtonDefaults.textButtonColors(textColor = MiuixTheme.colorScheme.error),
-                        onClick = {
-                            scope.launch {
-                                deps.downloadManager.remove(toDelete.photoId)
-                                records = records.filterNot { it.photoId == toDelete.photoId }
-                            }
-                            pendingDeleteRecord = null
-                        },
+                        onClick = { shelf.confirmDelete() },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -211,14 +191,3 @@ internal fun ShelfScreen(
         }
     }
 }
-
-/** 行摘要：状态与进度，前面带禁漫车号；车号缺失时只显示状态，不输出孤立的 “#”。 */
-private fun shelfSummary(record: DownloadRecord, row: DownloadRow, label: String): String {
-    val progress = label + " " + row.donePages + "/" + row.total
-    val albumId = shelfAlbumId(record) ?: return progress
-    return "#" + albumId + " · " + progress
-}
-
-/** 车号口径与详情页一致（AlbumDetailScreen 把空 id 与 “-1” 都视为无车号），避免拼出无效封面地址。 */
-private fun shelfAlbumId(record: DownloadRecord): String? =
-    record.albumId.trim().takeIf { it.isNotEmpty() && it != "-1" }
