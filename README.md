@@ -29,7 +29,7 @@ JM3 Miuix 是无广告的 JM Comic（18comic）第三方 Android 客户端。应
 
 ## 技术栈
 
-- **开发语言与界面**：`Kotlin 2.4.21`、`Jetpack Compose`、`Miuix 0.9.4`、`COUI-Kit 0.0.1-alpha10`
+- **开发语言与界面**：`Kotlin 2.4.21`、`Jetpack Compose`、`Miuix 0.9.4`、`COUI-Kit 0.0.1-alpha12`
 - **协议封装**：`jmcomic-api v1.1.12`
 - **图片加载与缩放**：`Coil 3.6.3`（自定义 `Fetcher`）、`telephoto 0.19.0`
 - **数据存储**：`Room 2.8.5`、`DataStore 1.3.0`、`kotlinx-serialization-json 1.12.0`
