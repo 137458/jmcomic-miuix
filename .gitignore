@@ -16,7 +16,6 @@ local.properties.bak
 .externalNativeBuild/
 
 # 逆向与临时分析产物
-.tmp-miuix/
 androidMain/
 
 # 工作草稿、私密调研与辅助工具文档（工程约束：Git 仅公开交付物）

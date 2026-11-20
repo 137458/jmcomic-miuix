@@ -198,7 +198,7 @@
 6. **签名安全边界**：Release 签名从 `local.properties` 读取四键（`app/build.gradle.kts:12-17`、`:69`）。四键缺失时回退调试签名；四键齐全但 keystore 文件不存在时配置期直接抛 `GradleException`（`:24-30`）。密钥、口令与 Cookie 严禁入库。
 7. **Gradle 执行纪律**：Windows 固定用 `.\\gradlew.bat`，禁止传 `--offline`。同一工作树同时只允许一个 Gradle 构建进程，并行任务须串行化构建。
 8. **AGP 联动开关**：`gradle.properties:7`（`android.builtInKotlin=false`）与 `:9`（`android.newDsl=false`）在升级 AGP 或 KGP 时须成对检查。
-9. **仓库入库红线**：`.gitignore` 已忽略 `AGENTS.md`、`docs/`、`.scratch/`、`.screenshots/`、`.tmp-miuix/`、`.tools/`、`androidMain/`、`*.apk` 与 `local.properties`。内部调研、过程台账与本地工具产物严禁提交至 Git。
+9. **仓库入库红线**：`.gitignore` 已忽略 `AGENTS.md`、`docs/`、`.scratch/`、`.screenshots/`、`.tools/`、`androidMain/`、`*.apk` 与 `local.properties`。内部调研、过程台账与本地工具产物严禁提交至 Git。
 
 ---
 
