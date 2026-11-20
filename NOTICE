@@ -6,22 +6,24 @@
 
 ### Apache License 2.0 标注文件
 
-`app/src/main/kotlin/com/jm3/app/miuix/ui/` 目录下共 68 个文件保留 `// SPDX-License-Identifier: Apache-2.0` 文件头，按 Apache License 2.0 分发：
+`app/src/main/kotlin/com/jm3/app/miuix/ui/` 目录下共 70 个文件保留 `// SPDX-License-Identifier: Apache-2.0` 文件头，均依据 Apache License 2.0 分发：
 
-- `glass/` 目录（15 个）：`BackdropSupport.kt`、`CombinedBackdrop.kt`、`DampedDragAnimation.kt`、`FloatingBottomBar.kt`、`FloatingBottomBarItems.kt`、`FloatingBottomBarLayers.kt`、`GlassFloatingActionBar.kt`、`GlassPullToRefresh.kt`、`GlassScaffold.kt`、`GlassSurface.kt`、`InnerShadow.kt`、`InteractiveHighlight.kt`、`Lens.kt`、`TopBarGlass.kt`、`Vibrancy.kt`。
-- `coui/` 目录（38 个）：包含 `component/` 下 10 个文件、`page/` 下 27 个文件与 `theme/` 下 1 个文件（`icon/CouiIcons.kt` 为 ISC，另计；不含无标注的自研排版与阅读器文件）。
+- `glass/`（15 个）：`BackdropSupport.kt`、`CombinedBackdrop.kt`、`DampedDragAnimation.kt`、`FloatingBottomBar.kt`、`FloatingBottomBarItems.kt`、`FloatingBottomBarLayers.kt`、`GlassFloatingActionBar.kt`、`GlassPullToRefresh.kt`、`GlassScaffold.kt`、`GlassSurface.kt`、`InnerShadow.kt`、`InteractiveHighlight.kt`、`Lens.kt`、`TopBarGlass.kt`、`Vibrancy.kt`。
+- `coui/`（38 个）：`page/` 下 27 个、`component/` 下 10 个、`theme/` 下 1 个；`icon/CouiIcons.kt` 为 ISC 标注，另计；无标注的自研排版与阅读器文件不计入。
 - `ui/` 根级（12 个）：`BottomSpacing.kt`、`GlassCapsule.kt`、`GlassChipRow.kt`、`GlassSnackbar.kt`、`InlineCodePresentation.kt`、`MiuixDockedNavigationBar.kt`、`NotesViewport.kt`、`NovelChapterLogic.kt`、`ReaderSettingsSection.kt`、`ReaderSettingsState.kt`、`StatePersistence.kt`、`TabPagerState.kt`。
-- `effect/` 目录（2 个）：`RuntimeShaderCompat.kt`、`ShaderCapability.kt`。
-- `route/` 目录（1 个）：`AppRouteScreens.kt`。
+- `effect/`（2 个）：`RuntimeShaderCompat.kt`、`ShaderCapability.kt`。
+- `route/`（1 个）：`AppRouteScreens.kt`。
+- `favorites/`（1 个）：`FavoriteScaffold.kt`。
+- `week/`（1 个）：`WeekScaffold.kt`。
 
 Apache License 2.0 全文见 <https://www.apache.org/licenses/LICENSE-2.0>。
 
 ### ISC License 标注文件
 
-`app/src/main/kotlin/com/jm3/app/miuix/ui/coui/icon/CouiIcons.kt` 由 Lucide（`lucide-static v1.70.0`）的 SVG 路径生成，保留 `// SPDX-License-Identifier: ISC` 文件头并依据 ISC License 分发。
+`app/src/main/kotlin/com/jm3/app/miuix/ui/coui/icon/CouiIcons.kt` 由 Lucide（`lucide-static v1.70.0`）的 SVG 路径生成，保留 `// SPDX-License-Identifier: ISC` 文件头，依据 ISC License 分发。
 
 ## 第三方依赖库
 
-- `COUI-Kit`（`io.github.itoseo:coui 0.0.1-alpha12`）：以二进制依赖形式接入，未复制源码，依据 Mozilla Public License 2.0（MPL-2.0）分发，全文见 <https://www.mozilla.org/en-US/MPL/2.0/>。
+- `COUI-Kit`（`io.github.itoseo:coui 0.0.1-alpha12`）：以二进制依赖接入，未复制源码。依据 Mozilla Public License 2.0（MPL-2.0）分发，全文见 <https://www.mozilla.org/en-US/MPL/2.0/>。
 - `Miuix`、`AndroidX`、`Coil`、`telephoto`、`kotlinx-coroutines`、`kotlinx-serialization`：均依据 Apache License 2.0 分发。
 - `jmcomic-api`（`io.github.jukomu:jmcomic-api v1.1.12`）：依据上游仓库声明为 MIT 许可证（Maven 构件元数据未内嵌许可证文件）。
