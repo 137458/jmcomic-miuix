@@ -406,6 +406,8 @@ fun FloatingBottomBar(
         BottomBarActiveTabsLayer(
             isLiquidGlassMode = isLiquidGlassMode,
             backdrop = backdrop,
+            pillShape = pillShape,
+            containerColor = containerColor,
             panelOffsetState = panelOffsetState,
             dampedDragAnimation = dampedDragAnimation,
             colors = colors,

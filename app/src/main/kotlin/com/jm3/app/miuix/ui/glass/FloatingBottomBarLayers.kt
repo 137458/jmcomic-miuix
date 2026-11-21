@@ -42,6 +42,7 @@ import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
 import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
 import top.yukonga.miuix.kmp.blur.highlight.Highlight
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -119,12 +120,15 @@ internal fun BottomBarBaseLayer(
 
 /**
  * Layer 2：激活状态隐藏层。仅液态玻璃模式下存在，以 alpha=0 隐藏渲染，
- * 供 tabsBackdrop 录制选中态内容（严禁在此层再嵌套 drawBackdrop）。
+ * 供 tabsBackdrop 录制选中态内容；自身也采一次页面背景并铺胶囊材质，
+ * 使 Layer 3 的 CombinedBackdrop 采到的是「材质 + 高亮文字」而不是裸页面。
  */
 @Composable
 internal fun BottomBarActiveTabsLayer(
     isLiquidGlassMode: Boolean,
     backdrop: Backdrop?,
+    pillShape: Shape,
+    containerColor: Color,
     panelOffsetState: State<Float>,
     dampedDragAnimation: DampedDragAnimation,
     colors: FloatingBottomBarColors,
@@ -147,6 +151,19 @@ internal fun BottomBarActiveTabsLayer(
                     .alpha(0f)
                     .layerBackdrop(tabsBackdrop)
                     .graphicsLayer { translationX = panelOffsetState.value }
+                    .drawBackdrop(
+                        backdrop = backdrop,
+                        shape = { pillShape },
+                        effects = {
+                            vibrancy()
+                            blur(4.dp.toPx(), 4.dp.toPx())
+                            lens(
+                                refractionHeight = 24.dp.toPx(),
+                                refractionAmount = 24.dp.toPx(),
+                            )
+                        },
+                        onDrawSurface = { drawRect(containerColor) },
+                    )
                     .then(interactiveHighlight?.modifier ?: Modifier)
                     .height(tokens.height)
                     .padding(tokens.innerPadding),
