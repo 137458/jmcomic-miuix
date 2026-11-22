@@ -18,12 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.itos.coui.layout.Divider
-import com.itos.coui.layout.Item
-import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
@@ -35,7 +29,12 @@ import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.core.ChapterLabels
 import com.jm3.core.model.Chapter
 import com.jm3.core.reader.ChapterGroups
-import top.yukonga.miuix.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.BasicComponent
+import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 章节区的一行：组头与每一话各自成项，交给 LazyColumn 逐行虚拟化。
@@ -207,31 +206,13 @@ private fun CouiChapterRowCard(
     onRead: (chapter: Chapter) -> Unit,
     onDownload: (chapter: Chapter, title: String) -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
+    val colors = COUITheme.colorScheme
     when (row) {
         is CouiChapterRow.GroupHeader -> CouiGroupRow(isFirst = isFirst, isLast = isLast) {
-            Item(
-                title = {
-                    Text(
-                        text = row.title,
-                        kind = CouiTextKind.ItemTitle,
-                        color = scheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                summary = if (row.showToggle) {
-                    {
-                        Text(
-                            text = row.summary,
-                            kind = CouiTextKind.GroupFooter,
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
-                } else {
-                    null
-                },
-                trailing = if (row.showToggle) {
+            BasicComponent(
+                title = row.title,
+                summary = if (row.showToggle) row.summary else null,
+                endActions = if (row.showToggle) {
                     {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -239,19 +220,19 @@ private fun CouiChapterRowCard(
                         ) {
                             Text(
                                 text = if (row.expanded) "收起" else "展开",
-                                kind = CouiTextKind.ItemValue,
-                                color = scheme.accent,
+                                style = COUITheme.textStyles.bodyM,
+                                color = colors.primaryText,
                             )
                             Icon(
                                 imageVector = if (row.expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
-                                tint = scheme.accent,
+                                tint = colors.primaryText,
                             )
                         }
                     }
                 } else {
-                    {}
+                    null
                 },
                 onClick = if (row.showToggle) {
                     { onToggleGroup(row.groupId) }
@@ -262,43 +243,12 @@ private fun CouiChapterRowCard(
         }
 
         is CouiChapterRow.ChapterLine -> CouiGroupRow(isFirst = isFirst, isLast = isLast, showDivider = false) {
-            Divider(startIndent = 32.dp, endIndent = 16.dp)
-            val rowTint = if (row.highlighted) scheme.accent.copy(alpha = 0.06f) else scheme.card
-            Item(
+            HorizontalDivider(modifier = Modifier.padding(start = 32.dp, end = 16.dp))
+            val rowTint = if (row.highlighted) colors.primary.copy(alpha = 0.06f) else colors.cardBackground
+            BasicComponent(
                 modifier = if (row.highlighted) Modifier.background(rowTint) else Modifier,
-                contentPadding = PaddingValues(start = 32.dp, top = 10.dp, end = 16.dp, bottom = 10.dp),
-                title = {
-                    CouiBodyText(
-                        text = row.title,
-                        color = if (row.highlighted) scheme.accent else scheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                summary = row.marker?.let { marker ->
-                    {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 3.dp)
-                                .clip(CouiCapsuleShape)
-                                .background(
-                                    if (row.highlighted) {
-                                        scheme.accent.copy(alpha = 0.14f)
-                                    } else {
-                                        scheme.onSurface.copy(alpha = 0.06f)
-                                    },
-                                )
-                                .padding(horizontal = 8.dp, vertical = 2.dp),
-                        ) {
-                            Text(
-                                text = marker,
-                                kind = CouiTextKind.GroupFooter,
-                                color = if (row.highlighted) scheme.accent else scheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
-                trailing = {
+                insideMargin = PaddingValues(start = 32.dp, top = 10.dp, end = 16.dp, bottom = 10.dp),
+                endActions = {
                     Box(
                         modifier = Modifier
                             .couiPressable(shape = CircleShape, minTouchTarget = CouiMinTouchTarget) {
@@ -312,23 +262,46 @@ private fun CouiChapterRowCard(
                             imageVector = CouiIcons.Download,
                             contentDescription = "下载 " + row.title,
                             modifier = Modifier.size(18.dp),
-                            tint = scheme.onSurfaceVariant,
+                            tint = colors.labelSecondary,
                         )
                     }
                 },
                 onClick = { onRead(row.chapter) },
-            )
+            ) {
+                CouiBodyText(
+                    text = row.title,
+                    color = if (row.highlighted) colors.primaryText else colors.labelPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                row.marker?.let { marker ->
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 3.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (row.highlighted) {
+                                    colors.primary.copy(alpha = 0.14f)
+                                } else {
+                                    colors.labelPrimary.copy(alpha = 0.06f)
+                                },
+                            )
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = marker,
+                            style = COUITheme.textStyles.bodyXS,
+                            color = if (row.highlighted) colors.primaryText else colors.labelSecondary,
+                        )
+                    }
+                }
+            }
         }
 
         CouiChapterRow.Empty -> CouiGroupRow(isFirst = isFirst, isLast = isLast) {
-            Item(
-                title = {
-                    Text(
-                        text = CouiStrings.EmptyChapters,
-                        kind = CouiTextKind.ItemTitle,
-                        color = scheme.onSurfaceVariant,
-                    )
-                },
+            BasicComponent(
+                title = CouiStrings.EmptyChapters,
+                titleColor = BasicComponentDefaults.titleColor(color = colors.labelSecondary),
             )
         }
     }

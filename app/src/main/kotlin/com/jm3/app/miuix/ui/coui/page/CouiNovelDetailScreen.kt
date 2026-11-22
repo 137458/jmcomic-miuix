@@ -3,6 +3,7 @@
 package com.jm3.app.miuix.ui.coui.page
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -42,73 +43,56 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.itos.coui.dialog.CouiDialogAction
-import com.itos.coui.dialog.CouiDialogActionStyle
-import com.itos.coui.dialog.CouiDialogDefaults
-import com.itos.coui.dialog.CouiDialogPlacement
-import com.itos.coui.dialog.Dialog
-import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.layout.CouiPageDefaults
-import com.itos.coui.layout.Divider
-import com.itos.coui.layout.Group
-import com.itos.coui.layout.Item
-import com.itos.coui.scroll.rememberCouiOverscrollEffect
-import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
-import com.itos.coui.text.rememberCouiTextStyle
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
-import com.itos.coui.topappbar.CouiTopAppBarDefaults
-import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.CommentItemNullableSaver
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
-import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.StringSetSaver
-import com.jm3.app.miuix.ui.rememberSavedDialogDraft
-import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
-import com.jm3.app.miuix.ui.coui.component.CouiDetailActionTile
-import com.jm3.app.miuix.ui.coui.component.CouiPrimaryActionButton
-import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
-import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiDetailSplitHandle
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
+import com.jm3.app.miuix.ui.coui.component.CouiDetailActionTile
+import com.jm3.app.miuix.ui.coui.component.CouiDetailSplitHandle
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
+import com.jm3.app.miuix.ui.coui.component.CouiHeaderCapsuleAction
+import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarAction
+import com.jm3.app.miuix.ui.coui.component.CouiPrimaryActionButton
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.CouiTagCapsulePill
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
+import com.jm3.app.miuix.ui.coui.component.couiPageScroll
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.rememberCouiImeOccupiesPage
-import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
-import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
-import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
+import com.jm3.app.miuix.ui.coui.component.panelBlur
+import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
+import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
-import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.formatEpochSeconds
 import com.jm3.app.miuix.ui.novelActionNotice
 import com.jm3.app.miuix.ui.novelGroupTitle
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
+import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.shouldShowChapterGroupToggle
 import com.jm3.app.miuix.ui.skin.LocalSkin
@@ -123,9 +107,24 @@ import com.jm3.core.reader.ChapterGroup
 import com.jm3.core.reader.ChapterGroups
 import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
+import io.github.suqi8.coui.kmp.basic.BasicComponent
+import io.github.suqi8.coui.kmp.basic.Button
+import io.github.suqi8.coui.kmp.basic.ButtonDefaults
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardListGroup
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.MaterialBlurDefaults
+import io.github.suqi8.coui.kmp.layout.DialogButtonBar
+import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
+import io.github.suqi8.coui.kmp.layout.DialogDefaults
+import io.github.suqi8.coui.kmp.overlay.OverlayDialog
+import io.github.suqi8.coui.kmp.preference.ArrowPreference
+import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 简介折叠阈值：与 HyperOS 版小说详情一致，超过它才给展开入口。 */
@@ -463,7 +462,7 @@ private fun CouiNovelDetailBody(
         selectedGroupId = if (collapsing) null else groupId
     }
 
-    val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
+    val scrollBehavior = rememberCouiPageScrollBehavior(
         canScroll = {
             if (wideLayout.twoPaneDetail) {
                 leftListState.canScrollForward || leftListState.canScrollBackward ||
@@ -638,88 +637,76 @@ private fun CouiNovelDetailBody(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        CouiAppScaffold(
-            modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
-            topBar = {
-                LargeTopAppBar(
-                    title = { CouiTopBarTitle(text = title) },
-                    navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
-                    actions = {
-                        CouiTopBarAction(
-                            icon = CouiIcons.Refresh,
-                            contentDescription = "刷新",
-                            onClick = {
-                                load()
-                                loadComments(targetPage = 1, replace = true, showLoading = false)
-                            },
-                        )
+        CouiPageScaffold(
+            title = title,
+            onBack = onBack,
+            wide = isCouiWideWindow(),
+            actions = {
+                CouiPageTopBarAction(
+                    icon = CouiIcons.Refresh,
+                    contentDescription = "刷新",
+                    onClick = {
+                        load()
+                        loadComments(targetPage = 1, replace = true, showLoading = false)
                     },
-                    scrollBehavior = scrollBehavior,
-                    colors = couiTopAppBarColors(),
                 )
             },
-        ) { innerPadding ->
-            // 折叠位移留到测量期读取：组合期算成字面量会把首帧的顶栏高度冻结住
-            val contentPadding = couiScreenContentPadding(
-                scrollBehavior = scrollBehavior,
-                innerPadding = innerPadding,
-                horizontalPadding = null,
-                extraBottom = couiPageExtraBottomDp(
-                    hasFab = false,
-                    imeOccupiesPage = rememberCouiImeOccupiesPage(),
-                ).dp,
-            )
-            if (wideLayout.twoPaneDetail) {
-                // 比例随本页保存：拖过分隔条后重进本页仍记得，双击分隔条回到默认比例
-                var splitFraction by rememberSaveable {
-                    mutableStateOf(wideLayout.defaultDetailSplitFraction)
-                }
-                Row(modifier = Modifier.fillMaxSize().readableWidth().consumeWindowInsets(innerPadding)) {
+            scrollBehavior = scrollBehavior,
+            horizontalPadding = null,
+        ) { contentPadding ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (wideLayout.twoPaneDetail) {
+                    // 比例随本页保存：拖过分隔条后重进本页仍记得，双击分隔条回到默认比例
+                    var splitFraction by rememberSaveable {
+                        mutableStateOf(wideLayout.defaultDetailSplitFraction)
+                    }
+                    Row(modifier = Modifier.fillMaxSize().readableWidth()) {
+                        LazyColumn(
+                            state = leftListState,
+                            modifier = Modifier.weight(splitFraction).fillMaxHeight().couiPageScroll(),
+                            contentPadding = contentPadding,
+                            flingBehavior = rememberCOUIFlingBehavior(),
+                        ) {
+                            couiInclude(headerItems)
+                        }
+                        CouiDetailSplitHandle(
+                            fraction = splitFraction,
+                            defaultFraction = wideLayout.defaultDetailSplitFraction,
+                            availableWidthDp = wideLayout.contentWidthDp,
+                            onFractionChange = { splitFraction = it },
+                        )
+                        LazyColumn(
+                            state = rightListState,
+                            modifier = Modifier.weight(1f - splitFraction).fillMaxHeight().couiPageScroll(),
+                            contentPadding = contentPadding,
+                            flingBehavior = rememberCOUIFlingBehavior(),
+                        ) {
+                            couiInclude(catalogItems)
+                        }
+                    }
+                } else {
                     LazyColumn(
-                        state = leftListState,
-                        modifier = Modifier.weight(splitFraction).fillMaxHeight(),
+                        state = singleListState,
+                        modifier = Modifier.fillMaxSize().readableWidth().couiPageScroll(),
                         contentPadding = contentPadding,
-                        overscrollEffect = rememberCouiOverscrollEffect(),
+                        flingBehavior = rememberCOUIFlingBehavior(),
                     ) {
                         couiInclude(headerItems)
-                    }
-                    CouiDetailSplitHandle(
-                        fraction = splitFraction,
-                        defaultFraction = wideLayout.defaultDetailSplitFraction,
-                        availableWidthDp = wideLayout.contentWidthDp,
-                        onFractionChange = { splitFraction = it },
-                    )
-                    LazyColumn(
-                        state = rightListState,
-                        modifier = Modifier.weight(1f - splitFraction).fillMaxHeight(),
-                        contentPadding = contentPadding,
-                        overscrollEffect = rememberCouiOverscrollEffect(),
-                    ) {
                         couiInclude(catalogItems)
                     }
                 }
-            } else {
-                LazyColumn(
-                    state = singleListState,
-                    modifier = Modifier.fillMaxSize().readableWidth().consumeWindowInsets(innerPadding),
-                    contentPadding = contentPadding,
-                    overscrollEffect = rememberCouiOverscrollEffect(),
-                ) {
-                    couiInclude(headerItems)
-                    couiInclude(catalogItems)
-                }
+                // 回复面板放在 CouiPageScaffold 内、懒列表外：继承页面模糊源与弹窗宿主，也不会随列表项卸载
+                CouiNovelReplyDialog(
+                    visible = replyTarget != null,
+                    targetAuthor = replyTarget?.author,
+                    targetKey = replyTarget?.id,
+                    busy = replyBusy,
+                    onDismiss = { replyTarget = null },
+                    onSend = { sendReply(it) },
+                )
             }
         }
         GlassSnackbarHost(state = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
-        // 回复面板放在 Scaffold 外：它自带窗口，压在列表与 snackbar 之上，两栏/单栏都用同一份
-        CouiNovelReplyDialog(
-            visible = replyTarget != null,
-            targetAuthor = replyTarget?.author,
-            targetKey = replyTarget?.id,
-            busy = replyBusy,
-            onDismiss = { replyTarget = null },
-            onSend = { sendReply(it) },
-        )
     }
 }
 
@@ -783,24 +770,22 @@ private fun CouiNovelHeroCard(
     dateFormat: DateTimeFormatter,
     onOpenSearch: (String, SearchScope) -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
+    val colors = COUITheme.colorScheme
     val corner = LocalSkin.current.shapes.cardCorner
     val added = remember(detail.addtime) { formatEpochSeconds(detail.addtime, dateFormat) }
     val author = detail.author.ifBlank { "佚名" }
-    Column(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiPageDefaults.horizontalMargin)
-            .padding(top = CouiPageDefaults.categoryTopSpacing, bottom = CouiPageDefaults.groupSpacing)
-            .clip(CouiPageDefaults.shape)
-            .background(scheme.card),
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(top = CouiLayoutTokens.CategoryTopSpacing, bottom = CouiLayoutTokens.GroupSpacing),
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top) {
             Box(
                 modifier = Modifier
                     .size(width = NOVEL_HERO_COVER_WIDTH, height = NOVEL_HERO_COVER_HEIGHT)
                     .clip(RoundedCornerShape(corner))
-                    .background(scheme.container),
+                    .background(colors.container4),
             ) {
                 AlbumCoverImage(
                     url = detail.coverUrl,
@@ -821,16 +806,15 @@ private fun CouiNovelHeroCard(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "NVL${detail.id}",
-                        kind = CouiTextKind.GroupFooter,
-                        color = scheme.onSurfaceVariant,
+                        style = COUITheme.textStyles.bodyXS,
+                        color = colors.labelSecondary,
                         textAlign = TextAlign.Start,
                     )
                     Box(
                         modifier = Modifier
                             .couiPressable(
-                                shape = CouiCapsuleShape,
-                                backgroundColor = scheme.accent.copy(alpha = CouiSelectedContainerAlpha),
-                                spotlight = SpotlightPreset.ChipTab,
+                                shape = CircleShape,
+                                backgroundColor = colors.primary.copy(alpha = CouiSelectedContainerAlpha),
                                 minTouchTarget = CouiMinTouchTarget,
                                 onClick = { onOpenSearch(author, SearchScope.AUTHOR) },
                             )
@@ -838,8 +822,8 @@ private fun CouiNovelHeroCard(
                     ) {
                         Text(
                             text = author,
-                            kind = CouiTextKind.GroupFooter,
-                            color = scheme.accent,
+                            style = COUITheme.textStyles.description,
+                            color = colors.primaryText,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -851,8 +835,8 @@ private fun CouiNovelHeroCard(
                         if (detail.serialStatus.isNotBlank()) append(" · ${detail.serialStatus}")
                         append(" · ${detail.chapters.size} 章")
                     },
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.onSurfaceVariant,
+                    style = COUITheme.textStyles.bodyXS,
+                    color = colors.labelSecondary,
                     textAlign = TextAlign.Start,
                 )
                 Text(
@@ -861,8 +845,8 @@ private fun CouiNovelHeroCard(
                         detail.totalViews?.let { append(" · 阅 $it") }
                         detail.likes?.let { append(" · ♥ $it") }
                     },
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.onSurfaceVariant,
+                    style = COUITheme.textStyles.bodyXS,
+                    color = colors.labelSecondary,
                     textAlign = TextAlign.Start,
                 )
             }
@@ -874,7 +858,11 @@ private fun CouiNovelHeroCard(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 detail.tags.forEach { tag ->
-                    CouiNovelTagChip(text = tag, onClick = { onOpenSearch(tag, SearchScope.TAG) })
+                    CouiTagCapsulePill(
+                        text = tag,
+                        compact = true,
+                        onClick = { onOpenSearch(tag, SearchScope.TAG) },
+                    )
                 }
             }
         }
@@ -901,15 +889,19 @@ private fun CouiNovelActionsGroup(
             trailingIcon = CouiIcons.Forward,
             enabled = detail.chapters.isNotEmpty(),
             modifier = Modifier
-                .padding(horizontal = CouiPageDefaults.horizontalMargin)
-                .padding(top = CouiPageDefaults.groupSpacing),
+                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+                .padding(top = CouiLayoutTokens.GroupSpacing),
             onClick = onStartReading,
         )
-        Group {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+                .padding(top = CouiLayoutTokens.GroupSpacing),
+            insideMargin = PaddingValues(12.dp),
+        ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CouiDetailActionTile(
@@ -944,35 +936,34 @@ private fun CouiNovelActionsGroup(
 /** 简介组：超过阈值给展开入口，收起时四行截断。 */
 @Composable
 private fun CouiNovelDescriptionGroup(text: String, expanded: Boolean, onToggle: () -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
-    Group(
-        title = "简介",
-        headerActions = {
-            if (text.length > NOVEL_DESCRIPTION_COLLAPSE_THRESHOLD) {
-                Text(
-                    text = if (expanded) "收起" else "显示全部",
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.accent,
-                    modifier = Modifier
-                        .clip(CouiCapsuleShape)
-                        .couiPressable(
-                            shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab,
-                            minTouchTarget = CouiMinTouchTarget,
-                            onClick = onToggle,
-                        )
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
+    val colors = COUITheme.colorScheme
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CouiGroupTitle(
+            title = "简介",
+            actions = {
+                if (text.length > NOVEL_DESCRIPTION_COLLAPSE_THRESHOLD) {
+                    CouiHeaderCapsuleAction(
+                        text = if (expanded) "收起" else "显示全部",
+                        trailingIcon = if (expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                        onClick = onToggle,
+                    )
+                }
+            },
+        )
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                CouiBodyText(
+                    text = text.ifBlank { "暂无简介" },
+                    color = colors.labelPrimary,
+                    maxLines = if (expanded) Int.MAX_VALUE else 4,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Start,
                 )
             }
-        },
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            CouiBodyText(
-                text = text.ifBlank { "暂无简介" },
-                color = scheme.onSurface,
-                maxLines = if (expanded) Int.MAX_VALUE else 4,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Start,
-            )
         }
     }
 }
@@ -990,29 +981,43 @@ private fun CouiNovelInfoGroup(detail: NovelDetail, dateFormat: DateTimeFormatte
             }
         }
     }
-    Group(title = "作品信息") {
-        CouiNovelInfoRow(title = "连载状态", value = if (detail.isEnd) "已完结" else detail.serialStatus.ifBlank { "连载中" })
-        Divider()
-        CouiNovelInfoRow(title = "章节数", value = "${detail.chapters.size} 章")
-        Divider()
-        CouiNovelInfoRow(title = "上架时间", value = added.ifBlank { "未知" })
-        Divider()
-        CouiNovelInfoRow(title = "热度", value = heat.ifBlank { "—" })
-        Divider()
-        CouiNovelInfoRow(title = "车号", value = "NVL${detail.id}")
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CouiGroupTitle(title = "作品信息")
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+        ) {
+            CardListGroup {
+                item(key = "status") {
+                    CouiNovelInfoRow(title = "连载状态", value = if (detail.isEnd) "已完结" else detail.serialStatus.ifBlank { "连载中" })
+                }
+                item(key = "chapters") {
+                    CouiNovelInfoRow(title = "章节数", value = "${detail.chapters.size} 章")
+                }
+                item(key = "added") {
+                    CouiNovelInfoRow(title = "上架时间", value = added.ifBlank { "未知" })
+                }
+                item(key = "heat") {
+                    CouiNovelInfoRow(title = "热度", value = heat.ifBlank { "—" })
+                }
+                item(key = "id") {
+                    CouiNovelInfoRow(title = "车号", value = "NVL${detail.id}")
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun CouiNovelInfoRow(title: String, value: String) {
-    val scheme = CouiKitTheme.colorScheme
-    Item(
-        title = { Text(text = title, kind = CouiTextKind.ItemTitle, textAlign = TextAlign.Start) },
-        trailing = {
+    BasicComponent(
+        title = title,
+        endActions = {
             Text(
                 text = value,
-                kind = CouiTextKind.ItemValue,
-                color = scheme.onSurfaceVariant,
+                style = COUITheme.textStyles.bodyM,
+                color = COUITheme.colorScheme.labelTertiary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.End,
@@ -1024,14 +1029,9 @@ private fun CouiNovelInfoRow(title: String, value: String) {
 /** 目录排序切换：只改本地排列顺序，不重新请求详情。 */
 @Composable
 private fun CouiNovelSortAction(ascending: Boolean, onToggle: () -> Unit) {
-    Text(
+    CouiHeaderCapsuleAction(
         text = if (ascending) "正序" else "倒序",
-        kind = CouiTextKind.GroupFooter,
-        color = CouiKitTheme.colorScheme.accent,
-        modifier = Modifier
-            .clip(CouiCapsuleShape)
-            .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggle)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+        onClick = onToggle,
     )
 }
 
@@ -1044,39 +1044,22 @@ private fun CouiNovelChapterRowCard(
     onToggleGroup: (String) -> Unit,
     onOpenChapter: (NovelChapterMeta) -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
+    val colors = COUITheme.colorScheme
     when (row) {
         is CouiNovelChapterRow.GroupHeader -> CouiGroupRow(isFirst = isFirst, isLast = isLast) {
-            Item(
-                title = {
-                    Text(
-                        text = row.title,
-                        kind = CouiTextKind.ItemTitle,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
-                    )
-                },
-                summary = if (row.showToggle) {
+            BasicComponent(
+                title = row.title,
+                summary = if (row.showToggle) row.summary else null,
+                endActions = if (row.showToggle) {
                     {
                         Text(
-                            text = row.summary,
-                            kind = CouiTextKind.GroupFooter,
-                            color = scheme.onSurfaceVariant,
-                            textAlign = TextAlign.Start,
+                            text = if (row.expanded) "收起" else "展开",
+                            style = COUITheme.textStyles.bodyM,
+                            color = colors.primaryText,
                         )
                     }
                 } else {
                     null
-                },
-                trailing = {
-                    if (row.showToggle) {
-                        Text(
-                            text = if (row.expanded) "收起" else "展开",
-                            kind = CouiTextKind.ItemValue,
-                            color = scheme.accent,
-                        )
-                    }
                 },
                 onClick = if (row.showToggle) {
                     { onToggleGroup(row.groupId) }
@@ -1091,38 +1074,35 @@ private fun CouiNovelChapterRowCard(
             isLast = isLast,
             showDivider = false,
         ) {
-            Divider(startIndent = 32.dp, endIndent = 16.dp)
-            Item(
-                contentPadding = PaddingValues(start = 32.dp, top = 10.dp, end = 16.dp, bottom = 10.dp),
-                title = {
-                    CouiBodyText(
-                        text = row.chapter.title.ifBlank { "未命名章节" },
-                        color = scheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
-                    )
-                },
-                summary = row.marker?.let { marker ->
-                    {
-                        Text(
-                            text = marker,
-                            kind = CouiTextKind.GroupFooter,
-                            color = if (row.highlighted) scheme.accent else scheme.onSurfaceVariant,
-                            textAlign = TextAlign.Start,
-                        )
-                    }
-                },
-                trailing = {
+            HorizontalDivider(modifier = Modifier.padding(start = 32.dp, end = 16.dp))
+            BasicComponent(
+                insideMargin = PaddingValues(start = 32.dp, top = 10.dp, end = 16.dp, bottom = 10.dp),
+                endActions = {
                     Icon(
                         imageVector = CouiIcons.Forward,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = scheme.onSurfaceVariant,
+                        tint = colors.labelTertiary,
                     )
                 },
                 onClick = { onOpenChapter(row.chapter) },
-            )
+            ) {
+                CouiBodyText(
+                    text = row.chapter.title.ifBlank { "未命名章节" },
+                    color = colors.labelPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Start,
+                )
+                row.marker?.let { marker ->
+                    Text(
+                        text = marker,
+                        style = COUITheme.textStyles.bodyXS,
+                        color = if (row.highlighted) colors.primaryText else colors.labelSecondary,
+                        textAlign = TextAlign.Start,
+                    )
+                }
+            }
         }
     }
 }
@@ -1134,7 +1114,11 @@ private fun CouiNovelRelatedGroup(
     dateFormat: DateTimeFormatter,
     onOpenNovel: (String) -> Unit,
 ) {
-    Group {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+    ) {
         LazyRow(
             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -1153,7 +1137,7 @@ private fun CouiNovelRelatedGroup(
 
 @Composable
 private fun CouiNovelRelatedCard(item: NovelMeta, dateFormat: DateTimeFormatter, onClick: () -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
+    val colors = COUITheme.colorScheme
     val shape = RoundedCornerShape(LocalSkin.current.shapes.cardCorner)
     val updated = remember(item.updateAt) { formatEpochSeconds(item.updateAt, dateFormat) }
     val subtitle = remember(item.author, updated) {
@@ -1166,15 +1150,14 @@ private fun CouiNovelRelatedCard(item: NovelMeta, dateFormat: DateTimeFormatter,
         modifier = Modifier
             .width(NOVEL_RELATED_CARD_WIDTH)
             .clip(shape)
-            // 卡片以封面图为主体：光画在内容之下会被整张封面吃掉
-            .couiPressable(shape = shape, spotlightAboveContent = true, onClick = onClick),
+            .couiPressable(shape = shape, onClick = onClick),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(NOVEL_RELATED_COVER_HEIGHT)
                 .clip(shape)
-                .background(scheme.container),
+                .background(colors.container4),
         ) {
             AlbumCoverImage(
                 url = item.coverUrl,
@@ -1185,16 +1168,16 @@ private fun CouiNovelRelatedCard(item: NovelMeta, dateFormat: DateTimeFormatter,
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = item.name,
-            kind = CouiTextKind.ItemSummary,
-            color = scheme.onSurface,
+            style = COUITheme.textStyles.bodyM,
+            color = colors.labelPrimary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
         )
         Text(
             text = subtitle,
-            kind = CouiTextKind.GroupFooter,
-            color = scheme.onSurfaceVariant,
+            style = COUITheme.textStyles.bodyXS,
+            color = colors.labelSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
@@ -1212,27 +1195,16 @@ private fun CouiNovelCommentComposer(
     onSend: () -> Unit,
     onOpenLogin: () -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
-    Group {
+    val colors = COUITheme.colorScheme
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+    ) {
         if (!loggedIn) {
-            Item(
-                title = { Text(text = "登录后发表评论", kind = CouiTextKind.ItemTitle) },
-                summary = {
-                    Text(
-                        text = "登录账号即可参与讨论",
-                        kind = CouiTextKind.GroupFooter,
-                        color = scheme.onSurfaceVariant,
-                        textAlign = TextAlign.Start,
-                    )
-                },
-                trailing = {
-                    Icon(
-                        imageVector = CouiIcons.Forward,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = scheme.onSurfaceVariant,
-                    )
-                },
+            ArrowPreference(
+                title = "登录后发表评论",
+                summary = "登录账号即可参与讨论",
                 onClick = onOpenLogin,
             )
         } else {
@@ -1240,20 +1212,20 @@ private fun CouiNovelCommentComposer(
                 BasicTextField(
                     value = draft,
                     onValueChange = onDraft,
-                    textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
-                    cursorBrush = SolidColor(scheme.accent),
+                    textStyle = rememberCouiBodyTextStyle().copy(color = colors.labelPrimary),
+                    cursorBrush = SolidColor(colors.primary),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 84.dp)
                         .clip(CouiCommentFieldShape)
-                        .background(scheme.container)
+                        .background(colors.container4)
                         .padding(12.dp),
                     decorationBox = { innerTextField ->
                         Box {
                             if (draft.isEmpty()) {
                                 CouiBodyText(
                                     text = "写下你的评论（最多 $NOVEL_COMMENT_MAX_LENGTH 字）",
-                                    color = scheme.onSurfaceVariant,
+                                    color = colors.labelSecondary,
                                     textAlign = TextAlign.Start,
                                 )
                             }
@@ -1269,8 +1241,8 @@ private fun CouiNovelCommentComposer(
                 ) {
                     Text(
                         text = "${draft.length}/$NOVEL_COMMENT_MAX_LENGTH",
-                        kind = CouiTextKind.GroupFooter,
-                        color = scheme.onSurfaceVariant,
+                        style = COUITheme.textStyles.bodyXS,
+                        color = colors.labelSecondary,
                         textAlign = TextAlign.Start,
                     )
                     CouiNovelCapsuleButton(
@@ -1296,7 +1268,7 @@ private fun CouiNovelCommentItemCard(
         CouiCommentRow(
             item = row.item,
             depth = row.depth,
-            authorColor = CouiKitTheme.colorScheme.onSurface,
+            authorColor = COUITheme.colorScheme.labelPrimary,
             avatarSize = 28.dp,
             bodyMaxLines = NOVEL_COMMENT_BODY_MAX_LINES,
             onReply = onReply,
@@ -1307,7 +1279,7 @@ private fun CouiNovelCommentItemCard(
 /**
  * 回复输入弹窗：标题带被回复作者，确认键把正文交给 sendReply 走 replyNovelComment。
  *
- * 落位取 Bottom 而不是居中：面板与输入框同侧，键盘弹起时视线不用在屏幕上下跳。
+ * 宽屏居中、窄屏贴底弹出（由 [OverlayDialog] 响应式处理），面板背景叠加 COUI 17 材质模糊。
  * 草稿跟着 visible 换代重置——visible 转 false 后库并不卸载组合，remember 不换代
  * 会把上一次的草稿带进下一条回复。
  */
@@ -1320,56 +1292,67 @@ private fun CouiNovelReplyDialog(
     onSend: (String) -> Unit,
     targetKey: String? = null,
 ) {
-    val scheme = CouiKitTheme.colorScheme
+    val colors = COUITheme.colorScheme
+    val blur = panelBlur(MaterialBlurDefaults::dialog)
     val author = rememberRetainedTarget(targetAuthor)?.takeIf { it.isNotBlank() }
     var replyText by rememberSavedDialogDraft(isOpen = visible, targetKey = targetKey ?: author)
-    Dialog(
-        onDismissRequest = onDismiss,
-        visible = visible,
-        material = couiDialogMaterial(),
-        confirmAction = CouiDialogAction(
-            text = if (busy) "发送中…" else "发送",
-            onClick = { onSend(replyText) },
-            enabled = !busy && replyText.isNotBlank(),
-            style = CouiDialogActionStyle.Primary,
-            colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
-        ),
-        dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
-        dark = CouiKitTheme.isDark,
+    OverlayDialog(
+        show = visible,
         title = if (author != null) "回复 $author" else "回复",
-        placement = CouiDialogPlacement.Bottom,
+        backgroundModifier = blur?.backgroundModifier ?: Modifier,
+        backgroundColor = blur?.backgroundColor ?: DialogDefaults.backgroundColor(),
+        materialStroke = blur != null,
+        onDismissRequest = onDismiss,
+        customContent = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+            ) {
+                BasicTextField(
+                    value = replyText,
+                    // 上限与评论区一致：回复走的也是小说评论接口，超长会被服务端整条拒掉
+                    onValueChange = { replyText = it.take(NOVEL_COMMENT_MAX_LENGTH) },
+                    textStyle = rememberCouiBodyTextStyle().copy(color = colors.labelPrimary),
+                    cursorBrush = SolidColor(colors.primary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 96.dp)
+                        .clip(CouiCommentFieldShape)
+                        .background(couiDialogSurfaceColor())
+                        .border(couiDialogSurfaceBorder(), CouiCommentFieldShape)
+                        .padding(12.dp),
+                    decorationBox = { innerTextField ->
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            if (replyText.isEmpty()) {
+                                CouiBodyText(
+                                    text = "写下你的回复（最多 $NOVEL_COMMENT_MAX_LENGTH 字）",
+                                    color = colors.labelSecondary,
+                                    textAlign = TextAlign.Start,
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+                Text(
+                    text = "${replyText.length}/$NOVEL_COMMENT_MAX_LENGTH",
+                    style = COUITheme.textStyles.bodyXS,
+                    color = colors.labelSecondary,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        },
     ) {
-        BasicTextField(
-            value = replyText,
-            // 上限与评论区一致：回复走的也是小说评论接口，超长会被服务端整条拒掉
-            onValueChange = { replyText = it.take(NOVEL_COMMENT_MAX_LENGTH) },
-            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
-            cursorBrush = SolidColor(scheme.accent),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 96.dp)
-                .clip(CouiCommentFieldShape)
-                .background(scheme.container)
-                .padding(12.dp),
-            decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (replyText.isEmpty()) {
-                        CouiBodyText(
-                            text = "写下你的回复（最多 $NOVEL_COMMENT_MAX_LENGTH 字）",
-                            color = scheme.onSurfaceVariant,
-                            textAlign = TextAlign.Start,
-                        )
-                    }
-                    innerTextField()
-                }
-            },
-        )
-        Text(
-            text = "${replyText.length}/$NOVEL_COMMENT_MAX_LENGTH",
-            kind = CouiTextKind.GroupFooter,
-            color = scheme.onSurfaceVariant,
-            textAlign = TextAlign.Start,
-            modifier = Modifier.padding(top = 6.dp),
+        DialogButtonBar(
+            negative = DialogButtonBarAction(text = "取消", onClick = onDismiss),
+            positive = DialogButtonBarAction(
+                text = if (busy) "发送中…" else "发送",
+                enabled = !busy && replyText.isNotBlank(),
+                recommended = true,
+                onClick = { onSend(replyText) },
+            ),
         )
     }
 }
@@ -1377,20 +1360,19 @@ private fun CouiNovelReplyDialog(
 /** 回复折叠开关：收起时显示隐藏条数，展开后换成收起。 */
 @Composable
 private fun CouiNovelRepliesToggleRow(row: CommentRow.RepliesToggle, onToggle: (String) -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
+    val colors = COUITheme.colorScheme
     CouiGroupRow(isFirst = false, isLast = false, showDivider = false) {
-        Item(
-            contentPadding = PaddingValues(start = 16.dp + (12 * row.depth).dp, top = 6.dp, end = 16.dp, bottom = 6.dp),
-            title = {
-                Text(
-                    text = if (row.expanded) "收起回复" else "展开其余 ${row.hiddenCount} 条回复",
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.accent,
-                    textAlign = TextAlign.Start,
-                )
-            },
+        BasicComponent(
+            insideMargin = PaddingValues(start = 16.dp + (12 * row.depth).dp, top = 6.dp, end = 16.dp, bottom = 6.dp),
             onClick = { onToggle(row.parentId) },
-        )
+        ) {
+            Text(
+                text = if (row.expanded) "收起回复" else "展开其余 ${row.hiddenCount} 条回复",
+                style = COUITheme.textStyles.bodyS,
+                color = colors.primaryText,
+                textAlign = TextAlign.Start,
+            )
+        }
     }
 }
 
@@ -1403,55 +1385,38 @@ private fun CouiNovelCapsuleButton(
     enabled: Boolean = true,
     accent: Boolean = false,
 ) {
-    val scheme = CouiKitTheme.colorScheme
-    val background = when {
-        !enabled -> scheme.onSurface.copy(alpha = 0.06f)
-        accent -> scheme.accent
-        else -> scheme.onSurface.copy(alpha = 0.08f)
-    }
-    val foreground = when {
-        !enabled -> scheme.onSurface.copy(alpha = 0.38f)
-        accent -> scheme.onAccent
-        else -> scheme.onSurface
-    }
-    Box(
-        modifier = modifier
-            .couiPressable(
-                shape = CouiCapsuleShape,
-                backgroundColor = background,
-                spotlight = SpotlightPreset.ChipTab,
-                enabled = enabled,
-                minTouchTarget = CouiMinTouchTarget,
-                onClick = onClick,
+    val colors = COUITheme.colorScheme
+    Button(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 32.dp),
+        enabled = enabled,
+        minWidth = 0.dp,
+        minHeight = 32.dp,
+        colors = if (accent) {
+            ButtonDefaults.buttonColorsPrimary(
+                color = colors.primary,
+                disabledColor = colors.labelPrimary.copy(alpha = 0.06f),
+                contentColor = colors.onPrimary,
+                disabledContentColor = colors.disabledNeutral,
             )
-            .heightIn(min = 32.dp)
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center,
+        } else {
+            ButtonDefaults.buttonColors(
+                color = colors.labelPrimary.copy(alpha = 0.08f),
+                disabledColor = colors.labelPrimary.copy(alpha = 0.06f),
+                contentColor = colors.labelPrimary,
+                disabledContentColor = colors.disabledNeutral,
+            )
+        },
+        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+        materialBackdrop = false,
     ) {
-        Text(text = text, kind = CouiTextKind.ItemValue, color = foreground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            text = text,
+            style = COUITheme.textStyles.buttonM,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
-}
-
-@Composable
-private fun CouiNovelTagChip(text: String, onClick: () -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
-    Text(
-        text = text,
-        kind = CouiTextKind.GroupFooter,
-        color = scheme.onSurfaceVariant,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        textAlign = TextAlign.Start,
-        modifier = Modifier
-            .couiPressable(
-                shape = CouiCapsuleShape,
-                backgroundColor = scheme.onSurface.copy(alpha = 0.06f),
-                spotlight = SpotlightPreset.ChipTab,
-                minTouchTarget = CouiMinTouchTarget,
-                onClick = onClick,
-            )
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-    )
 }
 
 /** 把内容块塞进懒列表作用域；宽屏两栏各自 include 一次，避免重复定义槽位。 */
