@@ -10,12 +10,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -29,12 +30,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,12 +46,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.dropShadow
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -64,7 +63,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -77,20 +75,30 @@ import com.itos.coui.backdrop.CouiBackdrop
 import com.itos.coui.effect.CouiFloatingRenderer
 import com.itos.coui.effect.SpotlightPreset
 import com.itos.coui.effect.couiNavigationFeedback
-import com.itos.coui.floatingactionbutton.Fab
 import com.itos.coui.motion.couiPressMotion
 import com.itos.coui.motion.rememberCouiPressMotion
 import com.itos.coui.navigation.CouiNavigationItem
 import com.itos.coui.navigation.NavigationBar
 import com.itos.coui.shape.CouiCapsuleShape
 import com.itos.coui.theme.CouiTheme
-import com.itos.coui.theme.LocalCouiContentColor
 import com.jm3.app.miuix.ui.MiuixDockedNavItem
 import com.jm3.app.miuix.ui.MiuixDockedNavigationBar
 import com.jm3.app.miuix.ui.glass.GlassBottomBarTokens
 import com.jm3.app.miuix.ui.glass.bottomBarShape
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarSize
+import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import io.github.suqi8.coui.kmp.basic.FloatingNavigationBar
+import io.github.suqi8.coui.kmp.basic.FloatingNavigationBarItem
+import io.github.suqi8.coui.kmp.basic.Icon as Coui2Icon
+import io.github.suqi8.coui.kmp.basic.NavigationBar as Coui2LibNavigationBar
+import io.github.suqi8.coui.kmp.basic.NavigationBarItem as Coui2LibNavigationBarItem
+import io.github.suqi8.coui.kmp.basic.NavigationRail as Coui2LibNavigationRail
+import io.github.suqi8.coui.kmp.basic.NavigationRailItem as Coui2LibNavigationRailItem
+import io.github.suqi8.coui.kmp.blur.Backdrop
+import io.github.suqi8.coui.kmp.effect.LocalMaterialBackdrop
+import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.NavigationBarDefaults
 
@@ -135,6 +143,97 @@ private val CouiRailItemVerticalPadding = 10.dp
 
 /** 侧栏图标与文字之间的间距。 */
 private val CouiRailLabelSpacing = 4.dp
+
+/**
+ * suqi8/coui 导航项数据模型，供 [Coui2NavigationBar] 与 [Coui2NavigationRail] 共用。
+ */
+@Immutable
+internal data class Coui2NavItem(
+    val label: String,
+    val icon: ImageVector,
+    val selectedIcon: ImageVector = icon,
+    val badge: Int? = null,
+)
+
+/**
+ * 新版 COUI 底栏（suqi8/coui 2.1.0）：
+ * - [BottomBarForm.DOCKED]：使用 [io.github.suqi8.coui.kmp.basic.NavigationBar]；
+ * - [BottomBarForm.FLOATING]：通过 [rememberMaterialBackdropProvider] 桥接 [LocalMaterialBackdrop]
+ *   后交给 [FloatingNavigationBar]，在支持的设备上自动呈现实时材质模糊，否则回落不透明胶囊。
+ */
+@Composable
+internal fun Coui2NavigationBar(
+    items: List<Coui2NavItem>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    tokens: GlassBottomBarTokens,
+    backdrop: Backdrop? = null,
+    modifier: Modifier = Modifier,
+) {
+    when (tokens.form) {
+        BottomBarForm.DOCKED -> {
+            Coui2LibNavigationBar(modifier = modifier) {
+                items.forEachIndexed { index, item ->
+                    val selected = index == selectedIndex
+                    Coui2LibNavigationBarItem(
+                        selected = selected,
+                        onClick = { onSelect(index) },
+                        icon = if (selected) item.selectedIcon else item.icon,
+                        label = item.label,
+                        badge = item.badge,
+                    )
+                }
+            }
+        }
+
+        BottomBarForm.FLOATING -> {
+            val backdropProvider = rememberMaterialBackdropProvider(backdrop)
+            CompositionLocalProvider(LocalMaterialBackdrop provides backdropProvider) {
+                FloatingNavigationBar(modifier = modifier) {
+                    items.forEachIndexed { index, item ->
+                        val selected = index == selectedIndex
+                        FloatingNavigationBarItem(
+                            selected = selected,
+                            onClick = { onSelect(index) },
+                            icon = if (selected) item.selectedIcon else item.icon,
+                            label = item.label,
+                            badge = item.badge,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 新版 COUI 宽屏侧栏（suqi8/coui 2.1.0）：固定 [CouiRailWidth] 贴左，接入系统栏与刘海避让。
+ */
+@Composable
+internal fun Coui2NavigationRail(
+    items: List<Coui2NavItem>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    header: (@Composable ColumnScope.() -> Unit)? = null,
+) {
+    Coui2LibNavigationRail(
+        modifier = modifier,
+        header = header,
+        minWidth = CouiRailWidth,
+    ) {
+        items.forEachIndexed { index, item ->
+            val selected = index == selectedIndex
+            Coui2LibNavigationRailItem(
+                selected = selected,
+                onClick = { onSelect(index) },
+                icon = if (selected) item.selectedIcon else item.icon,
+                label = item.label,
+                badge = item.badge,
+            )
+        }
+    }
+}
 
 /**
  * 是否交给库的浮动材质导航栏渲染。
@@ -193,11 +292,9 @@ internal fun couiPlainNavReleaseTarget(
 }
 
 /**
- * COUI 底栏路由：
- * - [BottomBarForm.DOCKED]：双端共用 Miuix 官方 NavigationBar，不再手写贴底横条；
- * - [BottomBarForm.FLOATING] + API 34+：走 COUI 原厂浮动材质底栏；
- * - [BottomBarForm.FLOATING] + API 31–33：走 [CouiPlainNavigationBar] 标准浮动胶囊降级方案。
+ * COUI 底栏路由（旧版过渡入口，Wave 3 移除；新页面请使用 [Coui2NavigationBar]）。
  */
+@Deprecated("Wave 3 removal")
 @Composable
 internal fun CouiNavigationBar(
     items: List<CouiNavigationItem>,
@@ -273,10 +370,7 @@ private fun CouiLibraryNavigationBar(
 }
 
 /**
- * 自研底栏：条高、图标、字号、横向边距与内边距全部读 token。
- *
- * 悬浮形态是胶囊加投影，贴底形态是通栏加上圆角、无投影；
- * 采用硬件级圆角裁剪并消除默认 Ripple，彻底杜绝按压黑块阴影。
+ * 自研底栏（旧版降级过渡分支，Wave 3 移除）。
  */
 @Composable
 private fun CouiPlainNavigationBar(
@@ -470,11 +564,9 @@ private fun CouiPlainNavigationBar(
 }
 
 /**
- * 宽屏侧栏：88dp 贴左固定宽度，图标与文字纵向等距排列，选中项取强调色容器。
- *
- * 顶部让出状态栏、底部让出导航栏，正文由 Row 的剩余空间接管；
- * 显式传入 indication = null 与连续曲率裁剪，杜绝按压方块阴影。
+ * 宽屏侧栏（旧版过渡入口，Wave 3 移除；新页面请使用 [Coui2NavigationRail]）。
  */
+@Deprecated("Wave 3 removal")
 @Composable
 internal fun CouiNavigationRail(
     items: List<CouiNavigationItem>,
@@ -552,45 +644,22 @@ internal fun CouiNavigationRail(
     }
 }
 
-/** COUI FAB：API 34 及以上使用原厂浮动材质，低版本退回实底圆形按钮。 */
+/** COUI FAB：基于 suqi8/coui [FloatingActionButton]，自动读取 [LocalMaterialBackdrop]。 */
 @Composable
 fun CouiFab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
-        val renderer = remember { CouiFloatingRenderer.standalone() }
-        // 原厂 Fab 自己下发内容色，但页面统一读 LocalCouiFallbackContentColor；
-        // 这里把原厂内容色补进该 local，两种 API 分支取到同一个颜色。
-        Fab(modifier = modifier, renderer = renderer, onClick = onClick) {
-            CompositionLocalProvider(
-                LocalCouiFallbackContentColor provides LocalCouiContentColor.current.takeOrElse {
-                    CouiTheme.colorSchemeFor(CouiTheme.isDark).onAccent
-                },
-            ) {
-                content()
-            }
-        }
-    } else {
-        val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
-        Box(
-            modifier = modifier
-                .size(56.dp)
-                .shadow(elevation = 8.dp, shape = CircleShape, clip = false)
-                // 低版本没有原厂浮动材质：同一套按压缩放 + 触觉，凝光用原厂 Fab 的 OpaqueSmall1
-                .couiPressable(
-                    shape = CircleShape,
-                    backgroundColor = colors.accent,
-                    scaleOnPress = true,
-                    spotlight = SpotlightPreset.OpaqueSmall1,
-                    onClick = onClick,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            CompositionLocalProvider(LocalCouiFallbackContentColor provides colors.onAccent) {
-                content()
-            }
+    val scheme = COUITheme.colorScheme
+    FloatingActionButton(
+        onClick = onClick,
+        modifier = modifier,
+        containerColor = scheme.primary,
+        contentColor = scheme.onPrimary,
+    ) {
+        CompositionLocalProvider(LocalCouiFallbackContentColor provides LocalContentColor.current) {
+            content()
         }
     }
 }
@@ -608,7 +677,7 @@ fun CouiFab(
     rotationDegrees: Float = 0f,
 ) {
     CouiFab(onClick = onClick, modifier = modifier) {
-        Icon(
+        Coui2Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             modifier = Modifier
