@@ -3,18 +3,15 @@
 package com.jm3.app.miuix.ui.coui.component
 
 import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -26,41 +23,20 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.itos.coui.backdrop.CouiBackdrop
-import com.itos.coui.backdrop.couiBackdrop
-import com.itos.coui.effect.CouiContour
-import com.itos.coui.effect.CouiContourStyle
-import com.itos.coui.effect.LocalCouiContourGlowEnabled
-import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.effect.rememberCouiSpotlight
-import com.itos.coui.layout.Scaffold as LegacyCouiScaffold
-import com.itos.coui.layout.rememberCouiImeInsets
-import com.itos.coui.theme.CouiTheme as LegacyCouiTheme
-import com.itos.coui.theme.LocalCouiTextStyle
-import com.itos.coui.topappbar.CouiTopAppBarColors
-import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.alignToReadableContent
 import com.jm3.app.miuix.ui.glass.LocalFloatingBarContentPadding
@@ -174,69 +150,6 @@ fun CouiPageScaffold(
     }
 }
 
-/**
- * 过渡期旧版页面采样源：供未迁移页面读取 [CouiBackdrop]，Wave 3 移除。
- */
-@Deprecated("Wave 3 removal")
-val LocalCouiAppBackdrop = staticCompositionLocalOf<CouiBackdrop?> { null }
-
-/**
- * 过渡期旧版页面骨架：供未迁移页面继续使用 `com.itos.coui` 顶栏与采样源，Wave 3 移除。
- */
-@Deprecated("Wave 3 removal")
-@Suppress("DEPRECATION")
-@Composable
-fun CouiAppScaffold(
-    topBar: @Composable () -> Unit,
-    modifier: Modifier = Modifier,
-    floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
-    contentBackdrop: CouiBackdrop? = null,
-    content: @Composable (PaddingValues) -> Unit,
-) {
-    val barClearance = LocalFloatingBarContentPadding.current
-    LegacyCouiScaffold(
-        modifier = modifier.windowInsetsPadding(rememberCouiImeInsets()),
-        topBar = {
-            CompositionLocalProvider(LocalCouiAppBackdrop provides contentBackdrop) {
-                topBar()
-            }
-        },
-        bottomBar = {
-            if (barClearance > 0.dp) {
-                Spacer(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(barClearance)
-                        .navigationBarsPadding(),
-                )
-            }
-        },
-        floatingActionButton = floatingActionButton?.let { fab ->
-            {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alignToReadableContent(),
-                ) { fab() }
-            }
-        },
-        content = { innerPadding ->
-            if (contentBackdrop != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .couiBackdrop(contentBackdrop)
-                        .background(LegacyCouiTheme.colorScheme.background),
-                ) {
-                    content(innerPadding)
-                }
-            } else {
-                content(innerPadding)
-            }
-        },
-    )
-}
-
 /** 可点件最小触摸目标：无障碍基线 48dp，低于它的可见按钮靠留白补足触区。 */
 val CouiMinTouchTarget = 48.dp
 
@@ -339,107 +252,6 @@ fun Modifier.couiPressable(
         .then(visualSurface)
 }
 
-/** 过渡期重载：兼容显式传入旧版 [SpotlightPreset] 的未迁移调用方，Wave 3 移除。 */
-@Deprecated("Wave 3 removal")
-@Composable
-fun Modifier.couiPressable(
-    enabled: Boolean = true,
-    role: Role = Role.Button,
-    shape: Shape? = null,
-    backgroundColor: Color = Color.Unspecified,
-    minTouchTarget: Dp = 0.dp,
-    scaleOnPress: Boolean = false,
-    @Suppress("UNUSED_PARAMETER") spotlight: SpotlightPreset?,
-    @Suppress("UNUSED_PARAMETER") spotlightAboveContent: Boolean = false,
-    onClick: () -> Unit,
-): Modifier = couiPressable(
-    enabled = enabled,
-    role = role,
-    shape = shape,
-    backgroundColor = backgroundColor,
-    minTouchTarget = minTouchTarget,
-    scaleOnPress = scaleOnPress,
-    onClick = onClick,
-)
-
-/** 过渡期重载：兼容仅显式传入 `spotlightAboveContent` 的未迁移调用方，Wave 3 移除。 */
-@Deprecated("Wave 3 removal")
-@Composable
-fun Modifier.couiPressable(
-    enabled: Boolean = true,
-    role: Role = Role.Button,
-    shape: Shape? = null,
-    backgroundColor: Color = Color.Unspecified,
-    minTouchTarget: Dp = 0.dp,
-    scaleOnPress: Boolean = false,
-    @Suppress("UNUSED_PARAMETER") spotlightAboveContent: Boolean,
-    onClick: () -> Unit,
-): Modifier = couiPressable(
-    enabled = enabled,
-    role = role,
-    shape = shape,
-    backgroundColor = backgroundColor,
-    minTouchTarget = minTouchTarget,
-    scaleOnPress = scaleOnPress,
-    onClick = onClick,
-)
-
-/**
- * 过渡期凝光叠层：供未迁移的 HUD/导航/动作组件使用，Wave 3 移除。
- */
-@Deprecated("Wave 3 removal")
-@Composable
-internal fun Modifier.couiSpotlightLight(
-    preset: SpotlightPreset?,
-    interactive: Boolean,
-    color: Color? = null,
-    aboveContent: Boolean = false,
-): Modifier {
-    if (preset == null) return this
-    val (input, draw) = rememberCouiSpotlight(
-        interactive = interactive,
-        preset = preset,
-        dark = COUITheme.isDark,
-        color = color,
-    )
-    val layer = if (aboveContent) {
-        Modifier.drawWithContent {
-            drawContent()
-            draw?.invoke(this)
-        }
-    } else {
-        Modifier.drawBehind { draw?.invoke(this) }
-    }
-    return this.then(input).then(layer)
-}
-
-/**
- * 过渡期旧版顶栏标题槽：读取 `com.itos.coui` 顶栏下发的 [LocalCouiTextStyle]，Wave 3 移除。
- * 新迁移页面请直接向 [CouiPageScaffold] / `TopAppBar` 传入 `title: String` 或使用 [CouiPageTopBarTitle]。
- */
-@Deprecated("Wave 3 removal")
-@Composable
-fun CouiTopBarTitle(text: String, modifier: Modifier = Modifier, textAlign: TextAlign? = null) {
-    val style = couiScaledStyle(LocalCouiTextStyle.current)
-    BasicText(
-        text = text,
-        modifier = modifier,
-        style = if (textAlign == null) style else style.copy(textAlign = textAlign),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
-
-/**
- * 过渡期旧版顶栏底色：供未迁移页面的 `com.itos.coui` `LargeTopAppBar` 使用，Wave 3 移除。
- */
-@Deprecated("Wave 3 removal")
-@Composable
-fun couiTopAppBarColors(): CouiTopAppBarColors = CouiTopAppBarDefaults.colors(
-    backgroundColor = COUITheme.colorScheme.backgroundWithCard,
-    dark = COUITheme.isDark,
-)
-
 private fun Modifier.couiMinimumTouchTarget(target: Dp): Modifier {
     if (target <= 0.dp) return this
     return layout { measurable, constraints ->
@@ -480,105 +292,6 @@ internal fun couiContourSurfaceEnabled(sdkInt: Int): Boolean =
         blurEnabled = true,
         runtimeShaderSupported = sdkInt >= Build.VERSION_CODES.TIRAMISU,
     )
-
-/**
- * 过渡期 COUI 原厂凝光轮廓材质修饰符：供尚未迁移的弹窗与更新页调用，Wave 3 移除。
- */
-@Deprecated("Wave 3 removal")
-@Composable
-internal fun Modifier.couiContourSurface(
-    shape: Shape,
-    surfaceColor: Color,
-    cornerRadius: Dp,
-    cornerWeight: Float = 2f,
-    style: CouiContourStyle = CouiContourStyle.Button,
-    dark: Boolean = COUITheme.isDark,
-    emphasized: Boolean = false,
-    edgeAlpha: Float = when {
-        emphasized -> if (dark) 0.24f else 0.16f
-        dark -> 0.14f
-        else -> 0.05f
-    },
-    innerGlowAlpha: Float = when {
-        emphasized -> if (dark) 0.10f else 0.06f
-        dark -> 0.04f
-        else -> 0.02f
-    },
-    edgeWidthDp: Float = if (emphasized) 2.5f else 2.2f,
-    fallbackBorderColor: Color = Color.Transparent,
-): Modifier {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !couiContourSurfaceEnabled(Build.VERSION.SDK_INT)) {
-        return this
-            .clip(shape)
-            .background(surfaceColor)
-            .then(
-                if (fallbackBorderColor.alpha > 0f) {
-                    Modifier.border(0.5.dp, fallbackBorderColor, shape)
-                } else {
-                    Modifier
-                },
-            )
-    }
-
-    return couiContourSurface33(
-        shape = shape,
-        surfaceColor = surfaceColor,
-        cornerRadius = cornerRadius,
-        cornerWeight = cornerWeight,
-        style = style,
-        edgeAlpha = edgeAlpha,
-        innerGlowAlpha = innerGlowAlpha,
-        edgeWidthDp = edgeWidthDp,
-    )
-}
-
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@Composable
-private fun Modifier.couiContourSurface33(
-    shape: Shape,
-    surfaceColor: Color,
-    cornerRadius: Dp,
-    cornerWeight: Float,
-    style: CouiContourStyle,
-    edgeAlpha: Float,
-    innerGlowAlpha: Float,
-    edgeWidthDp: Float,
-): Modifier {
-    val contourGlow = LocalCouiContourGlowEnabled.current
-    val contour = remember(contourGlow, style) {
-        if (contourGlow) CouiContour(floating = false, style = style) else null
-    }
-    val shaderPaint = remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
-    val density = LocalDensity.current.density
-    val cornerRadiusPx = with(LocalDensity.current) { cornerRadius.toPx() }
-
-    return this
-        .clip(shape)
-        .drawWithContent {
-            drawRect(surfaceColor)
-            if (contour != null && size.width > 0f && size.height > 0f) {
-                val resolvedRadius = minOf(cornerRadiusPx, size.minDimension / 2f)
-                val resolvedWeight = if (style == CouiContourStyle.Button && size.width == size.height) {
-                    2f
-                } else {
-                    cornerWeight
-                }
-                shaderPaint.shader = contour.shader(
-                    size = size,
-                    density = density,
-                    radiusPx = resolvedRadius,
-                    cornerWeight = resolvedWeight,
-                    surfaceColor = Color.Transparent,
-                    innerGlowAlpha = innerGlowAlpha,
-                    lineAlpha = edgeAlpha,
-                    effectAlpha = 1f,
-                    lineWidthPx = edgeWidthDp * density,
-                )
-                drawContext.canvas.nativeCanvas.drawRect(0f, 0f, size.width, size.height, shaderPaint)
-            }
-            drawContent()
-        }
-}
 
 /**
  * 弹层内长列表的最大高度：手机断点以下保持既有设计值，大屏放宽到窗口可用高度。

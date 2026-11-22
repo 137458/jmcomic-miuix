@@ -5,11 +5,7 @@ package com.jm3.app.miuix.ui.coui.theme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import com.itos.coui.theme.CouiColorScheme
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
-import com.itos.coui.theme.CouiTypography
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.theme.Colors as Coui2Colors
@@ -77,23 +73,6 @@ internal fun couiColorSchemeOf(skinColors: Colors, isDark: Boolean): Coui2Colors
     )
 }
 
-/** 过渡期供未迁移页面读取旧版 [CouiKitTheme.colorScheme]，Wave 3 删除。 */
-private fun legacyCouiColorSchemeOf(skinColors: Colors, isDark: Boolean): CouiColorScheme = CouiColorScheme(
-    accent = skinColors.primary,
-    onAccent = skinColors.onPrimary,
-    surface = skinColors.surface,
-    container = skinColors.surfaceContainer,
-    onSurface = skinColors.onSurface,
-    onSurfaceVariant = skinColors.onBackgroundVariant,
-    outlineVariant = skinColors.dividerLine,
-    accentOnSurface = if (isDark) skinColors.onPrimaryVariant else skinColors.primary,
-    menuSurface = skinColors.surfaceContainer,
-    checkboxAccent = skinColors.primary,
-    menuCheckboxAccent = if (isDark) skinColors.onPrimaryVariant else skinColors.primary,
-    background = skinColors.background,
-    card = if (isDark) skinColors.surfaceContainerHigh else skinColors.surface,
-)
-
 /**
  * COUI 统一文案常量：收拢全仓重复硬编码的重试、空态提示语。
  */
@@ -128,8 +107,8 @@ object CouiMotion {
 }
 
 /**
- * COUI 页面的主题入口：色板从 [LocalSkin] 派生，外层保留旧版 [CouiKitTheme] 供过渡期未迁移页面使用，
- * 内层使用 suqi8/coui 的 [COUITheme]（并显式提供 [LocalContentColor]）使新版指示器、滚动与文本色生效。
+ * COUI 页面的主题入口：色板从 [LocalSkin] 派生，使用 suqi8/coui 的 [COUITheme]
+ * （并显式提供 [LocalContentColor]）使指示器、滚动与文本色生效。
  */
 @Composable
 fun CouiTheme(content: @Composable () -> Unit) {
@@ -138,22 +117,13 @@ fun CouiTheme(content: @Composable () -> Unit) {
     val skinColors = if (dark) skin.darkColors else skin.lightColors
     val coui2Colors = remember(skin, dark) { couiColorSchemeOf(skinColors, dark) }
     val coui2TextStyles = remember { defaultTextStyles() }
-    val legacyColorScheme = remember(skin, dark) { legacyCouiColorSchemeOf(skinColors, dark) }
-    val legacyTypography = remember { CouiTypography() }
-    CouiKitTheme(
-        darkTheme = dark,
-        colorScheme = legacyColorScheme,
-        typography = legacyTypography,
-        materialTint = Color.Transparent,
+    COUITheme(
+        colors = coui2Colors,
+        textStyles = coui2TextStyles,
     ) {
-        COUITheme(
-            colors = coui2Colors,
-            textStyles = coui2TextStyles,
-        ) {
-            CompositionLocalProvider(
-                LocalContentColor provides COUITheme.colorScheme.labelPrimary,
-                content = content,
-            )
-        }
+        CompositionLocalProvider(
+            LocalContentColor provides COUITheme.colorScheme.labelPrimary,
+            content = content,
+        )
     }
 }
