@@ -254,8 +254,8 @@
 - **沉浸式**由 `MainActivity.kt:27` 开启，`MainActivity.kt:84` 把音量键分发给 `ReaderVolumeKeys`（`ui/ReaderScreen.kt:29`）。
 - 长图缩放覆盖层打开时，音量键**不消费并返回 `false`**，按键交回系统（`ui/ReaderEffects.kt:246-248`；COUI 策略 `ui/coui/page/CouiReaderLogic.kt:150-154` 的 `couiShouldHandleReaderVolumeKey` 同时要求无覆盖层、无弹窗）。禁止把覆盖层态写成消费。
 - 销毁时须校验回调归属后再置空（`ReaderEffects.kt:260-263`、`ui/coui/page/CouiReaderPages.kt:562`）。
-- **共享元素飞行**：列表侧挂 `.albumHeroCover`（`AlbumHero.kt:540`），详情侧挂 `.albumHeroHeader`（`:644`）。圆角读 `LocalSkin.current.shapes.cardCorner`；行卡缩略图 `HERO_THUMB_CORNER_DP = 8f`（`:427`），角标 `HERO_BADGE_CORNER_DP = 6f`（`:430`）。
-- 详情路由转场固定为纯 alpha 渐变（`albumDetailTransitionFor`，`Jm3App.kt:370`）。禁止改为水平位移动画。
+- **共享元素飞行**：列表与相关作品侧挂 `.albumHeroCover`（`AlbumHero.kt:556`），详情侧挂 `.albumHeroHeader`（`:660`）。列表卡片圆角读 `LocalSkin.current.shapes.cardCorner`，COUI 详情相关推荐封面读 `LocalSkin.current.shapes.controlCorner`；行卡缩略图 `HERO_THUMB_CORNER_DP = 8f`（`:443`），角标 `HERO_BADGE_CORNER_DP = 6f`（`:446`）。
+- 存在共享封面飞行（`heroHost.detailUsesHero` 为真）时，详情路由转场固定为纯 alpha 渐变（`albumDetailTransitionFor` / `AlbumDetailAdaptiveTransition`，`Jm3App.kt`），禁止改为水平位移动画；无共享封面可飞（如评论区作品文字链接、未加载完封面）时，退化为常规侧滑转场（`subPageTransition ?: NavTransitions.MiuixDefault`）。
 - **窗口尺寸**统一读 `rememberWindowDpSize()`（`ui/AdaptiveLayout.kt:76`），整数断点用 `Dp.toLayoutDpInt()`（`:83`）向下取整。禁止使用 `Configuration.screenWidthDp`。
 - 大屏阈值集中于 `WideLayoutPolicy`（`core/src/main/kotlin/com/jm3/core/layout/WideLayoutPolicy.kt:22`）：中屏 `600 dp`（`:25`）、大屏 `840 dp`（`:28`）、中屏正文列上限 `720 dp`（`:45`）、大屏正文列上限 `1,120 dp`（`:53`）、详情双栏条件（`:56`、`:59`、`:62`）、侧栏宽高双条件（`:78`）。行卡两列与网格列数均从此处派生。
 
@@ -302,8 +302,8 @@
 测试基线以 `build/test-results/**/TEST-*.xml` 为准：
 
 - **`:core`**：80 个测试类 / 757 个用例，位于 `core/src/test/kotlin/com/jm3/core/`。同目录另有不含 `@Test` 的共用替身 `FakeSessionAuth.kt`。
-- **`:app`**：142 个测试类 / 1,223 个用例，位于 `app/src/test/kotlin/com/jm3/app/miuix/`。网关替身 `FakeGateway.kt` 在子目录 `data/` 下，不含 `@Test`。
-- **合计**：222 个测试类 / 1,980 个用例，0 失败、0 跳过（222 个 `TEST-*.xml` 与 1,980 个 `@Test` 逐一对齐）。
+- **`:app`**：142 个测试类 / 1,227 个用例，位于 `app/src/test/kotlin/com/jm3/app/miuix/`。网关替身 `FakeGateway.kt` 在子目录 `data/` 下，不含 `@Test`。
+- **合计**：222 个测试类 / 1,984 个用例，0 失败、0 跳过（222 个 `TEST-*.xml` 与 1,984 个 `@Test` 逐一对齐）。
 
 双皮肤共享骨架测试的断言框架为 `kotlin.test`。其中 7 个类为构造 `mutableStateOf` 引入 Compose Runtime，不引入 Android 运行时：`TasksScaffoldTest`、`BrowseScaffoldTest`、`ForumScaffoldTest`、`LoginScaffoldTest`、`MineScaffoldTest`、`ProfileScaffoldTest`、`WeekScaffoldTest`。
 
@@ -439,7 +439,7 @@
 3. **放大边缘翻页暂不做跟手拖拽**：跟手拖拽需重构 `HorizontalPager` 滚动源，改动面大于收益，维持松手判定后弹性翻页（`reader/ReaderEdgeDrag.kt:12-49`）。
 4. **运行验证缺口**：
     - 已真机验证：小米 15（`targetSdk 36`）上的阅读器缩放与边缘翻页、双击整屏缩放覆盖层、`dataSync` 前台服务与进度通知（含提升型分支）。
-    - 未真机验证：全仓主要靠编译、222 个测试类（1,980 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）把关。待补测项：
+    - 未真机验证：全仓主要靠编译、222 个测试类（1,984 个用例）的 JVM 单测与 Release 打包（R8 + lintVital）把关。待补测项：
         - 共享元素飞行轨迹与返回落点、封面骨架下沉后的转场观感
         - 切换标签后的滚动状态保存、`onTimeout` 6 小时超时回调（`DownloadService.kt:80`）
         - 窄屏与多折叠窗口下的双栏与列表边界

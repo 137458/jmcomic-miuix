@@ -55,6 +55,9 @@ import com.itos.coui.text.rememberCouiTextStyle
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.AlbumCoverImage
+import com.jm3.app.miuix.ui.HERO_THUMB_CORNER_DP
+import com.jm3.app.miuix.ui.LocalAlbumHeroHost
+import com.jm3.app.miuix.ui.albumHeroCover
 import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.GlassSnackbarHost
@@ -514,24 +517,50 @@ private fun CouiForumTopic(
     onOpenAlbum: (String) -> Unit,
 ) {
     val scheme = CouiKitTheme.colorScheme
+    val heroHost = LocalAlbumHeroHost.current
     val albumId = item.albumId
         ?: item.albumName?.filter { it.isDigit() }?.takeIf { it.isNotBlank() }
     val albumName = item.albumName?.takeIf { albumId != null }
     Column(modifier = Modifier.fillMaxWidth()) {
-        CouiCommentRow(item = item, depth = 0, bodyMaxLines = FORUM_BODY_MAX_LINES, onReply = onReply)
+        CouiCommentRow(
+            item = item,
+            depth = 0,
+            bodyMaxLines = FORUM_BODY_MAX_LINES,
+            onReply = onReply,
+            onOpenAlbum = onOpenAlbum,
+        )
         val replies = remember(item) { flattenForumReplies(item) }
         replies.forEach { (reply, depth) ->
-            CouiCommentRow(item = reply, depth = depth, bodyMaxLines = FORUM_BODY_MAX_LINES, onReply = onReply)
+            CouiCommentRow(
+                item = reply,
+                depth = depth,
+                bodyMaxLines = FORUM_BODY_MAX_LINES,
+                onReply = onReply,
+                onOpenAlbum = onOpenAlbum,
+            )
         }
         if (albumName != null && albumId != null) {
             val rowShape = CouiShape(radius = 10.dp, cornerWeight = 3f)
+            val heroModifier = if (item.albumCoverUrl != null) {
+                Modifier.albumHeroCover(
+                    albumId = albumId,
+                    url = item.albumCoverUrl,
+                    title = albumName,
+                    cornerDp = HERO_THUMB_CORNER_DP,
+                )
+            } else {
+                Modifier
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
                     .clip(rowShape)
                     .background(scheme.container)
-                    .couiPressable(shape = rowShape, onClick = { onOpenAlbum(albumId) })
+                    .couiPressable(shape = rowShape, onClick = {
+                        heroHost?.startForward(albumId, item.albumCoverUrl, HERO_THUMB_CORNER_DP, albumName)
+                        onOpenAlbum(albumId)
+                    })
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -539,13 +568,14 @@ private fun CouiForumTopic(
                     modifier = Modifier
                         .width(48.dp)
                         .height(64.dp)
-                        .clip(CouiShape(radius = 8.dp, cornerWeight = 3f))
+                        .clip(CouiShape(radius = HERO_THUMB_CORNER_DP.dp, cornerWeight = 3f))
                         .background(scheme.card),
                 ) {
                     AlbumCoverImage(
                         url = item.albumCoverUrl,
                         contentDescription = albumName,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().then(heroModifier),
+                        skeleton = true,
                     )
                 }
                 Column(

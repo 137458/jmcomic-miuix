@@ -106,6 +106,21 @@ class AlbumHeroHost {
     /** 这段飞行是否是反向飞行（详情页退回列表）。 */
     fun isBackwardFlight(id: Int): Boolean = backwardFlightId == id
 
+    /** 该作品详情当前是否使用共享封面转场（未命中时应退化为常规侧滑转场）。 */
+    fun usesHeroTransition(albumId: String): Boolean = state.usesHeroTransition(albumId)
+
+    /** 锁存当前正在进行的详情路由转场模式；动画过程中不随其他页面或后台状态改写。 */
+    var detailUsesHero by mutableStateOf(false)
+        private set
+
+    fun latchDetailTransition(albumId: String) {
+        detailUsesHero = usesHeroTransition(albumId)
+    }
+
+    fun syncSettledDetail(albumId: String) {
+        detailUsesHero = usesHeroTransition(albumId)
+    }
+
     /** 由详情页按返回手势进度写入；只认当前反向飞行，迟到的手势回调不会改动别的飞行。 */
     fun setBackwardProgress(id: Int, progress: Float) {
         if (backwardFlightId != id) return
@@ -125,11 +140,12 @@ class AlbumHeroHost {
         title: String? = null,
     ) {
         if (!isFiniteHeroRect(rect)) return
+        val cleanUrl = url?.trim()?.takeIf { it.isNotEmpty() }
         if (title != null) titles[albumId] = title
-        if (coverRects[albumId] == rect && coverCorners[albumId] == cornerDp && (url == null || urls[albumId] == url)) return
+        if (coverRects[albumId] == rect && coverCorners[albumId] == cornerDp && (cleanUrl == null || urls[albumId] == cleanUrl)) return
         coverRects[albumId] = rect
         coverCorners[albumId] = cornerDp
-        if (url != null) urls[albumId] = url
+        if (cleanUrl != null) urls[albumId] = cleanUrl
     }
 
     fun unregisterCover(albumId: String, rect: HeroRect?) {
@@ -208,7 +224,7 @@ class AlbumHeroHost {
      */
     fun isHeaderHidden(albumId: String): Boolean = isCoverHidden(albumId)
 
-    /** 列表卡片点击时调用；拿不到卡片矩形就不飞，退化成普通页转场。 */
+    /** 列表卡片点击时调用；拿不到卡片矩形或有效封面地址就不飞，退化成普通页转场。 */
     fun startForward(
         albumId: String,
         url: String?,
@@ -217,16 +233,12 @@ class AlbumHeroHost {
     ): Boolean {
         val from = coverRects[albumId]
         if (from == null || !isFiniteHeroRect(from)) return false
-        if (url != null) urls[albumId] = url
+        val resolvedUrl = (url ?: urls[albumId])?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        urls[albumId] = resolvedUrl
         if (title != null) titles[albumId] = title
-        val resolvedUrl = url ?: urls[albumId]
         lastCoverRects[albumId] = from
         lastCoverCorners[albumId] = coverCorners[albumId] ?: cornerDp
-        if (resolvedUrl != null) {
-            lastCoverUrls[albumId] = resolvedUrl
-        } else {
-            lastCoverUrls.remove(albumId)
-        }
+        lastCoverUrls[albumId] = resolvedUrl
         val oldPending = state.pending
         overlayReadyFlightId = null
         headerReady.remove(albumId)
@@ -593,9 +605,11 @@ fun AlbumDetailHeroFlightEffect(albumId: String) {
             var startFailed = false
             snapshotFlow {
                 val scope = navScope
+                val settledTop = scope.role == NavRole.Top && !scope.isRunning && scope.gesture == null
                 val exit = (-scope.relativeDepth).coerceIn(0f, 1f)
-                exit to (scope.gesture != null || scope.role == NavRole.Outgoing)
-            }.collect { (exit, popping) ->
+                Triple(exit, scope.gesture != null || scope.role == NavRole.Outgoing, settledTop)
+            }.collect { (exit, popping, settledTop) ->
+                if (settledTop) heroHost.syncSettledDetail(albumId)
                 val ownFlightId = heroHost.flight
                     ?.takeIf { it.albumId == albumId && heroHost.isBackwardFlight(it.id) }
                     ?.id
@@ -611,14 +625,15 @@ fun AlbumDetailHeroFlightEffect(albumId: String) {
                         heroHost.setBackwardProgress(command.flightId, command.progress)
 
                     is HeroBackwardCommand.StartFlight -> {
+                        val hadOrigin = heroHost.usesHeroTransition(albumId)
                         if (heroHost.startBackward(albumId)) {
                             heroHost.flight
                                 ?.takeIf { it.albumId == albumId && heroHost.isBackwardFlight(it.id) }
                                 ?.let { heroHost.setBackwardProgress(it.id, command.progress) }
                         } else {
-                            // 拿不到两端矩形就不飞，退化成普通页转场；startBackward 会移除 origin，这里放回去
+                            // 仅本身由共享封面进入时才放回 origin，避免非共享入口在手势中途被误判成 Hero 转场
                             startFailed = true
-                            heroHost.restoreOrigin(albumId)
+                            if (hadOrigin) heroHost.restoreOrigin(albumId)
                         }
                     }
 

@@ -131,9 +131,11 @@ import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.unit.LayoutDirection
+import top.yukonga.miuix.kmp.nav.transition.NavMotion
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.nav.transition.NavTransition
 import top.yukonga.miuix.kmp.nav.transition.NavTransitionScope
+import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 import top.yukonga.miuix.kmp.nav.transition.navDirectionalTransition
 import top.yukonga.miuix.kmp.nav.transition.navGraphicsTransition
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
@@ -243,11 +245,12 @@ private fun ThemeMode.toColorSchemeMode(dynamicColor: Boolean): ColorSchemeMode 
     }
 
 /**
- * 详情页页面变换：两套皮肤统一采用只做 alpha 的原地渐变，不做位移。
+ * 详情页页面变换：存在共享元素飞行时两套皮肤统一采用只做 alpha 的原地渐变，不做位移。
  *
  * 共享元素按根坐标插值，页面若整宽平移，头图的根坐标矩形每一帧都在变，飞行落点就会漂，
  * 且会出现「页面往右跑、封面往左飞」的视觉撕裂；
- * 所以这一页和它覆盖的那一页都不平移，位移感与焦点完全交给飞行的封面本身。
+ * 所以有共享封面飞行时，这一页和它覆盖的那一页都不平移，位移感与焦点完全交给飞行的封面本身；
+ * 无共享封面可飞（如评论区文字推荐链接）时，在 [Jm3NavHost] 退化为常规侧滑转场。
  *
  * relativeDepth 是有符号的：进入时新页 -1 → 0、旧页 0 → 1；退出时旧页 0 → -1、下页 1 → 0。
  * 因此同一段 alpha 在两端天然是正反两向，且手势期间由手指直接驱动。
@@ -273,12 +276,39 @@ private val couiSubPageSlideTransform: GraphicsLayerScope.(NavTransitionScope) -
 }
 
 /**
- * 详情页转场：push / pop / predictivePop 各声明一段，pop 与 push 是同一个变换（镜像）。
- * 两套皮肤统一走渐变淡出，位移由共享封面主导；转场物理取各自皮肤令牌。
+ * 详情页自适应转场：由 [useHero] 锁存状态分流。
+ * - 有共享封面飞行：使用 [heroTransition]（纯 alpha 渐变），防止整页平移拉扯飞行落点；
+ * - 无共享封面可飞：退化为 [fallbackTransition]（常规侧滑 + 底层视差），避免原地干切。
  */
-private fun albumDetailTransitionFor(skin: SkinTokens): NavTransition {
+private class AlbumDetailAdaptiveTransition(
+    private val heroTransition: NavTransition,
+    private val fallbackTransition: NavTransition,
+    private val useHero: () -> Boolean,
+) : NavTransition {
+    override val opaqueDepth: Float get() = 1f
+    override val dismissDirection: NavSwipeDirection get() = NavSwipeDirection.LeftToRight
+    override val motion: NavMotion get() = heroTransition.motion
+
+    override fun scrimFraction(scope: NavTransitionScope): Float =
+        if (useHero()) heroTransition.scrimFraction(scope) else fallbackTransition.scrimFraction(scope)
+
+    override fun Modifier.transformEntry(scope: NavTransitionScope): Modifier {
+        val active = if (useHero()) heroTransition else fallbackTransition
+        return with(active) { transformEntry(scope) }
+    }
+}
+
+/**
+ * 详情页转场：push / pop / predictivePop 各声明一段，pop 与 push 是同一个变换（镜像）。
+ * 有共享封面飞行时走渐变淡出，位移由共享封面主导；无共享封面时退化为对应皮肤的常规侧滑。
+ */
+private fun albumDetailTransitionFor(
+    skin: SkinTokens,
+    subPageTransition: NavTransition?,
+    useHero: () -> Boolean,
+): NavTransition {
     val motion = skin.motion.navMotionOrDefault()
-    return navDirectionalTransition(
+    val heroTransition = navDirectionalTransition(
         navGraphicsTransition(
             opaqueDepth = 1f,
             dismissDirection = NavSwipeDirection.None,
@@ -297,6 +327,11 @@ private fun albumDetailTransitionFor(skin: SkinTokens): NavTransition {
             block = albumDetailFadeTransform,
             motion = motion,
         ),
+    )
+    return AlbumDetailAdaptiveTransition(
+        heroTransition = heroTransition,
+        fallbackTransition = subPageTransition ?: NavTransitions.MiuixDefault,
+        useHero = useHero,
     )
 }
 
@@ -367,8 +402,14 @@ fun Jm3App() {
     val skin = remember(uiSkin) { skinTokensFor(uiSkin) }
     // 动态取色只在 HyperOS 生效；ColorOS 固定自有色板，盘上开关值保留以便切回恢复。
     val effectiveDynamicColor = DynamicColorPolicy.effective(uiSkin, dynamicColor)
-    val albumDetailTransition = remember(skin) { albumDetailTransitionFor(skin) }
+    // 全局 Snackbar：各屏 Scaffold 的 snackbarHost 槽挂载同一个 host state
+    val snackbarHostState = remember { SnackbarHostState() }
+    // 列表 → 详情的共享元素宿主：封面/头图矩形登记表与当前飞行都挂在它身上
+    val heroHost = remember { AlbumHeroHost() }
     val subPageTransition = remember(skin) { subPageTransitionFor(skin) }
+    val albumDetailTransition = remember(skin, subPageTransition, heroHost) {
+        albumDetailTransitionFor(skin, subPageTransition) { heroHost.detailUsesHero }
+    }
     val controller = remember(themeMode, effectiveDynamicColor, skin) {
         ThemeController(
             colorSchemeMode = themeMode.toColorSchemeMode(effectiveDynamicColor),
@@ -376,10 +417,6 @@ fun Jm3App() {
             darkColors = skin.darkColors,
         )
     }
-    // 全局 Snackbar：各屏 Scaffold 的 snackbarHost 槽挂载同一个 host state
-    val snackbarHostState = remember { SnackbarHostState() }
-    // 列表 → 详情的共享元素宿主：封面/头图矩形登记表与当前飞行都挂在它身上
-    val heroHost = remember { AlbumHeroHost() }
     // 退栈前先把头图送回列表卡片再出栈；任一端拿不到矩形时退化成普通退栈。
     // 返回手势期间详情页已按手势进度起飞，这里只兜底非手势路径，避免同一段动画被重置。
     val popBack: () -> Unit = {
@@ -387,6 +424,7 @@ fun Jm3App() {
             val flight = heroHost.flight
             val alreadyFlying = flight != null && flight.albumId == route.albumId && heroHost.isBackwardFlight(flight.id)
             if (!alreadyFlying) heroHost.startBackward(route.albumId)
+            heroHost.latchDetailTransition(route.albumId)
         }
         backStack.removeLastOrNull()
     }
@@ -487,9 +525,12 @@ fun Jm3App() {
             SkinWindowBackdrop(uiSkin = uiSkin) { windowModifier ->
                 Box(modifier = Modifier.fillMaxSize().then(windowModifier)) {
                     // 导航目标表：屏幕只认语义动作，路由构造集中在这里
-                    val nav = remember(backStack) {
+                    val nav = remember(backStack, heroHost) {
                         AppRoutes(
-                            push = { route -> backStack.add(route) },
+                            push = { route ->
+                                if (route is Route.AlbumDetail) heroHost.latchDetailTransition(route.albumId)
+                                backStack.add(route)
+                            },
                             replaceTop = { route ->
                                 if (backStack.isNotEmpty()) backStack[backStack.lastIndex] = route
                             },

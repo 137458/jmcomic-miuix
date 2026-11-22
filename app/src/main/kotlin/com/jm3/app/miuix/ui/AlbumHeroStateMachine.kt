@@ -113,3 +113,7 @@ fun HeroState.restoreOrigin(albumId: String): HeroState {
 fun HeroState.finishFlight(id: Int): HeroState {
     return if (flight?.id == id) copy(flight = null) else this
 }
+
+/** 该作品详情是否由共享元素主导转场：正向待飞/已落位期间命中 heroOrigins，退栈飞行期间命中 flight。 */
+fun HeroState.usesHeroTransition(albumId: String): Boolean =
+    albumId in heroOrigins || flight?.albumId == albumId

@@ -97,6 +97,7 @@ import com.jm3.app.miuix.ui.LocalAlbumHeroHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.SessionCache
 import com.jm3.app.miuix.ui.StringSetSaver
+import com.jm3.app.miuix.ui.albumHeroCover
 import com.jm3.app.miuix.ui.albumHeroHeader
 import com.jm3.app.miuix.ui.rememberSavedDialogDraft
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
@@ -536,6 +537,7 @@ private fun CouiAlbumDetailScreenBody(
                                         onReply = { comment ->
                                             if (user == null) onOpenLogin() else stateHolder.setReplyTarget(comment)
                                         },
+                                        onOpenAlbum = onOpenAlbum,
                                     )
                                 }
 
@@ -1168,13 +1170,15 @@ private fun CouiPreviewGroup(
     }
 }
 
-/** 相关作品：横向作品卡，容器仍是 Group，卡内只保留封面与两行文字。 */
+/** 相关作品：横向作品卡，容器仍是 Group，封面参与共享元素飞行。 */
 @Composable
 private fun CouiRelatedGroup(
     related: List<SearchResult>,
     onOpenAlbum: (albumId: String) -> Unit,
 ) {
     val scheme = CouiKitTheme.colorScheme
+    val heroHost = LocalAlbumHeroHost.current
+    val coverCorner = LocalSkin.current.shapes.controlCorner
     Group(title = "更多相关") {
         LazyRow(
             modifier = Modifier
@@ -1185,28 +1189,38 @@ private fun CouiRelatedGroup(
         ) {
             items(related, key = { it.id }) { item ->
                 val subtitle = item.authors.joinToString(" / ")
-                val itemShape = RoundedCornerShape(LocalSkin.current.shapes.controlCorner)
+                val itemShape = RoundedCornerShape(coverCorner)
+                val heroModifier = if (item.coverUrl != null) {
+                    Modifier.albumHeroCover(
+                        albumId = item.id,
+                        url = item.coverUrl,
+                        title = item.title,
+                        cornerDp = coverCorner.value,
+                    )
+                } else {
+                    Modifier
+                }
                 Column(
                     modifier = Modifier
                         .width(104.dp)
                         .clip(itemShape)
                         // 卡片上半是封面图：光必须画在内容之上才看得见
                         .couiPressable(shape = itemShape, spotlightAboveContent = true) {
+                            heroHost?.startForward(item.id, item.coverUrl, coverCorner.value, item.title)
                             onOpenAlbum(item.id)
                         },
                 ) {
                     Box(
                         modifier = Modifier
                             .size(width = 104.dp, height = 138.dp)
-                            // 缩略图不参与飞行，圆角取皮肤的控制件圆角（ENGINEERING.md:93）
-                            .clip(RoundedCornerShape(LocalSkin.current.shapes.controlCorner))
+                            .clip(itemShape)
                             .background(scheme.container),
                     ) {
-                        AsyncImage(
-                            model = item.coverUrl,
+                        AlbumCoverImage(
+                            url = item.coverUrl,
                             contentDescription = item.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().then(heroModifier),
+                            skeleton = true,
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))

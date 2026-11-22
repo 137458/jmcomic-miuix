@@ -394,6 +394,7 @@ private fun ForumTopicCard(
     onOpenAlbum: (albumId: String) -> Unit,
 ) {
     val skin = LocalSkin.current
+    val heroHost = LocalAlbumHeroHost.current
     val albumId = item.albumId
         ?: item.albumName?.filter { it.isDigit() }?.takeIf { it.isNotBlank() }
     val albumName = item.albumName?.takeIf { albumId != null }
@@ -411,7 +412,10 @@ private fun ForumTopicCard(
                         .fillMaxWidth()
                         .padding(RelatedWorkTokens.RelatedWorkOuterInset)
                         .squircleBackground(MiuixTheme.colorScheme.surfaceContainerHigh, RelatedWorkTokens.RelatedWorkCorner)
-                        .clickable { onOpenAlbum(albumId) }
+                        .clickable {
+                            heroHost?.startForward(albumId, item.albumCoverUrl, HERO_THUMB_CORNER_DP, albumName)
+                            onOpenAlbum(albumId)
+                        }
                         // 触感交给点击本身，避免整行点击时重复震动
                         .pressScale(hapticFeedback = false)
                         .padding(RelatedWorkTokens.RelatedWorkInnerPadding),

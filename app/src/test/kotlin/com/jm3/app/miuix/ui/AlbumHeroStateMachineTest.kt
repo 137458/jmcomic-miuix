@@ -184,4 +184,34 @@ class AlbumHeroStateMachineTest {
         // 重复放回不改变状态
         assertEquals(restored, restored.restoreOrigin("a1"))
     }
+
+    @Test
+    fun usesHeroTransition在待飞已起飞及反向飞行期间为真且其余为假() {
+        val empty = HeroState()
+        assertFalse(empty.usesHeroTransition("a1"))
+
+        val pending = empty.startForward(id = 1, albumId = "a1", url = "https://cover", from = listCover, cornerDp = 6f)
+        assertTrue(pending.usesHeroTransition("a1"))
+        assertFalse(pending.usesHeroTransition("a2"))
+
+        val forward = pending.resolveForward(headerRect = detailHeader, headerCornerDp = 16f)
+        assertTrue(forward.usesHeroTransition("a1"))
+
+        val settled = forward.finishFlight(1)
+        assertTrue(settled.usesHeroTransition("a1"))
+
+        val backward = settled.startBackward(
+            id = 2,
+            albumId = "a1",
+            url = "https://cover",
+            headerRect = detailHeader,
+            headerCornerDp = 16f,
+            coverRect = listCover,
+            coverCornerDp = 6f,
+        )
+        assertTrue(backward.usesHeroTransition("a1"))
+
+        val afterPop = backward.finishFlight(2)
+        assertFalse(afterPop.usesHeroTransition("a1"))
+    }
 }

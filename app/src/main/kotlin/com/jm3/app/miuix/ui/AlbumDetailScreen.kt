@@ -385,6 +385,7 @@ internal fun AlbumDetailScreen(
                                     onReply = {
                                         if (user == null) nav.login() else stateHolder.setReplyTarget(comment)
                                     },
+                                    onOpenAlbum = nav::album,
                                 )
                             }
                             if (cs.feed.items.isNotEmpty()) {

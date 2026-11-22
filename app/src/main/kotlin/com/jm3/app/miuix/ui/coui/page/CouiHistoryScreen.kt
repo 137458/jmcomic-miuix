@@ -33,7 +33,9 @@ import com.itos.coui.text.Text
 import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
+import com.jm3.app.miuix.ui.LocalAlbumHeroHost
 import com.jm3.app.miuix.ui.LocalWideLayout
+import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.ui.PaginationModeReloadEffect
 import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
@@ -232,6 +234,8 @@ private fun CouiHistoryCard(
     onDelete: () -> Unit,
 ) {
     val scheme = CouiKitTheme.colorScheme
+    val heroHost = LocalAlbumHeroHost.current
+    val cardCorner = LocalSkin.current.shapes.cardCorner
     CouiWorkGridCard(
         title = album.latest.title,
         coverUrl = album.latest.coverUrl,
@@ -251,7 +255,10 @@ private fun CouiHistoryCard(
         footer = {
             CouiHistoryDetailLink(
                 accent = scheme.accent,
-                onClick = onOpenDetail,
+                onClick = {
+                    heroHost?.startForward(album.albumId, album.latest.coverUrl, cardCorner.value, album.latest.title)
+                    onOpenDetail()
+                },
             )
         },
     )

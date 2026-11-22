@@ -514,4 +514,60 @@ class AlbumHeroHostTest {
         host.finishFlight(flight.id)
         assertFalse(host.startBackward(albumId))
     }
+
+    @Test
+    fun 非共享封面进入的作品详情不使用Hero转场且退栈失败后降级() {
+        val host = AlbumHeroHost()
+        // 评论链接等无封面入口未触发 startForward
+        assertFalse(host.usesHeroTransition(albumId))
+
+        // 卡片进入并起飞后整个进退栈周期均为 true
+        host.registerCover(albumId, coverUrl, coverRect, cardCorner)
+        assertTrue(host.startForward(albumId, coverUrl, cardCorner))
+        assertTrue(host.usesHeroTransition(albumId))
+
+        host.registerHeader(albumId, coverUrl, headerRect, cardCorner)
+        assertTrue(host.resolvePending())
+        assertTrue(host.usesHeroTransition(albumId))
+
+        host.finishFlight(host.flight!!.id)
+        assertTrue(host.usesHeroTransition(albumId))
+
+        // 反向飞行启动后依然维持 Hero 转场直到退场清理
+        assertTrue(host.startBackward(albumId))
+        assertTrue(host.usesHeroTransition(albumId))
+        host.finishFlight(host.flight!!.id)
+        assertFalse(host.usesHeroTransition(albumId))
+    }
+
+    @Test
+    fun 空白封面地址不会启动无效正向飞行() {
+        val host = AlbumHeroHost()
+        host.registerCover(albumId, "   ", coverRect, cardCorner)
+        assertFalse(host.startForward(albumId, "   ", cardCorner))
+        assertNull(host.pending)
+        assertFalse(host.usesHeroTransition(albumId))
+    }
+
+    @Test
+    fun 详情页转场模式按进出栈锁存并在回到上层静息后同步() {
+        val host = AlbumHeroHost()
+        // 1. 卡片进入 A（有共享封面）
+        host.registerCover("a1", coverUrl, coverRect, cardCorner)
+        assertTrue(host.startForward("a1", coverUrl, cardCorner))
+        host.latchDetailTransition("a1")
+        assertTrue(host.detailUsesHero)
+
+        // 2. 在 A 内通过评论文字链接进入 B（无共享封面）
+        host.latchDetailTransition("b1")
+        assertFalse(host.detailUsesHero)
+
+        // 3. B 退栈回到 A：退栈锁存保持 false 供 B 播完侧滑退场，A 回到静息后恢复为 true
+        assertFalse(host.startBackward("b1"))
+        host.latchDetailTransition("b1")
+        assertFalse(host.detailUsesHero)
+
+        host.syncSettledDetail("a1")
+        assertTrue(host.detailUsesHero)
+    }
 }

@@ -57,6 +57,7 @@ import com.itos.coui.motion.couiPressMotion
 import com.itos.coui.motion.rememberCouiPressMotion
 import com.itos.coui.segmentbutton.SegmentedControl
 import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.shape.CouiShape
 import com.itos.coui.text.CouiTextKind
 import com.itos.coui.text.Text
 import com.itos.coui.text.rememberCouiTextStyle
@@ -321,6 +322,7 @@ fun CouiCommentRow(
     // 默认不截断：正文最长可见行数由各页按自己的信息密度传入，组件不替页面决定
     bodyMaxLines: Int = Int.MAX_VALUE,
     onReply: ((CommentItem) -> Unit)? = null,
+    onOpenAlbum: ((albumId: String) -> Unit)? = null,
 ) {
     val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
     val indentDepth = depth.coerceAtMost(maxIndentDepth)
@@ -422,11 +424,32 @@ fun CouiCommentRow(
                                 textAlign = TextAlign.Start,
                             )
                         }
-                        is CommentSegment.Album -> CouiBodyText(
-                            text = segment.label,
-                            color = colors.accent,
-                            textAlign = TextAlign.Start,
-                        )
+                        is CommentSegment.Album -> if (onOpenAlbum != null) {
+                            val linkShape = CouiShape(radius = 8.dp, cornerWeight = 2f)
+                            Box(
+                                modifier = Modifier
+                                    .clip(linkShape)
+                                    .couiPressable(
+                                        shape = linkShape,
+                                        spotlight = SpotlightPreset.ChipTab,
+                                        minTouchTarget = CouiMinTouchTarget,
+                                        onClick = { onOpenAlbum(segment.albumId) },
+                                    )
+                                    .padding(horizontal = 2.dp, vertical = 2.dp),
+                            ) {
+                                CouiBodyText(
+                                    text = segment.label,
+                                    color = colors.accent,
+                                    textAlign = TextAlign.Start,
+                                )
+                            }
+                        } else {
+                            CouiBodyText(
+                                text = segment.label,
+                                color = colors.accent,
+                                textAlign = TextAlign.Start,
+                            )
+                        }
                     }
                 }
             }
