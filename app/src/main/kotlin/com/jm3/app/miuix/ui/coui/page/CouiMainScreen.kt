@@ -20,16 +20,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.itos.coui.backdrop.couiBackdrop
-import com.itos.coui.backdrop.rememberCouiBackdrop
-import com.itos.coui.navigation.CouiNavigationItem
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.BrowseMode
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.coui.component.CouiNavigationBar
-import com.jm3.app.miuix.ui.coui.component.CouiNavigationRail
+import com.jm3.app.miuix.ui.coui.component.Coui2NavItem
+import com.jm3.app.miuix.ui.coui.component.Coui2NavigationBar
+import com.jm3.app.miuix.ui.coui.component.Coui2NavigationRail
 import com.jm3.app.miuix.ui.coui.component.CouiRailWidth
+import com.jm3.app.miuix.ui.coui.component.rememberPageBackdrop
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiMotion
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -47,6 +45,8 @@ import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.toLayoutDpInt
 import com.jm3.core.settings.UiSkin
 import com.jm3.core.session.UnreadBadge
+import io.github.suqi8.coui.kmp.blur.layerBackdrop
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /**
@@ -116,8 +116,8 @@ internal fun CouiMainScreen(
         // 导航项只随枚举变化：不 remember 会让主框架每次重组都新建列表，连带四页整树重组
         val navItems = remember {
             MainTab.entries.map { item ->
-                CouiNavigationItem(
-                    title = item.label,
+                Coui2NavItem(
+                    label = item.label,
                     // 分页图标属于皮肤视觉，不进共享骨架
                     icon = when (item) {
                         MainTab.HOME -> CouiIcons.Home
@@ -129,13 +129,7 @@ internal fun CouiMainScreen(
             }
         }
         // 底栏只画一份：转场期不再随两个页面各组合一次，浮动材质由这一份 backdrop 采样正文
-        // 采样层必须自带不透明底色：转场期两个页签同时淡出，只录正文会让材质回填的矩形区域露出
-        // 透明像素，底栏四周会闪出一圈灰黑色方框
-        val pageBackground = CouiKitTheme.colorScheme.background
-        val backdrop = rememberCouiBackdrop(drawSource = {
-            drawRect(pageBackground)
-            drawContent()
-        })
+        val backdrop = rememberPageBackdrop()
         val pageState = rememberSaveableStateHolder()
 
         CompositionLocalProvider(
@@ -145,11 +139,10 @@ internal fun CouiMainScreen(
             Row(modifier = Modifier.fillMaxSize()) {
                 if (useRail) {
                     // 侧栏固定 88dp 贴左，正文由 Row 的剩余空间接管，不再叠加 start padding
-                    CouiNavigationRail(
+                    Coui2NavigationRail(
                         items = navItems,
                         selectedIndex = tab,
                         onSelect = state::selectTab,
-                        tokens = tokens,
                     )
                 }
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -163,8 +156,8 @@ internal fun CouiMainScreen(
                         // 只录制页签正文：底栏在转场之外绘制，底色垫在采样层保证 Backdrop 不录制透明像素
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(CouiKitTheme.colorScheme.background)
-                            .couiBackdrop(backdrop),
+                            .background(COUITheme.colorScheme.backgroundWithCard)
+                            .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier),
                     ) { currentTab ->
                         pageState.SaveableStateProvider(currentTab) {
                             when (currentTab) {
@@ -210,7 +203,7 @@ internal fun CouiMainScreen(
                     }
                     // 底栏画在页签转场之外：只此一份，选中态在内部读 tab，切页只重组底栏自身
                     if (!useRail) {
-                        CouiNavigationBar(
+                        Coui2NavigationBar(
                             items = navItems,
                             selectedIndex = tab,
                             onSelect = state::selectTab,
