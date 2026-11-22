@@ -2,61 +2,419 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
-import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.itos.coui.backdrop.rememberCouiBackdrop
+import androidx.compose.ui.unit.sp
 import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.layout.CouiPageDefaults
-import com.itos.coui.theme.CouiTheme
 import com.itos.coui.topappbar.CouiTopAppBarDefaults
 import com.itos.coui.topappbar.CouiTopAppBarScrollBehavior
 import com.itos.coui.topappbar.LargeTopAppBar
-import com.itos.coui.topappbar.TopAppBarButton
 import com.itos.coui.topappbar.TopAppBarButtonGroup
+import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
-import top.yukonga.miuix.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
+import io.github.suqi8.coui.kmp.basic.FabPosition
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.IconButton
+import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.SegmentButton
+import io.github.suqi8.coui.kmp.basic.SegmentButtonDefaults
+import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
+import io.github.suqi8.coui.kmp.basic.SnackbarHostState
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.ToolbarPosition
+import io.github.suqi8.coui.kmp.basic.TopAppBar
+import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
+import io.github.suqi8.coui.kmp.basic.TopAppBarSearchState
+import io.github.suqi8.coui.kmp.basic.glowScrollOffsetPx
+import io.github.suqi8.coui.kmp.blur.LayerBackdrop
+import io.github.suqi8.coui.kmp.blur.TopAppBarGlow
+import io.github.suqi8.coui.kmp.icon.COUIIcons
+import io.github.suqi8.coui.kmp.icon.extended.Back
+import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.overScrollVertical
+import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 
 // 顶栏按钮尺寸与 52dp 的 COUI 顶栏配套；图标沿用 22dp，和主框架底栏图标同档。
 private val CouiTopBarButtonSize = 40.dp
 private val CouiTopBarIconSize = 22.dp
 
+/** [CouiPageScaffold] 支持的顶栏版式。 */
+enum class CouiTopBarStyle {
+    /** 折叠大标题；当 `wide = true` 时切换为固定小顶栏。 */
+    Large,
+
+    /** 始终固定小顶栏。 */
+    Small,
+
+    /** ColorOS 设置首页风格：116dp 高度、40sp 大标题、24dp/18dp 边距。 */
+    SettingsHome,
+}
+
+/** [CouiPageTopBar] 的色槽集合，与 `suqi8/coui` [TopAppBar] / [SmallTopAppBar] 对齐。 */
+@Immutable
+data class CouiPageTopBarColors(
+    val backgroundColor: Color,
+    val titleColor: Color,
+    val largeTitleColor: Color,
+    val subtitleColor: Color,
+    val dividerColor: Color,
+)
+
 /**
- * 二级页面骨架：折叠大标题顶栏 + 返回键 + 动作槽 + FAB，并把顶栏折叠位移换算成正文留白。
- *
- * 相比直接拼 [CouiAppScaffold] + [LargeTopAppBar]，这里收口三件事：
- * 1. nestedScroll 只在这里挂一次，页面不再各写一遍（漏挂的表现是滚动时顶栏不动）；
- * 2. [content] 拿到的是已按折叠状态修正、并带上左右内容边距的 [PaddingValues]，
- *    可直接交给 LazyColumn/LazyRow 的 contentPadding，也可用 Modifier.padding；
- *    拿到的必须是修正后的 padding：直接消费 Scaffold 原始 padding 会让正文在顶栏下方留一段死白；
- * 3. 返回键与动作按钮的尺寸、触区、着色统一，避免每页各写一套；[actions] 非空时统一包进
- *    [TopAppBarButtonGroup]，按钮组随顶栏折叠走共享位移。
- *
- * @param onBack 为空表示这是一级页面，不画返回键。
- * @param scrollBehavior 需要按列表滚动范围控制折叠时传入（见 [rememberCouiScreenScrollBehavior]）。
- * @param horizontalPadding 正文左右边距；铺满屏幕的内容（整幅栅格、全出血轮播）传 0.dp。
+ * 返回与当前页面模糊录制状态匹配的新版顶栏配色：
+ * 有 [hasBackdrop] 时采用透明底配合 [TopAppBarGlow]（同时抑制底部分隔线），否则退回 [COUITheme.colorScheme.backgroundWithCard] 实底。
  */
+@Composable
+fun couiPageTopBarColors(
+    hasBackdrop: Boolean = LocalPageBackdrop.current != null,
+): CouiPageTopBarColors {
+    val colors = COUITheme.colorScheme
+    return CouiPageTopBarColors(
+        backgroundColor = if (hasBackdrop) Color.Transparent else colors.backgroundWithCard,
+        titleColor = colors.labelPrimary,
+        largeTitleColor = colors.labelPrimary,
+        subtitleColor = colors.labelSecondaryVariant,
+        dividerColor = colors.divider,
+    )
+}
+
+/** 记住带弹簧跟随的 COUI 17 顶栏折叠滚动行为。 */
+@Composable
+fun rememberCouiPageScrollBehavior(canScroll: () -> Boolean = { true }): ScrollBehavior =
+    COUIScrollBehavior(canScroll = canScroll)
+
+/** 判断当前窗口是否达到宽屏小顶栏阈值（840dp，或横屏 600dp）。 */
+@Composable
+fun isCouiWideWindow(): Boolean {
+    val wide = LocalWideLayout.current
+    if (wide.widthDp > 0 && wide.heightDp > 0) {
+        return wide.widthDp >= 840 || (wide.widthDp >= 600 && wide.heightDp < wide.widthDp)
+    }
+    val size = LocalWindowInfo.current.containerDpSize
+    return size.width >= 840.dp || (size.width >= 600.dp && size.height < size.width)
+}
+
+/** 列表通用滚动修饰符：叠加 COUI 触底触觉与纵向回弹。 */
+fun Modifier.couiPageScroll(scrollBehavior: ScrollBehavior? = null): Modifier = this
+    .scrollEndHaptic()
+    .overScrollVertical()
+    .then(
+        if (scrollBehavior != null) {
+            Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+        } else {
+            Modifier
+        },
+    )
+
+/**
+ * 基于 `suqi8/coui` 2.1.0 的二级页面脚手架：折叠/固定顶栏 + 凝光模糊 + 底栏净空 + FAB + 延迟测量正文留白。
+ *
+ * 1. `nestedScroll` 只在脚手架根部挂一次；
+ * 2. [content] 拿到的 [PaddingValues] 在测量期才读 `innerPadding`，跟随顶栏折叠无一帧滞后；
+ * 3. 页内录制源通过 [LocalPageBackdrop]、[LocalPopupMaterialBlur] 与 [LocalMaterialBackdrop] 自动桥接。
+ */
+@Composable
+fun CouiPageScaffold(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String = "",
+    onBack: (() -> Unit)? = null,
+    backContentDescription: String = "返回",
+    topBarStyle: CouiTopBarStyle = CouiTopBarStyle.Large,
+    wide: Boolean = false,
+    actions: @Composable RowScope.() -> Unit = {},
+    topBarBottom: @Composable () -> Unit = {},
+    topBarSearchState: TopAppBarSearchState? = null,
+    snackbarHostState: SnackbarHostState? = null,
+    floatingActionButton: (@Composable () -> Unit)? = null,
+    floatingActionButtonPosition: FabPosition = FabPosition.End,
+    floatingToolbar: @Composable () -> Unit = {},
+    floatingToolbarPosition: ToolbarPosition = ToolbarPosition.BottomCenter,
+    scrollBehavior: ScrollBehavior = rememberCouiPageScrollBehavior(),
+    horizontalPadding: Dp? = 0.dp,
+    extraBottom: Dp = couiPageExtraBottomDp(
+        hasFab = floatingActionButton != null,
+        imeOccupiesPage = rememberCouiImeOccupiesPage(),
+    ).dp,
+    extraTop: Dp = 0.dp,
+    imePadding: Boolean = true,
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    CouiPageScaffold(
+        topBar = { backdrop ->
+            CouiPageTopBar(
+                title = title,
+                scrollBehavior = scrollBehavior,
+                backdrop = backdrop,
+                subtitle = subtitle,
+                onBack = onBack,
+                backContentDescription = backContentDescription,
+                style = topBarStyle,
+                wide = wide,
+                actions = actions,
+                searchState = topBarSearchState,
+                bottomContent = topBarBottom,
+            )
+        },
+        modifier = modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHostState = snackbarHostState,
+        floatingActionButton = floatingActionButton,
+        floatingActionButtonPosition = floatingActionButtonPosition,
+        floatingToolbar = floatingToolbar,
+        floatingToolbarPosition = floatingToolbarPosition,
+        imePadding = imePadding,
+    ) { innerPadding ->
+        content(
+            couiPageContentPadding(
+                innerPadding = innerPadding,
+                horizontalPadding = horizontalPadding,
+                extraBottom = extraBottom,
+                extraTop = extraTop,
+            ),
+        )
+    }
+}
+
+/**
+ * COUI 17 顶栏装配：当 [backdrop] 非空时叠加 [TopAppBarGlow] 凝光，空时自动切为实底。
+ */
+@Composable
+fun CouiPageTopBar(
+    title: String,
+    scrollBehavior: ScrollBehavior?,
+    backdrop: LayerBackdrop?,
+    modifier: Modifier = Modifier,
+    subtitle: String = "",
+    onBack: (() -> Unit)? = null,
+    backContentDescription: String = "返回",
+    style: CouiTopBarStyle = CouiTopBarStyle.Large,
+    wide: Boolean = false,
+    actions: @Composable RowScope.() -> Unit = {},
+    searchState: TopAppBarSearchState? = null,
+    bottomContent: @Composable () -> Unit = {},
+) {
+    val colors = COUITheme.colorScheme
+    val topBarColors = couiPageTopBarColors(hasBackdrop = backdrop != null)
+    val glow: (@Composable BoxScope.() -> Unit)? = if (backdrop != null) {
+        {
+            TopAppBarGlow(
+                backdrop = backdrop,
+                scrollOffsetPx = scrollBehavior?.glowScrollOffsetPx() ?: 0f,
+                isDark = colors.isDark,
+                baseColor = colors.backgroundWithCard,
+                enabled = true,
+            )
+        }
+    } else {
+        null
+    }
+    val navigationIcon: @Composable () -> Unit = {
+        if (onBack != null) {
+            CouiPageTopBarBackButton(
+                onClick = onBack,
+                contentDescription = backContentDescription,
+            )
+        }
+    }
+    if (style == CouiTopBarStyle.Small || (wide && style == CouiTopBarStyle.Large)) {
+        SmallTopAppBar(
+            title = title,
+            modifier = modifier,
+            subtitle = subtitle,
+            color = topBarColors.backgroundColor,
+            titleColor = topBarColors.titleColor,
+            subtitleColor = topBarColors.subtitleColor,
+            dividerColor = topBarColors.dividerColor,
+            scrollBehavior = scrollBehavior,
+            glow = glow,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            bottomContent = bottomContent,
+        )
+    } else {
+        val home = style == CouiTopBarStyle.SettingsHome
+        TopAppBar(
+            title = title,
+            modifier = modifier,
+            subtitle = subtitle,
+            color = topBarColors.backgroundColor,
+            titleColor = topBarColors.titleColor,
+            largeTitleColor = topBarColors.largeTitleColor,
+            subtitleColor = topBarColors.subtitleColor,
+            dividerColor = topBarColors.dividerColor,
+            scrollBehavior = scrollBehavior,
+            expandedHeight = if (home) 116.dp else TopAppBarDefaults.ExpandedHeight,
+            largeTitleFontSize = if (home) 40.sp else TopAppBarDefaults.largeTitleFontSize(),
+            titlePadding = if (home) 24.dp else Dp.Unspecified,
+            largeTitleBottomMargin = if (home) 18.dp else Dp.Unspecified,
+            glow = glow,
+            navigationIcon = navigationIcon,
+            actions = actions,
+            searchState = searchState,
+            bottomContent = bottomContent,
+        )
+    }
+}
+
+/**
+ * 延迟读取 [innerPadding] 的页面正文留白：`suqi8/coui` 的 `Scaffold` 在测量阶段更新 `innerPadding`，
+ * 这里仅做轻量代理，保证列表滚动与顶栏折叠同帧同步。
+ */
+@Composable
+fun couiPageContentPadding(
+    innerPadding: PaddingValues,
+    horizontalPadding: Dp? = 0.dp,
+    extraBottom: Dp = couiPageExtraBottomDp(
+        hasFab = false,
+        imeOccupiesPage = rememberCouiImeOccupiesPage(),
+    ).dp,
+    extraTop: Dp = 0.dp,
+): PaddingValues {
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    return remember(innerPadding, navBottom, horizontalPadding, extraBottom, extraTop) {
+        object : PaddingValues {
+            override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
+                horizontalPadding ?: innerPadding.calculateLeftPadding(layoutDirection)
+
+            override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
+                horizontalPadding ?: innerPadding.calculateRightPadding(layoutDirection)
+
+            override fun calculateTopPadding(): Dp = innerPadding.calculateTopPadding() + extraTop
+
+            override fun calculateBottomPadding(): Dp =
+                maxOf(innerPadding.calculateBottomPadding(), navBottom) + extraBottom
+        }
+    }
+}
+
+/** 新版 COUI 17 顶栏返回键：使用 [IconButton] 与 [COUIIcons.Back]。 */
+@Composable
+fun CouiPageTopBarBackButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentDescription: String = "返回",
+    tint: Color = COUITheme.colorScheme.labelPrimary,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier,
+    ) {
+        Icon(
+            imageVector = COUIIcons.Back,
+            contentDescription = contentDescription,
+            tint = tint,
+        )
+    }
+}
+
+/** 新版 COUI 17 顶栏动作按钮：使用 [IconButton] 与 [Icon]。 */
+@Composable
+fun CouiPageTopBarAction(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tint: Color = COUITheme.colorScheme.labelPrimary,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(CouiTopBarIconSize),
+            tint = tint,
+        )
+    }
+}
+
+/** 新版 COUI 17 自定义工具栏标题组件（用于独立 HUD 或自绘标题栏）。 */
+@Composable
+fun CouiPageTopBarTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = COUITheme.colorScheme.labelPrimary,
+    textAlign: TextAlign? = null,
+) {
+    val style = couiScaledStyle(COUITheme.textStyles.headlineS)
+    Text(
+        text = text,
+        modifier = modifier,
+        color = color,
+        style = if (textAlign == null) style else style.copy(textAlign = textAlign),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** 新版 COUI 17 顶栏下方的分段胶囊栏：基于官方 [SegmentButton]（带滑选弹簧、触觉与响应宽度）。 */
+@Composable
+fun CouiPageTopBarSegmentedTabs(
+    items: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    small: Boolean = false,
+    enabled: Boolean = true,
+) {
+    if (items.isEmpty()) return
+    val clampedIndex = selectedIndex.coerceIn(0, items.lastIndex)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        SegmentButton(
+            items = items,
+            selectedIndex = clampedIndex,
+            onSelectedIndexChange = onSelect,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled,
+            height = if (small) SegmentButtonDefaults.HeightSmall else SegmentButtonDefaults.Height,
+            padding = if (small) SegmentButtonDefaults.PaddingSmall else SegmentButtonDefaults.Padding,
+        )
+    }
+}
+
+/**
+ * 过渡期旧版二级页面骨架：保留供未迁移页面使用，Wave 3 移除。
+ */
+@Deprecated("Wave 3 removal")
+@Suppress("DEPRECATION")
 @Composable
 fun CouiScreenScaffold(
     title: String,
@@ -74,16 +432,11 @@ fun CouiScreenScaffold(
     ).dp,
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    val contentBackdrop = if (topBarBottom != null && Build.VERSION.SDK_INT >= 34) {
-        rememberCouiBackdrop()
-    } else {
-        null
-    }
     CouiAppScaffold(
         modifier = modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
-        contentBackdrop = contentBackdrop,
+        contentBackdrop = null,
         topBar = {
             val topAppBar = @Composable {
                 LargeTopAppBar(
@@ -94,7 +447,6 @@ fun CouiScreenScaffold(
                         }
                     },
                     actions = {
-                        // 空槽不建组：组内是右对齐 Row，空组会多占一层布局与一次共享位移
                         val slot = actions
                         if (slot != null) {
                             TopAppBarButtonGroup { slot() }
@@ -104,8 +456,6 @@ fun CouiScreenScaffold(
                     colors = couiTopAppBarColors(),
                 )
             }
-            // 顶栏不再收进正文列，这里也无需再套 alignToReadableContent：
-            // 返回键与标题直接贴着大屏窗口两边。
             Column(modifier = Modifier.fillMaxWidth()) {
                 topAppBar()
                 if (topBarBottom != null) topBarBottom()
@@ -118,8 +468,7 @@ fun CouiScreenScaffold(
 }
 
 /**
- * 固定在折叠大顶栏下方的分段胶囊栏：放置在 `topBar` 槽内以免随 `HorizontalPager` 横向滚走，
- * 并通过 [LocalCouiAppBackdrop] 让 API 34+ 原厂 [CouiSegmentedCapsules] 对正文区产生毛玻璃叠层。
+ * 固定在顶栏下方的分段胶囊栏：委托至新版 [CouiPageTopBarSegmentedTabs]。
  */
 @Composable
 fun CouiTopBarSegmentedTabs(
@@ -130,44 +479,28 @@ fun CouiTopBarSegmentedTabs(
     small: Boolean = false,
     enabled: Boolean = true,
 ) {
-    val backdrop = LocalCouiAppBackdrop.current
-    // 顶栏不再收进正文列，此处也无需再套 readableWidth：页签胶囊随窗口铺到两端。
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 6.dp),
-    ) {
-        CouiSegmentedCapsules(
-            items = items,
-            selectedIndex = selectedIndex,
-            onSelect = onSelect,
-            small = small,
-            enabled = enabled,
-            backdrop = backdrop,
-        )
-    }
+    CouiPageTopBarSegmentedTabs(
+        items = items,
+        selectedIndex = selectedIndex,
+        onSelect = onSelect,
+        modifier = modifier,
+        small = small,
+        enabled = enabled,
+    )
 }
 
 /**
- * 记住可恢复的折叠行为；[canScroll] 读取正文的实际滚动范围，短内容时不会把顶栏折叠成收不回来的状态。
- * 库侧每帧用 SideEffect 更新同一份状态，因此传入普通 lambda 即可，不必记忆。
+ * 过渡期旧版折叠行为记忆函数，Wave 3 移除。
  */
+@Deprecated("Wave 3 removal")
 @Composable
 fun rememberCouiScreenScrollBehavior(canScroll: () -> Boolean = { true }): CouiTopAppBarScrollBehavior =
     CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(canScroll)
 
 /**
- * 顶栏折叠后的正文留白：Scaffold 的 windowInsets 留白 + 顶栏折叠位移，再补上左右内容边距。
- * 只在页面正文内调用，不要再用返回的 padding 去平移整个视口。
- *
- * 返回值是活对象：顶部留白在测量期才读折叠位移。组合期把 calculateTopPadding() 算成字面量，
- * 会把首次组合那一帧的顶栏高度冻结住——顶栏之后折叠/展开，正文都不再跟随
- * （切 tab 回到页面时，大标题与搜索框就压在正文首项上）。
- *
- * @param horizontalPadding 正文左右边距，默认 0：页面内容一律顶到窗口边缘，网格卡的视觉内衬由卡片自身
- * （[CouiWorkCardTokens]）提供。传 null 才保留 Scaffold 自己的左右净空，仅供确实需要 inset 的整页内容使用。
- * @param extraBottom 页面在底栏净空之外补的尾部间隙。
+ * 过渡期旧版折叠留白换算，Wave 3 移除。
  */
+@Deprecated("Wave 3 removal")
 @Composable
 fun couiScreenContentPadding(
     scrollBehavior: CouiTopAppBarScrollBehavior,
@@ -179,7 +512,6 @@ fun couiScreenContentPadding(
     ).dp,
 ): PaddingValues {
     val density = LocalDensity.current
-    // 库侧已把顶部留白与折叠位移合在一起并把负值收敛到 0，这里只补左右边距，不重复做加减
     return remember(scrollBehavior, innerPadding, density, horizontalPadding, extraBottom) {
         val corrected = scrollBehavior.state.contentPadding(innerPadding, density)
         object : PaddingValues {
@@ -197,7 +529,7 @@ fun couiScreenContentPadding(
 }
 
 /**
- * 在已有 [PaddingValues] 上追加统一的底部安全留白，供未使用 [couiScreenContentPadding] 的页面复用。
+ * 在已有 [PaddingValues] 上追加统一的底部安全留白，供未使用 [couiPageContentPadding] 的页面复用。
  */
 fun PaddingValues.couiWithBottomPadding(extra: Dp): PaddingValues = object : PaddingValues {
     override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
@@ -213,9 +545,7 @@ fun PaddingValues.couiWithBottomPadding(extra: Dp): PaddingValues = object : Pad
 }
 
 /**
- * 顶栏返回键：API 34 起用原厂顶栏按钮（自带浮动材质与凝光），低版本退回 40dp 自绘圆键。
- * 页面不要再自己画返回键，低版本与高版本的顶栏边距才对得上。
- * 必须在顶栏的 navigationIcon 槽内调用：原厂按钮要求顶栏效果作用域提供背景源。
+ * 顶栏返回键：已迁移至 `suqi8/coui` [IconButton]（沿用 [CouiIcons.Back] 兼容现有页布局）。
  */
 @Composable
 fun CouiTopBarBackButton(
@@ -223,46 +553,32 @@ fun CouiTopBarBackButton(
     modifier: Modifier = Modifier,
     contentDescription: String = "返回",
 ) {
-    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
-        CouiTopBarBackButton34(onClick = onClick, contentDescription = contentDescription, modifier = modifier)
-    } else {
-        CouiTopBarPlainBackButton(onClick = onClick, contentDescription = contentDescription, modifier = modifier)
-    }
-}
-
-@RequiresApi(CouiLibraryNavBarMinSdk)
-@Composable
-private fun CouiTopBarBackButton34(
-    onClick: () -> Unit,
-    contentDescription: String,
-    modifier: Modifier = Modifier,
-) {
-    TopAppBarButton(modifier = modifier, onClick = onClick) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier,
+    ) {
         Icon(
             imageVector = CouiIcons.Back,
             contentDescription = contentDescription,
             modifier = Modifier.size(CouiTopBarIconSize),
+            tint = COUITheme.colorScheme.labelPrimary,
         )
     }
 }
 
 /**
- * 自绘圆键形态的返回键：40dp 圆形触区（外扩到 48dp 最小触区），图标取 COUI 图标集。
- * 供自带浮动材质的外壳使用（阅读器 HUD 栏）：那里不是 COUI 顶栏，没有背景采样源，
- * 直接用原厂按钮会在取 backdrop 时抛异常。
+ * 自绘圆键形态的返回键：40dp 圆形触区（外扩到 48dp 最小触区），供自带浮动材质的外壳使用（如阅读器 HUD）。
  */
 @Composable
 internal fun CouiTopBarPlainBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     contentDescription: String = "返回",
-    spotlight: SpotlightPreset? = SpotlightPreset.OpaqueSmall2,
 ) {
     Box(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
-                spotlight = spotlight,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -274,14 +590,27 @@ internal fun CouiTopBarPlainBackButton(
             imageVector = CouiIcons.Back,
             contentDescription = contentDescription,
             modifier = Modifier.size(CouiTopBarIconSize),
-            tint = CouiTheme.colorScheme.onSurface,
+            tint = COUITheme.colorScheme.labelPrimary,
         )
     }
 }
 
+/** 过渡期重载：兼容显式传入 `spotlight` 的未迁移调用方，Wave 3 移除。 */
+@Deprecated("Wave 3 removal")
+@Composable
+internal fun CouiTopBarPlainBackButton(
+    onClick: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") spotlight: SpotlightPreset?,
+    modifier: Modifier = Modifier,
+    contentDescription: String = "返回",
+) = CouiTopBarPlainBackButton(
+    onClick = onClick,
+    modifier = modifier,
+    contentDescription = contentDescription,
+)
+
 /**
- * 顶栏动作按钮：API 34 起用原厂顶栏按钮（自带浮动材质与触点点亮），低版本退回同等尺寸的自绘图标位。
- * 必须在顶栏的 actions 槽内调用：原厂按钮要求顶栏效果作用域提供背景源。
+ * 顶栏动作按钮：已迁移至 `suqi8/coui` [IconButton]。
  */
 @Composable
 fun CouiTopBarAction(
@@ -290,42 +619,15 @@ fun CouiTopBarAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
-        CouiTopBarAction34(icon = icon, contentDescription = contentDescription, onClick = onClick)
-    } else {
-        Box(
-            modifier = modifier
-                .couiPressable(
-                    shape = CircleShape,
-                    minTouchTarget = CouiMinTouchTarget,
-                    onClick = onClick,
-                )
-                .size(CouiTopBarButtonSize)
-                .clip(CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(CouiTopBarIconSize),
-                tint = CouiTheme.colorScheme.onSurface,
-            )
-        }
-    }
-}
-
-@RequiresApi(CouiLibraryNavBarMinSdk)
-@Composable
-private fun CouiTopBarAction34(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-) {
-    TopAppBarButton(onClick = onClick) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier,
+    ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             modifier = Modifier.size(CouiTopBarIconSize),
+            tint = COUITheme.colorScheme.labelPrimary,
         )
     }
 }
