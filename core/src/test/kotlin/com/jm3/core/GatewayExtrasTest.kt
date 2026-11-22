@@ -47,7 +47,7 @@ class GatewayExtrasTest {
     private class FakeDomainControls(
         private val used: String? = null,
         private val latency: Map<String, Int> = emptyMap(),
-        private val domains: Set<String> = emptySet(),
+        private val domains: List<String> = emptyList(),
         private val cover: String? = null,
     ) : DomainControls {
         var reprobeCount = 0
@@ -57,7 +57,7 @@ class GatewayExtrasTest {
 
         override fun domainsReady(): Boolean = true
 
-        override fun candidateDomains(): Set<String> = domains
+        override fun candidateDomains(): List<String> = domains
 
         override fun coverHost(): String? = cover
 
@@ -221,6 +221,12 @@ class GatewayExtrasTest {
     fun 封面域名_取库的线路裁决而不是登录域() {
         assertEquals("cdn.example", gateway(FakeDomainControls(cover = "cdn.example")).imageHost())
         assertEquals("", gateway(FakeDomainControls()).imageHost())
+    }
+
+    @Test
+    fun 域名_透传候选线路列表() {
+        val candidates = listOf("a.example", "b.example")
+        assertEquals(candidates, gateway(FakeDomainControls(domains = candidates)).candidateDomains())
     }
 
     @Test

@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import com.jm3.core.CoverLocator
 import com.jm3.core.GatewayFactory
 import com.jm3.core.Jm3Gateway
 import com.jm3.core.settings.Domains
@@ -27,7 +28,7 @@ import kotlinx.coroutines.withContext
 class ApiDomain internal constructor(
     context: Context,
     private val appScope: CoroutineScope,
-    private val gatewayFactory: (List<String>, List<String>, (List<String>) -> Unit) -> Jm3Gateway,
+    private val gatewayFactory: (List<String>, List<String>, String?, (List<String>) -> Unit) -> Jm3Gateway,
 ) {
 
     constructor(context: Context, appScope: CoroutineScope) : this(
@@ -60,6 +61,7 @@ class ApiDomain internal constructor(
             gatewayOverride ?: fallbackGateway ?: gatewayFactory(
                 emptyList(),
                 cachedDomainPool,
+                null,
                 ::rememberDomainPool,
             ).also { fallbackGateway = it }
         }
@@ -68,26 +70,36 @@ class ApiDomain internal constructor(
     @Volatile
     private var appliedDomains: List<String> = emptyList()
 
+    /** 已生效的手动固定线路；null = 自动选择最优线路。 */
+    @Volatile
+    private var appliedSelectedDomain: String? = null
+
     /** 线路切换串行化：网关重建、快照更新、会话迁移与旧网关关闭整体串行，防止并发切换提前关掉仍在使用的网关。 */
     private val domainSwitchLock = Mutex()
 
     /**
-     * 应用自定义 API 线路：在 IO 线程重建网关并安全提交快照，随后串行执行会话迁移并释放旧网关。
+     * 应用自定义 API 线路与手动固定节点：在 IO 线程重建网关并安全提交快照，随后串行执行会话迁移并释放旧网关。
      *
      * @param onSwitched 网关已换成功后的会话迁移动作。
      */
-    suspend fun applyDomains(apiDomains: List<String>, onSwitched: suspend () -> Unit) {
+    suspend fun applyDomains(
+        apiDomains: List<String>,
+        selectedDomain: String? = appliedSelectedDomain,
+        onSwitched: suspend () -> Unit,
+    ) {
         domainSwitchLock.withLock {
             val requested = Domains.normalize(apiDomains)
+            val requestedSelected = CoverLocator.hostOf(selectedDomain).takeIf { it.isNotEmpty() }
             // 启动时默认就是空表且未切过线路：直接沿用已初始化的默认网关，不再多建一个网关。
-            if (requested == appliedDomains) return@withLock
+            if (requested == appliedDomains && requestedSelected == appliedSelectedDomain) return@withLock
             val next = withContext(Dispatchers.IO) {
-                gatewayFactory(requested, cachedDomainPool, ::rememberDomainPool)
+                gatewayFactory(requested, cachedDomainPool, requestedSelected, ::rememberDomainPool)
             }
             val previous = synchronized(defaultGatewayLock) {
                 val active = gatewayOverride ?: fallbackGateway
                 fallbackGateway = null
                 appliedDomains = requested
+                appliedSelectedDomain = requestedSelected
                 Snapshot.withMutableSnapshot {
                     gatewayOverride = next
                 }

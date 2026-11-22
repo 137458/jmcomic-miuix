@@ -26,6 +26,9 @@ internal interface LibraryBridge {
     /** 关闭库内自动重登并清掉内存密码。 */
     fun forgetCredentials(client: Any)
 
+    /** 将库内 loginHost 复位为占位域名，避免登录后或会话注入后跳过自动选路与故障转移。 */
+    fun resetLoginHost(client: Any) = Unit
+
     /**
      * 拉取连载列表（每周更新）原始 JSON。
      *
@@ -65,10 +68,16 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
             quietly(TAG, "注入会话 Cookie") { library.setCookies(okhttpCookies) }
         }
         applyLoginState(library, session.user.username)
-        quietly(TAG, "写入库内登录域") {
-            val bestHost = targetDomains.map { sanitizeDomain(it) }.firstOrNull { it.isNotBlank() }
-                ?: Domains.FALLBACK_MIRRORS.first()
-            LibraryReflection.loginHostField?.set(library, bestHost)
+        // 不再把具体域名写死到 loginHost：库内只有当 loginHost 为占位符时才会走 JmDomainManager 自动选路与故障转移。
+    }
+
+    override fun resetLoginHost(client: Any) {
+        val library = client as? AbstractJmClient ?: return
+        quietly(TAG, "复位库内占位登录域") {
+            val current = LibraryReflection.loginHostField?.get(library) as? String
+            if (current != PLACEHOLDER_LOGIN_HOST) {
+                LibraryReflection.loginHostField?.set(library, PLACEHOLDER_LOGIN_HOST)
+            }
         }
     }
 
@@ -121,5 +130,6 @@ internal object ReflectiveLibraryBridge : LibraryBridge {
     }
 
     private const val SERIALIZATION_APP_HEADER = "18comicAPP"
+    private const val PLACEHOLDER_LOGIN_HOST = "jm-placeholder.domain.com"
     private const val TAG = "LibraryBridge"
 }

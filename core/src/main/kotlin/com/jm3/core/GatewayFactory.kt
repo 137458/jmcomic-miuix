@@ -29,16 +29,19 @@ object GatewayFactory {
 
     /**
      * @param apiDomains 设置页的自定义线路，优先级最高。
-     * @param cachedDomains 上次刷新落盘的线路池，供冷启动直接预置。
-     * @param onPoolRefreshed 刷新出新的线路池后回调，由调用方负责持久化（:core 不碰存储）。
+     * @param cachedDomains 上次刷新落盘的官方线路池，供冷启动直接预置。
+     * @param selectedDomain 用户手动固定的节点；null 表示自动选择最优线路。
+     * @param onPoolRefreshed 刷新出新的官方线路池后回调，由调用方负责持久化（:core 不碰存储）。
      */
     fun create(
         apiDomains: List<String>,
         cachedDomains: List<String> = emptyList(),
+        selectedDomain: String? = null,
         onPoolRefreshed: (List<String>) -> Unit = {},
     ): Jm3Gateway {
         val custom = Domains.normalize(apiDomains)
-        val pool = startupDomainPool(custom, Domains.normalize(cachedDomains))
+        val selected = CoverLocator.hostOf(selectedDomain).takeIf { it.isNotEmpty() }
+        val pool = startupDomainPool(custom, Domains.normalize(cachedDomains), selected)
         val closed = AtomicBoolean(false)
         val cancelRefresh = AtomicReference<(() -> Unit)?>(null)
         return Jm3GatewayImpl.production(
@@ -65,8 +68,14 @@ object GatewayFactory {
                     // 线路表的刷新推到首屏之后。
                     primeDomainManager(context.domainManager, pool)
                     val client = JmApiClient(config, context.client, context.cookieManager, context.domainManager)
+                    if (selected != null) client.useDomain(selected)
                     if (!closed.get()) {
-                        val cancel = refreshDomainPoolInBackground(client, custom, onPoolRefreshed)
+                        val cancel = refreshDomainPoolInBackground(
+                            client = client,
+                            custom = custom,
+                            onPoolRefreshed = onPoolRefreshed,
+                            selectedDomain = selected,
+                        )
                         if (closed.get()) cancel() else cancelRefresh.set(cancel)
                     }
                     client

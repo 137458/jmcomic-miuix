@@ -40,7 +40,7 @@ class SessionDomain(
     val unread: UnreadBadge = UnreadBadge { authCall.call { api.unreadCount() } }
 
     /** 换线路并把已持久化会话迁移过去：网关重建在 [ApiDomain]，会话迁移归这个域（它持有账号）。 */
-    suspend fun applyDomains(apiDomains: List<String>) {
-        api.applyDomains(apiDomains) { account.restore() }
+    suspend fun applyDomains(apiDomains: List<String>, selectedDomain: String? = null) {
+        api.applyDomains(apiDomains, selectedDomain) { account.restore() }
     }
 }

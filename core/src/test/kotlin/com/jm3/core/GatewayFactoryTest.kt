@@ -40,4 +40,35 @@ class GatewayFactoryTest {
         // 未触发真实网络前直接关闭不应抛出异常
         gateway.close()
     }
+
+    @Test
+    fun `GatewayFactory 自动模式下预置缓存线路时 usedDomain 返回最优可用域名而不是 null`() {
+        val gateway = GatewayFactory.create(
+            apiDomains = emptyList(),
+            cachedDomains = listOf("fast.example", "backup.example"),
+        )
+        try {
+            assertTrue(gateway.domainsReady())
+            kotlin.test.assertEquals("fast.example", gateway.usedDomain())
+            kotlin.test.assertEquals(listOf("fast.example", "backup.example"), gateway.candidateDomains())
+        } finally {
+            gateway.close()
+        }
+    }
+
+    @Test
+    fun `GatewayFactory 固定线路时 usedDomain 返回该固定线路且候选列表完整`() {
+        val gateway = GatewayFactory.create(
+            apiDomains = emptyList(),
+            cachedDomains = listOf("a.example", "b.example"),
+            selectedDomain = "https://b.example/",
+        )
+        try {
+            assertTrue(gateway.domainsReady())
+            kotlin.test.assertEquals("b.example", gateway.usedDomain())
+            kotlin.test.assertEquals(listOf("b.example", "a.example"), gateway.candidateDomains())
+        } finally {
+            gateway.close()
+        }
+    }
 }

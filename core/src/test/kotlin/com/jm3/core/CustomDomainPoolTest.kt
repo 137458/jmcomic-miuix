@@ -37,6 +37,18 @@ class CustomDomainPoolTest {
     }
 
     @Test
+    fun `手动固定线路排在自定义与缓存池之前`() {
+        assertEquals(
+            listOf("pinned.example", "custom.example", "cached.example"),
+            startupDomainPool(
+                custom = listOf("custom.example"),
+                cached = listOf("cached.example", "pinned.example"),
+                selectedDomain = "pinned.example",
+            ),
+        )
+    }
+
+    @Test
     fun `两组都为空时返回空表`() {
         assertEquals(emptyList(), startupDomainPool(emptyList(), emptyList()))
     }
@@ -86,6 +98,42 @@ class CustomDomainPoolTest {
         assertEquals(listOf(listOf("custom.example", "official.example", "dead.example", "old.example")), probed)
         assertEquals(listOf("custom.example", "official.example", "old.example"), pool)
         assertEquals(pool, manager.domains)
+    }
+
+    @Test
+    fun `刷新落盘回调只交回官方可达域名且不包含自定义域名`() {
+        val manager = JmDomainManager(listOf("old-custom.example"))
+        val persisted = mutableListOf<List<String>>()
+
+        val pool = refreshDomainPool(
+            manager = manager,
+            custom = listOf("custom.example"),
+            fetchOfficial = { listOf("official.example", "dead.example") },
+            probe = { candidate -> candidate.filter { it != "dead.example" } },
+            onOfficialRefreshed = { persisted += it },
+        )
+
+        assertEquals(listOf("custom.example", "official.example", "old-custom.example"), pool)
+        assertEquals(listOf(listOf("official.example")), persisted)
+    }
+
+    @Test
+    fun `手动固定线路在官方探测未命中时仍保留在管理器中`() {
+        val manager = JmDomainManager(listOf("pinned.example"))
+        val persisted = mutableListOf<List<String>>()
+
+        val pool = refreshDomainPool(
+            manager = manager,
+            custom = emptyList(),
+            fetchOfficial = { listOf("official.example") },
+            probe = { listOf("official.example") },
+            onOfficialRefreshed = { persisted += it },
+            pinned = listOf("pinned.example"),
+        )
+
+        assertEquals(listOf("pinned.example", "official.example"), pool)
+        assertEquals(listOf("pinned.example", "official.example"), manager.domains)
+        assertEquals(listOf(listOf("official.example")), persisted)
     }
 
     @Test

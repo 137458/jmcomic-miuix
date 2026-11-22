@@ -161,7 +161,8 @@ class ScreenDeps internal constructor(
         persist("宽屏导航") { settings.setWideScreenNavigation(navigation) }
     }
 
-    suspend fun applyDomains(apiDomains: List<String>) = session.applyDomains(apiDomains)
+    suspend fun applyDomains(apiDomains: List<String>, selectedDomain: String? = null) =
+        session.applyDomains(apiDomains, selectedDomain)
 
     private fun persist(label: String, write: suspend () -> Unit) {
         appScope.launch {

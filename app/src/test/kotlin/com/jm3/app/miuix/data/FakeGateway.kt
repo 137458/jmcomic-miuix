@@ -161,6 +161,8 @@ internal class FakeGateway(
 
     override fun usedDomain(): String? = unexpected("usedDomain")
 
+    override fun candidateDomains(): List<String> = unexpected("candidateDomains")
+
     override fun domainsReady(): Boolean = unexpected("domainsReady")
 
     override fun domainLatency(): Map<String, Int> = unexpected("domainLatency")

@@ -1,5 +1,6 @@
 package com.jm3.core.settings
 
+import com.jm3.core.CoverLocator
 import com.jm3.core.reader.ReaderPageProgress
 import com.jm3.core.reader.decodeReaderProgress
 import com.jm3.core.reader.encodeReaderProgress
@@ -93,6 +94,15 @@ interface DomainSettings : SettingsKeyStore {
 
     suspend fun setApiDomains(domains: List<String>) {
         writeString(SettingsKeys.API_DOMAINS, Domains.encode(domains))
+    }
+
+    /** 用户手动固定的 API 线路域名；null 表示自动选择最优节点。 */
+    suspend fun selectedApiDomain(): String? =
+        CoverLocator.hostOf(readString(SettingsKeys.SELECTED_API_DOMAIN)).takeIf { it.isNotEmpty() }
+
+    suspend fun setSelectedApiDomain(domain: String?) {
+        val normalized = CoverLocator.hostOf(domain).takeIf { it.isNotEmpty() }
+        writeString(SettingsKeys.SELECTED_API_DOMAIN, normalized)
     }
 }
 

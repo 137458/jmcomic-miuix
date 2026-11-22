@@ -55,6 +55,9 @@ interface DomainRoutes {
     /** 当前实际使用的 API 域名；域名未就绪时为 null。 */
     fun usedDomain(): String?
 
+    /** 当前候选 API 域名列表（有序，不阻塞）。 */
+    fun candidateDomains(): List<String>
+
     /** 域名管理器是否已就绪（READY）。未就绪时首个请求会阻塞在库的初始化链上，调用方应等待后再发。 */
     fun domainsReady(): Boolean
 
@@ -398,7 +401,10 @@ class Jm3GatewayImpl internal constructor(
 
     override fun login(username: String, password: String): Jm3Session {
         val info = client.login(username, password)
-        return Jm3Session(user = info.toUser(), cookies = currentCookies())
+        val session = Jm3Session(user = info.toUser(), cookies = currentCookies())
+        // login() 会将重定向域名写入 loginHost；复位为占位符以维持自动选路与故障转移。
+        bridge.resetLoginHost(client)
+        return session
     }
 
     /**
@@ -519,6 +525,8 @@ class Jm3GatewayImpl internal constructor(
 
     override fun usedDomain(): String? = domainControls?.usedDomain()?.takeIf { it.isNotBlank() }
 
+    override fun candidateDomains(): List<String> = domainControls?.candidateDomains().orEmpty()
+
     override fun domainsReady(): Boolean = domainControls?.domainsReady() ?: false
 
     override fun domainLatency(): Map<String, Int> = domainControls?.domainLatency().orEmpty()
@@ -619,8 +627,8 @@ internal interface DomainControls {
     /** 域名管理器是否已进入 READY（初始化链跑完或由缓存池直接预置）。 */
     fun domainsReady(): Boolean
 
-    /** 当前线路候选域名；库初始化未完成时会阻塞到探活结束，调用方须在 IO 线程。 */
-    fun candidateDomains(): Set<String>
+    /** 当前线路候选域名（有序）。 */
+    fun candidateDomains(): List<String>
 
     /** 封面域名：与库的封面地址构造共用同一裁决；未就绪时为 null。 */
     fun coverHost(): String?
@@ -650,14 +658,20 @@ internal fun claimTaskFailure(payload: Map<*, *>): String? {
 /** [DomainControls] 的生产实现：直接委托库客户端。 */
 private class LibraryDomainControls(private val client: AbstractJmClient) : DomainControls {
 
-    override fun usedDomain(): String? = client.usedDomain
+    override fun usedDomain(): String? {
+        val explicit = client.usedDomain?.takeIf { it.isNotBlank() }
+        if (explicit != null) return explicit
+        val manager = domainManagerOf(client) ?: return null
+        if (!manager.isInitialized) return null
+        return runCatching { manager.bestDomain }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
 
     override fun domainsReady(): Boolean = runCatching { domainManagerOf(client)?.isInitialized == true }.getOrDefault(false)
 
-    /** 候选域名取库的线路表；初始化未完成时会阻塞到探活结束，调用方须在 IO 线程。 */
-    override fun candidateDomains(): Set<String> = runCatching {
-        client.domainStates.keys.filter { it.isNotBlank() }.toSet()
-    }.getOrDefault(emptySet())
+    /** 候选域名直接读域名管理器，避免触发 getDomainStates() 阻塞。 */
+    override fun candidateDomains(): List<String> = runCatching {
+        domainManagerOf(client)?.domains?.toList().orEmpty().filter { it.isNotBlank() }.distinct()
+    }.getOrDefault(emptyList())
 
     override fun coverHost(): String? = runCatching {
         // 封面地址是纯字符串拼接，不发请求；本子号只作占位，只为取库的域名裁决结果。

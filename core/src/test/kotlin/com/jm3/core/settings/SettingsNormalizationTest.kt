@@ -75,6 +75,15 @@ class SettingsNormalizationTest {
     }
 
     @Test
+    fun 固定线路_写入即去协议头与路径且空白视为清空() = runTest {
+        val r = repo()
+        r.setSelectedApiDomain(" https://cdn.example/api ")
+        assertEquals("cdn.example", r.selectedApiDomain())
+        r.setSelectedApiDomain("   ")
+        assertEquals(null, r.selectedApiDomain())
+    }
+
+    @Test
     fun 版本_首尾空白写入即去除() = runTest {
         val r = repo()
         r.setIgnoredUpdateVersion(" 1.2.0 ")

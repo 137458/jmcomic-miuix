@@ -171,7 +171,7 @@ class SessionCookiesTest {
         val domainControls = object : DomainControls {
             override fun usedDomain(): String? = "18comic.vip"
             override fun domainsReady(): Boolean = true
-            override fun candidateDomains(): Set<String> = setOf(".18comic.vip", "18comic.org")
+            override fun candidateDomains(): List<String> = listOf(".18comic.vip", "18comic.org")
             override fun coverHost(): String? = "18comic.vip"
             override fun domainLatency(): Map<String, Int> = emptyMap()
             override fun reprobeDomains() {}
@@ -215,7 +215,12 @@ class SessionCookiesTest {
 
         val loginHostField = io.github.jukomu.jmcomic.core.client.AbstractJmClient::class.java.getDeclaredField("loginHost").apply { isAccessible = true }
         val host = loginHostField.get(client) as String
-        kotlin.test.assertNotEquals("jm-placeholder.domain.com", host)
-        kotlin.test.assertFalse(host.startsWith("."))
+        assertEquals("jm-placeholder.domain.com", host)
+
+        val restoredCookies = gateway.currentCookies()
+        kotlin.test.assertTrue(restoredCookies.isNotEmpty())
+        kotlin.test.assertTrue(restoredCookies.any { it.domain == "18comic.vip" })
+        kotlin.test.assertTrue(restoredCookies.any { it.domain == "18comic.org" })
+        kotlin.test.assertTrue(restoredCookies.none { it.domain.startsWith(".") })
     }
 }

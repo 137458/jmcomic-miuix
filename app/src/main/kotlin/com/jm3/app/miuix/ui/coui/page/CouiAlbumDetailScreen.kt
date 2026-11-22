@@ -87,6 +87,7 @@ import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.AlbumDetailHeroFlightEffect
 import com.jm3.app.miuix.ui.AlbumDetailStateHolder
 import com.jm3.app.miuix.ui.AlbumUiState
+import com.jm3.app.miuix.ui.orDegrade
 import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.CommentsUiState
 import com.jm3.app.miuix.ui.GlassSnackbarHost
@@ -250,7 +251,7 @@ private fun CouiAlbumDetailScreenBody(
         sessionCache = sessionCache,
         downloadManager = downloadManager,
         onOpenLogin = onOpenLogin,
-        shareHost = { gateway.usedDomain() },
+        shareHost = { authCall.call { gateway.usedDomain() }.orDegrade<String?>(null) },
     )
     val stateHolder = scaffold.stateHolder
     val uiState = scaffold.uiState

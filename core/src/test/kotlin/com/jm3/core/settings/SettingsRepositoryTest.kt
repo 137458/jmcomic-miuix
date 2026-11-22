@@ -25,6 +25,7 @@ class SettingsRepositoryTest {
     @Test
     fun 默认线路为空表() = runTest {
         assertEquals(emptyList(), repo().apiDomains())
+        assertEquals(null, repo().selectedApiDomain())
     }
 
     @Test
@@ -34,6 +35,15 @@ class SettingsRepositoryTest {
         assertEquals(listOf("a.example", "b.example"), r.apiDomains())
         r.setApiDomains(emptyList())
         assertEquals(emptyList(), r.apiDomains())
+    }
+
+    @Test
+    fun 固定线路写入后可读回且支持清空() = runTest {
+        val r = repo()
+        r.setSelectedApiDomain("cdn.example")
+        assertEquals("cdn.example", r.selectedApiDomain())
+        r.setSelectedApiDomain(null)
+        assertEquals(null, r.selectedApiDomain())
     }
 
     @Test

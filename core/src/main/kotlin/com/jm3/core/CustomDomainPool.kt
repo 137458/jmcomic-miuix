@@ -17,8 +17,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 顺序即优先级：库的 getBestDomain 取失败计数最小的域名，并列时取池中靠前者。
  * 两组都为空（首次安装且没填自定义线路）返回空表，由调用方回退到库自己的初始化链。
  */
-internal fun startupDomainPool(custom: List<String>, cached: List<String>): List<String> =
-    Domains.normalize(custom + cached)
+internal fun startupDomainPool(
+    custom: List<String>,
+    cached: List<String>,
+    selectedDomain: String? = null,
+): List<String> = Domains.normalize(
+    listOfNotNull(selectedDomain?.takeIf { it.isNotBlank() }) + custom + cached,
+)
 
 /**
  * 按类与成员名取可写字段，缺成员时降级为 null 并留一条事实日志。
@@ -71,26 +76,31 @@ internal fun refreshDomainPoolInBackground(
     onPoolRefreshed: (List<String>) -> Unit = {},
     fetchOfficial: () -> List<String> = { officialApiDomains() },
     delayMs: Long = DOMAIN_REFRESH_DELAY_MS,
+    selectedDomain: String? = null,
 ): () -> Unit {
     val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "jm3-domain-refresh").apply { isDaemon = true }
     }
     val cancelled = AtomicBoolean(false)
+    val pinned = listOfNotNull(selectedDomain?.takeIf { it.isNotBlank() })
     val future = scheduler.schedule({
         try {
             if (cancelled.get() || Thread.currentThread().isInterrupted) return@schedule
             runCatching {
                 val manager = domainManagerOf(client) ?: return@runCatching
                 // 探活器取不到时整段刷新跳过：与原先反射失败被 runCatching 吞掉的效果一致，现有池保持不动。
-                val pool = domainProbeOf(client)?.let { probe ->
+                domainProbeOf(client)?.let { probe ->
                     refreshDomainPool(
                         manager = manager,
                         custom = custom,
                         fetchOfficial = fetchOfficial,
                         probe = { candidate -> probeDomainPool(candidate, probe) },
+                        onOfficialRefreshed = { officialAlive ->
+                            if (!cancelled.get()) onPoolRefreshed(officialAlive)
+                        },
+                        pinned = pinned,
                     )
                 }
-                if (pool != null && !cancelled.get()) onPoolRefreshed(pool)
             }.onFailure { failure ->
                 if (!cancelled.get()) {
                     Jm3Log.warn(TAG, "后台刷新线路池失败（" + failure.javaClass.name + "），现有线路池保持不变")
@@ -112,22 +122,29 @@ internal fun refreshDomainPoolInBackground(
  *
  * 旧实现先 updateDomains 再探活：替换会清空失败计数，探活期间池里全是 0 计数，
  * 请求侧的 getBestDomain 就会选中已失效的线路。这里把探活挪到替换之前，替换一完成计数就是真实结果。
+ * 落盘回调 [onOfficialRefreshed] 只交回官方可用域名，防止自定义域名污染官方缓存池。
  *
- * @return 落盘的新池；拉表失败或全部探不通时返回 null，现有池与失败计数保持不动。
+ * @return 新写入管理器的池；拉表失败或全部探不通时返回 null，现有池与失败计数保持不动。
  */
 internal fun refreshDomainPool(
     manager: JmDomainManager,
     custom: List<String>,
     fetchOfficial: () -> List<String>,
     probe: (List<String>) -> List<String>,
+    onOfficialRefreshed: (List<String>) -> Unit = {},
+    pinned: List<String> = emptyList(),
 ): List<String>? {
     val official = fetchOfficial()
     if (official.isEmpty()) return null
-    val candidate = Domains.normalize(custom + official + manager.domains.toList())
+    val candidate = Domains.normalize(pinned + custom + official + manager.domains.toList())
     val alive = probe(candidate)
     if (alive.isEmpty()) return null
-    manager.updateDomains(alive)
-    return alive
+    val nextPool = Domains.normalize(pinned + alive)
+    manager.updateDomains(nextPool)
+    val officialSet = official.toSet()
+    val officialAlive = alive.filter { it in officialSet }
+    if (officialAlive.isNotEmpty()) onOfficialRefreshed(officialAlive)
+    return nextPool
 }
 
 /**

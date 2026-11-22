@@ -44,7 +44,7 @@ class ApiDomainTest {
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val closedOrder = mutableListOf<String>()
         val createdThreads = mutableListOf<String>()
-        val domain = ApiDomain(fakeContext(), scope) { domains, _, _ ->
+        val domain = ApiDomain(fakeContext(), scope) { domains, _, _, _ ->
             createdThreads += Thread.currentThread().name
             val label = domains.joinToString(",")
             FakeGateway { closedOrder += label }
@@ -96,7 +96,7 @@ class ApiDomainTest {
         val closedLabels = mutableListOf<String>()
         val created = mutableListOf<Pair<String, Jm3Gateway>>()
         var seq = 0
-        val domain = ApiDomain(fakeContext(), scope) { domains, _, _ ->
+        val domain = ApiDomain(fakeContext(), scope) { domains, _, _, _ ->
             seq++
             val label = if (domains.isEmpty()) "default-$seq" else domains.joinToString(",") + "-$seq"
             FakeGateway { closedLabels += label }.also { created += label to it }
@@ -116,6 +116,31 @@ class ApiDomainTest {
         assertTrue(restoredDefault !== initialDefault, "切回默认线路必须重建新实例而非复用陈旧 defaultGateway")
         assertEquals(listOf("default-1", "custom.example.com-2"), closedLabels)
         assertEquals(3, created.size)
+        scope.cancel()
+    }
+
+    @Test
+    fun `切换手动固定线路时即使自定义列表未变也会重建网关并释放旧网关`() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val closedLabels = mutableListOf<String>()
+        val selectedSeen = mutableListOf<String?>()
+        var seq = 0
+        val domain = ApiDomain(fakeContext(), scope) { _, _, selected, _ ->
+            seq++
+            selectedSeen += selected
+            val label = (selected ?: "auto") + "-$seq"
+            FakeGateway { closedLabels += label }
+        }
+
+        // 先切到固定节点
+        domain.applyDomains(emptyList(), selectedDomain = "https://cdn1.example/") {}
+        // 重复相同固定节点与空自定义列表：必须跳过
+        domain.applyDomains(emptyList(), selectedDomain = "cdn1.example") {}
+        // 切回自动模式：必须重建并关闭旧的固定节点网关
+        domain.applyDomains(emptyList(), selectedDomain = null) {}
+
+        assertEquals(listOf<String?>("cdn1.example", null), selectedSeen)
+        assertEquals(listOf("cdn1.example-1"), closedLabels)
         scope.cancel()
     }
 }

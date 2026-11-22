@@ -42,10 +42,10 @@ class LibraryBridgeRoutingTest {
         }
     }
 
-    private class FakeDomainControls(private val domains: Set<String>) : DomainControls {
+    private class FakeDomainControls(private val domains: List<String>) : DomainControls {
         override fun usedDomain(): String? = null
         override fun domainsReady(): Boolean = true
-        override fun candidateDomains(): Set<String> = domains
+        override fun candidateDomains(): List<String> = domains
         override fun coverHost(): String? = null
         override fun domainLatency(): Map<String, Int> = emptyMap()
         override fun reprobeDomains() = Unit
@@ -60,7 +60,7 @@ class LibraryBridgeRoutingTest {
         )
     }
 
-    private fun gateway(bridge: LibraryBridge, domains: Set<String> = setOf("a.example")): Jm3GatewayImpl {
+    private fun gateway(bridge: LibraryBridge, domains: List<String> = listOf("a.example")): Jm3GatewayImpl {
         val client = libraryClient()
         return Jm3GatewayImpl(
             clientProvider = { client },
@@ -156,7 +156,7 @@ class LibraryBridgeRoutingTest {
         }
         val gw = Jm3GatewayImpl(
             clientProvider = { offlineClient },
-            domainControlsProvider = { FakeDomainControls(emptySet()) },
+            domainControlsProvider = { FakeDomainControls(emptyList()) },
             bridge = bridge,
         )
         val page = gw.serialization(page = 1)
@@ -197,11 +197,37 @@ class LibraryBridgeRoutingTest {
         val client = libraryClient()
         val gw = Jm3GatewayImpl(
             clientProvider = { client },
-            domainControlsProvider = { FakeDomainControls(emptySet()) },
+            domainControlsProvider = { FakeDomainControls(emptyList()) },
             bridge = FakeBridge(),
             onClose = { closed++ },
         )
         gw.close()
         assertEquals(1, closed)
+    }
+
+    @Test
+    fun `restoreSession 保留库内占位 loginHost 以维持自动故障转移`() {
+        val client = libraryClient()
+        ReflectiveLibraryBridge.restoreSession(client, session(), setOf("a.example", "18comic.vip"))
+
+        val loginHost = LibraryReflection.fieldOf(
+            io.github.jukomu.jmcomic.core.client.AbstractJmClient::class.java,
+            "loginHost",
+        )?.get(client) as? String
+        assertEquals("jm-placeholder.domain.com", loginHost)
+    }
+
+    @Test
+    fun `resetLoginHost 将被改写的 loginHost 复位回占位域名`() {
+        val client = libraryClient()
+        val field = LibraryReflection.fieldOf(
+            io.github.jukomu.jmcomic.core.client.AbstractJmClient::class.java,
+            "loginHost",
+        ) ?: error("缺少 loginHost 字段")
+        field.set(client, "locked.example")
+
+        ReflectiveLibraryBridge.resetLoginHost(client)
+
+        assertEquals("jm-placeholder.domain.com", field.get(client))
     }
 }

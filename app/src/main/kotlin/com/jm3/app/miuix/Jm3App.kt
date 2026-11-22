@@ -466,7 +466,7 @@ fun Jm3App() {
             Jm3Graph.preferences.applyStartupWideScreenNavigation(
                 deps.settings.wideScreenNavigationOrNull(),
             )
-            deps.applyDomains(deps.settings.apiDomains())
+            deps.applyDomains(deps.settings.apiDomains(), deps.settings.selectedApiDomain())
         }.onFailure { failure ->
             Jm3Log.warn("Jm3App", "启动读盘失败（" + failure.javaClass.name + "），改用默认设置")
         }
