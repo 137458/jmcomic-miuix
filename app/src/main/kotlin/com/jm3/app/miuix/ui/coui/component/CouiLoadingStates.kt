@@ -3,44 +3,69 @@
 package com.jm3.app.miuix.ui.coui.component
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.layout.Footer
-import com.itos.coui.layout.Group
-import com.itos.coui.layout.Item
-import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
-import com.itos.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.core.paging.PagedFeed
-import top.yukonga.miuix.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.BasicComponent
+import io.github.suqi8.coui.kmp.basic.Button
+import io.github.suqi8.coui.kmp.basic.ButtonDefaults
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.InfiniteProgressIndicator
+import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
+import io.github.suqi8.coui.kmp.basic.PullToRefresh
+import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.preference.PagerFooterPreference
+import io.github.suqi8.coui.kmp.preference.PreferenceCategory
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 加载态：单行说明卡片；首屏与分页都能直接放，尺寸由库 Group/Item 的 CouiPageDefaults 决定。 */
+/** 下拉刷新容器：封装 suqi8/coui 原生 [PullToRefresh]，与顶栏 [ScrollBehavior] 联动。 */
+@Composable
+fun CouiPullToRefresh(
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    scrollBehavior: ScrollBehavior? = null,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    PullToRefresh(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        modifier = modifier,
+        topAppBarScrollBehavior = scrollBehavior,
+        content = content,
+    )
+}
+
+/** 加载态：单行说明卡片；首屏与分页都能直接放。 */
 @Composable
 fun CouiLoadingGroup(
     modifier: Modifier = Modifier,
     text: String = "正在加载…",
 ) {
-    Group(modifier = modifier) {
-        Item(
-            title = {
-                CouiBodyText(text = text, textAlign = TextAlign.Start)
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+    ) {
+        BasicComponent(
+            startAction = {
+                InfiniteProgressIndicator(size = ProgressIndicatorDefaults.DefaultInfiniteProgressIndicatorSize)
             },
+            title = text,
         )
     }
 }
@@ -51,12 +76,12 @@ fun CouiEmptyGroup(
     text: String,
     modifier: Modifier = Modifier,
 ) {
-    Group(modifier = modifier) {
-        Item(
-            title = {
-                CouiBodyText(text = text, textAlign = TextAlign.Start)
-            },
-        )
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+    ) {
+        BasicComponent(title = text)
     }
 }
 
@@ -67,23 +92,31 @@ fun CouiErrorGroup(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
-    Group(modifier = modifier, title = CouiStrings.LoadFailed, footer = message) {
-        Item(
-            title = {
-                CouiBodyText(text = CouiStrings.Retry, textAlign = TextAlign.Start)
-            },
-            trailing = {
-                Icon(
-                    imageVector = CouiIcons.Refresh,
-                    // 行标题已念出「重试」，图标不再重复播报
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = colors.accent,
-                )
-            },
-            onClick = onRetry,
-        )
+    val colors = COUITheme.colorScheme
+    Column(modifier = modifier.fillMaxWidth()) {
+        PreferenceCategory(title = CouiStrings.LoadFailed)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+        ) {
+            BasicComponent(
+                title = CouiStrings.Retry,
+                endActions = {
+                    Icon(
+                        imageVector = CouiIcons.Refresh,
+                        // 行标题已念出「重试」，图标不再重复播报
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = colors.primary,
+                    )
+                },
+                onClick = onRetry,
+            )
+        }
+        if (message.isNotBlank()) {
+            PagerFooterPreference(summary = message, withExtraMarginBottom = false)
+        }
     }
 }
 
@@ -102,51 +135,75 @@ fun CouiLoadMoreFooter(
     onLoadMore: (() -> Unit)? = null,
     onRetry: () -> Unit,
 ) {
-    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val colors = COUITheme.colorScheme
     when {
-        error != null -> Group(modifier = modifier, footer = error) {
-            Item(
-                title = {
-                    CouiBodyText(text = CouiStrings.Reload, textAlign = TextAlign.Start)
-                },
-                trailing = {
-                    Icon(
-                        imageVector = CouiIcons.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = colors.accent,
-                    )
-                },
-                onClick = onRetry,
-            )
+        error != null -> Column(modifier = modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+            ) {
+                BasicComponent(
+                    title = CouiStrings.Reload,
+                    endActions = {
+                        Icon(
+                            imageVector = CouiIcons.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = colors.primary,
+                        )
+                    },
+                    onClick = onRetry,
+                )
+            }
+            if (error.isNotBlank()) {
+                PagerFooterPreference(summary = error, withExtraMarginBottom = false)
+            }
         }
 
-        loading -> Group(modifier = modifier, footer = "正在获取下一页…") {
-            Item(
-                title = {
-                    CouiBodyText(text = "正在加载更多…", textAlign = TextAlign.Start)
-                },
-            )
+        loading -> Column(modifier = modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+            ) {
+                BasicComponent(
+                    startAction = {
+                        InfiniteProgressIndicator(size = ProgressIndicatorDefaults.DefaultInfiniteProgressIndicatorSize)
+                    },
+                    title = "正在加载更多…",
+                )
+            }
+            PagerFooterPreference(summary = "正在获取下一页…", withExtraMarginBottom = false)
         }
 
-        endReached -> Group(modifier = modifier, footer = "没有更多了") {
-            Item(
-                title = {
-                    CouiBodyText(text = "已经到底了", textAlign = TextAlign.Start)
-                },
-            )
+        endReached -> Column(modifier = modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+            ) {
+                BasicComponent(title = "已经到底了")
+            }
+            PagerFooterPreference(summary = "没有更多了", withExtraMarginBottom = false)
         }
 
-        onLoadMore != null -> Group(modifier = modifier) {
-            Item(
-                title = {
-                    CouiBodyText(text = "加载更多", textAlign = TextAlign.Start)
-                },
+        onLoadMore != null -> Card(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+        ) {
+            BasicComponent(
+                title = "加载更多",
                 onClick = onLoadMore,
             )
         }
 
-        else -> Footer(modifier = modifier, text = "继续上滑自动加载下一页")
+        else -> PagerFooterPreference(
+            summary = "继续上滑自动加载下一页",
+            modifier = modifier,
+            withExtraMarginBottom = false,
+        )
     }
 }
 
@@ -180,24 +237,43 @@ fun CouiFeedRefreshAction(
     modifier: Modifier = Modifier,
     onRefresh: () -> Unit,
 ) {
-    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
-    val tint = if (refreshing) colors.onSurfaceVariant else colors.accent
-    Row(
-        modifier = modifier
-            .clip(CouiCapsuleShape)
-            .couiPressable(
-                shape = CouiCapsuleShape,
-                spotlight = SpotlightPreset.ChipTab,
-                enabled = !refreshing,
-                minTouchTarget = CouiMinTouchTarget,
-                onClick = onRefresh,
-            )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    val colors = COUITheme.colorScheme
+    val tint = if (refreshing) colors.labelSecondary else colors.primaryText
+    Button(
+        onClick = onRefresh,
+        modifier = modifier,
+        enabled = !refreshing,
+        colors = ButtonDefaults.buttonColors(
+            color = Color.Transparent,
+            disabledColor = Color.Transparent,
+            contentColor = colors.primaryText,
+            disabledContentColor = colors.labelSecondary,
+        ),
+        minWidth = 0.dp,
+        minHeight = 32.dp,
+        insideMargin = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     ) {
-        Icon(imageVector = CouiIcons.Refresh, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(text = if (refreshing) CouiStrings.Refreshing else CouiStrings.Refresh, kind = CouiTextKind.GroupFooter, color = tint)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (refreshing) {
+                InfiniteProgressIndicator(size = 16.dp, strokeWidth = 2.dp, color = tint)
+            } else {
+                Icon(
+                    imageVector = CouiIcons.Refresh,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Text(
+                text = if (refreshing) CouiStrings.Refreshing else CouiStrings.Refresh,
+                style = COUITheme.textStyles.bodyXS,
+                color = tint,
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -209,27 +285,33 @@ fun CouiFeedLoginGroup(
     title: String = CouiStrings.NeedLogin,
     onOpenLogin: () -> Unit,
 ) {
-    val colors = CouiTheme.colorSchemeFor(CouiTheme.isDark)
+    val colors = COUITheme.colorScheme
     val displayText = message.ifBlank { CouiStrings.LoginExpired }
-    Group(
-        modifier = modifier.padding(top = 8.dp),
-        title = title,
-        footer = displayText,
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
     ) {
-        Item(
-            title = {
-                CouiBodyText(text = CouiStrings.OpenLogin, textAlign = TextAlign.Start)
-            },
-            trailing = {
-                Icon(
-                    imageVector = CouiIcons.Forward,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = colors.accent,
-                )
-            },
-            onClick = onOpenLogin,
-        )
+        PreferenceCategory(title = title)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+        ) {
+            BasicComponent(
+                title = CouiStrings.OpenLogin,
+                endActions = {
+                    Icon(
+                        imageVector = CouiIcons.Forward,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = colors.primary,
+                    )
+                },
+                onClick = onOpenLogin,
+            )
+        }
+        PagerFooterPreference(summary = displayText, withExtraMarginBottom = false)
     }
 }
 

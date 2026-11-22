@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -84,5 +85,13 @@ class CouiPageStateTest {
             cornerWeight = 2.6f,
         ).createOutline(Size(40f, 20f), LayoutDirection.Ltr, density)
         assertIs<Outline.Generic>(oversized)
+    }
+
+    @Test
+    fun 布局令牌对齐ColorOS17卡片边距与圆角() {
+        assertEquals(16.dp, CouiLayoutTokens.HorizontalMargin)
+        assertEquals(CardDefaults.CornerRadius, CouiLayoutTokens.CardCorner)
+        assertEquals(16.dp, CouiLayoutTokens.GroupSpacing)
+        assertEquals(16.dp, CouiLayoutTokens.CategoryTopSpacing)
     }
 }
