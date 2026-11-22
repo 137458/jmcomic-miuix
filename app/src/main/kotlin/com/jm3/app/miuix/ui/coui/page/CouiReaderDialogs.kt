@@ -1,8 +1,10 @@
 package com.jm3.app.miuix.ui.coui.page
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,37 +20,50 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
-import com.itos.coui.checkbox.Checkbox
-import com.itos.coui.dialog.CouiDialogAction
-import com.itos.coui.dialog.Dialog
-import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.layout.Divider
-import com.itos.coui.layout.Item
-import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.slider.Slider
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ui.components.COMMENT_REPLY_MAX_LENGTH
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarAction
 import com.jm3.app.miuix.ui.coui.component.couiDialogListMaxHeight
-import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceBorder
+import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
 import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.panelBlur
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.core.model.Chapter
 import com.jm3.core.model.CommentItem
 import com.jm3.core.model.CommentPage
+import io.github.suqi8.coui.kmp.basic.BasicComponent
+import io.github.suqi8.coui.kmp.basic.Checkbox
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Slider
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.MaterialBlurDefaults
+import io.github.suqi8.coui.kmp.layout.BottomSheetDefaults
+import io.github.suqi8.coui.kmp.layout.DialogButtonBar
+import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
+import io.github.suqi8.coui.kmp.layout.DialogDefaults
+import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
+import io.github.suqi8.coui.kmp.overlay.OverlayDialog
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.theme.COUIRoundCorner
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.roundToInt
 
 /** 页码滑杆画刻度的页数上限：再长点位会密到成带，改回纯滑杆。 */
 private const val PageSliderTickMaxPages = 24
+
+private val ReaderDialogCapsuleShape = SquircleShape(
+    cornerRadius = COUIRoundCorner.Full,
+    weight = COUIRoundCorner.CapsuleWeight,
+)
 
 /**
  * 跳页：滑杆搭配加减微调按钮，百页以上长章节也能精准选定目标页；
@@ -63,63 +78,72 @@ internal fun ReaderPageJumpDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        visible = visible,
-        material = couiDialogMaterial(),
+    val blur = panelBlur(MaterialBlurDefaults::dialog)
+    OverlayDialog(
+        show = visible,
         title = "跳页",
-        confirmAction = CouiDialogAction(
-            text = "跳转到第 $pickerValue 页",
-            onClick = {
-                onDismiss()
-                onConfirm()
-            },
-        ),
-        dismissAction = CouiDialogAction(text = "取消", onClick = onDismiss),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+        backgroundModifier = blur?.backgroundModifier ?: Modifier,
+        backgroundColor = blur?.backgroundColor ?: DialogDefaults.backgroundColor(),
+        materialStroke = blur != null,
+        onDismissRequest = onDismiss,
+        customContent = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 4.dp),
             ) {
-                Text(
-                    text = "第 $pickerValue 页 / 共 $totalPages 页",
-                    kind = CouiTextKind.ItemTitle,
-                    modifier = Modifier.weight(1f),
-                )
-                if (totalPages > 1) {
-                    ReaderPageJumpStepper(
-                        icon = CouiIcons.Minus,
-                        contentDescription = "上一页",
-                        enabled = pickerValue > 1,
-                        onClick = { onValueChange(couiStepJumpPage(pickerValue, -1, totalPages)) },
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "第 $pickerValue 页 / 共 $totalPages 页",
+                        style = COUITheme.textStyles.headlineXS,
+                        color = COUITheme.colorScheme.labelPrimary,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    ReaderPageJumpStepper(
-                        icon = CouiIcons.Plus,
-                        contentDescription = "下一页",
-                        enabled = pickerValue < totalPages,
-                        onClick = { onValueChange(couiStepJumpPage(pickerValue, 1, totalPages)) },
+                    if (totalPages > 1) {
+                        ReaderPageJumpStepper(
+                            icon = CouiIcons.Minus,
+                            contentDescription = "上一页",
+                            enabled = pickerValue > 1,
+                            onClick = { onValueChange(couiStepJumpPage(pickerValue, -1, totalPages)) },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ReaderPageJumpStepper(
+                            icon = CouiIcons.Plus,
+                            contentDescription = "下一页",
+                            enabled = pickerValue < totalPages,
+                            onClick = { onValueChange(couiStepJumpPage(pickerValue, 1, totalPages)) },
+                        )
+                    }
+                }
+                if (totalPages > 1) {
+                    Slider(
+                        value = pickerValue.toFloat(),
+                        onValueChange = { onValueChange(it.roundToInt().coerceIn(1, totalPages)) },
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        valueRange = 1f..totalPages.toFloat(),
+                        // 滑杆只停整数页：两端各留一档，中间档数就是总页数减二
+                        steps = (totalPages - 2).coerceAtLeast(0),
+                        // 短章节把可落位点画出来，页码不用靠猜；长章节点位会密到成带，改回纯滑杆
+                        showKeyPoints = totalPages <= PageSliderTickMaxPages,
                     )
                 }
             }
-            if (totalPages > 1) {
-                Slider(
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    value = pickerValue.toFloat(),
-                    onValueChange = { onValueChange(it.roundToInt().coerceIn(1, totalPages)) },
-                    valueRange = 1f..totalPages.toFloat(),
-                    // 滑杆只停整数页：两端各留一档，中间档数就是总页数减二
-                    steps = (totalPages - 2).coerceAtLeast(0),
-                    // 短章节把可落位点画出来，页码不用靠猜；长章节点位会密到成带，改回纯滑杆
-                    showTickMarks = totalPages <= PageSliderTickMaxPages,
-                )
-            }
-        }
+        },
+    ) {
+        DialogButtonBar(
+            negative = DialogButtonBarAction(text = "取消", onClick = onDismiss),
+            positive = DialogButtonBarAction(
+                text = "跳转到第 $pickerValue 页",
+                recommended = true,
+                onClick = {
+                    onDismiss()
+                    onConfirm()
+                },
+            ),
+        )
     }
 }
 
@@ -132,52 +156,64 @@ internal fun ReaderChaptersDialog(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        visible = visible,
-        material = couiDialogMaterial(),
+    val blur = panelBlur(MaterialBlurDefaults::bottomSheet)
+    OverlayBottomSheet(
+        show = visible,
         title = "章节",
-        confirmAction = CouiDialogAction(text = "关闭", onClick = onDismiss),
+        showDragHandle = true,
+        backgroundModifier = blur?.backgroundModifier ?: Modifier,
+        backgroundColor = blur?.backgroundColor ?: BottomSheetDefaults.backgroundColor(),
+        materialStroke = blur != null,
+        endAction = {
+            CouiPageTopBarAction(
+                icon = CouiIcons.Close,
+                contentDescription = "关闭",
+                onClick = onDismiss,
+            )
+        },
+        onDismissRequest = onDismiss,
     ) {
         if (chapters.isEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
             ) {
                 CouiBodyText(text = CouiStrings.EmptyChapters)
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = couiDialogListMaxHeight(420.dp))) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = couiDialogListMaxHeight(420.dp))
+                    .padding(horizontal = 24.dp),
+            ) {
                 items(chapters, key = { it.id }) { chapter ->
-                    Item(
-                        title = {
-                            Text(
-                                text = if (chapter.id == currentPhotoId) {
-                                    chapter.title + "（当前话）"
-                                } else {
-                                    chapter.title
-                                },
-                                kind = CouiTextKind.ItemTitle,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                    val current = chapter.id == currentPhotoId
+                    BasicComponent(
+                        title = if (current) {
+                            chapter.title + "（当前话）"
+                        } else {
+                            chapter.title
                         },
+                        insideMargin = PaddingValues(horizontal = 0.dp, vertical = 12.dp),
+                        selected = current,
                         onClick = {
                             onDismiss()
-                            if (chapter.id != currentPhotoId) onSelect(chapter.id)
+                            if (!current) onSelect(chapter.id)
                         },
                     )
-                    // 组卡片内部没有自动分隔线，行间需要自己补；末行不补，避免贴着卡片下沿
-                    if (chapter.id != chapters.last().id) Divider()
+                    if (chapter.id != chapters.last().id) {
+                        HorizontalDivider()
+                    }
                 }
-                item(key = "chapter-gap") { Spacer(modifier = Modifier.height(12.dp)) }
+                item(key = "chapter-gap") { Spacer(modifier = Modifier.height(16.dp)) }
             }
         }
     }
 }
 
-/** 评论：直接承接 Dialog 玻璃材质，不再嵌套实底 Group 割裂质感。 */
+/** 评论：直接承接 OverlayBottomSheet 玻璃材质，不再嵌套实底卡片割裂质感。 */
 @Composable
 internal fun ReaderCommentsDialog(
     visible: Boolean,
@@ -196,14 +232,28 @@ internal fun ReaderCommentsDialog(
     onReply: (CommentItem) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        visible = visible,
-        material = couiDialogMaterial(),
+    val blur = panelBlur(MaterialBlurDefaults::bottomSheet)
+    OverlayBottomSheet(
+        show = visible,
         title = "评论",
-        confirmAction = CouiDialogAction(text = "关闭", onClick = onDismiss),
+        showDragHandle = true,
+        backgroundModifier = blur?.backgroundModifier ?: Modifier,
+        backgroundColor = blur?.backgroundColor ?: BottomSheetDefaults.backgroundColor(),
+        materialStroke = blur != null,
+        endAction = {
+            CouiPageTopBarAction(
+                icon = CouiIcons.Close,
+                contentDescription = "关闭",
+                onClick = onDismiss,
+            )
+        },
+        onDismissRequest = onDismiss,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+        ) {
             val page = comments
             when {
                 loading -> ReaderDialogHint(text = "正在加载评论…")
@@ -228,15 +278,17 @@ internal fun ReaderCommentsDialog(
                             item = item,
                             onReply = { onReply(item) },
                         )
-                        if (item.id != page.items.last().id) Divider()
+                        if (item.id != page.items.last().id) {
+                            HorizontalDivider()
+                        }
                     }
                 }
             }
-            Divider()
+            HorizontalDivider()
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(vertical = 12.dp),
             ) {
                 ReaderCommentComposer(
                     loggedIn = loggedIn,
@@ -264,40 +316,50 @@ internal fun ReaderReplyDialog(
     onSend: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        visible = visible,
-        material = couiDialogMaterial(),
+    val blur = panelBlur(MaterialBlurDefaults::dialog)
+    OverlayDialog(
+        show = visible,
         title = "回复 " + author.orEmpty(),
-        confirmAction = CouiDialogAction(
-            text = if (busy) "发送中…" else "发送",
-            enabled = !busy,
-            onClick = onSend,
-        ),
-        dismissAction = CouiDialogAction(
-            text = "取消",
-            onClick = { if (!busy) onDismiss() },
-        ),
+        backgroundModifier = blur?.backgroundModifier ?: Modifier,
+        backgroundColor = blur?.backgroundColor ?: DialogDefaults.backgroundColor(),
+        materialStroke = blur != null,
+        onDismissRequest = { if (!busy) onDismiss() },
+        customContent = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 4.dp),
+            ) {
+                ReaderCommentComposer(
+                    loggedIn = true,
+                    text = text,
+                    busy = busy,
+                    notice = notice,
+                    onTextChange = onTextChange,
+                    onLogin = {},
+                    onSend = onSend,
+                    showSendButton = false,
+                )
+            }
+        },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            ReaderCommentComposer(
-                loggedIn = true,
-                text = text,
-                busy = busy,
-                notice = notice,
-                onTextChange = onTextChange,
-                onLogin = {},
-                onSend = onSend,
-            )
-        }
+        DialogButtonBar(
+            negative = DialogButtonBarAction(
+                text = "取消",
+                enabled = !busy,
+                onClick = { if (!busy) onDismiss() },
+            ),
+            positive = DialogButtonBarAction(
+                text = if (busy) "发送中…" else "发送",
+                enabled = !busy && text.isNotBlank(),
+                recommended = true,
+                onClick = onSend,
+            ),
+        )
     }
 }
 
-/** 追更引导：直接承接 Dialog 玻璃材质，动作按钮交给弹窗自身槽位（竖向堆叠由库负责）。 */
+/** 追更引导：直接承接 OverlayDialog 玻璃材质，动作按钮交给 DialogButtonBar（竖向堆叠由库负责）。 */
 @Composable
 internal fun ReaderTrackPromptDialog(
     visible: Boolean,
@@ -307,53 +369,60 @@ internal fun ReaderTrackPromptDialog(
     onFollow: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        visible = visible,
-        material = couiDialogMaterial(),
+    val blur = panelBlur(MaterialBlurDefaults::dialog)
+    OverlayDialog(
+        show = visible,
         title = "已经最后一话了！",
-        confirmAction = CouiDialogAction(
-            text = if (busy) "追踪中…" else "追踪连载",
-            enabled = !busy,
-            onClick = onFollow,
-        ),
-        dismissAction = CouiDialogAction(text = "关闭", onClick = onDismiss),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            CouiBodyText(
-                text = "随时追踪最新连载漫画更新，不错过每一集精彩内容",
-            )
+        summary = "随时追踪最新连载漫画更新，不错过每一集精彩内容",
+        backgroundModifier = blur?.backgroundModifier ?: Modifier,
+        backgroundColor = blur?.backgroundColor ?: DialogDefaults.backgroundColor(),
+        materialStroke = blur != null,
+        onDismissRequest = onDismiss,
+        customContent = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 6.dp)
-                    .couiPressable(minTouchTarget = CouiMinTouchTarget) {
+                    .padding(horizontal = 24.dp)
+                    .couiPressable(role = Role.Checkbox, minTouchTarget = CouiMinTouchTarget) {
                         onMutedChange(!muted)
                     }
                     .padding(vertical = 8.dp),
             ) {
-                // 库复选框只画框，点击语义与热区由这一行自己提供
-                Checkbox(checked = muted)
+                // 库复选框传 onClick = null 时仅呈现状态与过渡，点击语义与热区由整行承担
+                Checkbox(
+                    state = if (muted) ToggleableState.On else ToggleableState.Off,
+                    onClick = null,
+                )
                 Spacer(modifier = Modifier.width(10.dp))
-                Text(text = "3天不要显示", kind = CouiTextKind.ItemTitle)
+                Text(
+                    text = "3天不要显示",
+                    style = COUITheme.textStyles.headlineXS,
+                    color = COUITheme.colorScheme.labelPrimary,
+                )
             }
-        }
+        },
+    ) {
+        DialogButtonBar(
+            negative = DialogButtonBarAction(text = "关闭", onClick = onDismiss),
+            positive = DialogButtonBarAction(
+                text = if (busy) "追踪中…" else "追踪连载",
+                enabled = !busy,
+                recommended = true,
+                onClick = onFollow,
+            ),
+        )
     }
 }
 
-/** 弹窗内部提示条：避免在打开 CouiDialogWindow 时提示被主窗口下方的 Snackbar 挡住。 */
+/** 弹窗内部提示条：避免在打开弹窗时提示被下方 Snackbar 挡住。 */
 @Composable
 internal fun ReaderDialogNotice(message: String?) {
     if (message.isNullOrBlank()) return
     Text(
         text = message,
-        kind = CouiTextKind.GroupFooter,
-        color = CouiKitTheme.colorScheme.accentOnSurface,
+        style = COUITheme.textStyles.bodyXS,
+        color = COUITheme.colorScheme.primaryText,
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp),
@@ -363,10 +432,9 @@ internal fun ReaderDialogNotice(message: String?) {
 /** 评论行：头像 + 作者 + 时间 + 正文 + 回复入口，回复入口只在正文下方占一行。 */
 @Composable
 internal fun ReaderCommentRow(item: CommentItem, onReply: () -> Unit) {
-    val scheme = CouiKitTheme.colorScheme
     CouiCommentRow(
         item = item,
-        authorColor = scheme.accentOnSurface,
+        authorColor = COUITheme.colorScheme.primaryText,
         onReply = { onReply() },
     )
 }
@@ -381,18 +449,23 @@ internal fun ReaderCommentComposer(
     onTextChange: (String) -> Unit,
     onLogin: () -> Unit,
     onSend: () -> Unit,
+    showSendButton: Boolean = true,
 ) {
-    val scheme = CouiKitTheme.colorScheme
+    val colors = COUITheme.colorScheme
     ReaderDialogNotice(notice)
     if (!loggedIn) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .couiPressable(spotlight = null, minTouchTarget = CouiMinTouchTarget) { onLogin() }
+                .couiPressable(minTouchTarget = CouiMinTouchTarget) { onLogin() }
                 .padding(vertical = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = "登录后参与评论", kind = CouiTextKind.ItemTitle, color = scheme.accent)
+            Text(
+                text = "登录后参与评论",
+                style = COUITheme.textStyles.headlineXS,
+                color = colors.primaryText,
+            )
         }
         return
     }
@@ -401,18 +474,19 @@ internal fun ReaderCommentComposer(
         modifier = Modifier
             .fillMaxWidth()
             .clip(CouiCommentFieldShape)
-            .background(scheme.container)
+            .background(couiDialogSurfaceColor())
+            .border(couiDialogSurfaceBorder(), CouiCommentFieldShape)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         if (text.isEmpty()) {
-            CouiBodyText(text = "说点什么…", color = scheme.onSurfaceVariant)
+            CouiBodyText(text = "说点什么…", color = colors.labelSecondary)
         }
         BasicTextField(
             value = text,
             onValueChange = onTextChange,
             modifier = Modifier.fillMaxWidth(),
-            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
-            cursorBrush = SolidColor(scheme.accent),
+            textStyle = rememberCouiBodyTextStyle().copy(color = colors.labelPrimary),
+            cursorBrush = SolidColor(colors.primary),
         )
     }
     Row(
@@ -421,30 +495,31 @@ internal fun ReaderCommentComposer(
     ) {
         Text(
             text = text.length.toString() + "/" + COMMENT_REPLY_MAX_LENGTH,
-            kind = CouiTextKind.GroupFooter,
-            color = scheme.onSurfaceVariant,
+            style = COUITheme.textStyles.bodyXS,
+            color = colors.labelSecondary,
             modifier = Modifier.weight(1f),
         )
-        val enabled = !busy && text.isNotBlank()
-        // 底色经 backgroundColor 交给 couiPressable，确保 48dp 触区不把可见胶囊撑大
-        Box(
-            modifier = Modifier
-                .couiPressable(
-                    shape = CouiCapsuleShape,
-                    backgroundColor = if (enabled) scheme.accent else scheme.outlineVariant,
-                    spotlight = if (enabled) SpotlightPreset.OpaqueMedium1 else null,
-                    enabled = enabled,
-                    minTouchTarget = CouiMinTouchTarget,
-                    onClick = onSend,
+        if (showSendButton) {
+            val enabled = !busy && text.isNotBlank()
+            // 底色经 backgroundColor 交给 couiPressable，确保 48dp 触区不把可见胶囊撑大
+            Box(
+                modifier = Modifier
+                    .couiPressable(
+                        shape = ReaderDialogCapsuleShape,
+                        backgroundColor = if (enabled) colors.primary else colors.divider,
+                        enabled = enabled,
+                        minTouchTarget = CouiMinTouchTarget,
+                        onClick = onSend,
+                    )
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (busy) "发送中…" else "发表",
+                    style = COUITheme.textStyles.buttonM,
+                    color = if (enabled) colors.onPrimary else colors.labelSecondary,
                 )
-                .padding(horizontal = 16.dp, vertical = 7.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = if (busy) "发送中…" else "发表",
-                kind = CouiTextKind.ItemValue,
-                color = if (enabled) scheme.onAccent else scheme.onSurfaceVariant,
-            )
+            }
         }
     }
 }
@@ -461,7 +536,7 @@ internal fun ReaderDialogHint(text: String, onClick: (() -> Unit)? = null) {
     ) {
         CouiBodyText(
             text = text,
-            color = CouiKitTheme.colorScheme.onSurfaceVariant,
+            color = COUITheme.colorScheme.labelSecondary,
             modifier = if (onClick != null) {
                 Modifier.couiPressable(minTouchTarget = CouiMinTouchTarget) { onClick() }.padding(vertical = 8.dp)
             } else {

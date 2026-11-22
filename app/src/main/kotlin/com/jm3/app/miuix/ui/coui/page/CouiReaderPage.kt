@@ -9,10 +9,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -36,9 +33,6 @@ import coil3.compose.AsyncImage
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.size.Size
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.reader.collectHorizontalEdgeDrag
 import com.jm3.app.miuix.ui.DEFAULT_PAGE_ASPECT_RATIO
 import com.jm3.app.miuix.ui.configureReaderDefaults
@@ -50,14 +44,13 @@ import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.isPageZoomed
 import com.jm3.app.miuix.ui.pageAspectRatio
 import com.jm3.core.model.PageImage
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 
 /** 纯函数算出的解码像素转成 Coil 的 Size；预取与展示共用这一处，内存缓存键才一致。 */
 internal fun IntSize.toCoilSize(): Size = Size(width, height)
-
-
-
 
 @Composable
 internal fun ReaderPage(
@@ -206,8 +199,8 @@ private fun BoxScope.ReaderLoadFailedHint(onRetry: () -> Unit) {
         CouiBodyText(text = "图片加载失败", color = Color.White)
         Text(
             text = CouiStrings.Retry,
-            kind = CouiTextKind.ItemTitle,
-            color = CouiKitTheme.colorScheme.accent,
+            style = COUITheme.textStyles.headlineXS,
+            color = COUITheme.colorScheme.primary,
             modifier = Modifier
                 .padding(top = 8.dp)
                 .couiPressable(minTouchTarget = CouiMinTouchTarget) { onRetry() }
