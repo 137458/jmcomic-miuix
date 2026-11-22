@@ -1,19 +1,16 @@
 package com.jm3.app.miuix.ui.coui.page
 
-import android.app.Activity
 import android.view.KeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,10 +29,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import coil3.size.Size
-import com.itos.coui.backdrop.couiBackdrop
-import com.itos.coui.dialog.Dialog
-import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.failureCopy
 import com.jm3.app.miuix.reader.ReaderActions
@@ -44,6 +37,10 @@ import com.jm3.app.miuix.ui.CommentItemNullableSaver
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ReaderVolumeKeys
+import com.jm3.app.miuix.ui.coui.component.LocalPageBackdrop
+import com.jm3.app.miuix.ui.coui.component.rememberMaterialBackdropProvider
+import com.jm3.app.miuix.ui.coui.component.rememberPageBackdrop
+import com.jm3.app.miuix.ui.coui.component.rememberPopupMaterialBlur
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.notifyAction
 import com.jm3.app.miuix.ui.readerScreenDecodeSize
@@ -62,6 +59,11 @@ import com.jm3.core.settings.ReaderImageQuality
 import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ReaderSettings
 import com.jm3.core.settings.ReaderSpreadMode
+import io.github.suqi8.coui.kmp.basic.Scaffold
+import io.github.suqi8.coui.kmp.blur.layerBackdrop
+import io.github.suqi8.coui.kmp.effect.LocalMaterialBackdrop
+import io.github.suqi8.coui.kmp.effect.LocalPopupMaterialBlur
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -185,9 +187,11 @@ internal fun ReaderPages(
     var trackMuteChecked by remember { mutableStateOf(false) }
     var trackBusy by remember { mutableStateOf(false) }
 
-    val scheme = CouiKitTheme.colorScheme
-    // HUD 采样源：正文层自带不透明底色并作为 backdrop，避免留白与转场露出透明像素
-    val hudBackdrop = rememberCouiReaderBackdrop(diagnosticName = "readerHud")
+    val colors = COUITheme.colorScheme
+    // 页面背景录制源：仅录制阅读正文层，供 HUD 顶底栏与 OverlayDialog/OverlayBottomSheet 模糊采样
+    val pageBackdrop = rememberPageBackdrop()
+    val materialBackdrop = rememberMaterialBackdropProvider(pageBackdrop)
+    val popupBlur = rememberPopupMaterialBlur(pageBackdrop)
 
     val prevChapter = chapters.getOrNull(chapterIndex - 1)?.takeIf { chapterIndex > 0 }
     val nextChapter = chapters.getOrNull(chapterIndex + 1)
@@ -282,7 +286,6 @@ internal fun ReaderPages(
             )
         }
     }
-
 
     // 页码一变就记进度：读到最后一页改为清掉进度键，未读完才落盘。
     // 落盘前等一下翻页停下来，避免长图连滚时把每一页都写一遍设置存储
@@ -581,175 +584,185 @@ internal fun ReaderPages(
         modalState = modalState.open(CouiReaderModal.TRACK_PROMPT)
     }
 
-    // 全屏 HUD：外层铺实色背景 + 正文采样源自带背景色，避免留白与旋转露出透明像素
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(scheme.background),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .couiBackdrop(hudBackdrop),
+    // COUI Scaffold 提供 COUIPopupHost，确保 OverlayDialog / OverlayBottomSheet 挂载并模糊采样页面正文
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = colors.background,
+    ) { _ ->
+        CompositionLocalProvider(
+            LocalPageBackdrop provides pageBackdrop,
+            LocalPopupMaterialBlur provides popupBlur,
         ) {
-            ReaderPageContent(
-                photo = photo,
-                imageLoader = imageLoader,
-                geometry = CouiReaderPageGeometry(
-                    containerWidthPx = containerWidthPx,
-                    pageWidthPx = pageWidthPx,
-                    screenSize = screenSize,
-                    spreadPageSize = spreadPageSize,
-                ),
-                horizontal = horizontal,
-                spreadActive = spreadActive,
-                pageZoomed = pageZoomed,
-                pagerState = pagerState,
-                pagerPageCount = pagerPageCount,
-                listState = listState,
-                session = session,
-                actions = actions,
-                imageQuality = imageQuality,
-                prefetchPages = prefetchPages,
-                onPageZoomed = { pageZoomed = it },
-                onToggleChrome = { chromeVisible = !chromeVisible },
-                onOpenZoomOverlay = { zoomOverlayIndex = it },
-            )
-        }
-
-        ReaderTopHudBar(
-            visible = chromeVisible,
-            backdrop = hudBackdrop,
-            title = photo.title,
-            pageLabel = pageLabel,
-            accent = scheme.accent,
-            onBack = onBack,
-            onOpenPageJump = {
-                pickerValue = pagePlan.currentPage
-                modalState = modalState.open(CouiReaderModal.PAGE_JUMP)
-            },
-            prevChapter = prevChapter,
-            nextChapter = nextChapter,
-            onOpenChapter = onOpenChapter,
-            // 顶栏承托层挡住下方页面后，空白区的点按仍要能收起 HUD
-            onToggleChrome = { chromeVisible = !chromeVisible },
-        )
-
-        // HUD 底栏：等分槽位匹配 CouiCapsuleShape 横向胶囊指示器与触区
-        ReaderBottomHudBar(
-            visible = chromeVisible,
-            backdrop = hudBackdrop,
-            horizontal = horizontal,
-            favorited = favorited,
-            liked = liked,
-            onToggleMode = { switchMode(!horizontal) },
-            onOpenChapters = { modalState = modalState.open(CouiReaderModal.CHAPTERS) },
-            onOpenComments = ::openComments,
-            onToggleFavorite = ::toggleFavorite,
-            onToggleLike = ::toggleLike,
-        )
-
-        // 提示条叠在 HUD 之上：HUD 显示时让出完整底栏与边距，隐藏时贴在系统导航栏上方
-        val snackbarBottomPaddingDp = couiReaderSnackbarBottomPaddingDp(
-            hudVisible = chromeVisible,
-            bottomBarHeightDp = ReaderHudBottomHeightDp,
-            barVerticalMarginDp = ReaderHudBarVerticalMarginDp,
-        )
-        GlassSnackbarHost(
-            state = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(bottom = snackbarBottomPaddingDp.dp),
-        )
-
-        // 长图模式的整屏缩放层：双击页面打开，单击或返回键退出。
-        // 放在工具栏之后，保证盖住内容与工具栏而不是被它们压住
-        val overlayImage = zoomOverlayIndex?.let { photo.images.getOrNull(it) }
-        if (overlayImage != null) {
-            ReaderZoomOverlay(
-                image = overlayImage,
-                imageLoader = imageLoader,
-                decodeSize = screenSize,
-                onDismiss = { zoomOverlayIndex = null },
-            )
-        }
-
-        val visibleModal = couiVisibleReaderModal(modalState, hasReplyTarget = replyTarget != null)
-
-        // 跳页：滑杆搭配加减微调按钮，百页以上长章节也能精准选定目标页
-        ReaderPageJumpDialog(
-            visible = visibleModal == CouiReaderModal.PAGE_JUMP,
-            pickerValue = pickerValue,
-            totalPages = totalPages,
-            onValueChange = { pickerValue = it },
-            onConfirm = { actions.goToPage(pickerValue) },
-            onDismiss = { modalState = modalState.dismiss() },
-        )
-
-        // 章节：列表高度封顶后自身滚动，当前话由弹窗内部标注
-        ReaderChaptersDialog(
-            visible = visibleModal == CouiReaderModal.CHAPTERS,
-            chapters = chapters,
-            currentPhotoId = photo.photoId,
-            onSelect = onOpenChapter,
-            onDismiss = { modalState = modalState.dismiss() },
-        )
-
-        // 评论：直接承接 Dialog 玻璃材质，不再嵌套实底 Group 割裂质感
-        ReaderCommentsDialog(
-            visible = visibleModal == CouiReaderModal.COMMENTS,
-            comments = comments,
-            loading = commentsLoading,
-            failed = commentsFailed,
-            expired = commentsExpired,
-            loggedIn = user != null,
-            text = commentText,
-            busy = commentBusy,
-            notice = commentNotice,
-            onTextChange = { commentText = couiClampCommentInput(it) },
-            onSend = ::sendComment,
-            onLogin = ::openLoginFromModal,
-            onReload = ::loadComments,
-            onReply = { item ->
-                if (user == null) {
-                    openLoginFromModal()
-                } else {
-                    replyTarget = item
-                    replyText = ""
-                    replyNotice = null
-                    modalState = modalState.enterReply()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colors.background),
+            ) {
+                // 正文录制层：仅录制阅读内容，HUD 与弹窗在录制层外采样，杜绝自采样
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (pageBackdrop != null) Modifier.layerBackdrop(pageBackdrop) else Modifier),
+                ) {
+                    ReaderPageContent(
+                        photo = photo,
+                        imageLoader = imageLoader,
+                        geometry = CouiReaderPageGeometry(
+                            containerWidthPx = containerWidthPx,
+                            pageWidthPx = pageWidthPx,
+                            screenSize = screenSize,
+                            spreadPageSize = spreadPageSize,
+                        ),
+                        horizontal = horizontal,
+                        spreadActive = spreadActive,
+                        pageZoomed = pageZoomed,
+                        pagerState = pagerState,
+                        pagerPageCount = pagerPageCount,
+                        listState = listState,
+                        session = session,
+                        actions = actions,
+                        imageQuality = imageQuality,
+                        prefetchPages = prefetchPages,
+                        onPageZoomed = { pageZoomed = it },
+                        onToggleChrome = { chromeVisible = !chromeVisible },
+                        onOpenZoomOverlay = { zoomOverlayIndex = it },
+                    )
                 }
-            },
-            onDismiss = { modalState = modalState.dismiss() },
-        )
 
-        // 回复：与评论弹窗互斥；关闭时按 reopenCommentsAfterReply 回退评论弹窗
-        val retainedReplyTarget = rememberRetainedTarget(replyTarget)
-        ReaderReplyDialog(
-            visible = replyTarget != null,
-            author = retainedReplyTarget?.author,
-            text = replyText,
-            busy = replyBusy,
-            notice = replyNotice,
-            onTextChange = { replyText = couiClampCommentInput(it) },
-            onSend = { sendReply(replyText) },
-            onDismiss = {
-                replyTarget = null
-                replyNotice = null
-                modalState = modalState.exitReply()
-            },
-        )
+                // HUD 顶底栏：处在录制层之外，向顶栏按钮与底栏胶囊提供 LocalMaterialBackdrop
+                CompositionLocalProvider(LocalMaterialBackdrop provides materialBackdrop) {
+                    ReaderTopHudBar(
+                        visible = chromeVisible,
+                        backdrop = pageBackdrop,
+                        title = photo.title,
+                        pageLabel = pageLabel,
+                        onBack = onBack,
+                        onOpenPageJump = {
+                            pickerValue = pagePlan.currentPage
+                            modalState = modalState.open(CouiReaderModal.PAGE_JUMP)
+                        },
+                        prevChapter = prevChapter,
+                        nextChapter = nextChapter,
+                        onOpenChapter = onOpenChapter,
+                    )
 
-        // 追更引导：直接承接 Dialog 玻璃材质，动作按钮交给弹窗自身槽位
-        ReaderTrackPromptDialog(
-            visible = visibleModal == CouiReaderModal.TRACK_PROMPT,
-            muted = trackMuteChecked,
-            busy = trackBusy,
-            onMutedChange = { trackMuteChecked = it },
-            onFollow = ::followSeries,
-            onDismiss = { closeTrackPrompt() },
-        )
+                    ReaderBottomHudBar(
+                        visible = chromeVisible,
+                        backdrop = pageBackdrop,
+                        horizontal = horizontal,
+                        favorited = favorited,
+                        liked = liked,
+                        onToggleMode = { switchMode(!horizontal) },
+                        onOpenChapters = { modalState = modalState.open(CouiReaderModal.CHAPTERS) },
+                        onOpenComments = ::openComments,
+                        onToggleFavorite = ::toggleFavorite,
+                        onToggleLike = ::toggleLike,
+                    )
+                }
+
+                // 提示条叠在 HUD 之上：HUD 显示时让出完整底栏与边距，隐藏时贴在系统导航栏上方
+                val snackbarBottomPaddingDp = couiReaderSnackbarBottomPaddingDp(
+                    hudVisible = chromeVisible,
+                    bottomBarHeightDp = ReaderHudBottomHeightDp,
+                    barVerticalMarginDp = ReaderHudBarVerticalMarginDp,
+                )
+                GlassSnackbarHost(
+                    state = snackbarHostState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(bottom = snackbarBottomPaddingDp.dp),
+                )
+
+                // 长图模式的整屏缩放层：双击页面打开，单击或返回键退出。
+                // 放在工具栏之后，保证盖住内容与工具栏而不是被它们压住
+                val overlayImage = zoomOverlayIndex?.let { photo.images.getOrNull(it) }
+                if (overlayImage != null) {
+                    ReaderZoomOverlay(
+                        image = overlayImage,
+                        imageLoader = imageLoader,
+                        decodeSize = screenSize,
+                        onDismiss = { zoomOverlayIndex = null },
+                    )
+                }
+
+                val visibleModal = couiVisibleReaderModal(modalState, hasReplyTarget = replyTarget != null)
+
+                // 跳页：滑杆搭配加减微调按钮，百页以上长章节也能精准选定目标页
+                ReaderPageJumpDialog(
+                    visible = visibleModal == CouiReaderModal.PAGE_JUMP,
+                    pickerValue = pickerValue,
+                    totalPages = totalPages,
+                    onValueChange = { pickerValue = it },
+                    onConfirm = { actions.goToPage(pickerValue) },
+                    onDismiss = { modalState = modalState.dismiss() },
+                )
+
+                // 章节：列表高度封顶后自身滚动，当前话由弹窗内部标注
+                ReaderChaptersDialog(
+                    visible = visibleModal == CouiReaderModal.CHAPTERS,
+                    chapters = chapters,
+                    currentPhotoId = photo.photoId,
+                    onSelect = onOpenChapter,
+                    onDismiss = { modalState = modalState.dismiss() },
+                )
+
+                // 评论：直接承接 OverlayBottomSheet 玻璃材质，不再嵌套实底卡片割裂质感
+                ReaderCommentsDialog(
+                    visible = visibleModal == CouiReaderModal.COMMENTS,
+                    comments = comments,
+                    loading = commentsLoading,
+                    failed = commentsFailed,
+                    expired = commentsExpired,
+                    loggedIn = user != null,
+                    text = commentText,
+                    busy = commentBusy,
+                    notice = commentNotice,
+                    onTextChange = { commentText = couiClampCommentInput(it) },
+                    onSend = ::sendComment,
+                    onLogin = ::openLoginFromModal,
+                    onReload = ::loadComments,
+                    onReply = { item ->
+                        if (user == null) {
+                            openLoginFromModal()
+                        } else {
+                            replyTarget = item
+                            replyText = ""
+                            replyNotice = null
+                            modalState = modalState.enterReply()
+                        }
+                    },
+                    onDismiss = { modalState = modalState.dismiss() },
+                )
+
+                // 回复：与评论弹窗互斥；关闭时按 reopenCommentsAfterReply 回退评论弹窗
+                val retainedReplyTarget = rememberRetainedTarget(replyTarget)
+                ReaderReplyDialog(
+                    visible = replyTarget != null,
+                    author = retainedReplyTarget?.author,
+                    text = replyText,
+                    busy = replyBusy,
+                    notice = replyNotice,
+                    onTextChange = { replyText = couiClampCommentInput(it) },
+                    onSend = { sendReply(replyText) },
+                    onDismiss = {
+                        replyTarget = null
+                        replyNotice = null
+                        modalState = modalState.exitReply()
+                    },
+                )
+
+                // 追更引导：直接承接 OverlayDialog 玻璃材质，动作按钮交给 DialogButtonBar
+                ReaderTrackPromptDialog(
+                    visible = visibleModal == CouiReaderModal.TRACK_PROMPT,
+                    muted = trackMuteChecked,
+                    busy = trackBusy,
+                    onMutedChange = { trackMuteChecked = it },
+                    onFollow = ::followSeries,
+                    onDismiss = { closeTrackPrompt() },
+                )
+            }
+        }
     }
 }

@@ -1,24 +1,19 @@
 package com.jm3.app.miuix.ui.coui.page
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
-import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
-import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
-import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarStyle
+import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.reader.READER_ENTRY_TITLE
@@ -89,17 +84,11 @@ private fun ReaderStateScreen(
     content: @Composable () -> Unit,
 ) {
     CouiTheme {
-        CouiAppScaffold(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(CouiKitTheme.colorScheme.background),
-            topBar = {
-                LargeTopAppBar(
-                    title = { CouiTopBarTitle(text = title, textAlign = TextAlign.Start) },
-                    navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
-                    colors = couiTopAppBarColors(),
-                )
-            },
+        CouiPageScaffold(
+            title = title,
+            onBack = onBack,
+            topBarStyle = CouiTopBarStyle.Large,
+            wide = isCouiWideWindow(),
         ) { innerPadding ->
             Column(
                 modifier = Modifier
