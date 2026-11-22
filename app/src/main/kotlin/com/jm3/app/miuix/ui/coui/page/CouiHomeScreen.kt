@@ -430,7 +430,6 @@ fun CouiHomeScreen(
                             }
                         }
                     }
-                }
 
                 if (topBarSearchState.isResultsVisible) {
                     LazyColumn(
