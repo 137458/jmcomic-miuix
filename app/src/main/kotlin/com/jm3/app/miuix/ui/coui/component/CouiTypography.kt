@@ -1,6 +1,5 @@
 package com.jm3.app.miuix.ui.coui.component
 
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -14,15 +13,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.rememberCouiTextStyle
-import com.itos.coui.theme.CouiTheme
-import com.itos.coui.theme.LocalCouiContentColor
 import com.jm3.app.miuix.ui.LocalWideLayout
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalContentColor
 
 /**
- * coui 0.0.1-alpha10 将旧版 Body/SectionTitle/Stepper/SearchCancel 收敛进更精简的
- * [CouiTextKind] 枚举；这里基于现有预设派生出对应字阶，保持全端排版与 sp 缩放一致。
+ * 基于 suqi8/coui [COUITheme.textStyles] 派生应用内部字阶，保持全端排版与大屏 sp 缩放一致。
  */
 /** 大屏放大档比例：840dp 起字号、行高与配套图标抬一档，手机断点以下恒为 1。 */
 private const val CouiLargeTypographyScale = 1.12f
@@ -36,12 +33,15 @@ private const val CouiLargeTypographyScale = 1.12f
 @Composable
 internal fun couiLargeTypography(): Boolean = LocalWideLayout.current.largeTypography
 
-/** 按大屏档缩放字阶的纯计算入口：字号与行高同比放大，未指定的行高原样保留。 */
+/**
+ * 按大屏档缩放字阶的纯计算入口：字号放大；sp 行高同比放大，em 行高随字号自动联动，
+ * 未指定的 TextUnit.Unspecified 原样保留。
+ */
 internal fun scaleCouiTextStyle(style: TextStyle, largeTypography: Boolean): TextStyle {
     if (!largeTypography) return style
     return style.copy(
         fontSize = if (style.fontSize.isSpecified) style.fontSize * CouiLargeTypographyScale else style.fontSize,
-        lineHeight = if (style.lineHeight.isSpecified) {
+        lineHeight = if (style.lineHeight.isSp) {
             style.lineHeight * CouiLargeTypographyScale
         } else {
             style.lineHeight
@@ -49,7 +49,7 @@ internal fun scaleCouiTextStyle(style: TextStyle, largeTypography: Boolean): Tex
     )
 }
 
-/** 按大屏档缩放字阶：字号与行高同比放大，未指定的行高原样保留。 */
+/** 按大屏档缩放字阶：字号与 sp 行高同比放大，em 与未指定行高原样保留。 */
 @Composable
 internal fun couiScaledStyle(style: TextStyle): TextStyle =
     scaleCouiTextStyle(style, couiLargeTypography())
@@ -66,12 +66,12 @@ internal fun couiScaledSize(base: Dp): Dp =
 
 @Composable
 internal fun rememberCouiBodyTextStyle(): TextStyle =
-    couiScaledStyle(rememberCouiTextStyle(CouiTextKind.Search))
+    couiScaledStyle(COUITheme.textStyles.bodyL)
 
 @Composable
 internal fun rememberCouiSectionTitleStyle(): TextStyle =
     couiScaledStyle(
-        rememberCouiTextStyle(CouiTextKind.ItemTitle).copy(
+        COUITheme.textStyles.headlineS.copy(
             fontSize = 18.sp,
             lineHeight = 22.sp,
             fontWeight = FontWeight.SemiBold,
@@ -80,14 +80,14 @@ internal fun rememberCouiSectionTitleStyle(): TextStyle =
 
 @Composable
 internal fun rememberCouiStepperTextStyle(): TextStyle =
-    rememberCouiTextStyle(CouiTextKind.ItemTitle).copy(
+    COUITheme.textStyles.headlineS.copy(
         fontSize = 18.sp,
         lineHeight = 21.sp,
     )
 
 @Composable
 internal fun rememberCouiActionTextStyle(): TextStyle =
-    rememberCouiTextStyle(CouiTextKind.ItemTitle).copy(
+    COUITheme.textStyles.buttonM.copy(
         fontSize = 14.sp,
         lineHeight = 18.sp,
     )
@@ -166,18 +166,19 @@ internal fun CouiCustomStyledText(
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val resolvedColor = color.takeOrElse {
-        LocalCouiContentColor.current.takeOrElse { CouiTheme.colorScheme.onSurface }
+        style.color.takeOrElse {
+            LocalContentColor.current.takeOrElse { COUITheme.colorScheme.labelPrimary }
+        }
     }
-    BasicText(
+    Text(
         text = text,
         modifier = modifier,
-        style = style.copy(
-            color = resolvedColor,
-            textAlign = textAlign,
-        ),
-        onTextLayout = { onLineCount(it.lineCount) },
+        color = resolvedColor,
+        textAlign = textAlign,
         maxLines = maxLines,
         overflow = overflow,
+        onTextLayout = { onLineCount(it.lineCount) },
+        style = style,
     )
 }
 
@@ -192,16 +193,17 @@ internal fun CouiCustomStyledText(
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val resolvedColor = color.takeOrElse {
-        LocalCouiContentColor.current.takeOrElse { CouiTheme.colorScheme.onSurface }
+        style.color.takeOrElse {
+            LocalContentColor.current.takeOrElse { COUITheme.colorScheme.labelPrimary }
+        }
     }
-    BasicText(
+    Text(
         text = text,
         modifier = modifier,
-        style = style.copy(
-            color = resolvedColor,
-            textAlign = textAlign,
-        ),
+        color = resolvedColor,
+        textAlign = textAlign,
         maxLines = maxLines,
         overflow = overflow,
+        style = style,
     )
 }
