@@ -47,7 +47,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.LocalAlbumHeroHost
@@ -589,12 +588,12 @@ private fun CouiWorkAuthorText(author: String?) {
     }
 }
 
-/** 行高折算：库内文本未声明行高时按字形度量排版，同排卡片会差一两个像素，这里统一折算成固定值。 */
+/** 行高折算：库内文本未声明行高或以 em 相对倍距声明时统一换算成 sp 固定值，同排卡片才等高且可安全转 dp。 */
 internal fun couiPinnedLineHeight(fontSize: TextUnit, declaredLineHeight: TextUnit): TextUnit =
-    if (declaredLineHeight.isSpecified) {
-        declaredLineHeight
-    } else {
-        fontSize * CouiWorkCardTokens.LineHeightFactor
+    when {
+        declaredLineHeight.isSp -> declaredLineHeight
+        declaredLineHeight.isEm && fontSize.isSp -> (fontSize.value * declaredLineHeight.value).sp
+        else -> fontSize * CouiWorkCardTokens.LineHeightFactor
     }
 
 /** 文字块占位高度：固定行高乘以预留行数，卡片高度只跟行数有关。 */

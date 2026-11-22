@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -65,6 +66,24 @@ class CouiWorkCardLayoutTest {
     @Test
     fun 已声明行高时原样保留() {
         assertEquals(20.sp, couiPinnedLineHeight(fontSize = 16.sp, declaredLineHeight = 20.sp))
+    }
+
+    @Test
+    fun em单位行高按字号换算成sp固定行高() {
+        val pinned = couiPinnedLineHeight(fontSize = 13.sp, declaredLineHeight = 1.4.em)
+        assertEquals(TextUnitType.Sp, pinned.type)
+        assertEquals(18.2f, pinned.value, 1e-4f)
+
+        val blockHeight = couiTextBlockHeight(pinned, 2)
+        assertEquals(TextUnitType.Sp, blockHeight.type)
+        assertEquals(36.4f, blockHeight.value, 1e-4f)
+    }
+
+    @Test
+    fun coui相对倍距em行高按字号换算成sp() {
+        val pinned = couiPinnedLineHeight(fontSize = 16.sp, declaredLineHeight = 1.1719.em)
+        assertEquals(TextUnitType.Sp, pinned.type)
+        assertEquals(16f * 1.1719f, pinned.value, 1e-4f)
     }
 
     @Test
