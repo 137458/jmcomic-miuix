@@ -24,9 +24,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +45,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -52,25 +53,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.itos.coui.backdrop.CouiBackdrop
-import com.itos.coui.backdrop.couiBackdrop
-import com.itos.coui.backdrop.rememberCouiBackdrop
-import com.itos.coui.dialog.CouiDialogDefaults
-import com.itos.coui.effect.CouiContourStyle
-import com.itos.coui.layout.CouiPageDefaults
-import com.itos.coui.layout.Divider
-import com.itos.coui.layout.Group
-import com.itos.coui.layout.Item
-import com.itos.coui.scroll.couiVerticalScroll
-import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.shape.CouiShape
-import com.itos.coui.switch.Switch
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
-import com.itos.coui.text.rememberCouiTextStyle
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
-import com.itos.coui.topappbar.LargeTopAppBar
-import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.FoldableNotes
 import com.jm3.app.miuix.ui.GlassSnackbarHost
@@ -78,26 +60,28 @@ import com.jm3.app.miuix.ui.InlineCodeText
 import com.jm3.app.miuix.ui.NotesFold
 import com.jm3.app.miuix.ui.NotesPageViewport
 import com.jm3.app.miuix.ui.UpdateAvailableDialog
-import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCircleActionButton
+import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
 import com.jm3.app.miuix.ui.coui.component.CouiHeaderCapsuleAction
 import com.jm3.app.miuix.ui.coui.component.CouiInstallProgressButton
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
-import com.jm3.app.miuix.ui.coui.component.couiContourSurface
+import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
+import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiPageTopBar
+import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarAction
+import com.jm3.app.miuix.ui.coui.component.LocalCouiBlurEnabled
+import com.jm3.app.miuix.ui.coui.component.couiContourSurfaceEnabled
 import com.jm3.app.miuix.ui.coui.component.couiFloatingSurfaceEnabled
-import com.jm3.app.miuix.ui.coui.component.couiSwitchRow
-import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.couiPageContentPadding
+import com.jm3.app.miuix.ui.coui.component.couiPageScroll
+import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
-import com.jm3.app.miuix.ui.coui.component.couiWithBottomPadding
-import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
+import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
+import com.jm3.app.miuix.ui.coui.component.rememberMaterialBackdropProvider
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.copyTextToClipboard
-import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.formatUpdateSize
 import com.jm3.app.miuix.ui.loadAppIcon
 import com.jm3.app.miuix.ui.loadCurrentVersion
@@ -118,11 +102,29 @@ import com.jm3.core.update.UpdateOutcome
 import com.jm3.core.update.UpdateProgress
 import com.jm3.core.update.UpdatePrompt
 import com.jm3.core.update.VersionText
+import io.github.suqi8.coui.kmp.basic.BasicComponent
+import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardListGroup
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.LayerBackdrop
+import io.github.suqi8.coui.kmp.blur.isRuntimeShaderSupported
+import io.github.suqi8.coui.kmp.blur.layerBackdrop
+import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
+import io.github.suqi8.coui.kmp.effect.LocalMaterialBackdrop
+import io.github.suqi8.coui.kmp.preference.ArrowPreference
+import io.github.suqi8.coui.kmp.preference.PreferenceCategory
+import io.github.suqi8.coui.kmp.preference.SwitchPreference
+import io.github.suqi8.coui.kmp.squircle.SquircleShape
+import io.github.suqi8.coui.kmp.squircle.squircleBorder
+import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
 import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 更新说明的块间距，与更新弹窗保持同一节奏。 */
@@ -134,10 +136,7 @@ private val NotesPrefixMinWidth = 20.dp
 /** 已是最新版本且更新说明较长时默认预览的块数（对标 OShin 折叠说明）。 */
 private const val CHANGELOG_PREVIEW_BLOCK_LIMIT = 3
 
-/** 底部固定主操作栏在实测前的默认内容避让高度（48dp 按钮 + 上下各 14dp）。 */
-private val BottomActionDefaultClearance = 76.dp
-
-private val HeroIconContainerShape = CouiShape(14.dp, 3f)
+private val HeroIconContainerShape = SquircleShape(cornerRadius = 14.dp, weight = 3f)
 private val HeroIconContainerSize = 52.dp
 private val HeroIconGlyphSize = 36.dp
 
@@ -160,11 +159,9 @@ internal fun CouiUpdateScreen(
         context.applicationInfo.loadLabel(context.packageManager).toString()
     }
 
-    // 预览弹窗是 COUI 独有的验看入口：真实下载之外的模拟进度留在本皮肤，不进共享骨架
     var showPreviewDialog by rememberSaveable { mutableStateOf(false) }
     var previewSimulating by remember { mutableStateOf(false) }
     var previewDownloadState by remember { mutableStateOf<UpdateDownloadState>(UpdateDownloadState.Idle) }
-    // 检查、弹窗与设置编排都在共享骨架里；本皮肤只做视觉结构与 slot 转发
     val scaffoldState = rememberUpdateScaffoldState(
         deps = deps,
         snackbarHostState = snackbarHostState,
@@ -183,7 +180,6 @@ internal fun CouiUpdateScreen(
     val latestVersion = scaffoldState.latestVersion
     val ignored = scaffoldState.ignored
 
-    // 预览弹窗里的模拟下载进度：便于直接验看进度条、取消下载与后台下载槽位，不发起真实网络请求
     LaunchedEffect(previewSimulating) {
         if (!previewSimulating) {
             previewDownloadState = UpdateDownloadState.Idle
@@ -229,58 +225,76 @@ internal fun CouiUpdateScreen(
         else -> "忽略" + latestVersion + " 的更新提示"
     }
 
-    CouiTheme {
-        val density = LocalDensity.current
-        val scrollState = rememberScrollState()
-        val scrollBehavior = rememberCouiScreenScrollBehavior(canScroll = { scrollState.maxValue > 0 })
-        var bottomBarBodyHeight by remember { mutableStateOf(BottomActionDefaultClearance) }
-        val pageBackground = CouiKitTheme.colorScheme.background
-        val floatingBackdrop = if (couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, hasBackdrop = true)) {
-            rememberCouiBackdrop(drawSource = {
-                drawRect(pageBackground)
-                drawContent()
-            })
-        } else {
-            null
+    val blocks = remember(release?.notes) {
+        release?.notes?.let(MarkdownBlocks::parse).orEmpty()
+    }
+    var notesUserToggled by rememberSaveable(release?.tagName) { mutableStateOf(false) }
+    var notesExpanded by rememberSaveable(release?.tagName) {
+        mutableStateOf(couiChangelogDefaultExpanded(state, blocks.size))
+    }
+    LaunchedEffect(state, release?.tagName, blocks.size) {
+        if (!notesUserToggled) {
+            notesExpanded = couiChangelogDefaultExpanded(state, blocks.size)
         }
+    }
 
-        Box(modifier = Modifier.fillMaxSize()) {
-            CouiAppScaffold(
+    CouiTheme {
+        val scrollBehavior = rememberCouiPageScrollBehavior()
+        val wide = isCouiWideWindow()
+
+        CouiPageScaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+            topBar = { backdrop ->
+                CouiPageTopBar(
+                    title = "检查更新",
+                    scrollBehavior = scrollBehavior,
+                    backdrop = backdrop,
+                    onBack = onBack,
+                    wide = wide,
+                    actions = {
+                        CouiPageTopBarAction(
+                            icon = CouiIcons.Refresh,
+                            contentDescription = "重新检查",
+                            onClick = { if (state != null) scaffoldState.recheck() },
+                        )
+                    },
+                )
+            },
+            bottomBar = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    GlassSnackbarHost(
+                        state = snackbarHostState,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    UpdateBottomActionBar(
+                        state = state,
+                        downloadState = downloadState,
+                        onRecheck = scaffoldState::recheck,
+                        onOpenRelease = scaffoldState::openRelease,
+                        onStartDownload = scaffoldState::startDownload,
+                        onCancelDownload = scaffoldState::cancelDownload,
+                        onResetDownload = scaffoldState::resetDownload,
+                        onInstall = scaffoldState::install,
+                    )
+                }
+            },
+        ) { innerPadding ->
+            val contentPadding = couiPageContentPadding(innerPadding, extraBottom = 0.dp)
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
-                contentBackdrop = floatingBackdrop,
-                topBar = {
-                    LargeTopAppBar(
-                        title = { CouiTopBarTitle(text = "检查更新", textAlign = TextAlign.Start) },
-                        navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
-                        actions = {
-                            TopAppBarButtonGroup {
-                                CouiTopBarAction(
-                                    icon = CouiIcons.Refresh,
-                                    contentDescription = "重新检查",
-                                    onClick = { if (state != null) scaffoldState.recheck() },
-                                )
-                            }
-                        },
-                        scrollBehavior = scrollBehavior,
-                        colors = couiTopAppBarColors(),
-                    )
-                },
-            ) { innerPadding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .readableWidth()
-                        .couiVerticalScroll(scrollState)
-                        .padding(
-                            scrollBehavior.state.contentPadding(innerPadding, density)
-                                .couiWithBottomPadding(
-                                    couiPageExtraBottomDp(hasFab = false).dp + bottomBarBodyHeight,
-                                ),
-                        )
-                        .consumeWindowInsets(innerPadding),
-                ) {
+                    .readableWidth()
+                    .couiPageScroll()
+                    .consumeWindowInsets(contentPadding),
+                contentPadding = contentPadding,
+                flingBehavior = rememberCOUIFlingBehavior(),
+            ) {
+                item(key = "update-hero") {
                     UpdateHeroCard(
                         appName = appName,
                         currentVersion = currentVersion,
@@ -288,14 +302,23 @@ internal fun CouiUpdateScreen(
                         downloadState = downloadState,
                         onOpenRelease = scaffoldState::openRelease,
                     )
-                    if (release != null) {
+                }
+                if (release != null) {
+                    item(key = "update-notes") {
                         UpdateNotesGroup(
                             title = changelogTitle(state),
-                            state = state,
                             release = release,
+                            blocks = blocks,
+                            expanded = notesExpanded,
+                            onToggleExpanded = {
+                                notesUserToggled = true
+                                notesExpanded = !notesExpanded
+                            },
                             onOpenRelease = scaffoldState::openRelease,
                         )
                     }
+                }
+                item(key = "update-settings") {
                     UpdateSettingsGroup(
                         autoCheckUpdate = scaffoldState.autoCheck,
                         ignored = ignored,
@@ -304,6 +327,8 @@ internal fun CouiUpdateScreen(
                         onAutoCheckChange = scaffoldState::setAutoCheck,
                         onIgnoreToggle = { scaffoldState.latestVersion?.let(scaffoldState::toggleIgnored) },
                     )
+                }
+                item(key = "update-meta") {
                     UpdateMetaGroup(
                         currentVersion = currentVersion,
                         state = state,
@@ -311,6 +336,8 @@ internal fun CouiUpdateScreen(
                         onCopyVersion = ::copyCurrentVersion,
                         onOpenRelease = { scaffoldState.openRelease(UpdateChecker.RELEASES_PAGE_URL) },
                     )
+                }
+                item(key = "update-debug") {
                     UpdateDebugGroup(
                         hasNewVersion = hasNewVersion,
                         onTestDialog = {
@@ -326,32 +353,6 @@ internal fun CouiUpdateScreen(
                         },
                     )
                 }
-            }
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                GlassSnackbarHost(
-                    state = snackbarHostState,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                UpdateBottomActionBar(
-                    state = state,
-                    downloadState = downloadState,
-                    backdrop = floatingBackdrop,
-                    onContentHeightMeasured = { px ->
-                        bottomBarBodyHeight = with(density) { px.toDp() }
-                    },
-                    onRecheck = scaffoldState::recheck,
-                    onOpenRelease = scaffoldState::openRelease,
-                    onStartDownload = scaffoldState::startDownload,
-                    onCancelDownload = scaffoldState::cancelDownload,
-                    onResetDownload = scaffoldState::resetDownload,
-                    onInstall = scaffoldState::install,
-                )
             }
         }
 
@@ -432,8 +433,8 @@ private fun UpdateHeroCard(
     onOpenRelease: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val dark = CouiKitTheme.isDark
-    val scheme = CouiKitTheme.colorScheme
+    val dark = COUITheme.isDark
+    val scheme = COUITheme.colorScheme
     val iconSizePx = with(LocalDensity.current) { HeroIconGlyphSize.roundToPx() }
     val appIcon = remember(context, iconSizePx) { loadAppIcon(context, iconSizePx) }
     val checking = state == null
@@ -471,181 +472,186 @@ private fun UpdateHeroCard(
         0f
     }
 
-    val errorColor = CouiDialogDefaults.themeColors(dark).destructive
-    val statusTint = if (hasFailed) errorColor else scheme.accent
-    val heroBackdrop = if (couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, hasBackdrop = true)) {
-        rememberCouiBackdrop(drawSource = {
-            drawRect(scheme.card)
+    val statusTint = if (hasFailed) scheme.error else scheme.primary
+    val canBlurHero = LocalCouiBlurEnabled.current &&
+        couiContourSurfaceEnabled(Build.VERSION.SDK_INT) &&
+        isRuntimeShaderSupported()
+    val heroCardBg = scheme.cardBackground
+    val heroBackdrop = if (canBlurHero) {
+        rememberLayerBackdrop {
+            drawRect(heroCardBg)
             drawContent()
-        })
+        }
     } else {
         null
     }
+    val heroMaterialProvider = rememberMaterialBackdropProvider(heroBackdrop)
+    val borderColor = if (isAvailable || hasFailed) {
+        statusTint.copy(alpha = if (dark) 0.36f else 0.24f)
+    } else {
+        scheme.divider.copy(alpha = if (dark) 0.55f else 0.45f)
+    }
 
-    Box(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiPageDefaults.horizontalMargin)
-            .padding(top = CouiPageDefaults.categoryTopSpacing)
-            .clip(CouiPageDefaults.shape),
-    ) {
-        UpdateHeroBackdrop(
-            cardColor = scheme.card,
-            statusTint = statusTint,
-            dark = dark,
-            backdrop = heroBackdrop,
-            modifier = Modifier.matchParentSize(),
-        )
-        Spacer(
-            modifier = Modifier
-                .matchParentSize()
-                .couiContourSurface(
-                    shape = CouiPageDefaults.shape,
-                    surfaceColor = Color.Transparent,
-                    cornerRadius = 24.dp,
-                    cornerWeight = 3f,
-                    style = CouiContourStyle.Dialog,
-                    dark = dark,
-                    emphasized = isAvailable || hasFailed,
-                    fallbackBorderColor = scheme.outlineVariant.copy(alpha = if (dark) 0.36f else 0.22f),
-                ),
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize()
-                .padding(horizontal = 24.dp, vertical = 22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (appIcon != null) {
-                Box(
-                    modifier = Modifier
-                        .size(HeroIconContainerSize)
-                        .clip(HeroIconContainerShape)
-                        .background(scheme.onSurface.copy(alpha = if (dark) 0.08f else 0.04f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        bitmap = appIcon,
-                        contentDescription = appName,
-                        modifier = Modifier.size(HeroIconGlyphSize),
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-            Row(
-                modifier = Modifier
-                    .clip(CouiCapsuleShape)
-                    .background(statusTint.copy(alpha = if (dark) 0.18f else 0.11f))
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    imageVector = badgeIcon,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(15.dp)
-                        .graphicsLayer { rotationZ = spinAngle },
-                    tint = statusTint,
-                )
-                Text(
-                    text = "$appName Release",
-                    kind = CouiTextKind.GroupFooter,
-                    color = statusTint,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            BasicText(
-                text = headlineText,
-                style = rememberCouiTextStyle(CouiTextKind.HomeTitle).copy(
-                    color = scheme.onSurface,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(
+                top = CouiLayoutTokens.CategoryTopSpacing,
+                bottom = CouiLayoutTokens.GroupSpacing,
             )
-            Spacer(modifier = Modifier.height(10.dp))
-            Box(
-                modifier = Modifier
-                    .clip(CouiCapsuleShape)
-                    .background(scheme.onSurface.copy(alpha = if (dark) 0.08f else 0.05f))
-                    .padding(horizontal = 14.dp, vertical = 5.dp),
-            ) {
-                Text(
-                    text = versionLine,
-                    kind = CouiTextKind.ItemValue,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (subtitleText.isNotBlank()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = subtitleText,
-                    kind = CouiTextKind.ItemSummary,
-                    color = scheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            val apkAsset = if (isAvailable) state.release.apk else null
-            if (apkAsset != null) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = apkAsset.name,
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.onSurfaceVariant.copy(alpha = 0.84f),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (isAvailable && downloadState is UpdateDownloadState.Downloading) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Box(
+            .squircleBorder(
+                width = if (isAvailable || hasFailed) 1.dp else 0.5.dp,
+                color = borderColor,
+                cornerRadius = CouiLayoutTokens.CardCorner,
+                weight = CouiLayoutTokens.CardCornerWeight,
+            ),
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            UpdateHeroBackdrop(
+                cardColor = heroCardBg,
+                statusTint = statusTint,
+                dark = dark,
+                backdrop = heroBackdrop,
+                modifier = Modifier.matchParentSize(),
+            )
+            CompositionLocalProvider(LocalMaterialBackdrop provides heroMaterialProvider) {
+                Column(
                     modifier = Modifier
-                        .clip(CouiCapsuleShape)
-                        .background(scheme.accent.copy(alpha = if (dark) 0.16f else 0.10f))
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                        .fillMaxWidth()
+                        .animateContentSize()
+                        .padding(horizontal = 24.dp, vertical = 22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(
-                        text = updateDialogDownloadDetail(downloadState),
-                        kind = CouiTextKind.GroupFooter,
-                        color = scheme.accent,
+                    if (appIcon != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(HeroIconContainerSize)
+                                .clip(HeroIconContainerShape)
+                                .background(scheme.labelPrimary.copy(alpha = if (dark) 0.08f else 0.04f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Image(
+                                bitmap = appIcon,
+                                contentDescription = appName,
+                                modifier = Modifier.size(HeroIconGlyphSize),
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(statusTint.copy(alpha = if (dark) 0.18f else 0.11f))
+                            .padding(horizontal = 12.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = badgeIcon,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(15.dp)
+                                .graphicsLayer { rotationZ = spinAngle },
+                            tint = statusTint,
+                        )
+                        Text(
+                            text = "$appName Release",
+                            style = COUITheme.textStyles.bodyXS,
+                            color = statusTint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    BasicText(
+                        text = headlineText,
+                        style = COUITheme.textStyles.displayXS.copy(
+                            color = scheme.labelPrimary,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(scheme.labelPrimary.copy(alpha = if (dark) 0.08f else 0.05f))
+                            .padding(horizontal = 14.dp, vertical = 5.dp),
+                    ) {
+                        Text(
+                            text = versionLine,
+                            style = COUITheme.textStyles.bodyM,
+                            color = scheme.labelSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (subtitleText.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = subtitleText,
+                            style = COUITheme.textStyles.bodyS,
+                            color = scheme.labelSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    val apkAsset = if (isAvailable) state.release.apk else null
+                    if (apkAsset != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = apkAsset.name,
+                            style = COUITheme.textStyles.bodyXS,
+                            color = scheme.labelSecondary.copy(alpha = 0.84f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (isAvailable && downloadState is UpdateDownloadState.Downloading) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(scheme.primary.copy(alpha = if (dark) 0.16f else 0.10f))
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                        ) {
+                            Text(
+                                text = updateDialogDownloadDetail(downloadState),
+                                style = COUITheme.textStyles.bodyXS,
+                                color = scheme.primaryText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    } else if (isAvailable && downloadState is UpdateDownloadState.Failed) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        CouiBodyText(
+                            text = downloadState.message,
+                            color = scheme.error,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        CouiHeaderCapsuleAction(
+                            text = "用浏览器下载",
+                            trailingIcon = CouiIcons.Forward,
+                            tinted = true,
+                            onClick = { onOpenRelease(updateBrowserFallbackUrl(state.release)) },
+                        )
+                    } else if (hasFailed) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        CouiHeaderCapsuleAction(
+                            text = "在浏览器打开 Releases 页",
+                            trailingIcon = CouiIcons.Forward,
+                            tinted = true,
+                            onClick = { onOpenRelease(UpdateChecker.RELEASES_PAGE_URL) },
+                        )
+                    }
                 }
-            } else if (isAvailable && downloadState is UpdateDownloadState.Failed) {
-                Spacer(modifier = Modifier.height(12.dp))
-                CouiBodyText(
-                    text = downloadState.message,
-                    color = errorColor,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                CouiHeaderCapsuleAction(
-                    text = "用浏览器下载",
-                    trailingIcon = CouiIcons.Forward,
-                    tinted = true,
-                    backdrop = heroBackdrop,
-                    onClick = { onOpenRelease(updateBrowserFallbackUrl(state.release)) },
-                )
-            } else if (hasFailed) {
-                Spacer(modifier = Modifier.height(12.dp))
-                CouiHeaderCapsuleAction(
-                    text = "在浏览器打开 Releases 页",
-                    trailingIcon = CouiIcons.Forward,
-                    tinted = true,
-                    backdrop = heroBackdrop,
-                    onClick = { onOpenRelease(UpdateChecker.RELEASES_PAGE_URL) },
-                )
             }
         }
     }
@@ -657,10 +663,10 @@ private fun UpdateHeroBackdrop(
     cardColor: Color,
     statusTint: Color,
     dark: Boolean,
-    backdrop: CouiBackdrop?,
+    backdrop: LayerBackdrop?,
     modifier: Modifier = Modifier,
 ) {
-    val backdropModifier = if (backdrop != null) Modifier.couiBackdrop(backdrop) else Modifier
+    val backdropModifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier
     Box(
         modifier = modifier
             .then(backdropModifier)
@@ -681,15 +687,13 @@ private fun UpdateHeroBackdrop(
 }
 
 /**
- * 底部悬浮主操作栏：API 34+ 通过 [backdrop] 为 [CouiInstallProgressButton] 与 [CouiCircleActionButton]
- * 提供原厂 COUI 凝光玻璃材质与折射采样，滚过底栏的内容透过玻璃自然流动。
+ * 底部悬浮主操作栏：API 34+ 通过 [LocalMaterialBackdrop] 为 [CouiInstallProgressButton] 与
+ * [CouiCircleActionButton] 提供 COUI 17 实时材质模糊，滚过底栏的内容透过玻璃自然流动。
  */
 @Composable
 private fun UpdateBottomActionBar(
     state: UpdateOutcome?,
     downloadState: UpdateDownloadState,
-    backdrop: CouiBackdrop?,
-    onContentHeightMeasured: (Int) -> Unit,
     onRecheck: () -> Unit,
     onOpenRelease: (String) -> Unit,
     onStartDownload: (ReleaseAsset) -> Unit,
@@ -697,13 +701,16 @@ private fun UpdateBottomActionBar(
     onResetDownload: () -> Unit,
     onInstall: (File) -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
+    val scheme = COUITheme.colorScheme
     val mode = couiUpdateActionBarMode(state, downloadState)
     val label = couiUpdateButtonLabel(state, downloadState)
     val progressFraction = couiUpdateProgressFraction(downloadState)
     val isDownloading = mode == CouiUpdateActionBarMode.DOWNLOADING
     val enabled = mode != CouiUpdateActionBarMode.CHECKING && !isDownloading
-    val hasFloatingSurface = couiFloatingSurfaceEnabled(Build.VERSION.SDK_INT, backdrop != null)
+    val hasFloatingSurface = couiFloatingSurfaceEnabled(
+        sdkInt = Build.VERSION.SDK_INT,
+        hasBackdrop = LocalMaterialBackdrop.current != null,
+    )
 
     val containerModifier = if (hasFloatingSurface) {
         Modifier.fillMaxWidth()
@@ -713,9 +720,9 @@ private fun UpdateBottomActionBar(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        scheme.background.copy(alpha = 0f),
-                        scheme.background.copy(alpha = 0.94f),
-                        scheme.background,
+                        scheme.backgroundWithCard.copy(alpha = 0f),
+                        scheme.backgroundWithCard.copy(alpha = 0.94f),
+                        scheme.backgroundWithCard,
                     ),
                 ),
             )
@@ -724,7 +731,6 @@ private fun UpdateBottomActionBar(
     Box(
         modifier = containerModifier
             .navigationBarsPadding()
-            .onSizeChanged { onContentHeightMeasured(it.height) }
             .padding(horizontal = 24.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -740,7 +746,6 @@ private fun UpdateBottomActionBar(
                 enabled = enabled,
                 progress = progressFraction,
                 isProgressActive = isDownloading,
-                backdrop = backdrop,
                 modifier = Modifier.weight(1f),
                 onClick = {
                     when (mode) {
@@ -769,14 +774,12 @@ private fun UpdateBottomActionBar(
                 CouiCircleActionButton(
                     icon = CouiIcons.Close,
                     contentDescription = "取消下载",
-                    backdrop = backdrop,
                     onClick = onCancelDownload,
                 )
             } else if (mode == CouiUpdateActionBarMode.READY_TO_INSTALL) {
                 CouiCircleActionButton(
                     icon = CouiIcons.Refresh,
                     contentDescription = "重新下载",
-                    backdrop = backdrop,
                     onClick = onResetDownload,
                 )
             }
@@ -784,32 +787,25 @@ private fun UpdateBottomActionBar(
     }
 }
 
-/** 更新日志卡：标题栏提供「发布详情」胶囊，长说明底部通过 COUI 原生分割线 + [Item] 行展开收起。 */
+/** 更新日志卡：标题栏提供「发布详情」胶囊，长说明底部通过分隔线 + [BasicComponent] 行展开收起。 */
 @Composable
 private fun UpdateNotesGroup(
     title: String,
-    state: UpdateOutcome?,
     release: ReleaseInfo,
+    blocks: List<MarkdownBlock>,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
     onOpenRelease: (String) -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
-    val blocks = remember(release.notes) { MarkdownBlocks.parse(release.notes) }
+    val scheme = COUITheme.colorScheme
     val collapsible = couiChangelogCollapsible(blocks.size)
-    var userToggled by rememberSaveable(release.tagName) { mutableStateOf(false) }
-    var expanded by rememberSaveable(release.tagName) {
-        mutableStateOf(couiChangelogDefaultExpanded(state, blocks.size))
-    }
-    LaunchedEffect(state, release.tagName) {
-        if (!userToggled) {
-            expanded = couiChangelogDefaultExpanded(state, blocks.size)
-        }
-    }
     val previewLimit = couiChangelogPreviewLimit(blocks.size, expanded)
     val hiddenCount = couiChangelogCollapsedHiddenCount(blocks.size)
 
-    Group(
+    CouiGroupTitle(
         title = title,
-        headerActions = {
+        topSpacing = 0.dp,
+        actions = {
             if (release.htmlUrl.isNotBlank()) {
                 CouiHeaderCapsuleAction(
                     text = "发布详情",
@@ -819,18 +815,19 @@ private fun UpdateNotesGroup(
                 )
             }
         },
+    )
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(bottom = CouiLayoutTokens.GroupSpacing),
     ) {
-        // 说明正文统一走 FoldableNotes：展开后在有界视口内滚动，折叠行留在视口外侧，
-        // 无论说明有多少屏，"收起更新说明"始终贴在卡片下缘。
         FoldableNotes(
             fold = if (collapsible) {
                 NotesFold(
                     expanded = expanded,
                     label = if (expanded) "收起更新说明" else "展开全部更新说明",
-                    onToggle = {
-                        userToggled = true
-                        expanded = !expanded
-                    },
+                    onToggle = onToggleExpanded,
                 )
             } else {
                 null
@@ -842,14 +839,15 @@ private fun UpdateNotesGroup(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = CouiPageDefaults.rowPadding,
-                            vertical = CouiPageDefaults.contentPadding + 2.dp,
+                            horizontal = CouiLayoutTokens.RowPadding,
+                            vertical = CouiLayoutTokens.ContentPadding + 2.dp,
                         ),
                     verticalArrangement = Arrangement.spacedBy(NotesBlockSpacing),
                 ) {
                     Text(
                         text = release.name.ifBlank { "版本特性说明" },
-                        kind = CouiTextKind.ItemTitle,
+                        style = COUITheme.textStyles.headlineXS,
+                        color = scheme.labelPrimary,
                     )
                     if (previewLimit != 0) {
                         UpdateNotes(
@@ -861,42 +859,28 @@ private fun UpdateNotesGroup(
             },
             footer = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Divider()
-                    Item(
-                        title = {
-                            Text(
-                                text = if (expanded) "收起更新说明" else "展开全部更新说明",
-                                kind = CouiTextKind.ItemValue,
-                                color = scheme.accent,
-                            )
-                        },
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = CouiLayoutTokens.RowPadding))
+                    BasicComponent(
+                        title = if (expanded) "收起更新说明" else "展开全部更新说明",
+                        titleColor = BasicComponentDefaults.titleColor(color = scheme.primaryText),
                         summary = if (!expanded) {
-                            {
-                                Text(
-                                    text = if (previewLimit == 0) {
-                                        "共 ${blocks.size} 段内容已收起"
-                                    } else {
-                                        "还有 $hiddenCount 段内容未展开"
-                                    },
-                                    kind = CouiTextKind.GroupFooter,
-                                    color = scheme.onSurfaceVariant,
-                                )
+                            if (previewLimit == 0) {
+                                "共 ${blocks.size} 段内容已收起"
+                            } else {
+                                "还有 $hiddenCount 段内容未展开"
                             }
                         } else {
                             null
                         },
-                        trailing = {
+                        endActions = {
                             Icon(
                                 imageVector = if (expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp),
-                                tint = scheme.accent,
+                                tint = scheme.primaryText,
                             )
                         },
-                        onClick = {
-                            userToggled = true
-                            expanded = !expanded
-                        },
+                        onClick = onToggleExpanded,
                     )
                 }
             },
@@ -910,10 +894,14 @@ private fun UpdateNotes(
     markdown: String,
     previewLimit: Int? = null,
 ) {
-    val scheme = CouiKitTheme.colorScheme
+    val scheme = COUITheme.colorScheme
     val blocks = remember(markdown) { MarkdownBlocks.parse(markdown) }
     if (blocks.isEmpty()) {
-        Text(text = "该版本未提供更新说明。", kind = CouiTextKind.GroupFooter)
+        Text(
+            text = "该版本未提供更新说明。",
+            style = COUITheme.textStyles.bodyXS,
+            color = scheme.labelSecondary,
+        )
         return
     }
     val visibleBlocks = if (previewLimit != null) blocks.take(previewLimit) else blocks
@@ -922,10 +910,10 @@ private fun UpdateNotes(
         when (block) {
             is MarkdownBlock.Heading -> {
                 val styled = rememberCouiNotesInline(block.text)
-                val kind = if (block.level <= 2) CouiTextKind.ItemTitle else CouiTextKind.Search
+                val style = if (block.level <= 2) COUITheme.textStyles.headlineXS else COUITheme.textStyles.bodyL
                 CouiNotesInlineText(
                     text = styled,
-                    style = rememberCouiTextStyle(kind),
+                    style = style,
                 )
             }
             is MarkdownBlock.Bullet -> NotesLine(prefix = "·", text = block.text)
@@ -933,8 +921,8 @@ private fun UpdateNotes(
             is MarkdownBlock.Divider -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(CouiPageDefaults.dividerHeight)
-                    .background(scheme.outlineVariant),
+                    .height(CouiLayoutTokens.DividerThickness)
+                    .background(scheme.divider),
             )
             is MarkdownBlock.Paragraph -> CouiNotesInlineText(
                 text = rememberCouiNotesInline(block.text),
@@ -946,12 +934,12 @@ private fun UpdateNotes(
 
 @Composable
 private fun NotesLine(prefix: String, text: String) {
-    val scheme = CouiKitTheme.colorScheme
+    val scheme = COUITheme.colorScheme
     val styled = rememberCouiNotesInline(text)
     val bodyStyle = rememberCouiBodyTextStyle()
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(modifier = Modifier.width(NotesPrefixMinWidth)) {
-            CouiBodyText(text = prefix, color = scheme.onSurfaceVariant)
+            CouiBodyText(text = prefix, color = scheme.labelSecondary)
         }
         CouiNotesInlineText(
             text = styled,
@@ -967,15 +955,15 @@ private fun CouiNotesInlineText(
     style: TextStyle,
     modifier: Modifier = Modifier,
 ) {
-    val dark = CouiKitTheme.isDark
-    val scheme = CouiKitTheme.colorScheme
+    val dark = COUITheme.isDark
+    val scheme = COUITheme.colorScheme
     InlineCodeText(
         text = text,
         style = style,
-        color = scheme.onSurface,
-        codeColor = scheme.onSurface.copy(alpha = 0.90f),
-        pillBackground = scheme.onSurface.copy(alpha = if (dark) 0.14f else 0.065f),
-        pillBorder = scheme.outlineVariant.copy(alpha = if (dark) 0.50f else 0.42f),
+        color = scheme.labelPrimary,
+        codeColor = scheme.labelPrimary.copy(alpha = 0.90f),
+        pillBackground = scheme.labelPrimary.copy(alpha = if (dark) 0.14f else 0.065f),
+        pillBorder = scheme.divider.copy(alpha = if (dark) 0.50f else 0.42f),
         modifier = modifier,
         textAlign = TextAlign.Start,
     )
@@ -983,19 +971,19 @@ private fun CouiNotesInlineText(
 
 @Composable
 private fun rememberCouiNotesInline(text: String): AnnotatedString {
-    val scheme = CouiKitTheme.colorScheme
-    val dark = CouiKitTheme.isDark
-    val codeBackground = scheme.onSurface.copy(alpha = if (dark) 0.14f else 0.08f)
-    return remember(text, scheme.accent, codeBackground) {
+    val scheme = COUITheme.colorScheme
+    val dark = COUITheme.isDark
+    val codeBackground = scheme.labelPrimary.copy(alpha = if (dark) 0.14f else 0.08f)
+    return remember(text, scheme.primaryText, codeBackground) {
         couiInlineNotes(
             text = text,
-            accentColor = scheme.accent,
+            accentColor = scheme.primaryText,
             codeBackground = codeBackground,
         )
     }
 }
 
-/** 更新设置卡：整行可点的自动检查与忽略版本开关。 */
+/** 更新设置卡：自动检查与忽略版本开关。 */
 @Composable
 private fun UpdateSettingsGroup(
     autoCheckUpdate: Boolean,
@@ -1005,55 +993,32 @@ private fun UpdateSettingsGroup(
     onAutoCheckChange: (Boolean) -> Unit,
     onIgnoreToggle: () -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
-    Group(title = "更新设置") {
-        Item(
-            modifier = Modifier.couiSwitchRow(
-                value = autoCheckUpdate,
-                onValueChange = onAutoCheckChange,
-            ),
-            title = { Text(text = "自动检查更新", kind = CouiTextKind.ItemTitle) },
-            summary = {
-                Text(
-                    text = "每次启动应用时自动检查最新版本",
-                    kind = CouiTextKind.ItemSummary,
-                    color = scheme.onSurfaceVariant,
+    PreferenceCategory(title = "更新设置")
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(bottom = CouiLayoutTokens.GroupSpacing),
+    ) {
+        CardListGroup {
+            item(key = "auto_check") {
+                SwitchPreference(
+                    checked = autoCheckUpdate,
+                    onCheckedChange = onAutoCheckChange,
+                    title = "自动检查更新",
+                    summary = "每次启动应用时自动检查最新版本",
                 )
-            },
-            trailing = {
-                Switch(checked = autoCheckUpdate, onCheckedChange = null)
-            },
-        )
-        Divider()
-        Item(
-            modifier = Modifier.couiSwitchRow(
-                value = ignored,
-                enabled = ignoreEnabled,
-                onValueChange = { onIgnoreToggle() },
-            ),
-            enabled = ignoreEnabled,
-            title = {
-                Text(
-                    text = "忽略此版本",
-                    kind = CouiTextKind.ItemTitle,
-                    color = if (ignoreEnabled) scheme.onSurface else scheme.onSurfaceVariant,
-                )
-            },
-            summary = {
-                Text(
-                    text = ignoreSummary,
-                    kind = CouiTextKind.ItemSummary,
-                    color = scheme.onSurfaceVariant,
-                )
-            },
-            trailing = {
-                Switch(
+            }
+            item(key = "ignore_version") {
+                SwitchPreference(
                     checked = ignored,
-                    onCheckedChange = null,
+                    onCheckedChange = { onIgnoreToggle() },
+                    title = "忽略此版本",
+                    summary = ignoreSummary,
                     enabled = ignoreEnabled,
                 )
-            },
-        )
+            }
+        }
     }
 }
 
@@ -1066,63 +1031,55 @@ private fun UpdateMetaGroup(
     onCopyVersion: () -> Unit,
     onOpenRelease: () -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
+    val scheme = COUITheme.colorScheme
     val remoteVersionText = when {
         state == null -> "检测中…"
         release != null -> release.version
         state is UpdateOutcome.Failed -> "获取失败"
         else -> "—"
     }
-    Group(title = "版本信息") {
-        Item(
-            title = { Text(text = "当前版本", kind = CouiTextKind.ItemTitle) },
-            summary = {
-                Text(
-                    text = "点击复制版本号",
-                    kind = CouiTextKind.ItemSummary,
-                    color = scheme.onSurfaceVariant,
+    PreferenceCategory(title = "版本信息")
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(bottom = CouiLayoutTokens.GroupSpacing),
+    ) {
+        CardListGroup {
+            item(key = "current_version") {
+                BasicComponent(
+                    title = "当前版本",
+                    summary = "点击复制版本号",
+                    endActions = {
+                        Text(
+                            text = currentVersion,
+                            style = COUITheme.textStyles.bodyM,
+                            color = scheme.labelTertiary,
+                        )
+                    },
+                    onClick = onCopyVersion,
                 )
-            },
-            trailing = {
-                Text(
-                    text = currentVersion,
-                    kind = CouiTextKind.ItemValue,
-                    color = scheme.onSurfaceVariant,
+            }
+            item(key = "remote_version") {
+                BasicComponent(
+                    title = "远端最新版本",
+                    endActions = {
+                        Text(
+                            text = remoteVersionText,
+                            style = COUITheme.textStyles.bodyM,
+                            color = scheme.labelTertiary,
+                        )
+                    },
                 )
-            },
-            onClick = onCopyVersion,
-        )
-        Divider()
-        Item(
-            title = { Text(text = "远端最新版本", kind = CouiTextKind.ItemTitle) },
-            trailing = {
-                Text(
-                    text = remoteVersionText,
-                    kind = CouiTextKind.ItemValue,
-                    color = scheme.onSurfaceVariant,
+            }
+            item(key = "github_releases") {
+                ArrowPreference(
+                    title = "GitHub Releases",
+                    summary = "在浏览器查看完整发布说明",
+                    onClick = onOpenRelease,
                 )
-            },
-        )
-        Divider()
-        Item(
-            title = { Text(text = "GitHub Releases", kind = CouiTextKind.ItemTitle) },
-            summary = {
-                Text(
-                    text = "在浏览器查看完整发布说明",
-                    kind = CouiTextKind.ItemSummary,
-                    color = scheme.onSurfaceVariant,
-                )
-            },
-            trailing = {
-                Icon(
-                    imageVector = CouiIcons.Forward,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = scheme.onSurfaceVariant,
-                )
-            },
-            onClick = onOpenRelease,
-        )
+            }
+        }
     }
 }
 
@@ -1132,31 +1089,26 @@ private fun UpdateDebugGroup(
     hasNewVersion: Boolean,
     onTestDialog: () -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
-    Group(title = "调试工具") {
-        Item(
-            title = { Text(text = "测试更新弹窗", kind = CouiTextKind.ItemTitle) },
-            summary = {
-                Text(
-                    text = if (hasNewVersion) {
+    PreferenceCategory(title = "调试工具")
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(bottom = CouiLayoutTokens.GroupSpacing),
+    ) {
+        CardListGroup {
+            item(key = "test_dialog") {
+                ArrowPreference(
+                    title = "测试更新弹窗",
+                    summary = if (hasNewVersion) {
                         "重新弹出当前新版本更新弹窗"
                     } else {
                         "使用示例版本与发布说明预览更新弹窗"
                     },
-                    kind = CouiTextKind.ItemSummary,
-                    color = scheme.onSurfaceVariant,
+                    onClick = onTestDialog,
                 )
-            },
-            trailing = {
-                Icon(
-                    imageVector = CouiIcons.Forward,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = scheme.onSurfaceVariant,
-                )
-            },
-            onClick = onTestDialog,
-        )
+            }
+        }
     }
 }
 
