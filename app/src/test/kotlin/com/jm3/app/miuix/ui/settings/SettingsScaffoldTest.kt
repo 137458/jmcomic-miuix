@@ -139,4 +139,74 @@ class SettingsScaffoldTest {
         assertEquals(content.latency, reloading.latency)
         assertNull(reloading.errorMessage)
     }
+
+    @Test
+    fun `sortDomainLatencies 将可用节点按毫秒升序排前且超时负值沉底`() {
+        val sorted = sortDomainLatencies(
+            mapOf(
+                "dead1.example" to -1,
+                "slow.example" to 210,
+                "fast.example" to 38,
+                "dead2.example" to -1,
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                DomainLatency("fast.example", 38),
+                DomainLatency("slow.example", 210),
+                DomainLatency("dead1.example", -1),
+                DomainLatency("dead2.example", -1),
+            ),
+            sorted,
+        )
+        assertTrue(sorted[0].isReachable)
+        assertFalse(sorted[2].isReachable)
+    }
+
+    @Test
+    fun `buildLineCandidates 合并去重候选节点并按延迟状态稳定排序`() {
+        val nodes = buildLineCandidates(
+            candidates = listOf("official1.example", "official2.example", "custom.example"),
+            customDomains = listOf("custom.example"),
+            selectedDomain = null,
+            latency = listOf(
+                DomainLatency("official1.example", -1),
+                DomainLatency("official2.example", 65),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                LineNodeOption("official2.example", isCustom = false, latencyMs = 65),
+                LineNodeOption("custom.example", isCustom = true, latencyMs = null),
+                LineNodeOption("official1.example", isCustom = false, latencyMs = -1),
+            ),
+            nodes,
+        )
+    }
+
+    @Test
+    fun `settingsDiagnosticLines 呈现线路模式与超时文案`() {
+        val lines = settingsDiagnosticLines(
+            packageName = "com.jm3.app",
+            versionName = "2.0.0",
+            versionCode = 20000L,
+            manufacturer = "Google",
+            model = "Pixel",
+            release = "15",
+            sdkInt = 35,
+            selectedDomain = "cdn1.example",
+            usedDomain = "cdn1.example",
+            activeDomains = "",
+            latency = listOf(DomainLatency("cdn1.example", 42), DomainLatency("dead.example", -1)),
+            paginationMode = com.jm3.core.settings.PaginationMode.INFINITE,
+            themeMode = com.jm3.core.settings.ThemeMode.SYSTEM,
+            dynamicColorEffective = false,
+        ).associate { it.label to it.value }
+
+        assertEquals("手动固定（cdn1.example）", lines["线路模式"])
+        assertEquals("cdn1.example", lines["当前生效线路"])
+        assertEquals("cdn1.example · 42 ms\ndead.example · 超时", lines["线路测速"])
+    }
 }

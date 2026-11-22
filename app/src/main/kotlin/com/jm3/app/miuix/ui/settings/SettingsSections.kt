@@ -9,7 +9,7 @@ import com.jm3.core.settings.WideScreenNavigation
 /*
  * 设置页分区与条目（双皮肤去重第二批）。
  *
- * 共享骨架收口的是行为：线路诊断四态、探活重试、自定义线路提交、清空二次确认与隐藏诊断。
+ * 共享骨架收口的是行为：线路选择、按需测速、自定义域名弹窗、清空二次确认与隐藏诊断。
  * 这里收口的是两套皮肤此前逐字抄同一份的展示数据：分区与行标题、固定说明、随状态变化的
  * 行内说明、弹窗按钮，以及各偏好项的选项表。皮肤只负责把 SettingsOption 渲染成自己的控件
  * （HyperOS 的下拉与分段控件、ColorOS 的锚点菜单与胶囊分段），控件差异不进本文件。
@@ -67,19 +67,26 @@ internal object SettingsSections {
     const val paginationTitle = "分页模式"
     const val bottomBarFormTitle = "底栏形态"
     const val wideNavigationTitle = "宽屏导航"
-    const val activeDomainsTitle = "当前线路"
-    const val usedDomainTitle = "实际线路"
-    const val latencyTitle = "线路延迟"
-    const val reprobeTitle = "重新探活"
-    const val customDomainsTitle = "自定义线路"
-    const val applyDomainsTitle = "应用线路"
+    const val networkLineTitle = "网络线路"
+    const val customDomainsTitle = "自定义域名"
     const val versionTitle = "版本"
     const val updateTitle = "检查更新"
     const val openSourceTitle = "开源组件"
     const val disclaimerTitle = "免责声明"
 
+    /** 线路弹窗与自定义域名弹窗文案。 */
+    const val linePickerTitle = "选择网络线路"
+    const val autoLineTitle = "自动选择（推荐）"
+    const val autoLineSummary = "自动选用可用节点，故障时自动切换"
+    const val latencyUntestedText = "未测速"
+    const val latencyTimeoutText = "超时"
+    const val linePickerEmptyText = "暂无可用节点，请点击测速获取"
+    const val linePickerClose = "关闭"
+    const val customDomainsSummary = "每行一个域名，留空则恢复仅使用官方线路"
+    const val customDomainsPlaceholder = "每行一个域名，例如 api.example.com"
+    const val customDomainsCancel = "取消"
+
     /** 与状态无关的行内说明。 */
-    const val customDomainsSummary = "每行一个域名，留空恢复默认"
     const val updateSummary = "查看远端最新版本，支持应用内下载与安装"
     const val disclaimerSummary = "第三方客户端，仅供学习交流，包含成人内容"
 
@@ -100,22 +107,47 @@ internal object SettingsSections {
             "ColorOS 皮肤固定自有色板，动态取色不生效"
         }
 
-    /** 重新探活行的说明：探活在途时换进度文案，与按钮禁用同一判据。 */
-    fun reprobeSummary(probing: Boolean): String =
-        if (probing) "探活中…" else "逐条测速并按延迟排序"
+    /** 网络线路行说明：区分自动模式与固定节点，展示当前生效域名。 */
+    fun networkLineSummary(selectedDomain: String?, usedDomain: String?): String =
+        if (selectedDomain != null) {
+            "已固定 · $selectedDomain"
+        } else if (usedDomain != null) {
+            "自动选择 · 当前 $usedDomain"
+        } else {
+            "自动选择 · 自动挑选最优节点"
+        }
 
-    /** 应用线路行的说明：提交在途时换进度文案。 */
-    fun applyDomainsSummary(applying: Boolean): String =
-        if (applying) "应用中…" else "保存配置并重建 API 网关"
+    /** 自定义域名行说明：留空表示仅用官方线路，否则展示已配置条数。 */
+    fun customDomainsSummaryText(domains: List<String>): String =
+        if (domains.isEmpty()) {
+            "未配置（仅使用官方线路）"
+        } else {
+            "已配置 ${domains.size} 个域名（优先尝试）"
+        }
+
+    /** 节点行副标题：合并「自定义」标签与延迟状态。 */
+    fun nodeSummaryText(isCustom: Boolean, latencyMs: Int?): String {
+        val status = latencyMs?.let(::latencyValueText) ?: latencyUntestedText
+        return if (isCustom) "自定义 · $status" else status
+    }
+
+    /** 测速按钮文案：测速在途时换进度文案，与按钮禁用同一判据。 */
+    fun probeLatencyLabel(probing: Boolean): String =
+        if (probing) "测速中…" else "测速"
+
+    /** 自定义域名保存按钮文案：保存中换进度文案。 */
+    fun customDomainsSaveLabel(applying: Boolean): String =
+        if (applying) "保存中…" else "保存"
 
     /** 清空确认弹窗的主按钮：清空在途时换进度文案。 */
     fun clearConfirmLabel(clearing: Boolean): String =
         if (clearing) "清空中…" else "确认清空"
 
-    /** 延迟行的值文案：两套皮肤都是「毫秒数 + 空格 + ms」。 */
-    fun latencyValueText(latencyMs: Int): String = "$latencyMs ms"
+    /** 延迟值文案：负值代表不可达或超时，非负值展示毫秒数。 */
+    fun latencyValueText(latencyMs: Int): String =
+        if (latencyMs < 0) latencyTimeoutText else "$latencyMs ms"
 
-    /** 线路诊断失败行：两套皮肤共用同一前缀，异常原因由骨架给出。 */
+    /** 线路测速失败行：两套皮肤共用同一前缀，异常原因由骨架给出。 */
     fun diagnosticsFailureText(message: String): String = "线路诊断失败：$message"
 
     /** 清空目标的说明：与 [SettingsClearTarget] 一一绑定，改一项只改这里。 */

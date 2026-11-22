@@ -2,14 +2,18 @@ package com.jm3.app.miuix.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -23,9 +27,6 @@ import com.jm3.app.miuix.ui.glass.GlassTopAppBar
 import com.jm3.app.miuix.ui.glass.TopBarContentSpacer
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.settings.SETTINGS_DISCLAIMER_TEXT
-import com.jm3.app.miuix.ui.settings.SETTINGS_DOMAINS_DEFAULT
-import com.jm3.app.miuix.ui.settings.SETTINGS_DOMAIN_UNRESOLVED
-import com.jm3.app.miuix.ui.settings.SETTINGS_LATENCY_PLACEHOLDER
 import com.jm3.app.miuix.ui.settings.SETTINGS_OPEN_SOURCE_SUMMARY
 import com.jm3.app.miuix.ui.settings.SettingsClearTarget
 import com.jm3.app.miuix.ui.settings.SettingsSections
@@ -44,6 +45,7 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -51,6 +53,8 @@ import top.yukonga.miuix.kmp.basic.TabRowDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -219,59 +223,18 @@ internal fun SettingsScreen(
 
             SmallTitle(text = SettingsSections.sectionLine)
             Card(cornerRadius = skin.shapes.cardCorner, modifier = Modifier.fillMaxWidth().padding(horizontal = SectionHorizontalPadding)) {
-                // Card 内统一用 BasicComponent 行式布局承载诊断信息与操作，替代散落的小号正文与全宽按钮。
-                BasicComponent(
-                    title = SettingsSections.activeDomainsTitle,
-                    summary = scaffold.activeDomains.value.ifBlank { SETTINGS_DOMAINS_DEFAULT },
+                ArrowPreference(
+                    title = SettingsSections.networkLineTitle,
+                    summary = SettingsSections.networkLineSummary(
+                        selectedDomain = scaffold.selectedDomain.value,
+                        usedDomain = diagnostics.usedDomain,
+                    ),
+                    onClick = scaffold::openLinePicker,
                 )
-                BasicComponent(
-                    title = SettingsSections.usedDomainTitle,
-                    summary = diagnostics.usedDomain ?: SETTINGS_DOMAIN_UNRESOLVED,
-                )
-                // 四态由骨架判定：只有内容态逐行列出延迟，其余三态共用一句占位文案
-                if (!diagnostics.showsLatencyRows) {
-                    BasicComponent(title = SettingsSections.latencyTitle, summary = SETTINGS_LATENCY_PLACEHOLDER)
-                } else {
-                    diagnostics.latency.forEach { row ->
-                        BasicComponent(title = row.domain, summary = SettingsSections.latencyValueText(row.latencyMs))
-                    }
-                }
-                diagnostics.errorMessage?.let { message ->
-                    Text(
-                        text = SettingsSections.diagnosticsFailureText(message),
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.error,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
-                }
-                BasicComponent(
-                    title = SettingsSections.reprobeTitle,
-                    summary = SettingsSections.reprobeSummary(diagnostics.probing),
-                    enabled = diagnostics.canRetry,
-                    endActions = {
-                        if (diagnostics.probing) {
-                            CircularProgressIndicator(size = 20.dp)
-                        }
-                    },
-                    onClick = scaffold::requestReprobe,
-                )
-                BasicComponent(
+                ArrowPreference(
                     title = SettingsSections.customDomainsTitle,
-                    summary = SettingsSections.customDomainsSummary,
-                    bottomAction = {
-                        TextField(
-                            value = scaffold.domainsInput.value,
-                            onValueChange = { scaffold.domainsInput.value = it },
-                            label = "自定义线路域名",
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = SettingsSections.applyDomainsTitle,
-                    summary = SettingsSections.applyDomainsSummary(scaffold.applying.value),
-                    enabled = !scaffold.applying.value,
-                    onClick = scaffold::applyDomains,
+                    summary = SettingsSections.customDomainsSummaryText(scaffold.customDomains),
+                    onClick = scaffold::openCustomDomainsEditor,
                 )
             }
 
@@ -335,6 +298,121 @@ internal fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // 网络线路选择弹层：支持自动选择、手动固定节点与按需测速
+        val nodes = scaffold.lineCandidates
+        val selectedLine = scaffold.selectedDomain.value
+        OverlayBottomSheet(
+            show = scaffold.linePickerVisible.value,
+            title = SettingsSections.linePickerTitle,
+            cornerRadius = skin.shapes.sheetCorner,
+            onDismissRequest = scaffold::closeLinePicker,
+        ) {
+            Card(
+                cornerRadius = skin.shapes.cardCorner,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .heightIn(max = 380.dp),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    BasicComponent(
+                        title = SettingsSections.autoLineTitle,
+                        summary = SettingsSections.autoLineSummary,
+                        enabled = !scaffold.applying.value,
+                        endActions = {
+                            if (selectedLine == null) {
+                                Icon(
+                                    imageVector = MiuixIcons.Basic.Check,
+                                    contentDescription = "已选中",
+                                    tint = MiuixTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        },
+                        onClick = { scaffold.selectLine(null) },
+                    )
+                    if (nodes.isEmpty()) {
+                        BasicComponent(
+                            title = SettingsSections.linePickerEmptyText,
+                        )
+                    } else {
+                        nodes.forEach { node ->
+                            BasicComponent(
+                                title = node.domain,
+                                summary = SettingsSections.nodeSummaryText(node.isCustom, node.latencyMs),
+                                enabled = !scaffold.applying.value,
+                                endActions = {
+                                    if (selectedLine == node.domain) {
+                                        Icon(
+                                            imageVector = MiuixIcons.Basic.Check,
+                                            contentDescription = "已选中",
+                                            tint = MiuixTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                },
+                                onClick = { scaffold.selectLine(node.domain) },
+                            )
+                        }
+                    }
+                }
+            }
+            diagnostics.errorMessage?.let { message ->
+                Text(
+                    text = SettingsSections.diagnosticsFailureText(message),
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    text = SettingsSections.linePickerClose,
+                    onClick = scaffold::closeLinePicker,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = SettingsSections.probeLatencyLabel(diagnostics.probing),
+                    onClick = scaffold::probeLatency,
+                    enabled = diagnostics.canRetry && !scaffold.applying.value,
+                    modifier = Modifier.weight(1f),
+                )
+                if (diagnostics.probing) {
+                    CircularProgressIndicator(size = 20.dp)
+                }
+            }
+        }
+
+        // 自定义域名编辑弹窗：多行输入 + 留空清除提示
+        OverlayDialog(
+            show = scaffold.customDomainsVisible.value,
+            maxWidth = overlayDialogMaxWidth(),
+            title = SettingsSections.customDomainsTitle,
+            cornerRadius = skin.shapes.dialogCorner,
+            summary = SettingsSections.customDomainsSummary,
+            onDismissRequest = scaffold::closeCustomDomainsEditor,
+        ) {
+            TextField(
+                value = scaffold.domainsInput.value,
+                onValueChange = { scaffold.domainsInput.value = it },
+                label = SettingsSections.customDomainsPlaceholder,
+                minLines = 3,
+                maxLines = 6,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            )
+            DialogActionRow(
+                primaryText = SettingsSections.customDomainsSaveLabel(scaffold.applying.value),
+                primaryEnabled = !scaffold.applying.value,
+                secondaryText = SettingsSections.customDomainsCancel,
+                onSecondary = scaffold::closeCustomDomainsEditor,
+                onPrimary = scaffold::saveCustomDomains,
+            )
         }
 
         // 待确认的清空目标由骨架持有；文案取最近一次目标，退场动画期间不会翻成另一项名字

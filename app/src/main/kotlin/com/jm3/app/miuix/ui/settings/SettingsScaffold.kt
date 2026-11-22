@@ -31,6 +31,7 @@ import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.BottomBarForm
 import com.jm3.core.settings.BottomBarPreferencePolicy
 import com.jm3.core.settings.BottomBarSize
+import com.jm3.core.settings.Domains
 import com.jm3.core.settings.PaginationMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
@@ -44,26 +45,86 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 /*
  * 设置页共享骨架（C4 双皮肤试点）。
  *
- * 两套皮肤的设置页此前各写一份逐字相同的状态编排：线路诊断的读取与四态选择、探活重试、
- * 自定义线路提交、破坏性清空的二次确认、隐藏诊断与版本连点，以及所有说明文案。
+ * 两套皮肤的设置页此前各写一份逐字相同的状态编排：线路诊断的读取与四态选择、测速重试、
+ * 线路切换与自定义域名提交、破坏性清空的二次确认、隐藏诊断与版本连点，以及所有说明文案。
  * 这里把「行为」收口到一处，皮肤侧只留自己的控件与弹窗外观；
  * 骨架不引用任何皮肤控件，Miuix 与 COUI 都能直接 import。
  */
 
-/** 线路延迟表的一行：域名与本次探活得到的毫秒数（读回时已按延迟升序排好）。 */
-internal data class DomainLatency(val domain: String, val latencyMs: Int)
+/** 线路延迟表的一行：域名与本次测速得到的毫秒数（小于 0 表示超时或不可达）。 */
+internal data class DomainLatency(val domain: String, val latencyMs: Int) {
+    /** 是否可达（依赖库对不可达域名返回 -1）。 */
+    val isReachable: Boolean get() = latencyMs >= 0
+}
+
+/** 线路弹窗里的一个可选节点：合并自定义标记与最近一次测速延迟。 */
+internal data class LineNodeOption(
+    val domain: String,
+    val isCustom: Boolean,
+    val latencyMs: Int?,
+)
+
+/**
+ * 线路延迟排序：可达线路按毫秒升序排在前列，超时（负值）统一沉底，同延迟按域名排。
+ */
+internal fun sortDomainLatencies(entries: Map<String, Int>): List<DomainLatency> =
+    entries.entries
+        .map { DomainLatency(domain = it.key, latencyMs = it.value) }
+        .sortedWith(
+            compareBy<DomainLatency> { !it.isReachable }
+                .thenBy { it.latencyMs }
+                .thenBy { it.domain },
+        )
+
+/**
+ * 合成选线弹窗内的节点列表：去重保序合并固定线、自定义线、网关候选与已测线路。
+ *
+ * 未测速时保持候选池原序；测速后自动将可达节点按快慢升序排前，未测速居中，超时沉底。
+ */
+internal fun buildLineCandidates(
+    candidates: List<String>,
+    customDomains: List<String>,
+    selectedDomain: String?,
+    latency: List<DomainLatency>,
+): List<LineNodeOption> {
+    val customSet = customDomains.toSet()
+    val latencyMap = latency.associate { it.domain to it.latencyMs }
+    val ordered = Domains.normalize(
+        listOfNotNull(selectedDomain) + customDomains + candidates + latency.map { it.domain },
+    )
+    return ordered
+        .map { domain ->
+            LineNodeOption(
+                domain = domain,
+                isCustom = domain in customSet,
+                latencyMs = latencyMap[domain],
+            )
+        }
+        .sortedWith(
+            compareBy<LineNodeOption>(
+                { option ->
+                    when {
+                        option.latencyMs == null -> 1
+                        option.latencyMs < 0 -> 2
+                        else -> 0
+                    }
+                },
+                { it.latencyMs ?: 0 },
+            ),
+        )
+}
 
 /** 线路诊断区块的四态：加载中、读回为空、读回失败、有可渲染的延迟行。 */
 internal enum class SettingsDiagnosticsPhase { Loading, Empty, Failed, Content }
 
 /** 延迟区块的占位文案：加载中、读回为空、失败三态共用同一句，与既有界面一致。 */
-internal const val SETTINGS_LATENCY_PLACEHOLDER = "尚未完成线路探活"
+internal const val SETTINGS_LATENCY_PLACEHOLDER = "尚未完成线路测速"
 
 /** 实际线路尚未解析时的展示文案。 */
 internal const val SETTINGS_DOMAIN_UNRESOLVED = "未解析"
 
 /** 自定义线路为空时的展示文案。 */
-internal const val SETTINGS_DOMAINS_DEFAULT = "默认（自动解析）"
+internal const val SETTINGS_DOMAINS_DEFAULT = "默认（官方线路）"
 
 /** 版本号连点进入隐藏诊断的阈值与窗口：两套皮肤同一阈值。 */
 internal const val SETTINGS_DIAGNOSTIC_TAPS = 5
@@ -115,7 +176,7 @@ internal fun uiSkinSummary(skin: UiSkin): String = when (skin) {
 }
 
 /**
- * 线路诊断区块的状态：读回结果、失败文案与探活动作的在途标记放在同一处。
+ * 线路诊断区块的状态：读回结果、失败文案与测速动作的在途标记放在同一处。
  *
  * 四态只由读回结果推导，界面据此决定「逐行列出延迟」还是「一句占位」：
  * 有延迟行就是 [SettingsDiagnosticsPhase.Content]；没有时按「有失败文案 → 失败态、
@@ -123,15 +184,15 @@ internal fun uiSkinSummary(skin: UiSkin): String = when (skin) {
  * 因此形态仍是内容态，错误行另附在下面——与既有「失败不顶掉已有结果」的语义一致。
  */
 internal data class SettingsDiagnostics(
-    /** 是否已有一次读回落地（成功或失败）；探活开始后回到 false。 */
+    /** 是否已有一次测速落地（成功或失败）。 */
     val settled: Boolean = false,
-    /** 重新探活是否在途。 */
+    /** 测速是否在途。 */
     val probing: Boolean = false,
-    /** 最近一次读回的失败文案；成功即清空。 */
+    /** 最近一次测速的失败文案；成功即清空。 */
     val errorMessage: String? = null,
     /** 当前实际线路域名；未解析时为 null。 */
     val usedDomain: String? = null,
-    /** 最近一次读回的延迟表，按延迟升序。 */
+    /** 最近一次测速的延迟表，可用升序在前、超时沉底。 */
     val latency: List<DomainLatency> = emptyList(),
 ) {
 
@@ -147,13 +208,13 @@ internal data class SettingsDiagnostics(
     /** 是否逐行渲染延迟表；否则显示一句占位文案。 */
     val showsLatencyRows: Boolean get() = phase == SettingsDiagnosticsPhase.Content
 
-    /** 重试入口：探活进行中不重复发起，与页面按钮的禁用条件同源。 */
+    /** 重试入口：测速进行中不重复发起，与页面按钮的禁用条件同源。 */
     val canRetry: Boolean get() = !probing
 
-    /** 探活开始：只上在途标记，旧延迟行与失败文案都留到新结果回来。 */
+    /** 测速开始：只上在途标记，旧延迟行与失败文案都留到新结果回来。 */
     fun probingStarted(): SettingsDiagnostics = if (probing) this else copy(probing = true)
 
-    /** 探活结束：只解锁按钮，结果由随后的读回写入。 */
+    /** 测速结束：只解锁按钮，结果由随后的读回写入。 */
     fun probingFinished(): SettingsDiagnostics = copy(probing = false)
 
     /** 一次读回开始：清掉上次失败文案并回到加载中；旧延迟行继续显示。 */
@@ -188,6 +249,7 @@ internal fun settingsDiagnosticLines(
     model: String,
     release: String,
     sdkInt: Int,
+    selectedDomain: String?,
     usedDomain: String?,
     activeDomains: String,
     latency: List<DomainLatency>,
@@ -199,11 +261,15 @@ internal fun settingsDiagnosticLines(
     SettingsDiagnosticLine(label = "版本", value = versionName + " (" + versionCode + ")"),
     SettingsDiagnosticLine(label = "设备", value = manufacturer + " " + model),
     SettingsDiagnosticLine(label = "系统", value = "Android " + release + " (API " + sdkInt + ")"),
-    SettingsDiagnosticLine(label = "当前线路", value = usedDomain ?: SETTINGS_DOMAIN_UNRESOLVED),
-    SettingsDiagnosticLine(label = "自定义线路", value = activeDomains.ifBlank { SETTINGS_DOMAINS_DEFAULT }),
     SettingsDiagnosticLine(
-        label = "线路延迟",
-        value = latency.joinToString("\n") { it.domain + " · " + it.latencyMs + "ms" }
+        label = "线路模式",
+        value = if (selectedDomain != null) "手动固定（$selectedDomain）" else "自动选择",
+    ),
+    SettingsDiagnosticLine(label = "当前生效线路", value = usedDomain ?: SETTINGS_DOMAIN_UNRESOLVED),
+    SettingsDiagnosticLine(label = "自定义域名", value = activeDomains.ifBlank { SETTINGS_DOMAINS_DEFAULT }),
+    SettingsDiagnosticLine(
+        label = "线路测速",
+        value = latency.joinToString("\n") { it.domain + " · " + SettingsSections.latencyValueText(it.latencyMs) }
             .ifBlank { SETTINGS_LATENCY_PLACEHOLDER },
     ),
     SettingsDiagnosticLine(label = "分页模式", value = paginationMode.displayName),
@@ -272,14 +338,17 @@ internal fun rememberSettingsLayout(deps: ScreenDeps): SettingsLayout {
  *
  * 由 [rememberSettingsScaffoldState] 用 rememberSaveable 建立，类本身只读不建：
  * 旋转或进程重建后输入框、已生效线路、待确认清空项与弹窗开关都不会丢。
- * 线路诊断数据与「提交中/清空中」这类瞬时标记沿用 remember，与既有实现一致。
+ * 线路测速结果与「提交中/清空中」这类瞬时标记沿用 remember。
  */
 internal class SettingsScaffoldFields internal constructor(
     val domainsInput: MutableState<String>,
-    val activeDomains: MutableState<String>,
-    val entered: MutableState<Boolean>,
+    val customDomainsText: MutableState<String>,
+    val selectedDomain: MutableState<String?>,
+    val candidateDomains: MutableState<List<String>>,
     val applying: MutableState<Boolean>,
     val diagnostics: MutableState<SettingsDiagnostics>,
+    val linePickerVisible: MutableState<Boolean>,
+    val customDomainsVisible: MutableState<Boolean>,
     val clearTarget: MutableState<SettingsClearTarget?>,
     val clearing: MutableState<Boolean>,
     val disclaimerVisible: MutableState<Boolean>,
@@ -290,10 +359,13 @@ internal class SettingsScaffoldFields internal constructor(
 @Composable
 private fun rememberSettingsScaffoldFields(): SettingsScaffoldFields = SettingsScaffoldFields(
     domainsInput = rememberSaveable { mutableStateOf("") },
-    activeDomains = rememberSaveable { mutableStateOf("") },
-    entered = rememberSaveable { mutableStateOf(false) },
+    customDomainsText = rememberSaveable { mutableStateOf("") },
+    selectedDomain = rememberSaveable { mutableStateOf<String?>(null) },
+    candidateDomains = remember { mutableStateOf(emptyList()) },
     applying = remember { mutableStateOf(false) },
     diagnostics = remember { mutableStateOf(SettingsDiagnostics()) },
+    linePickerVisible = rememberSaveable { mutableStateOf(false) },
+    customDomainsVisible = rememberSaveable { mutableStateOf(false) },
     clearTarget = rememberSaveable { mutableStateOf<SettingsClearTarget?>(null) },
     clearing = remember { mutableStateOf(false) },
     disclaimerVisible = rememberSaveable { mutableStateOf(false) },
@@ -303,7 +375,7 @@ private fun rememberSettingsScaffoldFields(): SettingsScaffoldFields = SettingsS
 /**
  * 设置页共享骨架：两套皮肤逐字重复的状态编排、提交动作与文案。
  *
- * 骨架只管行为，不管长相：四态选择、探活重试、线路提交、清空确认、隐藏诊断与版本连点
+ * 骨架只管行为，不管长相：选线弹窗、按需测速、自定义域名编辑、清空确认、隐藏诊断与版本连点
  * 都在这里；皮肤侧拿状态去渲染自己的控件，弹窗外观也留在皮肤里。
  * 回退与跳转入口只做转发，导航语义仍由组装根决定。
  */
@@ -324,17 +396,36 @@ internal class SettingsScaffoldState internal constructor(
     private val packageName: String,
 ) {
 
-    /** 线路输入框原文，每行一个域名。 */
+    /** 自定义域名输入框原文，每行一个域名。 */
     val domainsInput: MutableState<String> get() = fields.domainsInput
 
-    /** 已生效线路的展示文本（顿号分隔）。 */
-    val activeDomains: MutableState<String> get() = fields.activeDomains
+    /** 当前已生效的自定义域名列表。 */
+    val customDomains: List<String>
+        get() = Domains.decode(fields.customDomainsText.value)
 
-    /** 线路提交是否在途。 */
+    /** 用户手动固定的线路域名；null 表示自动选择。 */
+    val selectedDomain: MutableState<String?> get() = fields.selectedDomain
+
+    /** 选线弹窗中可供点选的线路列表（已合并自定义与测速状态）。 */
+    val lineCandidates: List<LineNodeOption>
+        get() = buildLineCandidates(
+            candidates = fields.candidateDomains.value,
+            customDomains = customDomains,
+            selectedDomain = fields.selectedDomain.value,
+            latency = fields.diagnostics.value.latency,
+        )
+
+    /** 线路或自定义域名提交是否在途。 */
     val applying: MutableState<Boolean> get() = fields.applying
 
-    /** 线路诊断区块状态。 */
+    /** 线路诊断与测速状态。 */
     val diagnostics: MutableState<SettingsDiagnostics> get() = fields.diagnostics
+
+    /** 网络线路选择弹窗是否可见。 */
+    val linePickerVisible: MutableState<Boolean> get() = fields.linePickerVisible
+
+    /** 自定义域名编辑弹窗是否可见。 */
+    val customDomainsVisible: MutableState<Boolean> get() = fields.customDomainsVisible
 
     /** 待确认的破坏性清空目标；null 表示没有待确认项。 */
     val clearTarget: MutableState<SettingsClearTarget?> get() = fields.clearTarget
@@ -365,71 +456,119 @@ internal class SettingsScaffoldState internal constructor(
     /** 返回入口：由组装根注入，骨架只转发给皮肤的顶栏。 */
     val onBack: () -> Unit get() = onBackRef.value
 
-    /** 一次诊断读回的竞态代号：只有后发起的那次代表最新线路表。 */
-    private var diagnosticsRequest = 0
-
-    /** 进页：读一次保存的线路，再读一次线路诊断；已进过页只刷新诊断。 */
+    /** 进页：同步存储配置与当前网关内存线路快照，不自动发全域名测速请求。 */
     fun enter() {
-        if (fields.entered.value) {
-            loadDiagnostics()
-            return
-        }
-        fields.entered.value = true
         scope.launch {
-            val saved = deps.settings.apiDomains()
-            domainsInput.value = saved.joinToString("\n")
-            activeDomains.value = saved.joinToString("、")
-            reloadDiagnostics()
+            val savedCustom = deps.settings.apiDomains()
+            val savedSelected = deps.settings.selectedApiDomain()
+            fields.customDomainsText.value = Domains.encode(savedCustom)
+            fields.selectedDomain.value = savedSelected
+            if (!fields.customDomainsVisible.value) {
+                fields.domainsInput.value = savedCustom.joinToString("\n")
+            }
+            refreshRouteSnapshot()
         }
     }
 
-    /** 读一次线路诊断（不等待结果）。 */
-    fun loadDiagnostics() {
-        scope.launch { reloadDiagnostics() }
-    }
-
-    /** 读一次线路诊断并等到写完：探活结束后要先刷新再解锁按钮。 */
-    private suspend fun reloadDiagnostics() {
-        val request = ++diagnosticsRequest
-        diagnostics.value = diagnostics.value.reloading()
-        // 两个网关查询合成一次结局：等待会话恢复、切 IO、判失效都在 AuthCall 内完成。
+    /** 只读刷新当前网关内存中的生效线路与候选节点，不触网。 */
+    private suspend fun refreshRouteSnapshot() {
         val result = deps.authCall.call {
-            deps.routes.usedDomain() to deps.routes.domainLatency().entries
-                .sortedBy { it.value }
-                .map { DomainLatency(domain = it.key, latencyMs = it.value) }
+            deps.routes.usedDomain() to deps.routes.candidateDomains()
         }
-        // 探活与应用线路都可能并发触发读取，只有后发起的那次才落界面。
-        if (request != diagnosticsRequest) return
-        when (result) {
-            is SessionOutcome.Ok -> diagnostics.value =
-                diagnostics.value.succeeded(usedDomain = result.value.first, latency = result.value.second)
-
-            else -> diagnostics.value = diagnostics.value.failed(
-                planLoad(result, hasContent = false, failureMessage = "线路诊断失败").message.orEmpty(),
-            )
+        if (result is SessionOutcome.Ok) {
+            fields.candidateDomains.value = result.value.second
+            diagnostics.value = diagnostics.value.copy(usedDomain = result.value.first)
         }
     }
 
-    /** 重新探活：在途时忽略重复点击，先刷新诊断再解锁按钮。 */
-    fun requestReprobe() {
-        if (!diagnostics.value.canRetry) return
-        diagnostics.value = diagnostics.value.probingStarted()
+    /** 打开网络线路选择弹窗。 */
+    fun openLinePicker() {
+        fields.linePickerVisible.value = true
+        scope.launch { refreshRouteSnapshot() }
+    }
+
+    /** 关闭网络线路选择弹窗。 */
+    fun closeLinePicker() {
+        fields.linePickerVisible.value = false
+    }
+
+    /** 打开自定义域名编辑弹窗，用当前已生效配置回填草稿。 */
+    fun openCustomDomainsEditor() {
+        fields.domainsInput.value = customDomains.joinToString("\n")
+        fields.customDomainsVisible.value = true
+    }
+
+    /** 关闭自定义域名编辑弹窗（提交中禁止关闭）。 */
+    fun closeCustomDomainsEditor() {
+        if (applying.value) return
+        fields.customDomainsVisible.value = false
+    }
+
+    /** 弹窗内按需测速：仅发一轮并发测速请求，不再重复调用探活与测速两轮。 */
+    fun probeLatency() {
+        if (!diagnostics.value.canRetry || applying.value) return
+        diagnostics.value = diagnostics.value.probingStarted().reloading()
         scope.launch {
-            val result = deps.authCall.call { deps.routes.reprobeDomains() }
-            // 先重读诊断再解锁：按钮解锁那一刻列表已是新延迟，不会停留在旧数字。
-            reloadDiagnostics()
+            val result = deps.authCall.call {
+                Triple(
+                    deps.routes.usedDomain(),
+                    deps.routes.candidateDomains(),
+                    sortDomainLatencies(deps.routes.domainLatency()),
+                )
+            }
             diagnostics.value = diagnostics.value.probingFinished()
             when (result) {
-                is SessionOutcome.Ok -> snackbarHostState.showSnackbar("线路探活完成")
-                else -> snackbarHostState.showSnackbar(
-                    "探活失败：" + planLoad(result, hasContent = false, failureMessage = "未知错误").message.orEmpty(),
-                )
+                is SessionOutcome.Ok -> {
+                    fields.candidateDomains.value = result.value.second
+                    diagnostics.value = diagnostics.value.succeeded(
+                        usedDomain = result.value.first,
+                        latency = result.value.third,
+                    )
+                }
+
+                else -> {
+                    val message = planLoad(result, hasContent = false, failureMessage = "线路测速失败").message.orEmpty()
+                    diagnostics.value = diagnostics.value.failed(message)
+                }
             }
         }
     }
 
-    /** 提交自定义线路：写盘 → 读回归一结果 → 重建网关，成功后回填输入框并刷新诊断。 */
-    fun applyDomains() {
+    /** 在弹窗内切换线路模式（null 为自动选择，非空为固定节点）。 */
+    fun selectLine(domain: String?) {
+        if (applying.value) return
+        val normalized = com.jm3.core.CoverLocator.hostOf(domain).takeIf { it.isNotEmpty() }
+        if (normalized == fields.selectedDomain.value) {
+            fields.linePickerVisible.value = false
+            return
+        }
+        applying.value = true
+        scope.launch {
+            val result = deps.appScope.async {
+                runCatchingSuspending {
+                    deps.settings.setSelectedApiDomain(normalized)
+                    val savedSelected = deps.settings.selectedApiDomain()
+                    val savedCustom = deps.settings.apiDomains()
+                    deps.applyDomains(savedCustom, savedSelected)
+                    savedSelected
+                }
+            }.await()
+            applying.value = false
+            result.onSuccess { appliedSelected ->
+                fields.selectedDomain.value = appliedSelected
+                fields.linePickerVisible.value = false
+                refreshRouteSnapshot()
+                snackbarHostState.showSnackbar(
+                    if (appliedSelected == null) "已切换为自动选择线路" else "已固定线路：$appliedSelected",
+                )
+            }.onFailure { error ->
+                snackbarHostState.showSnackbar("切换线路失败：" + failureDetailRef.value(error))
+            }
+        }
+    }
+
+    /** 保存自定义域名：写盘 → 读回归一结果 → 切线重建网关，成功后回填并刷新快照。 */
+    fun saveCustomDomains() {
         if (applying.value) return
         applying.value = true
         scope.launch {
@@ -438,22 +577,23 @@ internal class SettingsScaffoldState internal constructor(
                 runCatchingSuspending {
                     deps.settings.setApiDomains(domainsInput.value.split("\n"))
                     val applied = deps.settings.apiDomains()
-                    deps.applyDomains(applied)
+                    val selected = deps.settings.selectedApiDomain()
+                    deps.applyDomains(applied, selected)
                     applied
                 }
             }.await()
             applying.value = false
             result.onSuccess { applied ->
-                activeDomains.value = applied.joinToString("、")
-                // 归一后的结果回填输入框，让用户看到真正生效的线路，而不是带协议头的原文。
+                fields.customDomainsText.value = Domains.encode(applied)
+                // 归一后的结果回填输入框，让用户看到真正生效的域名，而不是带协议头的原文。
                 domainsInput.value = applied.joinToString("\n")
-                // 网关已重建，诊断数据属于旧实例，重新读取。
-                loadDiagnostics()
+                fields.customDomainsVisible.value = false
+                refreshRouteSnapshot()
                 snackbarHostState.showSnackbar(
-                    if (applied.isEmpty()) "已恢复默认线路" else "已应用 " + applied.size + " 个线路域名",
+                    if (applied.isEmpty()) "已清空自定义域名，恢复官方线路" else "已保存 ${applied.size} 个自定义域名",
                 )
             }.onFailure { error ->
-                snackbarHostState.showSnackbar("线路应用失败：" + failureDetailRef.value(error))
+                snackbarHostState.showSnackbar("保存域名失败：" + failureDetailRef.value(error))
             }
         }
     }
@@ -549,8 +689,9 @@ internal class SettingsScaffoldState internal constructor(
             model = Build.MODEL,
             release = Build.VERSION.RELEASE,
             sdkInt = Build.VERSION.SDK_INT,
+            selectedDomain = fields.selectedDomain.value,
             usedDomain = diagnostics.value.usedDomain,
-            activeDomains = activeDomains.value,
+            activeDomains = customDomains.joinToString("、"),
             latency = diagnostics.value.latency,
             paginationMode = deps.paginationMode,
             themeMode = themeMode,

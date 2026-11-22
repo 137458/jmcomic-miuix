@@ -32,7 +32,7 @@ class SettingsSectionsTest {
     }
 
     @Test
-    fun 十六个行标题逐字保留且互不相同() {
+    fun 十二个行标题逐字保留且互不相同() {
         val titles = listOf(
             SettingsSections.appearanceTitle,
             SettingsSections.uiSkinTitle,
@@ -40,12 +40,8 @@ class SettingsSectionsTest {
             SettingsSections.paginationTitle,
             SettingsSections.bottomBarFormTitle,
             SettingsSections.wideNavigationTitle,
-            SettingsSections.activeDomainsTitle,
-            SettingsSections.usedDomainTitle,
-            SettingsSections.latencyTitle,
-            SettingsSections.reprobeTitle,
+            SettingsSections.networkLineTitle,
             SettingsSections.customDomainsTitle,
-            SettingsSections.applyDomainsTitle,
             SettingsSections.versionTitle,
             SettingsSections.updateTitle,
             SettingsSections.openSourceTitle,
@@ -60,12 +56,8 @@ class SettingsSectionsTest {
                 "分页模式",
                 "底栏形态",
                 "宽屏导航",
-                "当前线路",
-                "实际线路",
-                "线路延迟",
-                "重新探活",
-                "自定义线路",
-                "应用线路",
+                "网络线路",
+                "自定义域名",
                 "版本",
                 "检查更新",
                 "开源组件",
@@ -78,7 +70,9 @@ class SettingsSectionsTest {
 
     @Test
     fun 固定说明与弹窗文案逐字保留() {
-        assertEquals("每行一个域名，留空恢复默认", SettingsSections.customDomainsSummary)
+        assertEquals("选择网络线路", SettingsSections.linePickerTitle)
+        assertEquals("自动选择（推荐）", SettingsSections.autoLineTitle)
+        assertEquals("每行一个域名，留空则恢复仅使用官方线路", SettingsSections.customDomainsSummary)
         assertEquals("查看远端最新版本，支持应用内下载与安装", SettingsSections.updateSummary)
         assertEquals("第三方客户端，仅供学习交流，包含成人内容", SettingsSections.disclaimerSummary)
 
@@ -103,15 +97,26 @@ class SettingsSectionsTest {
     }
 
     @Test
-    fun 探活说明随探活状态在进度与排序之间切换() {
-        assertEquals("探活中…", SettingsSections.reprobeSummary(probing = true))
-        assertEquals("逐条测速并按延迟排序", SettingsSections.reprobeSummary(probing = false))
+    fun 网络线路与自定义域名说明随配置与解析状态切换() {
+        assertEquals("自动选择 · 自动挑选最优节点", SettingsSections.networkLineSummary(null, null))
+        assertEquals("自动选择 · 当前 a.example", SettingsSections.networkLineSummary(null, "a.example"))
+        assertEquals("已固定 · b.example", SettingsSections.networkLineSummary("b.example", "a.example"))
+
+        assertEquals("未配置（仅使用官方线路）", SettingsSections.customDomainsSummaryText(emptyList()))
+        assertEquals("已配置 2 个域名（优先尝试）", SettingsSections.customDomainsSummaryText(listOf("a.example", "b.example")))
+
+        assertEquals("未测速", SettingsSections.nodeSummaryText(isCustom = false, latencyMs = null))
+        assertEquals("自定义 · 42 ms", SettingsSections.nodeSummaryText(isCustom = true, latencyMs = 42))
+        assertEquals("自定义 · 超时", SettingsSections.nodeSummaryText(isCustom = true, latencyMs = -1))
     }
 
     @Test
-    fun 应用线路说明随提交状态在进度与网关之间切换() {
-        assertEquals("应用中…", SettingsSections.applyDomainsSummary(applying = true))
-        assertEquals("保存配置并重建 API 网关", SettingsSections.applyDomainsSummary(applying = false))
+    fun 测速按钮与域名保存按钮文案随在途状态切换() {
+        assertEquals("测速中…", SettingsSections.probeLatencyLabel(probing = true))
+        assertEquals("测速", SettingsSections.probeLatencyLabel(probing = false))
+
+        assertEquals("保存中…", SettingsSections.customDomainsSaveLabel(applying = true))
+        assertEquals("保存", SettingsSections.customDomainsSaveLabel(applying = false))
     }
 
     @Test
@@ -121,10 +126,11 @@ class SettingsSectionsTest {
     }
 
     @Test
-    fun 延迟值文案统一为毫秒数加空格加毫秒单位() {
+    fun 延迟值文案统一为毫秒数加空格加毫秒单位且负值显示超时() {
         assertEquals("0 ms", SettingsSections.latencyValueText(0))
         assertEquals("37 ms", SettingsSections.latencyValueText(37))
         assertEquals("1234 ms", SettingsSections.latencyValueText(1234))
+        assertEquals("超时", SettingsSections.latencyValueText(-1))
     }
 
     @Test

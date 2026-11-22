@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +36,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogActionStyle
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.layout.CouiPageDefaults
@@ -79,9 +82,6 @@ import com.jm3.app.miuix.ui.readerBrightnessSliderValue
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.settings.SETTINGS_CLEAR_CONFIRM_TIMEOUT_MS
 import com.jm3.app.miuix.ui.settings.SETTINGS_DISCLAIMER_TEXT
-import com.jm3.app.miuix.ui.settings.SETTINGS_DOMAINS_DEFAULT
-import com.jm3.app.miuix.ui.settings.SETTINGS_DOMAIN_UNRESOLVED
-import com.jm3.app.miuix.ui.settings.SETTINGS_LATENCY_PLACEHOLDER
 import com.jm3.app.miuix.ui.settings.SETTINGS_OPEN_SOURCE_SUMMARY
 import com.jm3.app.miuix.ui.settings.SettingsClearTarget
 import com.jm3.app.miuix.ui.settings.SettingsOptions
@@ -271,106 +271,40 @@ internal fun CouiSettingsScreen(
 
                     Group(title = SettingsSections.sectionLine) {
                         Item(
-                            title = { SettingsRowTitle(SettingsSections.activeDomainsTitle) },
-                            summary = { SettingsRowSummary(scaffold.activeDomains.value.ifBlank { SETTINGS_DOMAINS_DEFAULT }) },
-                        )
-                        Divider()
-                        Item(
-                            title = { SettingsRowTitle(SettingsSections.usedDomainTitle) },
-                            summary = { SettingsRowSummary(diagnostics.usedDomain ?: SETTINGS_DOMAIN_UNRESOLVED) },
-                        )
-                        Divider()
-                        // 四态由骨架判定：只有内容态逐行列出延迟，其余三态共用一句占位文案
-                        if (!diagnostics.showsLatencyRows) {
-                            Item(
-                                title = { SettingsRowTitle(SettingsSections.latencyTitle) },
-                                summary = { SettingsRowSummary(SETTINGS_LATENCY_PLACEHOLDER) },
-                            )
-                        } else {
-                            diagnostics.latency.forEach { row ->
-                                Item(
-                                    title = { SettingsRowTitle(row.domain) },
-                                    trailing = { SettingsRowValue(SettingsSections.latencyValueText(row.latencyMs)) },
-                                )
-                                Divider()
-                            }
-                        }
-                        diagnostics.errorMessage?.let { message ->
-                            Item(
-                                title = {
-                                    Text(
-                                        text = SettingsSections.diagnosticsFailureText(message),
-                                        kind = CouiTextKind.ItemSummary,
-                                        color = if (CouiKitTheme.isDark) CouiColor.Night.RED else CouiColor.Day.RED,
-                                        textAlign = TextAlign.Start,
-                                    )
-                                },
-                            )
-                            Divider()
-                        }
-                        Item(
-                            title = { SettingsRowTitle(SettingsSections.reprobeTitle) },
+                            title = { SettingsRowTitle(SettingsSections.networkLineTitle) },
                             summary = {
-                                SettingsRowSummary(SettingsSections.reprobeSummary(diagnostics.probing))
+                                SettingsRowSummary(
+                                    SettingsSections.networkLineSummary(
+                                        selectedDomain = scaffold.selectedDomain.value,
+                                        usedDomain = diagnostics.usedDomain,
+                                    ),
+                                )
                             },
-                            onClick = scaffold::requestReprobe,
-                            enabled = diagnostics.canRetry,
+                            trailing = {
+                                Icon(
+                                    imageVector = CouiIcons.Forward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = scheme.onSurfaceVariant,
+                                )
+                            },
+                            onClick = scaffold::openLinePicker,
                         )
                         Divider()
-                        // 多行线路输入：库的输入弹窗写死单行，用基础输入框套 COUI 分组卡片
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    horizontal = CouiPageDefaults.rowPadding,
-                                    vertical = CouiPageDefaults.contentPadding,
-                                ),
-                        ) {
-                            SettingsRowTitle(SettingsSections.customDomainsTitle)
-                            SettingsRowSummary(SettingsSections.customDomainsSummary)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
-                                    .clip(SettingsInputShape)
-                                    .background(scheme.onSurface.copy(alpha = 0.06f))
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                                    .heightIn(min = 84.dp),
-                            ) {
-                                BasicTextField(
-                                    value = scaffold.domainsInput.value,
-                                    onValueChange = { scaffold.domainsInput.value = it },
-                                    textStyle = CouiKitTheme.typography.body.copy(color = scheme.onSurface),
-                                    cursorBrush = SolidColor(scheme.accent),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = 64.dp)
-                                        .semantics { contentDescription = SettingsSections.customDomainsTitle },
-                                    decorationBox = { innerTextField ->
-                                        // 占位文案进装饰槽：视觉与读屏都归属同一个输入框
-                                        Box {
-                                            if (scaffold.domainsInput.value.isEmpty()) {
-                                                Text(
-                                                    text = "每行一个域名，例如 api.example.com",
-                                                    kind = CouiTextKind.ItemSummary,
-                                                    color = scheme.onSurfaceVariant,
-                                                    textAlign = TextAlign.Start,
-                                                )
-                                            }
-                                            innerTextField()
-                                        }
-                                    },
-                                )
-                            }
-                        }
-                        Divider()
                         Item(
-                            title = { SettingsRowTitle(SettingsSections.applyDomainsTitle) },
+                            title = { SettingsRowTitle(SettingsSections.customDomainsTitle) },
                             summary = {
-                                SettingsRowSummary(SettingsSections.applyDomainsSummary(scaffold.applying.value))
+                                SettingsRowSummary(SettingsSections.customDomainsSummaryText(scaffold.customDomains))
                             },
-                            onClick = scaffold::applyDomains,
-                            enabled = !scaffold.applying.value,
+                            trailing = {
+                                Icon(
+                                    imageVector = CouiIcons.Forward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = scheme.onSurfaceVariant,
+                                )
+                            },
+                            onClick = scaffold::openCustomDomainsEditor,
                         )
                     }
 
@@ -431,6 +365,148 @@ internal fun CouiSettingsScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth(),
             )
+        }
+
+        // 网络线路选择弹窗：支持自动选择、手动固定节点与按需测速
+        val nodes = scaffold.lineCandidates
+        val selectedLine = scaffold.selectedDomain.value
+        Dialog(
+            onDismissRequest = scaffold::closeLinePicker,
+            visible = scaffold.linePickerVisible.value,
+            material = couiDialogMaterial(),
+            title = SettingsSections.linePickerTitle,
+            placement = CouiDialogPlacement.Bottom,
+            confirmAction = CouiDialogAction(
+                text = SettingsSections.probeLatencyLabel(diagnostics.probing),
+                enabled = diagnostics.canRetry && !scaffold.applying.value,
+                style = CouiDialogActionStyle.Primary,
+                colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
+                onClick = scaffold::probeLatency,
+            ),
+            dismissAction = CouiDialogAction(
+                text = SettingsSections.linePickerClose,
+                onClick = scaffold::closeLinePicker,
+                style = CouiDialogActionStyle.Secondary,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 340.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Item(
+                    title = { SettingsRowTitle(SettingsSections.autoLineTitle) },
+                    summary = { SettingsRowSummary(SettingsSections.autoLineSummary) },
+                    trailing = {
+                        if (selectedLine == null) {
+                            Icon(
+                                imageVector = CouiIcons.Check,
+                                contentDescription = "已选中",
+                                modifier = Modifier.size(18.dp),
+                                tint = scheme.accent,
+                            )
+                        }
+                    },
+                    enabled = !scaffold.applying.value,
+                    onClick = { scaffold.selectLine(null) },
+                )
+                Divider()
+                if (nodes.isEmpty()) {
+                    Item(
+                        title = { SettingsRowSummary(SettingsSections.linePickerEmptyText) },
+                    )
+                } else {
+                    nodes.forEachIndexed { index, node ->
+                        Item(
+                            title = { SettingsRowTitle(node.domain) },
+                            summary = {
+                                SettingsRowSummary(SettingsSections.nodeSummaryText(node.isCustom, node.latencyMs))
+                            },
+                            trailing = {
+                                if (selectedLine == node.domain) {
+                                    Icon(
+                                        imageVector = CouiIcons.Check,
+                                        contentDescription = "已选中",
+                                        modifier = Modifier.size(18.dp),
+                                        tint = scheme.accent,
+                                    )
+                                }
+                            },
+                            enabled = !scaffold.applying.value,
+                            onClick = { scaffold.selectLine(node.domain) },
+                        )
+                        if (index < nodes.lastIndex) Divider()
+                    }
+                }
+                diagnostics.errorMessage?.let { message ->
+                    Divider()
+                    Text(
+                        text = SettingsSections.diagnosticsFailureText(message),
+                        kind = CouiTextKind.ItemSummary,
+                        color = if (CouiKitTheme.isDark) CouiColor.Night.RED else CouiColor.Day.RED,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.padding(horizontal = CouiPageDefaults.rowPadding, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+
+        // 自定义域名编辑弹窗：多行输入框，留空恢复官方线路
+        Dialog(
+            onDismissRequest = scaffold::closeCustomDomainsEditor,
+            visible = scaffold.customDomainsVisible.value,
+            material = couiDialogMaterial(),
+            title = SettingsSections.customDomainsTitle,
+            message = SettingsSections.customDomainsSummary,
+            placement = CouiDialogPlacement.Bottom,
+            confirmAction = CouiDialogAction(
+                text = SettingsSections.customDomainsSaveLabel(scaffold.applying.value),
+                enabled = !scaffold.applying.value,
+                style = CouiDialogActionStyle.Primary,
+                colors = CouiDialogDefaults.primaryActionColors(scheme.accent),
+                onClick = scaffold::saveCustomDomains,
+            ),
+            dismissAction = CouiDialogAction(
+                text = SettingsSections.customDomainsCancel,
+                enabled = !scaffold.applying.value,
+                onClick = scaffold::closeCustomDomainsEditor,
+                style = CouiDialogActionStyle.Secondary,
+            ),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp)
+                    .clip(SettingsInputShape)
+                    .background(scheme.onSurface.copy(alpha = 0.06f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .heightIn(min = 96.dp),
+            ) {
+                BasicTextField(
+                    value = scaffold.domainsInput.value,
+                    onValueChange = { scaffold.domainsInput.value = it },
+                    textStyle = CouiKitTheme.typography.body.copy(color = scheme.onSurface),
+                    cursorBrush = SolidColor(scheme.accent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 76.dp)
+                        .semantics { contentDescription = SettingsSections.customDomainsTitle },
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (scaffold.domainsInput.value.isEmpty()) {
+                                Text(
+                                    text = SettingsSections.customDomainsPlaceholder,
+                                    kind = CouiTextKind.ItemSummary,
+                                    color = scheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Start,
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+            }
         }
 
         // 隐藏诊断：版本号连点 5 次打开，只读汇总运行环境与线路状态

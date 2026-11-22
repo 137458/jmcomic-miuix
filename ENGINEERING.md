@@ -54,11 +54,11 @@
 - 唯一长期协程作用域是 `appScope`（`Jm3App.kt:164`，`SupervisorJob() + Dispatchers.IO`）。禁止 `GlobalScope`。
 - `appScope` 现有用途限于以下场景，禁止承载界面状态：
     - 装配注入与 `ScreenDeps.appScope`
-    - `ApiDomain`（`:29`、`:119`）、`UpdateDomain`（`:16`、`:39`）
+    - `ApiDomain`（`:30`、`:131`）、`UpdateDomain`（`:16`、`:39`）
     - `DownloadManager`（`:28`、`:57`、`:62`）、`DownloadService`（`:147`、`:177`、`:184`）
     - `MainActivity.onStop`（`:79`）
     - 退出阅读器补记页码（`ui/ReaderEffects.kt:213`，作用域经 `ui/ReaderPages.kt:259` 传入，COUI 侧 `ui/coui/page/CouiReaderPages.kt:306`）
-    - 设置页偏好写盘（`ScreenDeps.kt:166-172`）、线路落盘与清库（`ui/settings/SettingsScaffold.kt:437`、`:493`）
+    - 设置页偏好写盘（`ScreenDeps.kt:166-172`）、线路落盘与清库（`ui/settings/SettingsScaffold.kt:542`、`:571`、`:628`）
 - 偏好写盘必须挂进程作用域：退出设置页会取消 `rememberCoroutineScope`，内存态与 DataStore 会半途不一致。
 - 新增 `appScope` 用法须说明为何无法挂 `rememberCoroutineScope`。
 - 不引入 `ViewModel`。屏幕状态用 `remember` 与 `LaunchedEffect` 编排；状态复杂时抽纯 Kotlin 容器（如 `AlbumDetailStateHolder`）。
@@ -148,18 +148,18 @@
 
 ### 2.2 线路切换与域名来源
 
-- 网关实例切换走 `ApiDomain.gatewayOverride`（`data/ApiDomain.kt:51`，双检读写在 `:59`、`:88`、`:92`）与 `GatewayFactory`（`core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:17`）。
+- 网关实例切换走 `ApiDomain.gatewayOverride`（`data/ApiDomain.kt:52`，双检读写在 `:60`、`:99`、`:104`）与 `GatewayFactory`（`core/src/main/kotlin/com/jm3/core/GatewayFactory.kt:17`）。
 - 域名清洗一律经 `Domains`（`core/src/main/kotlin/com/jm3/core/settings/Domains.kt:6`）。禁止在屏幕硬编码 URL。
-- 线路可观测面收在 `DomainRoutes`（`Jm3Gateway.kt:54`）：只暴露 `usedDomain`（`:56`）、`domainsReady`（`:59`）、`domainLatency`（`:62`）与 `reprobeDomains`（`:65`）。网关侧四个 override 只做转发（`:520-527`），生产实现 `LibraryDomainControls`（`:651-669`）直接委托库客户端。
+- 线路可观测面收在 `DomainRoutes`（`Jm3Gateway.kt:54`）：暴露 `usedDomain`（`:56`）、`candidateDomains`（`:59`）、`domainsReady`（`:62`）、`domainLatency`（`:65`）与 `reprobeDomains`（`:68`）。网关侧五个 override 只做转发（`:526-536`），生产实现 `LibraryDomainControls`（`:659-686`）委托库客户端（自动模式下 `usedDomain` 读取已就绪的 `domainManager.bestDomain`，`candidateDomains` 直接读 `domainManager.domains` 不阻塞）。
 - 屏幕经 `ScreenDeps.routes`（`ScreenDeps.kt:71`）读取，现有消费点集中在共享骨架：
-    - `ui/settings/SettingsScaffold.kt:397`、`:418`
+    - `ui/settings/SettingsScaffold.kt:471`、`:508-511`
     - `ui/tasks/TasksScaffold.kt:376`、`:381`
     - `ui/shelf/ShelfScaffold.kt:183`、`:187`
     - `ui/CheckInLoadPolicy.kt:457`、`ui/reader/ReaderEntryScaffold.kt:143`
 - 禁止为读线路信息而持有整张网关。
-- 已知偏差：`ui/AlbumDetailScreen.kt:170` 与 `ui/coui/page/CouiAlbumDetailScreen.kt:252` 仍由屏幕直读网关线路。改动这两处时改走 `deps.routes`。
+- 已知偏差：`ui/AlbumDetailScreen.kt:170` 与 `ui/coui/page/CouiAlbumDetailScreen.kt:253` 仍由屏幕直读网关线路。改动这两处时改走 `deps.routes`。
 - 图片域名与封面地址走 `ImageAddressing`（`Jm3Gateway.kt:74`，`coverUrl` `:76`、`imageHost` `:79`），屏幕经 `ScreenDeps.images`（`ScreenDeps.kt:75`）读取。禁止只为一个封面地址而持有整张网关。
-- 启动期域名只来自自定义线路与上次刷新落盘的 `DomainPoolCache`。官方线路表在 `DomainTable.kt` 运行时拉取解密；仅当两者皆空（如首次安装）时回退库内初始化链，完成后落盘。
+- 启动期域名只来自自定义线路与上次刷新落盘的官方 `DomainPoolCache`（绝不混入自定义域名，见 `CustomDomainPool.kt:132-134`）。官方线路表在 `DomainTable.kt` 运行时拉取解密；仅当两者皆空（如首次安装）时回退库内初始化链，完成后落盘。
 
 ### 2.3 图片缓存与超采样链路
 
