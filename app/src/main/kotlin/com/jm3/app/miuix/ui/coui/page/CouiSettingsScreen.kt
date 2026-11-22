@@ -477,10 +477,10 @@ internal fun CouiSettingsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp)
+                    .padding(horizontal = CouiDialogDefaults.buttonEdgePadding, vertical = 8.dp)
                     .clip(SettingsInputShape)
                     .background(scheme.onSurface.copy(alpha = 0.06f))
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
                     .heightIn(min = 96.dp),
             ) {
                 BasicTextField(
