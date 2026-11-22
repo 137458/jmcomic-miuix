@@ -4,7 +4,6 @@ package com.jm3.app.miuix.ui.coui.page
 
 import android.content.Context
 import android.content.Intent
-import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,18 +13,17 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,50 +36,36 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import coil3.compose.AsyncImage
-import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.layout.CouiPageDefaults
-import com.itos.coui.layout.Footer
-import com.itos.coui.layout.Group
-import com.itos.coui.layout.Item
-import com.itos.coui.scroll.rememberCouiOverscrollEffect
-import com.itos.coui.shape.CouiCapsuleShape
-import com.itos.coui.text.CouiTextKind
-import com.itos.coui.text.Text
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
-import com.itos.coui.topappbar.CouiTopAppBarDefaults
-import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
-import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.couiPageExtraBottomDp
-import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
-import com.jm3.app.miuix.ui.coui.component.CouiBodyText
-import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
+import com.jm3.app.miuix.ui.ScreenLoadPlan
 import com.jm3.app.miuix.ui.coui.component.CouiAvatar
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
+import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
+import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
-import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
+import com.jm3.app.miuix.ui.coui.component.couiPageScroll
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
-import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
+import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -94,8 +78,12 @@ import com.jm3.core.model.CreatorFilters
 import com.jm3.core.model.CreatorRelatedWork
 import com.jm3.core.model.CreatorSponsor
 import com.jm3.core.session.SessionOutcome
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.preference.PagerFooterPreference
+import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 private const val COUI_CREATOR_LOAD_MORE_FAILED = CouiStrings.LoadMoreFailedRetry
@@ -254,47 +242,33 @@ private fun CouiCreatorBody(
     }
 
     val header = (state as? CouiCreatorState.Loaded)?.content?.header
-    val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
+    val scrollBehavior = rememberCouiPageScrollBehavior(
         canScroll = { lazyState.canScrollForward || lazyState.canScrollBackward },
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
-        CouiAppScaffold(
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
-            topBar = {
-                LargeTopAppBar(
-                    title = { CouiTopBarTitle(text = header?.authorName ?: "创作者") },
-                    navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
-                    scrollBehavior = scrollBehavior,
-                    colors = couiTopAppBarColors(),
-                )
-            },
+        CouiPageScaffold(
+            title = header?.authorName ?: "创作者",
+            onBack = onBack,
+            wide = isCouiWideWindow(),
             floatingActionButton = {
                 CouiFab(
                     icon = CouiIcons.Refresh,
                     contentDescription = "刷新",
                     onClick = { load() },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 )
             },
-        ) { innerPadding ->
-            // 折叠位移留到测量期读取：组合期算成字面量会把首帧的顶栏高度冻结住
-            val contentPadding = couiScreenContentPadding(
-                scrollBehavior = scrollBehavior,
-                innerPadding = innerPadding,
-                horizontalPadding = null,
-                extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
-            )
+            scrollBehavior = scrollBehavior,
+            horizontalPadding = null,
+        ) { contentPadding ->
             LazyColumn(
                 state = lazyState,
                 modifier = Modifier
                     .fillMaxSize()
                     .readableWidth()
-                    .consumeWindowInsets(innerPadding),
+                    .couiPageScroll(),
                 contentPadding = contentPadding,
-                overscrollEffect = rememberCouiOverscrollEffect(),
+                flingBehavior = rememberCOUIFlingBehavior(),
             ) {
                 when (val current = state) {
                     CouiCreatorState.Loading -> item(key = "coui-creator-loading") { CouiLoadingGroup() }
@@ -345,7 +319,7 @@ private fun CouiCreatorBody(
                             item(key = "coui-creator-empty") {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     CouiEmptyGroup(text = COUI_CREATOR_EMPTY)
-                                    Footer(text = COUI_CREATOR_EMPTY_HINT)
+                                    PagerFooterPreference(summary = COUI_CREATOR_EMPTY_HINT, withExtraMarginBottom = false)
                                 }
                             }
                         } else {
@@ -395,21 +369,18 @@ private fun CouiCreatorHeaderCard(
     worksCount: Int,
     onOpenSponsor: (CreatorSponsor) -> Unit,
 ) {
-    val scheme = CouiKitTheme.colorScheme
-    val corner = LocalSkin.current.shapes.cardCorner
-    Column(
+    val colors = COUITheme.colorScheme
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiPageDefaults.horizontalMargin)
-            .padding(top = CouiPageDefaults.categoryTopSpacing, bottom = CouiPageDefaults.groupSpacing)
-            .clip(CouiPageDefaults.shape)
-            .background(scheme.card),
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(top = CouiLayoutTokens.CategoryTopSpacing, bottom = CouiLayoutTokens.GroupSpacing),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(COUI_CREATOR_BANNER_HEIGHT_DP.dp)
-                .background(scheme.container),
+                .background(colors.container4),
         ) {
             if (header.backgroundUrl != null) {
                 AsyncImage(
@@ -440,8 +411,8 @@ private fun CouiCreatorHeaderCard(
                 )
                 Text(
                     text = "$worksCount 部作品",
-                    kind = CouiTextKind.GroupFooter,
-                    color = scheme.onSurfaceVariant,
+                    style = COUITheme.textStyles.bodyS,
+                    color = colors.labelSecondary,
                     textAlign = TextAlign.Start,
                 )
             }
@@ -453,13 +424,11 @@ private fun CouiCreatorHeaderCard(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 header.sponsors.forEach { sponsor ->
-                    val shape = CouiCapsuleShape
                     Box(
                         modifier = Modifier
                             .couiPressable(
-                                shape = shape,
-                                backgroundColor = scheme.accent.copy(alpha = 0.12f),
-                                spotlight = SpotlightPreset.ChipTab,
+                                shape = CircleShape,
+                                backgroundColor = colors.primary.copy(alpha = 0.12f),
                                 minTouchTarget = CouiMinTouchTarget,
                                 onClick = { onOpenSponsor(sponsor) },
                             )
@@ -469,8 +438,8 @@ private fun CouiCreatorHeaderCard(
                     ) {
                         Text(
                             text = sponsor.name,
-                            kind = CouiTextKind.GroupFooter,
-                            color = scheme.accent,
+                            style = COUITheme.textStyles.description,
+                            color = colors.primaryText,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -517,21 +486,21 @@ private fun CouiCreatorFilterRow(
     onSelect: (String) -> Unit,
 ) {
     if (options.isEmpty()) return
-    val scheme = CouiKitTheme.colorScheme
+    val colors = COUITheme.colorScheme
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = title,
-            kind = CouiTextKind.GroupFooter,
-            color = scheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = CouiPageDefaults.horizontalMargin),
+            style = COUITheme.textStyles.bodyS,
+            color = colors.labelSecondary,
+            modifier = Modifier.padding(start = CouiLayoutTokens.HorizontalMargin),
         )
         Spacer(modifier = Modifier.width(8.dp))
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(end = CouiPageDefaults.horizontalMargin),
+            contentPadding = PaddingValues(end = CouiLayoutTokens.HorizontalMargin),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(items = listOf("") + options, key = { it.ifBlank { "coui-creator-all" } }) { option ->
@@ -540,9 +509,8 @@ private fun CouiCreatorFilterRow(
                     modifier = Modifier
                         .couiPressable(
                             shape = shape,
-                            backgroundColor = if (option == selected) scheme.accent.copy(alpha = 0.15f) else scheme.card,
+                            backgroundColor = if (option == selected) colors.primary.copy(alpha = 0.15f) else colors.cardBackground,
                             minTouchTarget = CouiMinTouchTarget,
-                            spotlight = SpotlightPreset.ChipTab,
                             onClick = { onSelect(option) },
                         )
                         .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -550,7 +518,7 @@ private fun CouiCreatorFilterRow(
                 ) {
                     CouiBodyText(
                         text = option.ifBlank { COUI_CREATOR_ALL_FILTER },
-                        color = if (option == selected) scheme.accent else scheme.onSurface,
+                        color = if (option == selected) colors.primaryText else colors.labelPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -570,7 +538,7 @@ private fun CouiCreatorWorksRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiPageDefaults.horizontalMargin)
+            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
             .padding(bottom = CouiWorkCardTokens.GridSpacing),
         horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
     ) {
