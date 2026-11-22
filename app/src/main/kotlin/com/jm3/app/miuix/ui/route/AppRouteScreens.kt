@@ -5,6 +5,7 @@ package com.jm3.app.miuix.ui.route
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
+import com.itos.coui.menu.ProvideCouiMenuBackdrop
 import com.jm3.core.settings.UiSkin
 
 /**
@@ -30,16 +31,20 @@ fun SkinRoute(
 }
 
 /**
- * 窗口级弹窗背景源桥接：suqi8/coui 2.1.0 下各页面通过 `CouiPageScaffold` 自行录制
- * `LayerBackdrop` 并提供 `LocalPageBackdrop` / `LocalPopupMaterialBlur`；路由外的
- * 窗口级弹窗（`WindowDialog`）按规范保持不透明，不再在窗口根挂接离屏采样源。
+ * 窗口级弹窗背景源：把库的「菜单/材质弹窗采样源」挂到窗口内容根节点。
  *
- * 保留本函数签名以兼容宿主调用，直接透传 `Modifier`。
+ * 库对材质弹窗有两项硬前提——系统 Android 13 及以上、宿主已提供不含弹窗自身的背景源，
+ * 缺任一项都在组合期抛异常。源必须挂在窗口根而不是单条路由：启动更新提示等弹窗在路由之外，
+ * 挂在路由内它们拿不到源。HyperOS 皮肤不使用库弹窗，这里直接透传，不做额外离屏录制。
  */
 @Composable
 fun SkinWindowBackdrop(
-    @Suppress("UNUSED_PARAMETER") uiSkin: UiSkin,
+    uiSkin: UiSkin,
     content: @Composable (Modifier) -> Unit,
 ) {
-    content(Modifier)
+    if (uiSkin == UiSkin.COLOROS) {
+        ProvideCouiMenuBackdrop(content = content)
+    } else {
+        content(Modifier)
+    }
 }

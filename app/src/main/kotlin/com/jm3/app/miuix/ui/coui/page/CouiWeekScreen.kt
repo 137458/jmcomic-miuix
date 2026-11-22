@@ -2,6 +2,7 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,35 +18,49 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.CouiPageDefaults
+import com.itos.coui.layout.Footer
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.itos.coui.topappbar.CouiTopAppBarDefaults
+import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
-import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
-import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiPullToRefresh
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
-import com.jm3.app.miuix.ui.coui.component.couiPageScroll
+import com.jm3.app.miuix.ui.coui.component.couiWorkCardShape
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
-import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
+import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
+import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
@@ -55,10 +70,7 @@ import com.jm3.app.miuix.ui.week.WeekRefreshReset
 import com.jm3.app.miuix.ui.week.rememberWeekScaffoldState
 import com.jm3.core.model.SearchResult
 import com.jm3.core.model.WeeklyPeriod
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.preference.PagerFooterPreference
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 时间轴左侧轨道宽度：圆点与竖线都落在这条带子里。 */
@@ -97,142 +109,130 @@ internal fun CouiWeekScreen(
 
     CouiTheme {
         val listState = rememberLazyListState()
-        val scrollBehavior = rememberCouiPageScrollBehavior {
-            listState.canScrollForward || listState.canScrollBackward
-        }
-        val scheme = COUITheme.colorScheme
+        val overscroll = rememberCouiOverscrollEffect()
+        val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+        val scheme = CouiKitTheme.colorScheme
         val currentPeriod = week.currentPeriod
         val periodsFailure = week.periodsFailure
         val detailFailure = week.detailFailure
 
         Box(modifier = Modifier.fillMaxSize()) {
-            CouiPageScaffold(
-                title = "每周必看",
-                onBack = onBack,
-                wide = isCouiWideWindow(),
-                scrollBehavior = scrollBehavior,
-                attachScrollNestedScroll = false,
-                actions = {
-                    CouiFeedRefreshAction(
-                        refreshing = week.refreshing,
-                        onRefresh = {
-                            // 刷新中不重复触发：指示器已经在转
-                            if (!week.refreshing) week.refresh()
+            CouiAppScaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                LargeTopAppBar(
+                    title = { CouiTopBarTitle(text = "每周必看", textAlign = TextAlign.Start) },
+                    navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
+                    actions = {
+                        CouiFeedRefreshAction(
+                            refreshing = week.refreshing,
+                            onRefresh = {
+                                // 刷新中不重复触发：指示器已经在转
+                                if (!week.refreshing) week.refresh()
+                            },
+                        )
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = couiTopAppBarColors(),
+                )
+            },
+        ) { innerPadding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .readableWidth()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .consumeWindowInsets(innerPadding),
+                state = listState,
+                contentPadding = couiScreenContentPadding(scrollBehavior, innerPadding),
+                overscrollEffect = overscroll,
+            ) {
+                if (week.periods.isNotEmpty()) {
+                    item(key = "week-periods") {
+                        WeekPeriodRow(
+                            periods = week.periods,
+                            selected = week.selected,
+                            onSelect = { index -> week.selectPeriod(index) },
+                        )
+                    }
+                }
+                item(key = "week-subtitle") {
+                    Footer(
+                        text = buildString {
+                            append("每周五 18:00 更新")
+                            val time = currentPeriod?.time.orEmpty()
+                            if (time.isNotBlank()) {
+                                append(" · ")
+                                append(time)
+                            }
                         },
                     )
-                },
-            ) { innerPadding ->
-                CouiPullToRefresh(
-                    isRefreshing = week.refreshing,
-                    onRefresh = { if (!week.refreshing) week.refresh() },
-                    scrollBehavior = scrollBehavior,
-                    contentPadding = innerPadding,
-                ) {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .readableWidth()
-                            .couiPageScroll()
-                            .consumeWindowInsets(innerPadding),
-                        state = listState,
-                        contentPadding = innerPadding,
-                        flingBehavior = rememberCOUIFlingBehavior(),
-                    ) {
-                        if (week.periods.isNotEmpty()) {
-                            item(key = "week-periods") {
-                                WeekPeriodRow(
-                                    periods = week.periods,
-                                    selected = week.selected,
-                                    onSelect = { index -> week.selectPeriod(index) },
-                                )
-                            }
-                        }
-                        item(key = "week-subtitle") {
-                            PagerFooterPreference(
-                                summary = buildString {
-                                    append("每周五 18:00 更新")
-                                    val time = currentPeriod?.time.orEmpty()
-                                    if (time.isNotBlank()) {
-                                        append(" · ")
-                                        append(time)
-                                    }
-                                },
-                                withExtraMarginBottom = false,
+                }
+
+                when {
+                    week.periodsLoading -> item(key = "week-loading") {
+                        CouiLoadingGroup(
+                            modifier = Modifier.padding(top = 8.dp),
+                            text = "正在加载每周必看…",
+                        )
+                    }
+                    periodsFailure?.phase == ScreenLoadPhase.Expired -> item(key = "week-expired") {
+                        CouiFeedLoginGroup(message = periodsFailure?.message.orEmpty(), onOpenLogin = nav::login)
+                    }
+                    periodsFailure != null -> item(key = "week-failed") {
+                        CouiErrorGroup(
+                            message = periodsFailure?.message.orEmpty(),
+                            onRetry = { week.loadPeriods() },
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                    week.periods.isEmpty() -> {
+                        item(key = "week-empty") {
+                            CouiEmptyGroup(
+                                text = "暂无每周必看",
+                                modifier = Modifier.padding(top = 8.dp),
                             )
                         }
-
-                        when {
-                            week.periodsLoading -> item(key = "week-loading") {
-                                CouiLoadingGroup(
-                                    modifier = Modifier.padding(top = 8.dp),
-                                    text = "正在加载每周必看…",
-                                )
-                            }
-                            periodsFailure?.phase == ScreenLoadPhase.Expired -> item(key = "week-expired") {
-                                CouiFeedLoginGroup(message = periodsFailure?.message.orEmpty(), onOpenLogin = nav::login)
-                            }
-                            periodsFailure != null -> item(key = "week-failed") {
-                                CouiErrorGroup(
-                                    message = periodsFailure?.message.orEmpty(),
-                                    onRetry = { week.loadPeriods() },
-                                    modifier = Modifier.padding(top = 8.dp),
-                                )
-                            }
-                            week.periods.isEmpty() -> {
-                                item(key = "week-empty") {
-                                    CouiEmptyGroup(
-                                        text = "暂无每周必看",
-                                        modifier = Modifier.padding(top = 8.dp),
-                                    )
-                                }
-                                item(key = "week-empty-hint") {
-                                    PagerFooterPreference(
-                                        summary = "稍后再来看看",
-                                        withExtraMarginBottom = false,
-                                    )
-                                }
-                            }
-                            week.detailLoading -> item(key = "week-detail-loading") {
-                                CouiLoadingGroup(
-                                    modifier = Modifier.padding(top = 8.dp),
-                                    text = "正在加载本期内容…",
-                                )
-                            }
-                            detailFailure?.phase == ScreenLoadPhase.Expired -> item(key = "week-detail-expired") {
-                                CouiFeedLoginGroup(message = detailFailure?.message.orEmpty(), onOpenLogin = nav::login)
-                            }
-                            detailFailure != null -> item(key = "week-detail-failed") {
-                                CouiErrorGroup(
-                                    message = detailFailure?.message.orEmpty(),
-                                    onRetry = { week.retryDetail() },
+                        item(key = "week-empty-hint") { Footer(text = "稍后再来看看") }
+                    }
+                    week.detailLoading -> item(key = "week-detail-loading") {
+                        CouiLoadingGroup(
+                            modifier = Modifier.padding(top = 8.dp),
+                            text = "正在加载本期内容…",
+                        )
+                    }
+                    detailFailure?.phase == ScreenLoadPhase.Expired -> item(key = "week-detail-expired") {
+                        CouiFeedLoginGroup(message = detailFailure?.message.orEmpty(), onOpenLogin = nav::login)
+                    }
+                    detailFailure != null -> item(key = "week-detail-failed") {
+                        CouiErrorGroup(
+                            message = detailFailure?.message.orEmpty(),
+                            onRetry = { week.retryDetail() },
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                    else -> {
+                        val items = week.detail?.items.orEmpty()
+                        if (items.isEmpty()) {
+                            item(key = "week-detail-empty") {
+                                CouiEmptyGroup(
+                                    text = "本期暂无内容",
                                     modifier = Modifier.padding(top = 8.dp),
                                 )
                             }
-                            else -> {
-                                val items = week.detail?.items.orEmpty()
-                                if (items.isEmpty()) {
-                                    item(key = "week-detail-empty") {
-                                        CouiEmptyGroup(
-                                            text = "本期暂无内容",
-                                            modifier = Modifier.padding(top = 8.dp),
-                                        )
-                                    }
-                                } else {
-                                    itemsIndexed(items, key = { _, item -> "week-" + item.id }) { index, item ->
-                                        WeekTimelineRow(
-                                            item = item,
-                                            isFirst = index == 0,
-                                            isLast = index == items.lastIndex,
-                                            railColor = scheme.divider,
-                                            dotColor = scheme.primary,
-                                            onClick = { nav.album(item.id) },
-                                        )
-                                    }
-                                    item(key = "week-tail") {
-                                        Spacer(modifier = Modifier.size(CouiLayoutTokens.GroupSpacing))
-                                    }
-                                }
+                        } else {
+                            itemsIndexed(items, key = { _, item -> "week-" + item.id }) { index, item ->
+                                WeekTimelineRow(
+                                    item = item,
+                                    isFirst = index == 0,
+                                    isLast = index == items.lastIndex,
+                                    railColor = scheme.outlineVariant,
+                                    dotColor = scheme.accent,
+                                    onClick = { nav.album(item.id) },
+                                )
                             }
+                            item(key = "week-tail") { Spacer(modifier = Modifier.size(CouiPageDefaults.groupSpacing)) }
+                        }
                         }
                     }
                 }
@@ -254,14 +254,15 @@ private fun WeekTimelineRow(
     item: SearchResult,
     isFirst: Boolean,
     isLast: Boolean,
-    railColor: Color,
-    dotColor: Color,
+    railColor: androidx.compose.ui.graphics.Color,
+    dotColor: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
 ) {
+    val scheme = CouiKitTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
             .padding(bottom = 8.dp)
             .drawBehind {
                 val centerX = WeekRailWidth.toPx() / 2f
@@ -308,19 +309,20 @@ private fun WeekPeriodRow(
     selected: Int,
     onSelect: (Int) -> Unit,
 ) {
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = CouiLayoutTokens.HorizontalMargin, vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = CouiPageDefaults.horizontalMargin, vertical = 4.dp),
     ) {
         itemsIndexed(periods, key = { _, period -> "period-" + period.id }) { index, period ->
             val active = index == selected
             Box(
                 modifier = Modifier
                     .couiPressable(
-                        shape = CircleShape,
-                        backgroundColor = if (active) scheme.primary.copy(alpha = 0.14f) else scheme.cardBackground,
+                        shape = CouiCapsuleShape,
+                        backgroundColor = if (active) scheme.accent.copy(alpha = 0.14f) else scheme.container,
+                        spotlight = SpotlightPreset.ChipTab,
                         minTouchTarget = CouiMinTouchTarget,
                         onClick = { onSelect(index) },
                     )
@@ -328,8 +330,8 @@ private fun WeekPeriodRow(
             ) {
                 Text(
                     text = period.title,
-                    style = COUITheme.textStyles.bodyM,
-                    color = if (active) scheme.primaryText else scheme.labelSecondary,
+                    kind = CouiTextKind.ItemValue,
+                    color = if (active) scheme.accent else scheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

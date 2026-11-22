@@ -1,10 +1,6 @@
 package com.jm3.app.miuix.ui
 
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.indication
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,10 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -40,10 +34,24 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogActionStyle
+import com.itos.coui.dialog.CouiDialogDefaults
+import com.itos.coui.dialog.Dialog as CouiDialog
+import com.itos.coui.effect.CouiContourStyle
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text as CouiText
+import com.itos.coui.text.rememberCouiTextStyle
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ui.components.overlayDialogMaxWidth
 import com.jm3.app.miuix.ui.coui.component.CouiDialogSecondaryButton
 import com.jm3.app.miuix.ui.coui.component.CouiLinearProgressBar
+import com.jm3.app.miuix.ui.coui.component.couiContourSurface
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
+import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.app.miuix.update.UpdateDownloadState
@@ -51,20 +59,10 @@ import com.jm3.core.settings.UiSkin
 import com.jm3.core.update.MarkdownBlock
 import com.jm3.core.update.MarkdownBlocks
 import com.jm3.core.update.ReleaseInfo
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text as CouiText
-import io.github.suqi8.coui.kmp.layout.DialogButtonBar
-import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
-import io.github.suqi8.coui.kmp.layout.DialogDefaults as CouiDialogDefaults
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.squircle.squircleBorder
-import io.github.suqi8.coui.kmp.theme.COUIRoundCorner
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.couiTouchFeedback
-import io.github.suqi8.coui.kmp.window.WindowDialog as CouiWindowDialog
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
@@ -136,22 +134,25 @@ internal fun rememberMiuixMarkdownNotesStyle(): MarkdownNotesStyle {
 
 @Composable
 private fun rememberCouiMarkdownNotesStyle(): MarkdownNotesStyle {
-    val dark = COUITheme.isDark
-    val colors = COUITheme.colorScheme
-    val styles = COUITheme.textStyles
+    val dark = CouiKitTheme.isDark
+    val colors = CouiKitTheme.colorScheme
+    val itemTitle = rememberCouiTextStyle(CouiTextKind.ItemTitle)
+    val searchBody = rememberCouiTextStyle(CouiTextKind.Search)
+    val summary = rememberCouiTextStyle(CouiTextKind.ItemSummary)
+    val footer = rememberCouiTextStyle(CouiTextKind.GroupFooter)
     return MarkdownNotesStyle(
-        textColor = colors.labelPrimary,
-        secondaryColor = colors.labelSecondaryVariant,
-        codeColor = colors.labelPrimary.copy(alpha = 0.90f),
-        linkColor = colors.primaryText,
-        pillBackground = colors.labelPrimary.copy(alpha = if (dark) 0.14f else 0.065f),
-        pillBorder = colors.divider.copy(alpha = if (dark) 0.50f else 0.42f),
-        dividerColor = colors.divider.copy(alpha = 0.65f),
-        heading1Style = styles.headlineXS.copy(fontWeight = FontWeight.Bold),
-        heading2Style = styles.bodyL.copy(fontWeight = FontWeight.Bold),
-        heading3Style = styles.bodyS.copy(fontWeight = FontWeight.Bold),
-        bodyStyle = styles.bodyS,
-        emptyStyle = styles.bodyXS,
+        textColor = colors.onSurface,
+        secondaryColor = colors.onSurfaceVariant,
+        codeColor = colors.onSurface.copy(alpha = 0.90f),
+        linkColor = colors.accent,
+        pillBackground = colors.onSurface.copy(alpha = if (dark) 0.14f else 0.065f),
+        pillBorder = colors.outlineVariant.copy(alpha = if (dark) 0.50f else 0.42f),
+        dividerColor = colors.outlineVariant.copy(alpha = 0.65f),
+        heading1Style = itemTitle.copy(fontWeight = FontWeight.Bold),
+        heading2Style = searchBody.copy(fontWeight = FontWeight.Bold),
+        heading3Style = summary.copy(fontWeight = FontWeight.Bold),
+        bodyStyle = summary,
+        emptyStyle = footer,
     )
 }
 
@@ -525,174 +526,156 @@ private fun CouiUpdateAvailableDialog(
         updateDialogNotesState(release.notes, notesExpanded, COUI_UPDATE_NOTES_PREVIEW_LINES)
     }
     val downloading = downloadState is UpdateDownloadState.Downloading
-    val dark = COUITheme.isDark
-    val colors = COUITheme.colorScheme
-    val styles = COUITheme.textStyles
-    val notesCornerRadius = 18.dp
-    val notesCardShape = remember { SquircleShape(notesCornerRadius, COUIRoundCorner.Large.Weight) }
-    val notesBorderColor = colors.labelPrimary.copy(alpha = if (dark) 0.14f else 0.08f)
+    val dark = CouiKitTheme.isDark
+    val colors = CouiKitTheme.colorScheme
+    val dialogMaterial = couiDialogMaterial()
+    val hasMaterial = dialogMaterial != null
+    val horizontalPadding = CouiDialogDefaults.contentPadding
+    val notesCardShape = remember { CouiShape(18.dp, 3f) }
     val couiNotesStyle = rememberCouiMarkdownNotesStyle()
-    val dialogMaxWidth = LocalWideLayout.current.dialogWidth ?: CouiDialogDefaults.MaxWidth
-    val hasCustomContent = plan.showProgress || plan.hasNotes || plan.showIgnore
 
-    // 启动期更新弹窗组合在路由与 Scaffold 之外，必须使用窗口级 WindowDialog 并保持不透明面板。
-    CouiWindowDialog(
-        show = show,
+    CouiDialog(
+        visible = show,
         title = "发现新版本",
-        summary = plan.summary.takeIf { it.isNotBlank() },
-        maxWidth = dialogMaxWidth,
+        message = plan.summary.takeIf { it.isNotBlank() },
+        dark = dark,
+        material = dialogMaterial,
         onDismissRequest = onDismiss,
-        customContent = if (hasCustomContent) {
-            {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = CouiDialogDefaults.insideMargin.width),
-                ) {
-                    if (plan.showProgress) {
-                        CouiText(
-                            text = plan.progressDetail.orEmpty(),
-                            style = styles.bodyS,
-                            color = colors.labelSecondary,
-                            textAlign = TextAlign.Start,
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        CouiLinearProgressBar(
-                            progress = plan.progressFraction,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        if (plan.hasNotes) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                    }
-                    if (plan.hasNotes) {
-                        CouiText(
-                            text = "更新说明",
-                            style = styles.bodyS,
-                            color = colors.labelSecondary,
-                            textAlign = TextAlign.Start,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                        )
-                        // 卡片只负责圆角裁切与描边；限高、羽化与滚动统一由 FoldableNotes 提供。
-                        // 折叠行渲染在视口外侧，展开后不会跟着长文跑到几十屏开外，羽化也盖不到它。
-                        val notesFold = updateNotesFold(
-                            expanded = notesExpanded,
-                            hiddenLineCount = notesState.hiddenLineCount,
-                            onToggle = { notesExpanded = !notesExpanded },
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(notesCardShape)
-                                .background(couiDialogSurfaceColor())
-                                .squircleBorder(
-                                    width = 0.5.dp,
-                                    color = notesBorderColor,
-                                    cornerRadius = notesCornerRadius,
-                                    weight = COUIRoundCorner.Large.Weight,
-                                ),
-                        ) {
-                            FoldableNotes(
-                                fold = notesFold,
-                                spec = NotesDialogViewport,
-                                content = {
-                                    MarkdownNotes(
-                                        markdown = notesState.visibleMarkdown,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                                        notesStyle = couiNotesStyle,
-                                    )
-                                },
-                                footer = {
-                                    // 视口只负责在视口里滚动；折叠行贴在视口下缘，展开再多说明也不用滑到底才点得到。
-                                    notesFold?.let { fold ->
-                                        val foldInteractionSource = remember { MutableInteractionSource() }
-                                        Column(modifier = Modifier.fillMaxWidth()) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(0.5.dp)
-                                                    .background(colors.divider.copy(alpha = 0.55f)),
-                                            )
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(min = 44.dp)
-                                                    .couiTouchFeedback(interactionSource = foldInteractionSource)
-                                                    .indication(foldInteractionSource, LocalIndication.current)
-                                                    .clickable(
-                                                        interactionSource = foldInteractionSource,
-                                                        indication = null,
-                                                        role = Role.Button,
-                                                        onClick = fold.onToggle,
-                                                    )
-                                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                            ) {
-                                                CouiText(
-                                                    text = fold.label,
-                                                    style = styles.bodyM,
-                                                    color = colors.primaryText,
-                                                    textAlign = TextAlign.Start,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.weight(1f),
-                                                )
-                                                Icon(
-                                                    imageVector = if (fold.expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp),
-                                                    tint = colors.primaryText,
-                                                )
-                                            }
-                                        }
-                                    }
-                                },
-                            )
-                        }
-                    }
-                    if (plan.showIgnore) {
-                        Spacer(
-                            modifier = Modifier.height(
-                                if (plan.showProgress || plan.hasNotes) 12.dp else 4.dp,
-                            ),
-                        )
-                        CouiDialogSecondaryButton(
-                            text = "忽略此版本",
-                            contentColor = colors.error,
-                            hasMaterial = false,
-                            onClick = { onIgnore?.invoke(release.version) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
+        confirmAction = CouiDialogAction(
+            text = plan.primaryText,
+            onClick = { if (release.apk != null) onDownload() else onOpenRelease() },
+            enabled = !downloading,
+            style = CouiDialogActionStyle.Primary,
+            colors = CouiDialogDefaults.primaryActionColors(colors.accent),
+        ),
+        neutralAction = if (plan.showCancelDownload) {
+            CouiDialogAction(
+                text = "取消下载",
+                onClick = { onCancelDownload?.invoke() },
+            )
         } else {
             null
         },
+        dismissAction = CouiDialogAction(
+            text = plan.dismissText,
+            onClick = onDismiss,
+        ),
     ) {
-        DialogButtonBar(
-            negative = DialogButtonBarAction(
-                text = plan.dismissText,
-                onClick = onDismiss,
-            ),
-            positive = DialogButtonBarAction(
-                text = plan.primaryText,
-                enabled = !downloading,
-                recommended = true,
-                onClick = { if (release.apk != null) onDownload() else onOpenRelease() },
-            ),
-            neutral = if (plan.showCancelDownload) {
-                DialogButtonBarAction(
-                    text = "取消下载",
-                    onClick = { onCancelDownload?.invoke() },
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = horizontalPadding),
+        ) {
+            if (plan.showProgress) {
+                CouiText(
+                    text = plan.progressDetail.orEmpty(),
+                    kind = CouiTextKind.ItemSummary,
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
                 )
-            } else {
-                null
-            },
-        )
+                Spacer(modifier = Modifier.height(6.dp))
+                CouiLinearProgressBar(progress = plan.progressFraction)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            if (plan.hasNotes) {
+                CouiText(
+                    text = "更新说明",
+                    kind = CouiTextKind.GroupTitle,
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                // 卡片只负责材质与描边；限高、羽化与滚动统一由 FoldableNotes 提供。
+                // 折叠行渲染在视口外侧，展开后不会跟着长文跑到几十屏开外，羽化也盖不到它。
+                val notesFold = updateNotesFold(
+                    expanded = notesExpanded,
+                    hiddenLineCount = notesState.hiddenLineCount,
+                    onToggle = { notesExpanded = !notesExpanded },
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .couiContourSurface(
+                            shape = notesCardShape,
+                            surfaceColor = couiDialogSurfaceColor(),
+                            cornerRadius = 18.dp,
+                            cornerWeight = 3f,
+                            style = CouiContourStyle.Dialog,
+                            dark = dark,
+                            emphasized = false,
+                            fallbackBorderColor = colors.onSurface.copy(alpha = if (dark) 0.14f else 0.08f),
+                        ),
+                ) {
+                    FoldableNotes(
+                        fold = notesFold,
+                        spec = NotesDialogViewport,
+                        content = {
+                            MarkdownNotes(
+                                markdown = notesState.visibleMarkdown,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                notesStyle = couiNotesStyle,
+                            )
+                        },
+                        footer = {
+                            // 视口只负责在视口里滚动；折叠行贴在视口下缘，展开再多说明也不用滑到底才点得到。
+                            notesFold?.let { fold ->
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(0.5.dp)
+                                            .background(colors.outlineVariant.copy(alpha = 0.55f)),
+                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 44.dp)
+                                            .couiPressable(
+                                                spotlight = SpotlightPreset.ChipTab,
+                                                onClick = fold.onToggle,
+                                            )
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        CouiText(
+                                            text = fold.label,
+                                            kind = CouiTextKind.ItemValue,
+                                            color = colors.accent,
+                                            textAlign = TextAlign.Start,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Icon(
+                                            imageVector = if (fold.expanded) CouiIcons.ChevronUp else CouiIcons.ChevronDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = colors.accent,
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+            if (plan.showIgnore) {
+                Spacer(modifier = Modifier.height(12.dp))
+                CouiDialogSecondaryButton(
+                    text = "忽略此版本",
+                    contentColor = CouiDialogDefaults.themeColors(dark).destructive,
+                    hasMaterial = hasMaterial,
+                    onClick = { onIgnore?.invoke(release.version) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (plan.showProgress || plan.hasNotes || plan.showIgnore) {
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
     }
 }
 

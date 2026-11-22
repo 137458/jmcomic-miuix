@@ -18,13 +18,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -41,26 +41,29 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.CouiPageDefaults
+import com.itos.coui.layout.Footer
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.swipereveal.CouiSwipeRevealDefaults
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
-import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
-import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
-import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarSegmentedTabs
-import com.jm3.app.miuix.ui.coui.component.CouiPullToRefresh
-import com.jm3.app.miuix.ui.coui.component.couiPageScroll
+import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
+import com.jm3.app.miuix.ui.coui.component.rememberCouiScreenScrollBehavior
 import com.jm3.app.miuix.ui.coui.component.couiPressable
 import com.jm3.app.miuix.ui.coui.component.couiWorkCardShape
-import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
-import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.notifications.NOTIFICATION_PREVIEW_UPDATES
 import com.jm3.app.miuix.ui.notifications.NotificationTab
@@ -70,6 +73,7 @@ import com.jm3.app.miuix.ui.notifications.notificationTypeLabel
 import com.jm3.app.miuix.ui.notifications.notificationUpdatesToggleText
 import com.jm3.app.miuix.ui.notifications.rememberNotificationsScaffoldState
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.model.NotificationBody
@@ -77,10 +81,6 @@ import com.jm3.core.model.NotificationItem
 import com.jm3.core.notificationBody
 import com.jm3.core.notificationDisplayTitle
 import com.jm3.core.session.UnreadBadge
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.preference.PagerFooterPreference
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -88,10 +88,6 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 侧滑露出动作的行程：38dp 的融合动作尺寸再留出标签宽度。 */
 private val NotificationsSwipeReach = 96.dp
-
-/** 融合滑动推离时的最大模糊半径（像素）与松手归位弹簧（对齐 COUI `COUISlideView` 阻尼 1 / 刚度 200）。 */
-private const val NotificationsSwipeMaxBlurPx = 12f
-private val NotificationsSwipeSettleSpec = spring<Float>(dampingRatio = 1f, stiffness = 200f)
 
 /**
  * COUI 信箱页：行卡 + 融合滑动，签名与原页面一致。
@@ -108,6 +104,7 @@ internal fun CouiNotificationsScreen(
     nav: AppRoutes,
 ) {
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
+    // 装载、标记已读、未读角标与账号切换都在共享骨架里；本皮肤只留行卡与融合滑动
     val scaffoldState = rememberNotificationsScaffoldState(
         deps = deps,
         snackbarHostState = snackbarHostState,
@@ -125,34 +122,25 @@ internal fun CouiNotificationsScreen(
 
     CouiTheme {
         val listStates = remember { List(NotificationTab.entries.size) { LazyListState() } }
+        val overscroll = rememberCouiOverscrollEffect()
         val clampedTabIndex = tabIndex.coerceIn(0, NotificationTab.entries.lastIndex)
+        val scrollBehavior = rememberCouiScreenScrollBehavior {
+            val active = listStates[clampedTabIndex]
+            active.canScrollForward || active.canScrollBackward
+        }
         val pagerState = rememberSyncedTabPagerState(
             selectedTab = clampedTabIndex,
             pageCount = NotificationTab.entries.size,
             onTabSelected = { if (it != tabIndex) tabIndex = it },
         )
-        val activeCanScroll by remember(pagerState, listStates) {
-            derivedStateOf {
-                val active = listStates.getOrNull(pagerState.currentPage)
-                active != null && (active.canScrollForward || active.canScrollBackward)
-            }
-        }
-        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
-        CouiExpandTopAppBarEffect(
-            scrollBehavior = scrollBehavior,
-            activeTab = pagerState.currentPage,
-            canScroll = activeCanScroll,
-        )
         val tabLabels = scaffoldState.tabLabels
         val subtitle = scaffoldState.subtitle
 
         Box(modifier = Modifier.fillMaxSize()) {
-            CouiPageScaffold(
+            CouiScreenScaffold(
                 title = "信箱",
                 onBack = onBack,
-                wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
-                attachScrollNestedScroll = false,
                 actions = {
                     CouiFeedRefreshAction(
                         refreshing = refreshing,
@@ -160,7 +148,7 @@ internal fun CouiNotificationsScreen(
                     )
                 },
                 topBarBottom = {
-                    CouiPageTopBarSegmentedTabs(
+                    CouiTopBarSegmentedTabs(
                         items = tabLabels,
                         selectedIndex = clampedTabIndex,
                         onSelect = { tabIndex = it },
@@ -173,99 +161,80 @@ internal fun CouiNotificationsScreen(
                 ) { pageIdx ->
                     val pageTab = NotificationTab.entries[pageIdx]
                     val pageVisible = scaffoldState.itemsFor(pageTab)
-                    CouiPullToRefresh(
-                        isRefreshing = refreshing,
-                        onRefresh = scaffoldState::refreshIfIdle,
-                        scrollBehavior = scrollBehavior,
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .readableWidth()
+                            .consumeWindowInsets(contentPadding),
+                        state = listStates[pageIdx],
                         contentPadding = contentPadding,
-                        modifier = Modifier.fillMaxSize(),
+                        overscrollEffect = overscroll,
                     ) {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .readableWidth()
-                                .couiPageScroll()
-                                .consumeWindowInsets(contentPadding),
-                            state = listStates[pageIdx],
-                            contentPadding = contentPadding,
-                            flingBehavior = rememberCOUIFlingBehavior(),
-                        ) {
-                            if (subtitle.isNotBlank()) {
-                                item(key = "notif-subtitle") {
-                                    PagerFooterPreference(summary = subtitle, withExtraMarginBottom = false)
+                        if (subtitle.isNotBlank()) {
+                            item(key = "notif-subtitle") { Footer(text = subtitle) }
+                        }
+
+                        when {
+                            loading && page == null -> item(key = "notif-loading") {
+                                CouiLoadingGroup(
+                                    modifier = Modifier.padding(top = 8.dp),
+                                    text = "正在加载信箱…",
+                                )
+                            }
+                            sessionExpired -> item(key = "notif-expired") {
+                                CouiFeedLoginGroup(message = error.orEmpty(), onOpenLogin = nav::login)
+                            }
+                            error != null -> item(key = "notif-error") {
+                                CouiErrorGroup(
+                                    message = error.orEmpty(),
+                                    onRetry = { scaffoldState.load() },
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                            items.isEmpty() -> {
+                                item(key = "notif-empty") {
+                                    CouiEmptyGroup(
+                                        text = "暂无消息",
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    )
+                                }
+                                item(key = "notif-empty-hint") {
+                                    Footer(text = notificationEmptyHint(pageTab))
                                 }
                             }
-
-                            when {
-                                loading && page == null -> item(key = "notif-loading") {
-                                    CouiLoadingGroup(
-                                        modifier = Modifier.padding(top = 8.dp),
-                                        text = "正在加载信箱…",
-                                    )
-                                }
-                                sessionExpired -> item(key = "notif-expired") {
-                                    CouiFeedLoginGroup(message = error.orEmpty(), onOpenLogin = nav::login)
-                                }
-                                error != null -> item(key = "notif-error") {
-                                    CouiErrorGroup(
-                                        message = error.orEmpty(),
-                                        onRetry = { scaffoldState.load() },
+                            pageVisible.isEmpty() -> {
+                                item(key = "notif-tab-empty") {
+                                    CouiEmptyGroup(
+                                        text = "暂无此类消息",
                                         modifier = Modifier.padding(top = 8.dp),
                                     )
                                 }
-                                items.isEmpty() -> {
-                                    item(key = "notif-empty") {
-                                        CouiEmptyGroup(
-                                            text = "暂无消息",
-                                            modifier = Modifier.padding(top = 8.dp),
-                                        )
-                                    }
-                                    item(key = "notif-empty-hint") {
-                                        PagerFooterPreference(
-                                            summary = notificationEmptyHint(pageTab),
-                                            withExtraMarginBottom = false,
-                                        )
-                                    }
-                                }
-                                pageVisible.isEmpty() -> {
-                                    item(key = "notif-tab-empty") {
-                                        CouiEmptyGroup(
-                                            text = "暂无此类消息",
-                                            modifier = Modifier.padding(top = 8.dp),
-                                        )
-                                    }
-                                    item(key = "notif-tab-empty-hint") {
-                                        PagerFooterPreference(
-                                            summary = notificationEmptyHint(pageTab),
-                                            withExtraMarginBottom = false,
+                                item(key = "notif-tab-empty-hint") { Footer(text = notificationEmptyHint(pageTab)) }
+                            }
+                            else -> {
+                                itemsIndexed(pageVisible, key = { _, item -> "notif-" + item.id }) { _, item ->
+                                    val expanded = scaffoldState.isExpanded(item.id)
+                                    CouiSwipeRow(
+                                        startAction = notificationMarkActionText(marking = false, read = item.read),
+                                        endAction = if (expanded) "收起" else "展开",
+                                        onStartAction = { scaffoldState.toggleRead(item) },
+                                        onEndAction = { scaffoldState.toggleExpanded(item.id) },
+                                        modifier = Modifier
+                                            .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                            .padding(bottom = 8.dp),
+                                    ) {
+                                        NotificationCard(
+                                            item = item,
+                                            expanded = expanded,
+                                            marking = markingId == item.id,
+                                            onToggleExpanded = { scaffoldState.toggleExpanded(item.id) },
+                                            onToggleRead = { scaffoldState.toggleRead(item) },
+                                            onOpenAlbum = nav::album,
                                         )
                                     }
                                 }
-                                else -> {
-                                    itemsIndexed(pageVisible, key = { _, item -> "notif-" + item.id }) { _, item ->
-                                        val expanded = scaffoldState.isExpanded(item.id)
-                                        CouiSwipeRow(
-                                            startAction = notificationMarkActionText(marking = false, read = item.read),
-                                            endAction = if (expanded) "收起" else "展开",
-                                            onStartAction = { scaffoldState.toggleRead(item) },
-                                            onEndAction = { scaffoldState.toggleExpanded(item.id) },
-                                            modifier = Modifier
-                                                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-                                                .padding(bottom = 8.dp),
-                                        ) {
-                                            NotificationCard(
-                                                item = item,
-                                                expanded = expanded,
-                                                marking = markingId == item.id,
-                                                onToggleExpanded = { scaffoldState.toggleExpanded(item.id) },
-                                                onToggleRead = { scaffoldState.toggleRead(item) },
-                                                onOpenAlbum = nav::album,
-                                            )
-                                        }
-                                    }
-                                    item(key = "notif-tail") {
-                                        Spacer(modifier = Modifier.size(CouiLayoutTokens.GroupSpacing))
-                                    }
+                                item(key = "notif-tail") {
+                                    Spacer(modifier = Modifier.size(CouiPageDefaults.groupSpacing))
                                 }
                             }
                         }
@@ -293,12 +262,12 @@ private fun NotificationCard(
     onToggleRead: () -> Unit,
     onOpenAlbum: (albumId: String) -> Unit,
 ) {
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(couiWorkCardShape())
-            .background(scheme.cardBackground)
+            .background(scheme.card)
             .couiPressable(onClick = onToggleExpanded)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -310,33 +279,34 @@ private fun NotificationCard(
         ) {
             Text(
                 text = notificationTypeLabel(item.type),
-                style = COUITheme.textStyles.bodyXS,
-                color = scheme.labelSecondary,
+                kind = CouiTextKind.GroupFooter,
+                color = scheme.onSurfaceVariant,
                 maxLines = 1,
             )
             val time = item.time
             if (!time.isNullOrBlank()) {
                 Text(
                     text = "· " + time,
-                    style = COUITheme.textStyles.bodyXS,
-                    color = scheme.labelSecondary,
+                    kind = CouiTextKind.GroupFooter,
+                    color = scheme.onSurfaceVariant,
                     maxLines = 1,
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
             if (!item.read) {
+                // 未读用圆点而不是文字：行首已经有类型标签，再多一个字会抢标题
                 Box(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(scheme.primary),
+                        .background(scheme.accent),
                 )
             }
         }
         Text(
             text = notificationDisplayTitle(item),
-            style = COUITheme.textStyles.headlineXS,
-            color = scheme.labelPrimary,
+            kind = CouiTextKind.ItemTitle,
+            color = scheme.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -345,8 +315,8 @@ private fun NotificationCard(
                 if (body.items.isEmpty()) {
                     Text(
                         text = "暂无作品更新",
-                        style = COUITheme.textStyles.bodyS,
-                        color = scheme.labelSecondary,
+                        kind = CouiTextKind.ItemSummary,
+                        color = scheme.onSurfaceVariant,
                     )
                 } else {
                     val shown = if (expanded) body.items else body.items.take(NOTIFICATION_PREVIEW_UPDATES)
@@ -360,8 +330,8 @@ private fun NotificationCard(
                             if (!date.isNullOrBlank()) {
                                 Text(
                                     text = "· " + date,
-                                    style = COUITheme.textStyles.bodyXS,
-                                    color = scheme.labelSecondary,
+                                    kind = CouiTextKind.GroupFooter,
+                                    color = scheme.onSurfaceVariant,
                                     maxLines = 1,
                                 )
                             }
@@ -369,16 +339,12 @@ private fun NotificationCard(
                             if (comicId != null) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(CircleShape)
-                                        .couiPressable(
-                                            shape = CircleShape,
-                                            minTouchTarget = CouiMinTouchTarget,
-                                            onClick = { onOpenAlbum(comicId) },
-                                        ),
+                                        .clip(CouiCapsuleShape)
+                                        .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = { onOpenAlbum(comicId) }),
                                 ) {
                                     CouiBodyText(
                                         text = update.comicTitle,
-                                        color = scheme.primaryText,
+                                        color = scheme.accent,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -386,7 +352,7 @@ private fun NotificationCard(
                             } else {
                                 CouiBodyText(
                                     text = update.comicTitle,
-                                    color = scheme.primaryText,
+                                    color = scheme.accent,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -396,8 +362,8 @@ private fun NotificationCard(
                     if (body.items.size > NOTIFICATION_PREVIEW_UPDATES) {
                         Text(
                             text = notificationUpdatesToggleText(expanded, body.items.size),
-                            style = COUITheme.textStyles.bodyM,
-                            color = scheme.primaryText,
+                            kind = CouiTextKind.ItemValue,
+                            color = scheme.accent,
                         )
                     }
                 }
@@ -405,8 +371,8 @@ private fun NotificationCard(
             is NotificationBody.Text -> if (body.text.isNotBlank()) {
                 Text(
                     text = body.text,
-                    style = COUITheme.textStyles.bodyS,
-                    color = scheme.labelSecondary,
+                    kind = CouiTextKind.ItemSummary,
+                    color = scheme.onSurfaceVariant,
                     maxLines = if (expanded) Int.MAX_VALUE else 3,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -419,18 +385,14 @@ private fun NotificationCard(
         ) {
             Box(
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .couiPressable(
-                        shape = CircleShape,
-                        minTouchTarget = CouiMinTouchTarget,
-                        onClick = onToggleRead,
-                    )
+                    .clip(CouiCapsuleShape)
+                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onToggleRead)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Text(
                     text = notificationMarkActionText(marking, item.read),
-                    style = COUITheme.textStyles.bodyXS,
-                    color = if (marking) scheme.labelSecondary else scheme.primaryText,
+                    kind = CouiTextKind.GroupFooter,
+                    color = if (marking) scheme.onSurfaceVariant else scheme.accent,
                 )
             }
         }
@@ -458,8 +420,8 @@ internal fun resolveCouiSwipeAction(offsetPx: Float, reachPx: Float): CouiSwipeA
  * 融合滑动行：长按后横向拖拽把卡片推开，露出两侧动作，越过半程松手即提交。
  *
  * 长按启动手势将普通水平滑屏让给外层 [HorizontalPager]，避免从消息卡片上起滑无法切换页签；
- * 融合感来自推离程度的模糊渐变（[NotificationsSwipeMaxBlurPx]）与回弹弹簧（[NotificationsSwipeSettleSpec]），
- * 拖到一半松手会自然弹回原位。
+ * 融合感来自推离程度的模糊渐变（[CouiSwipeRevealDefaults.fusedRevealMaxBlurPx]）与回弹
+ * 弹簧（[CouiSwipeRevealDefaults.itemSettleSpec]），拖到一半松手会自然弹回原位。
  */
 @Composable
 private fun CouiSwipeRow(
@@ -474,16 +436,17 @@ private fun CouiSwipeRow(
     val haptic = rememberSelectionHaptic()
     val reachPx = with(density) { NotificationsSwipeReach.toPx() }
     val offset = remember { Animatable(0f) }
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     val scrim = (abs(offset.value) / reachPx).coerceIn(0f, 1f)
     val blurRadius = with(density) {
-        (NotificationsSwipeMaxBlurPx * scrim.coerceAtLeast(0f)).toDp()
+        (CouiSwipeRevealDefaults.fusedRevealMaxBlurPx * scrim.coerceAtLeast(0f)).toDp()
     }
     val scope = rememberCoroutineScope()
     val currentStartAction by rememberUpdatedState(onStartAction)
     val currentEndAction by rememberUpdatedState(onEndAction)
 
     Box(modifier = modifier.fillMaxWidth()) {
+        // 动作层先铺满：卡片被推开时露出的就是这一层，文字始终落在可读位置
         Row(
             modifier = Modifier.matchParentSize(),
             verticalAlignment = Alignment.CenterVertically,
@@ -497,8 +460,8 @@ private fun CouiSwipeRow(
             ) {
                 Text(
                     text = startAction,
-                    style = COUITheme.textStyles.bodyXS,
-                    color = scheme.primaryText.copy(alpha = scrim.coerceAtLeast(0.25f)),
+                    kind = CouiTextKind.GroupFooter,
+                    color = scheme.accent.copy(alpha = scrim.coerceAtLeast(0.25f)),
                 )
             }
             Box(
@@ -510,8 +473,8 @@ private fun CouiSwipeRow(
             ) {
                 Text(
                     text = endAction,
-                    style = COUITheme.textStyles.bodyXS,
-                    color = scheme.primaryText.copy(alpha = scrim.coerceAtLeast(0.25f)),
+                    kind = CouiTextKind.GroupFooter,
+                    color = scheme.accent.copy(alpha = scrim.coerceAtLeast(0.25f)),
                 )
             }
         }
@@ -541,12 +504,12 @@ private fun CouiSwipeRow(
                                     }
                                     CouiSwipeActionTrigger.NONE -> Unit
                                 }
-                                offset.animateTo(0f, NotificationsSwipeSettleSpec)
+                                offset.animateTo(0f, CouiSwipeRevealDefaults.itemSettleSpec)
                             }
                         },
                         onDragCancel = {
                             scope.launch {
-                                offset.animateTo(0f, NotificationsSwipeSettleSpec)
+                                offset.animateTo(0f, CouiSwipeRevealDefaults.itemSettleSpec)
                             }
                         },
                     )

@@ -102,7 +102,7 @@
 - 缓存只收 `ListLoadState.Loaded`（`remember` `:221-228` 先把 `loadingMore` / `loadMoreFailed` 归一）。作废入口是 `forgetPages`（`:238`，清全部账号仓）与 `clear`（`:243`，两皮肤「我的」页登出成功后调用）。
 - 条目身份为 `AccountScopedKey`（`:132`）：`SessionCache` 在屏幕给的键前补一层 uid，读写经 `scoped`（`:163`）每次动态取 `currentUid`（`:148`），由 `bindAccount`（`:159`）在组装期绑定（`ScreenDeps.kt:64`）。换账号读不到上一账号的仓，屏幕也不必知道当前 uid。
 - 键空间 `SessionListKey`（`:37-48`）覆盖首页 feed（`:38`）、首页搜索（`:39`）、分类与分类标签（`browseTagCacheKey` `:51`；`BrowsePageKey` `:60-65`）与独立搜索页的四元组（`Search` `:42-47`）。
-- 缓存命中即铺首帧、**不补拉**：首拉只在 `state !is ListLoadState.Loaded` 时触发（`ui/SearchScreen.kt:102`、`ui/coui/page/CouiSearchScreen.kt:171-176`）。刷新靠下拉刷新（COUI 侧由 `CouiPullToRefresh` 承载）或改筛选条件。
+- 缓存命中即铺首帧、**不补拉**：首拉只在 `state !is ListLoadState.Loaded` 时触发（`ui/SearchScreen.kt:102`、`ui/coui/page/CouiSearchScreen.kt:171-176`）。刷新靠下拉刷新或改筛选条件。COUI 皮肤无下拉刷新容器（见附录 B），命中后须改排序、时间或查询词才会重取。
 - 失败落点只有 `applyFailure`（`:180`）：`hasContent = pending.items.isNotEmpty() && (!replace || pulling || keepOnFailure)`（`:187`）。有内容时保留内容并按请求类型分派页脚标记（`:189-193`）。
 - 刷新或跳页失败只 `copy(loadingMore = false)`，**禁止**置 `loadMoreFailed`。否则页脚误报「加载失败，点击重试」，且 `PagedFeed.shouldLoadMore`（`core/src/main/kotlin/com/jm3/core/paging/PagedFeed.kt:79`）会让触底翻页停摆。只有加载更多失败才 `failLoadMore()`。
 - 无内容才整屏 `ListLoadState.Failed`（`:194-205`，`sessionExpired` 取自 `planLoad` 的 `Expired` 相位）。`goToPage` 传 `keepOnFailure = true`（`:99`），因为用户点的是「第 N 页」而非整屏重载。
@@ -135,7 +135,7 @@
 - 禁止用反射代理按方法名字符串分派（改接口在编译期无反应），也禁止替身返回兜底假数据让误调静默通过。
 - 协议库 `io.github.jukomu.jmcomic` 只允许出现在 `:core` 主代码，经 `implementation(libs.jmcomic.api)`（`core/build.gradle.kts:18`）内部使用、不再对外暴露。禁止在 `:app` 直接实例化底层协议客户端。
 - `:core` 直用的 okhttp（`Cookie` / `HttpUrl`）由 `implementation(libs.okhttp)`（`core/build.gradle.kts:22-24`）显式声明，不吃 `jmcomic-core` 的传递依赖。
-- 唯一例外是 `jmcomic-android-support`（`app/build.gradle.kts:140-142`）：只提供 Android 侧 WebP 解码，不暴露协议类型。
+- 唯一例外是 `jmcomic-android-support`（`app/build.gradle.kts:136-138`）：只提供 Android 侧 WebP 解码，不暴露协议类型。
 - 异常归类收在 `:core`：`classifyFailure`（`core/src/main/kotlin/com/jm3/core/FailureKind.kt`）给出 `FailureKind`，`:app` 只挑文案（`app/src/main/kotlin/com/jm3/app/miuix/FailureCopy.kt`）。`:app` 主代码禁止出现协议库 import。
 - 反射成员表唯一登记处是 `LibraryReflection`（`core/src/main/kotlin/com/jm3/core/LibraryReflection.kt:35`）：成员名、字段/方法形状与所属类集中在 `members`（`:88-99`）共 10 条，其中 9 条属 `AbstractJmClient`（`:39`）、1 条属 `JmApiClient`（`:40`）。
 - 新增或删除成员只能改这张表，并同步 `LibraryReflectionTest`（`core/src/test/kotlin/com/jm3/core/LibraryReflectionTest.kt:31`、`:47-48`、`:52-54`）。
@@ -182,7 +182,7 @@
 1. **禁止吞掉 `CancellationException`**：参考 `DownloadQueue.kt:156-158` 与 `:220-222`。挂起调用收成 `Result` 时一律用 `runCatchingSuspending`（`core/src/main/kotlin/com/jm3/core/Cancellation.kt:11`），禁止直接 `runCatching { suspendCall() }`。
 2. **单任务失败隔离**：下载 worker 捕获普通异常后只标记当前任务失败，禁止因单任务异常中断整个队列循环（`DownloadQueue.kt:159`）。
 3. **状态机硬断言**：非法状态转移用 `check` 显式抛出，例 `DownloadTask.kt:48` 的 `check(status.canTransitionTo(next))`。禁止用条件跳过掩盖状态错乱。
-4. **错误布局复用**：全屏错误态统一复用 `ErrorScreen`（`ui/components/StatusViews.kt:42`），列表脚部统一复用 `LoadMoreFooter`（`ui/components/ListContainers.kt:44`）。COUI 侧复用 `CouiErrorGroup`（`ui/coui/component/CouiLoadingStates.kt:90`）、`CouiScreenFailureGroup`（`:325`）与 `CouiLoadMoreFooter`（`:130`、`:216`）。禁止屏幕自造错误布局。
+4. **错误布局复用**：全屏错误态统一复用 `ErrorScreen`（`ui/components/StatusViews.kt:42`），列表脚部统一复用 `LoadMoreFooter`（`ui/components/ListContainers.kt:44`）。COUI 侧复用 `CouiErrorGroup`（`ui/coui/component/CouiLoadingStates.kt:65`）与 `CouiLoadMoreFooter`（`:97`）。禁止屏幕自造错误布局。
 5. **跟手动画取消**：阅读器翻页与复位统一调 `springAnimateToPage`（`reader/ReaderActions.kt:43` 手动翻页、`:59` 跳页编排），避免另起协程争夺滚动状态。分页器目标页夹取统一经 `clampPagerTarget`（`reader/ReaderPagerTarget.kt:4`）。
 6. **文案与日志事实性**：日志只输出任务标识、文件路径或异常类型，不夹带私密数据。用户提示统一简体中文与全角标点。
 
@@ -192,7 +192,7 @@
 
 1. **依赖版本单一真源**：版本号集中定义于 `gradle/libs.versions.toml`，模块 `build.gradle.kts` 内禁止出现依赖字面版本号。`versionCode = 20000` 与 `versionName = "2.0.0"`（`app/build.gradle.kts:47-48`）仍为模块内字面量，改动须同步 CHANGELOG 与 Git tag。新增依赖须同步核对许可证与 R8 规则。
 2. **单向模块依赖**：只允许 `:app` 依赖 `:core`（`app/build.gradle.kts:107`），禁止反向依赖。`:core` 保持 Java 17（`core/build.gradle.kts:13-14`），`:app` 用 Java 21（`app/build.gradle.kts:86-87`）。
-3. **SDK 坐标与传输安全矩阵**：固定 `compileSdkVersion("android-37.0")`（`app/build.gradle.kts:40`）、`minSdk = 31`（`:45`）、`targetSdk = 36`（`:46`）。`miuix-blur` 与 `coui-blur` 声明 `minSdk 33`，已在 `app/src/main/AndroidManifest.xml:14` 通过 `<uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur,io.github.suqi8.coui.kmp.blur" />` 覆盖，低版本运行时自动降级为实底；调整 SDK 坐标前须先核对依赖矩阵。
+3. **SDK 坐标与传输安全矩阵**：固定 `compileSdkVersion("android-37.0")`（`app/build.gradle.kts:40`）、`minSdk = 31`（`:45`）、`targetSdk = 36`（`:46`）。下限受 `COUI-Kit 0.0.1-alpha12` 元数据强制约束，调整前先核对依赖矩阵。
 4. **明文流量禁用**：`AndroidManifest.xml:25` 声明 `android:usesCleartextTraffic="false"`。应用内更新下载拒绝非 HTTPS 与 3xx 降级重定向（`UpdateDownloader.kt:337-338`、`:362-363`）。`data_extraction_rules.xml`（`AndroidManifest.xml:23`）排除敏感 DataStore 备份迁移。
 5. **Release 混淆与压缩**：`release` 强制开启 `isMinifyEnabled` 与 `isShrinkResources`（`app/build.gradle.kts:64-65`），规则维护于 `app/proguard-rules.pro`。新增反射式依赖必须实测 Release 包。
 6. **签名安全边界**：Release 签名从 `local.properties` 读取四键（`app/build.gradle.kts:12-17`、`:69`）。四键缺失时回退调试签名；四键齐全但 keystore 文件不存在时配置期直接抛 `GradleException`（`:24-30`）。密钥、口令与 Cookie 严禁入库。
@@ -206,8 +206,8 @@
 
 ### 5.1 双皮肤组件边界
 
-- 皮肤按界面风格分工：HyperOS 用 `Miuix`，ColorOS 用 `COUI`（`io.github.suqi8.coui.kmp:coui-{ui,preference,icons,blur,squircle}-android:2.1.0`，`app/build.gradle.kts:133-137`，入口 `ui/coui/theme/CouiTheme.kt`）。禁止跨皮肤混用页面骨架与卡片组件。
-- COUI 页面只允许从 Miuix 借 `SnackbarHostState`、`pagerGestureOverride` 与主题色类型 `Colors` / `MiuixTheme` 等共享骨架与手势兼容件，禁止全仓引入 `androidx.compose.material3`。
+- 皮肤按界面风格分工：HyperOS 用 `Miuix`，ColorOS 用 `COUI-Kit`（`io.github.itoseo:coui:0.0.1-alpha12`，`app/build.gradle.kts:133`，入口 `ui/coui/theme/CouiTheme.kt`）。禁止跨皮肤混用页面骨架与卡片组件。
+- COUI 页面只允许从 Miuix 借图标组合件与 `SnackbarHostState` 等库内缺件，禁止全仓引入 `androidx.compose.material3`。
 - 两套皮肤的圆角与颜色统一取自 `LocalSkin`（`ui/skin/SkinTokens.kt:201`）：HyperOS 卡片圆角 `16 dp`、控件 `12 dp`（`:63-64`）；ColorOS 卡片圆角 `18 dp`、控件 `14 dp`（`:174-175`）。
 
 ### 5.2 公共控件与底部净空
@@ -217,8 +217,8 @@
     - `LoadMoreFooter`、`PagerBar`、`TrackedLazyColumn` 在 `ListContainers.kt`
     - `rememberSelectionHaptic` 与 `CoverSkeletonState`（配套 `rememberCoverSkeletonState`、`Modifier.coverSkeleton`）在 `InteractionModifiers.kt`
 - 长列表一律用 `TrackedLazyColumn`，由其内部承载 `ListScrollBar` 并共享 `contentPadding`。禁止在页面层自拼滚动条。
-- COUI 侧复用 `CouiAppComponents.kt` 的 `CouiPageScaffold`（`:71`，提供 `LocalPageBackdrop`、`LocalMaterialBackdrop`、`LocalPopupMaterialBlur` 录制桥接）、`Modifier.couiPressable`（`:175`），`CouiScreenScaffold.kt` 的页级 `CouiPageScaffold`（`:139`）、`CouiPageTopBar`（`:206`）、`CouiPageTopBarSegmentedTabs`（`:379`），`CouiDialogPolicy.kt` 的 `panelBlur`（`:118`，为页内弹窗/底抽屉提供实时模糊配置），以及 `CouiLoadingStates.kt` 的 `CouiPullToRefresh`（`:37`）、`CouiLoadingGroup`（`:55`）、`CouiEmptyGroup`（`:75`）、`CouiErrorGroup`（`:90`）、`CouiLoadMoreFooter`（`:130`、`:216`）与 `CouiScreenFailureGroup`（`:325`）。
-- COUI 页面由 `CouiPageScaffold` 统一留出底栏净空（默认值取自 `couiPageExtraBottomDp`，见 `ui/coui/component/CouiScreenScaffold.kt:157`、`:291`；基础骨架经 `LocalFloatingBarContentPadding` 占位）。禁止页面硬编码底部占位高度。
+- COUI 侧复用 `CouiAppComponents.kt` 的 `CouiAppScaffold`（`:90`）、`Modifier.couiPressable`（`:184`），以及 `CouiLoadingStates.kt` 的 `CouiLoadingGroup`（`:35`）、`CouiEmptyGroup`（`:50`）、`CouiErrorGroup`（`:65`）与 `CouiLoadMoreFooter`（`:159`）。
+- COUI 页面由 `CouiAppScaffold` 统一留出底栏净空（默认值取自 `couiPageExtraBottomDp`，见 `ui/coui/component/CouiScreenScaffold.kt:71`、`:176`）。禁止页面硬编码底部占位高度。
 - 底部净空只有一处推导 `ui/BottomSpacing.kt`：`bottomBarContentPaddingDp`（`:41`；`DOCKED` 退回条高 `:46`、`FLOATING` 加底距与呼吸 `:47-57`）。`ui/glass/BottomBarTokens.kt:71-75`、`:121-125` 直接调用，不写字面量。
 - 其余净空函数：`couiPageExtraBottomDp`（`:101`，只认 `hasFab` 与 `imeOccupiesPage` 两个开关）、`couiHomeExtraBottomDp`（`:111`）、`glassHomeExtraBottomDp`（`:129`）、`creatorWorkExtraBottomDp`（`:167`）。旧的 `ui/BottomClearance.kt` 与其测试已整体删除，禁止再引入第二套净空公式。
 - 跨屏交互件同类收口：复制文本统一走 `copyTextToClipboard`（`ui/ClipboardActions.kt:28`，调用点 `ui/album/AlbumDetailScaffold.kt:195`、`ui/coui/page/CouiUpdateScreen.kt:214`），成败文案由 `clipboardCopyMessage`（`:17`）按 `writeClipboardText`（`:43`）的真实结果给出。禁止各屏先弹成功再写。
@@ -388,7 +388,7 @@
 7. **通知节流 `300 ms` 与配额退避**：常规进度按 `300 ms` 节流，终态立即刷新。`dataSync` 6 小时配额耗尽后暂停在途任务并保留可见通知，不做保活；系统拒绝拉起前台服务后按 `5 s` 退避重试一次。
 8. **许可证隔离**：只允许复制 `Apache-2.0`、`MIT` 或 `ISC` 源码并保留 SPDX 标注；`GPL-3.0` / `AGPL-3.0` 项目只采思路、自行重写。仓库主体为 `MIT`。`app/src/main/kotlin/com/jm3/app/miuix/ui/` 下 70 个文件带 `Apache-2.0` 头：
     - `glass/` 15、`coui/` 38、`ui/` 直属 12、`effect/` 2、`route/` 1、`favorites/` 1、`week/` 1。
-    - `CouiIcons.kt` 带 `ISC` 头；`COUI`（`io.github.suqi8.coui.kmp` 2.1.0）按 `Apache-2.0` 依赖接入。明细见 `NOTICE`。
+    - `CouiIcons.kt` 带 `ISC` 头；`COUI-Kit` 按 `MPL-2.0` 依赖接入。明细见 `NOTICE`。
 9. **提升型持续通知按 API 36.1 判定**：`setRequestPromotedOngoing` 只存在于 Android 16.1（API 36.1），必须先判 `SDK_INT >= 36` 再判 `SDK_INT_FULL >= BAKLAVA_1`（`DownloadNotifier.kt:216`、`:228`），避免 Android 16.0 触发 `NoSuchMethodError`。
 10. **共享元素用自绘覆盖层**：`miuix-nav 0.9.4` 转场无 `AnimatedVisibilityScope`，故用 `onGloballyPositioned` 登记起止矩形并在 `AlbumHeroOverlay` 插值绘制，取缩略图地址与 `crossfade(false)`。拿不到起止矩形时退化为普通转场。
 11. **静默重登连续失败 3 次清凭据**：`AccountManager` 持久化 `renewFailureCount`，连续 3 次失败后清除已存加密凭据，避免每次冷启动重复无效登录；任一次成功立即归零，兼容短暂断网。
@@ -446,7 +446,7 @@
         - Android 13 及以上通知拒权回退
         - 超长条漫的真机内存与清晰度
         - Keystore 密钥损毁后的重建日志、真实会话过期后的自动重登链路
-5. **COUI 皮肤下拉刷新已接入（原暂缓项已解决）**：`suqi8/coui 2.1.0` 原生提供 `PullToRefresh`，经 `CouiPullToRefresh`（`ui/coui/component/CouiLoadingStates.kt:37`）封装后接入各 COUI 列表与信息流页面，禁止在页面层手拼手势容器。
+5. **COUI 皮肤暂不实现下拉刷新**：`COUI-Kit 0.0.1-alpha12` 的 `coui/scroll/` 只有 overscroll、fling 与 physics，无下拉刷新容器。COUI 页面的刷新入口统一由错误态重试与页面操作按钮承担，禁止在页面层手拼手势容器。
 6. **小说列表只取第 1 页**：网关 `novelList(order, page = 1)`（`core/src/main/kotlin/com/jm3/core/Jm3Gateway.kt:210`）按页返回，两个小说列表屏都只请求第 1 页（`ui/coui/page/CouiNovelListScreen.kt:145`、`ui/novel/NovelScreens.kt:230`），故不强套 `PagedFeed`。需要翻页时必须先补屏幕编排与页码真源。
 7. **阅读器共性件只测得到纯函数部分**：`reader/ReaderActions.kt`、`reader/ReaderSpreadPage.kt` 与 `reader/ReaderEdgeDrag.kt` 依赖 Compose 运行时（`PagerState`、`LazyListState`、指针事件），编排本身无测试类。可判定部分已抽纯函数并覆盖：
     - `planReaderTurnEntry`（`ReaderTurnEntryTest`，8 例）

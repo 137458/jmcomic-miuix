@@ -2,15 +2,11 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -27,9 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,16 +42,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.motion.couiPressMotion
+import com.itos.coui.motion.rememberCouiPressMotion
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.text.rememberCouiTextStyle
+import com.itos.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.AlbumCoverImage
 import com.jm3.app.miuix.ui.LocalAlbumHeroHost
 import com.jm3.app.miuix.ui.albumHeroCover
 import com.jm3.app.miuix.ui.skin.LocalSkin
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.theme.COUIRoundCorner
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.couiTouchFeedback
 
 /**
  * COUI 作品卡的尺寸契约：与 Miuix 版 [com.jm3.app.miuix.ui.WorkCardTokens] 共用同一套排版比例，
@@ -123,25 +123,11 @@ internal object CouiWorkCardTokens {
     val RowSpacing: Dp = 8.dp
 }
 
-private val CardPressSpring = spring<Float>(dampingRatio = 1f, stiffness = 438.65f)
-private const val CardPressScale = 0.97f
-
 /** 封面/卡片圆角：与皮肤 cardCorner 同源，卡片、角标、hero 飞行终点的曲率才一致。 */
 @Composable
-internal fun couiWorkCardShape(): Shape {
-    val corner = LocalSkin.current.shapes.cardCorner
-    return remember(corner) { SquircleShape(corner, COUIRoundCorner.Normal.Weight) }
-}
+internal fun couiWorkCardShape(): CouiShape = CouiShape(radius = LocalSkin.current.shapes.cardCorner)
 
-/** 主题感知的独立卡片细边框，取当前 [COUITheme.colorScheme.divider]。 */
-@Composable
-internal fun couiCardBorder(): BorderStroke =
-    BorderStroke(
-        width = CouiWorkCardTokens.BorderWidth,
-        color = COUITheme.colorScheme.divider,
-    )
-
-/** 独立卡片的自适应边框样式：深色微光白边、浅色高雅淡黑边（纯函数契约供布局单测校验）。 */
+/** 独立卡片的自适应边框样式：深色微光白边、浅色高雅淡黑边。 */
 internal fun couiCardBorder(isDark: Boolean): BorderStroke =
     BorderStroke(
         width = CouiWorkCardTokens.BorderWidth,
@@ -169,7 +155,7 @@ fun CouiWorkCover(
     } else {
         Modifier
     }
-    Box(modifier = modifier.clip(shape).background(COUITheme.colorScheme.container4)) {
+    Box(modifier = modifier.clip(shape).background(CouiTheme.colorScheme.container)) {
         AlbumCoverImage(
             url = url,
             contentDescription = contentDescription,
@@ -186,17 +172,17 @@ fun CouiWorkBadge(
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
 ) {
-    val colors = COUITheme.colorScheme
+    val colors = CouiTheme.colorScheme
     Box(
         modifier = modifier
-            .clip(CircleShape)
-            .background(if (highlighted) colors.primary else CouiWorkCardTokens.BadgeScrim)
+            .clip(CouiCapsuleShape)
+            .background(if (highlighted) colors.accent else CouiWorkCardTokens.BadgeScrim)
             .padding(horizontal = CouiWorkCardTokens.BadgePaddingH, vertical = CouiWorkCardTokens.BadgePaddingV),
     ) {
         Text(
             text = text,
-            style = COUITheme.textStyles.bodyXS,
-            color = if (highlighted) colors.onPrimary else Color.White,
+            kind = CouiTextKind.GroupFooter,
+            color = if (highlighted) colors.onAccent else Color.White,
             maxLines = 1,
         )
     }
@@ -221,7 +207,7 @@ fun BoxScope.CouiWorkAlbumCodeBadge(code: String?) {
 @Composable
 fun BoxScope.CouiWorkCategoryBadge(category: String?) {
     val label = couiNormalizedText(category) ?: return
-    val base = COUITheme.textStyles.tag
+    val base = rememberCouiTextStyle(CouiTextKind.GroupFooter)
     val lineHeight = couiPinnedLineHeight(CouiWorkCardTokens.CategoryBadgeFontSize, TextUnit.Unspecified)
     // 行高钉死成与字号同源的固定值：角标高低只跟字号有关，不随字形度量浮动
     val style = remember(base, lineHeight) {
@@ -236,17 +222,17 @@ fun BoxScope.CouiWorkCategoryBadge(category: String?) {
             .align(Alignment.BottomStart)
             .padding(CouiWorkCardTokens.CategoryBadgeInset)
             .widthIn(max = couiCategoryBadgeMaxWidth(CouiWorkCardTokens.GridWidth))
-            .clip(CircleShape)
+            .clip(CouiCapsuleShape)
             .background(CouiWorkCardTokens.BadgeScrim)
             .padding(
                 horizontal = CouiWorkCardTokens.CategoryBadgePaddingH,
                 vertical = CouiWorkCardTokens.CategoryBadgePaddingV,
             ),
     ) {
-        Text(
+        BasicText(
             text = label,
             style = style,
-            color = Color.White,
+            color = { Color.White },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -269,7 +255,7 @@ fun CouiWorkRankBadge(rank: Int, modifier: Modifier = Modifier) {
         CouiCustomStyledText(
             text = rank.toString(),
             style = rememberCouiStepperTextStyle(),
-            color = COUITheme.colorScheme.labelSecondary,
+            color = CouiTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = modifier,
             maxLines = 1,
@@ -279,13 +265,13 @@ fun CouiWorkRankBadge(rank: Int, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .size(width = 30.dp, height = 20.dp)
-            .clip(CircleShape)
+            .clip(CouiCapsuleShape)
             .background(metal),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = rank.toString(),
-            style = COUITheme.textStyles.bodyXS,
+            kind = CouiTextKind.GroupFooter,
             // 金属底是固定亮色，文字固定深色，不跟明暗主题翻转
             color = Color(0xFF1A1A1A),
             maxLines = 1,
@@ -296,8 +282,9 @@ fun CouiWorkRankBadge(rank: Int, modifier: Modifier = Modifier) {
 /**
  * 竖版作品卡：封面顶满卡片宽度，下方是标题、次级信息与可选的附加行。
  *
- * 手感按 COUI 17 组合：按压弹簧缩放、按压即触觉（[CouiPressHapticEffect]）、
- * [couiTouchFeedback] + [LocalIndication] 蒙层。
+ * 手感按 COUI 三段拼：按压弹簧缩放（[rememberCouiPressMotion]）、按压即触觉（[CouiPressHapticEffect]）、
+ * 触点点亮（[SpotlightPreset.OpaqueMedium1]）。点亮与卡片同节点、同尺寸：卡片自身垫不透明底后再裁剪叠光，
+ * 光心才按整卡几何归一化，不会像早先那样被封面高度反算成纵向压缩。
  *
  * @param subtitle 作者等次级信息，独占副标题行。
  * @param category 主分类标题，画在封面左下角角标；为空时不绘制。
@@ -319,17 +306,14 @@ fun CouiWorkGridCard(
     footer: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val shape = couiWorkCardShape()
+    val press = rememberCouiPressMotion()
     val interaction = remember { MutableInteractionSource() }
-    val isPressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) CardPressScale else 1f,
-        animationSpec = CardPressSpring,
-    )
     val heroHost = LocalAlbumHeroHost.current
     val cornerDp = LocalSkin.current.shapes.cardCorner.value
     // 分类挪出副标题行：正文列只有 80dp，作者与分类挤同一行时作者会被截到只剩一两个字
     val labels = remember(subtitle, category) { couiWorkGridLabels(subtitle, category) }
-    val border = couiCardBorder()
+    val isDark = CouiTheme.isDark
+    val border = remember(isDark) { couiCardBorder(isDark) }
     CouiPressHapticEffect(interaction)
     Column(
         // 卡片宽度跟随栅格单元：列数由 WideLayoutPolicy 按限宽后的内容宽算出，
@@ -337,17 +321,21 @@ fun CouiWorkGridCard(
         // 轨道横滑等无界容器由调用方传 Modifier.width(CouiWorkCardTokens.GridWidth)。
         modifier = modifier
             .fillMaxWidth()
+            // 卡片自身是不透明表面：按压缩放、裁剪、垫底色、独立描边、叠光都落在同一节点上，
+            // 光才按整卡轮廓折射，缩放也不会只带动封面而露出卡片色环。
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                scaleX = press.scale.value
+                scaleY = press.scale.value
             }
             .clip(shape)
-            .background(COUITheme.colorScheme.cardBackground)
+            .background(CouiTheme.colorScheme.card)
             .border(border, shape)
-            .couiTouchFeedback(interaction)
+            .couiPressMotion(press = press, cancelOnConsumedMove = true)
+            // 封面铺满整卡，光画在内容之下会被整个盖住，改画在内容之上（同库弹窗按钮的画法）
+            .couiSpotlightLight(SpotlightPreset.OpaqueMedium1, interactive = true, aboveContent = true)
             .clickable(
                 interactionSource = interaction,
-                indication = LocalIndication.current,
+                indication = null,
                 role = Role.Button,
             ) {
                 if (albumId != null) heroHost?.startForward(albumId, coverUrl, cornerDp, title)
@@ -357,7 +345,7 @@ fun CouiWorkGridCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(COUITheme.colorScheme.container4),
+                .background(CouiTheme.colorScheme.container),
         ) {
             CouiWorkCover(
                 url = coverUrl,
@@ -407,15 +395,12 @@ fun CouiWorkRowCard(
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val shape = couiWorkCardShape()
+    val press = rememberCouiPressMotion()
     val interaction = remember { MutableInteractionSource() }
-    val isPressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) CardPressScale else 1f,
-        animationSpec = CardPressSpring,
-    )
     val heroHost = LocalAlbumHeroHost.current
     val cornerDp = LocalSkin.current.shapes.cardCorner.value
-    val border = couiCardBorder()
+    val isDark = CouiTheme.isDark
+    val border = remember(isDark) { couiCardBorder(isDark) }
     CouiPressHapticEffect(interaction)
     Row(
         modifier = modifier
@@ -424,16 +409,18 @@ fun CouiWorkRowCard(
             // 单列列表的父级高度无界，fillMaxHeight 不生效，行高仍由封面与文字决定。
             .fillMaxHeight()
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                scaleX = press.scale.value
+                scaleY = press.scale.value
             }
             .clip(shape)
-            .background(COUITheme.colorScheme.cardBackground)
+            // 全宽行也是不透明表面：垫卡片底色后再叠光；封面不透明，光画在内容之上才看得见
+            .background(CouiTheme.colorScheme.card)
             .border(border, shape)
-            .couiTouchFeedback(interaction)
+            .couiPressMotion(press = press, cancelOnConsumedMove = true)
+            .couiSpotlightLight(SpotlightPreset.OpaqueMedium1, interactive = true, aboveContent = true)
             .clickable(
                 interactionSource = interaction,
-                indication = LocalIndication.current,
+                indication = null,
                 role = Role.Button,
             ) {
                 if (albumId != null) heroHost?.startForward(albumId, coverUrl, cornerDp, title)
@@ -493,15 +480,15 @@ fun CouiWorkThumbnail(
 /** 卡片标题：行高钉死并按 [maxLines] 行占位，单行与两行标题不会把同一排卡片撑成不同高度。 */
 @Composable
 private fun CouiWorkTitleText(title: String, maxLines: Int) {
-    val pinned = couiPinnedText(COUITheme.textStyles.headlineXS, maxLines)
-    val color = COUITheme.colorScheme.labelPrimary
-    Text(
+    val pinned = couiPinnedText(CouiTextKind.ItemTitle, maxLines)
+    val color = CouiTheme.colorScheme.onSurface
+    BasicText(
         text = title,
         style = pinned.style.copy(fontWeight = FontWeight.Medium),
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = pinned.blockHeight),
-        color = color,
+        color = { color },
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
     )
@@ -517,9 +504,9 @@ private fun CouiWorkTitleText(title: String, maxLines: Int) {
 @Composable
 private fun CouiWorkSubtitleText(authors: String?, category: String?) {
     val parts = remember(authors, category) { couiWorkSubtitleParts(authors, category) }
-    val pinned = couiPinnedText(COUITheme.textStyles.bodyS, CouiWorkCardTokens.SubtitleLines)
-    val muted = COUITheme.colorScheme.labelSecondary
-    val accent = COUITheme.colorScheme.primaryText
+    val pinned = couiPinnedText(CouiTextKind.ItemSummary, CouiWorkCardTokens.SubtitleLines)
+    val muted = CouiTheme.colorScheme.onSurfaceVariant
+    val accent = CouiTheme.colorScheme.accent
     val author = parts.author
     val categoryText = parts.category
     Row(
@@ -530,28 +517,28 @@ private fun CouiWorkSubtitleText(authors: String?, category: String?) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (author != null) {
-            Text(
+            BasicText(
                 text = author,
                 style = pinned.style,
                 modifier = Modifier.weight(1f, fill = false),
-                color = muted,
+                color = { muted },
                 maxLines = CouiWorkCardTokens.SubtitleLines,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         if (author != null && categoryText != null) {
-            Text(
+            BasicText(
                 text = CouiWorkCardTokens.SubtitleSeparator,
                 style = pinned.style,
-                color = muted,
+                color = { muted },
                 maxLines = CouiWorkCardTokens.SubtitleLines,
             )
         }
         if (categoryText != null) {
-            Text(
+            BasicText(
                 text = categoryText,
                 style = pinned.style,
-                color = accent,
+                color = { accent },
                 maxLines = CouiWorkCardTokens.SubtitleLines,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -566,8 +553,8 @@ private fun CouiWorkSubtitleText(authors: String?, category: String?) {
  */
 @Composable
 private fun CouiWorkAuthorText(author: String?) {
-    val pinned = couiPinnedText(COUITheme.textStyles.bodyS, CouiWorkCardTokens.SubtitleLines)
-    val muted = COUITheme.colorScheme.labelSecondary
+    val pinned = couiPinnedText(CouiTextKind.ItemSummary, CouiWorkCardTokens.SubtitleLines)
+    val muted = CouiTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -576,11 +563,11 @@ private fun CouiWorkAuthorText(author: String?) {
         contentAlignment = Alignment.CenterStart,
     ) {
         if (author != null) {
-            Text(
+            BasicText(
                 text = author,
                 style = pinned.style,
                 modifier = Modifier.fillMaxWidth(),
-                color = muted,
+                color = { muted },
                 maxLines = CouiWorkCardTokens.SubtitleLines,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -588,12 +575,12 @@ private fun CouiWorkAuthorText(author: String?) {
     }
 }
 
-/** 行高折算：库内文本未声明行高或以 em 相对倍距声明时统一换算成 sp 固定值，同排卡片才等高且可安全转 dp。 */
+/** 行高折算：库内文本未声明行高时按字形度量排版，同排卡片会差一两个像素，这里统一折算成固定值。 */
 internal fun couiPinnedLineHeight(fontSize: TextUnit, declaredLineHeight: TextUnit): TextUnit =
-    when {
-        declaredLineHeight.isSp -> declaredLineHeight
-        declaredLineHeight.isEm && fontSize.isSp -> (fontSize.value * declaredLineHeight.value).sp
-        else -> fontSize * CouiWorkCardTokens.LineHeightFactor
+    if (declaredLineHeight.isSpecified) {
+        declaredLineHeight
+    } else {
+        fontSize * CouiWorkCardTokens.LineHeightFactor
     }
 
 /** 文字块占位高度：固定行高乘以预留行数，卡片高度只跟行数有关。 */
@@ -624,13 +611,14 @@ internal fun couiWorkGridLabels(authors: String?, category: String?): CouiWorkGr
         categoryBadge = couiNormalizedText(category),
     )
 
+
 /** 钉死行高的文本样式与它占住的高度：渲染高度与占位高度同源，字形误差才不会累积成卡片高差。 */
 private class CouiPinnedText(val style: TextStyle, val blockHeight: Dp)
 
 @Composable
-private fun couiPinnedText(baseStyle: TextStyle, lines: Int): CouiPinnedText {
+private fun couiPinnedText(kind: CouiTextKind, lines: Int): CouiPinnedText {
     // 大屏档放大字阶；行高与占位高度都从同一份样式推导，卡片不会因为放大而错行
-    val base = couiScaledStyle(baseStyle)
+    val base = couiScaledStyle(rememberCouiTextStyle(kind))
     val lineHeight = couiPinnedLineHeight(base.fontSize, base.lineHeight)
     val style = remember(base, lineHeight) { base.copy(lineHeight = lineHeight) }
     val density = LocalDensity.current

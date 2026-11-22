@@ -24,6 +24,6 @@ Apache License 2.0 全文见 <https://www.apache.org/licenses/LICENSE-2.0>。
 
 ## 第三方依赖库
 
-- `COUI`（`io.github.suqi8.coui.kmp:coui-{ui,preference,icons,blur,squircle}-android 2.1.0`）：以二进制依赖接入，未复制源码。依据 Apache License 2.0 分发，全文见 <https://www.apache.org/licenses/LICENSE-2.0>。
+- `COUI-Kit`（`io.github.itoseo:coui 0.0.1-alpha12`）：以二进制依赖接入，未复制源码。依据 Mozilla Public License 2.0（MPL-2.0）分发，全文见 <https://www.mozilla.org/en-US/MPL/2.0/>。
 - `Miuix`、`AndroidX`、`Coil`、`telephoto`、`kotlinx-coroutines`、`kotlinx-serialization`：均依据 Apache License 2.0 分发。
 - `jmcomic-api`（`io.github.jukomu:jmcomic-api v1.1.12`）：依据上游仓库声明为 MIT 许可证（Maven 构件元数据未内嵌许可证文件）。

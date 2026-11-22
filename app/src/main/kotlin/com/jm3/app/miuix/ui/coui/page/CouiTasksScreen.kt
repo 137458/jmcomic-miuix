@@ -6,9 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,8 +20,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,31 +28,34 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.CouiPageDefaults
+import com.itos.coui.layout.Footer
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.dialog.CouiDialogDefaults
+import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
-import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
-import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
-import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarSegmentedTabs
-import com.jm3.app.miuix.ui.coui.component.CouiPullToRefresh
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
-import com.jm3.app.miuix.ui.coui.component.couiPageScroll
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
-import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.list.ListLoadState
 import com.jm3.app.miuix.ui.readableWidth
+import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.app.miuix.ui.tasks.TASK_STATE_DONE
@@ -65,13 +66,9 @@ import com.jm3.app.miuix.ui.tasks.rememberTasksScaffoldState
 import com.jm3.app.miuix.ui.tasks.tasksEmptyHint
 import com.jm3.app.miuix.ui.tasks.tasksEmptyTitle
 import com.jm3.core.CoverLocator
-import com.jm3.core.model.TaskItem
 import com.jm3.core.model.TaskType
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.preference.PagerFooterPreference
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
+import com.jm3.core.model.TaskItem
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /**
@@ -88,6 +85,7 @@ internal fun CouiTasksScreen(
     nav: AppRoutes,
 ) {
     val haptic = rememberSelectionHaptic()
+    // 每档列表一个滚动状态：首次进入该档时回到顶部
     val listStates = remember { List(TaskType.entries.size) { LazyListState() } }
     val scaffold = rememberTasksScaffoldState(
         deps = deps,
@@ -110,26 +108,12 @@ internal fun CouiTasksScreen(
     )
 
     CouiTheme {
-        val activeCanScroll by remember(pagerState, listStates) {
-            derivedStateOf {
-                val active = listStates.getOrNull(pagerState.currentPage)
-                active != null && (active.canScrollForward || active.canScrollBackward)
-            }
-        }
-        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
-        CouiExpandTopAppBarEffect(
-            scrollBehavior = scrollBehavior,
-            activeTab = pagerState.currentPage,
-            canScroll = activeCanScroll,
-        )
+        val overscroll = rememberCouiOverscrollEffect()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            CouiPageScaffold(
+            CouiScreenScaffold(
                 title = "成就",
                 onBack = onBack,
-                wide = isCouiWideWindow(),
-                scrollBehavior = scrollBehavior,
-                attachScrollNestedScroll = false,
                 actions = {
                     CouiFeedRefreshAction(
                         refreshing = snapshots[scaffold.clampedTypeIndex].refreshing,
@@ -137,7 +121,7 @@ internal fun CouiTasksScreen(
                     )
                 },
                 topBarBottom = {
-                    CouiPageTopBarSegmentedTabs(
+                    CouiTopBarSegmentedTabs(
                         items = scaffold.types.map { it.label },
                         selectedIndex = scaffold.clampedTypeIndex,
                         onSelect = { index -> scaffold.selectType(index) },
@@ -152,106 +136,93 @@ internal fun CouiTasksScreen(
                     val pageSnapshot = snapshots[pageIdx]
                     val pageItems = pageSnapshot.feed.items
                     val pageExtra = scaffold.extra(pageIdx)
-                    val pageLoader = scaffold.loaders[pageIdx]
 
-                    CouiPullToRefresh(
-                        isRefreshing = pageSnapshot.refreshing,
-                        onRefresh = pageLoader::refresh,
-                        scrollBehavior = scrollBehavior,
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .readableWidth()
+                            .consumeWindowInsets(innerPadding),
+                        state = listStates[pageIdx],
                         contentPadding = innerPadding,
-                        modifier = Modifier.fillMaxSize(),
+                        overscrollEffect = overscroll,
                     ) {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .readableWidth()
-                                .couiPageScroll()
-                                .consumeWindowInsets(innerPadding),
-                            state = listStates[pageIdx],
-                            contentPadding = innerPadding,
-                            flingBehavior = rememberCOUIFlingBehavior(),
-                        ) {
-                            item(key = "tasks-filter") {
-                                CouiSegmentedCapsules(
-                                    items = scaffold.filters.map { it.label },
-                                    selectedIndex = scaffold.clampedFilterIndex,
-                                    onSelect = { index -> scaffold.selectFilter(index) },
-                                    small = true,
-                                    modifier = Modifier.padding(
-                                        horizontal = CouiLayoutTokens.HorizontalMargin,
-                                        vertical = 8.dp,
-                                    ),
+                        item(key = "tasks-filter") {
+                            CouiSegmentedCapsules(
+                                items = scaffold.filters.map { it.label },
+                                selectedIndex = scaffold.clampedFilterIndex,
+                                onSelect = { index -> scaffold.selectFilter(index) },
+                                small = true,
+                                modifier = Modifier.padding(
+                                    horizontal = CouiPageDefaults.horizontalMargin,
+                                    vertical = 8.dp,
+                                ),
+                            )
+                        }
+
+                        // 服务端 message（如"暂未登录"）先播出来，再按空态处理
+                        val pageMessage = pageExtra?.message.orEmpty()
+                        if (pageMessage.isNotBlank()) {
+                            item(key = "tasks-message") {
+                                Footer(
+                                    text = pageMessage,
+                                    color = CouiDialogDefaults.themeColors(CouiKitTheme.isDark).destructive,
                                 )
                             }
+                        }
 
-                            val pageMessage = pageExtra?.message.orEmpty()
-                            if (pageMessage.isNotBlank()) {
-                                item(key = "tasks-message") {
-                                    PagerFooterPreference(
-                                        summary = pageMessage,
-                                        summaryColor = COUITheme.colorScheme.error,
-                                        withExtraMarginBottom = false,
-                                    )
-                                }
+                        when (val pageUiState = pageSnapshot.state) {
+                            ListLoadState.Loading -> item(key = "tasks-loading") {
+                                CouiLoadingGroup(
+                                    modifier = Modifier.padding(top = 8.dp),
+                                    text = "正在加载成就…",
+                                )
                             }
-
-                            when (val pageUiState = pageSnapshot.state) {
-                                ListLoadState.Loading -> item(key = "tasks-loading") {
-                                    CouiLoadingGroup(
+                            is ListLoadState.Failed -> item(key = "tasks-failed") {
+                                CouiScreenFailureGroup(
+                                    message = pageUiState.message,
+                                    expired = pageUiState.sessionExpired,
+                                    onRetry = scaffold.loaders[pageIdx]::loadFirstPage,
+                                    onOpenLogin = scaffold.nav::login,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                            ListLoadState.Loaded -> if (pageItems.isEmpty()) {
+                                item(key = "tasks-empty") {
+                                    CouiEmptyGroup(
+                                        text = tasksEmptyTitle(pageType),
                                         modifier = Modifier.padding(top = 8.dp),
-                                        text = "正在加载成就…",
                                     )
                                 }
-                                is ListLoadState.Failed -> item(key = "tasks-failed") {
-                                    CouiScreenFailureGroup(
-                                        message = pageUiState.message,
-                                        expired = pageUiState.sessionExpired,
-                                        onRetry = pageLoader::loadFirstPage,
-                                        onOpenLogin = scaffold.nav::login,
-                                        modifier = Modifier.padding(top = 8.dp),
-                                    )
+                                item(key = "tasks-empty-hint") {
+                                    Footer(text = tasksEmptyHint(pageType))
                                 }
-                                ListLoadState.Loaded -> if (pageItems.isEmpty()) {
-                                    item(key = "tasks-empty") {
-                                        CouiEmptyGroup(
-                                            text = tasksEmptyTitle(pageType),
-                                            modifier = Modifier.padding(top = 8.dp),
-                                        )
-                                    }
-                                    item(key = "tasks-empty-hint") {
-                                        PagerFooterPreference(
-                                            summary = tasksEmptyHint(pageType),
-                                            withExtraMarginBottom = false,
-                                        )
-                                    }
-                                } else {
-                                    item(key = "tasks-group-title") {
-                                        CouiGroupTitle(title = pageType.label)
-                                    }
-                                    itemsIndexed(pageItems, key = { _, item -> "task-" + item.id }) { index, item ->
-                                        CouiGroupRow(
-                                            isFirst = index == 0,
-                                            isLast = index == pageItems.lastIndex,
-                                        ) {
-                                            TaskRow(
-                                                item = item,
+                            } else {
+                                item(key = "tasks-group-title") {
+                                    CouiGroupTitle(title = pageType.label)
+                                }
+                                itemsIndexed(pageItems, key = { _, item -> "task-" + item.id }) { index, item ->
+                                    CouiGroupRow(
+                                        isFirst = index == 0,
+                                        isLast = index == pageItems.lastIndex,
+                                    ) {
+                                        TaskRow(
+                                            item = item,
+                                            type = pageType,
+                                            imageHost = pageExtra?.imageHost.orEmpty(),
+                                            equipped = isTaskEquipped(
                                                 type = pageType,
-                                                imageHost = pageExtra?.imageHost.orEmpty(),
-                                                equipped = isTaskEquipped(
-                                                    type = pageType,
-                                                    item = item,
-                                                    equippedTitle = scaffold.equippedTitleOverride,
-                                                    equippedBadgeId = scaffold.equippedBadgeId,
-                                                ),
-                                                claiming = scaffold.claimingId == item.id,
-                                                claimEnabled = scaffold.claimingId == null,
-                                                onClaim = { scaffold.claim(pageType, item) },
-                                            )
-                                        }
+                                                item = item,
+                                                equippedTitle = scaffold.equippedTitleOverride,
+                                                equippedBadgeId = scaffold.equippedBadgeId,
+                                            ),
+                                            claiming = scaffold.claimingId == item.id,
+                                            claimEnabled = scaffold.claimingId == null,
+                                            onClaim = { scaffold.claim(pageType, item) },
+                                        )
                                     }
-                                    item(key = "tasks-tail") {
-                                        Spacer(modifier = Modifier.size(CouiLayoutTokens.GroupSpacing))
-                                    }
+                                }
+                                item(key = "tasks-tail") {
+                                    Spacer(modifier = Modifier.size(CouiPageDefaults.groupSpacing))
                                 }
                             }
                         }
@@ -282,7 +253,7 @@ private fun TaskRow(
     claimEnabled: Boolean,
     onClaim: () -> Unit,
 ) {
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     val title = if (type == TaskType.TITLE) item.content.ifBlank { item.name } else item.name
     val subtitle = if (type == TaskType.TITLE) {
         item.name.takeIf { it.isNotBlank() && it != item.content }
@@ -302,7 +273,7 @@ private fun TaskRow(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .background(scheme.container4)
+                .background(scheme.container)
                 .alpha(if (item.done) 1f else 0.45f),
             contentAlignment = Alignment.Center,
         ) {
@@ -317,7 +288,7 @@ private fun TaskRow(
                     imageVector = CouiIcons.Star,
                     contentDescription = null,
                     modifier = Modifier.size(22.dp),
-                    tint = if (item.done) scheme.primaryText else scheme.labelSecondary,
+                    tint = if (item.done) scheme.accent else scheme.onSurfaceVariant,
                 )
             }
         }
@@ -327,19 +298,20 @@ private fun TaskRow(
         ) {
             Text(
                 text = title,
-                style = COUITheme.textStyles.headlineXS,
-                color = scheme.labelPrimary,
+                kind = CouiTextKind.ItemTitle,
+                color = scheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            // 达成态在前，副标题（称号原名 / 金币数）在后：两者都是判断要不要佩戴的依据
             val meta = buildString {
                 append(if (item.done) TASK_STATE_DONE else TASK_STATE_UNDONE)
                 subtitle?.takeIf { it.isNotBlank() }?.let { append(" · "); append(it) }
             }
             Text(
                 text = meta,
-                style = COUITheme.textStyles.bodyXS,
-                color = scheme.labelSecondary,
+                kind = CouiTextKind.GroupFooter,
+                color = scheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -347,8 +319,8 @@ private fun TaskRow(
         when {
             equipped -> Text(
                 text = "佩戴中",
-                style = COUITheme.textStyles.bodyXS,
-                color = scheme.primaryText,
+                kind = CouiTextKind.GroupFooter,
+                color = scheme.accent,
             )
             claimable -> TaskActionChip(
                 text = if (claiming) "切换中…" else "佩戴",
@@ -357,8 +329,8 @@ private fun TaskRow(
             )
             else -> Text(
                 text = if (item.done) TASK_STATE_DONE else TASK_STATE_UNDONE,
-                style = COUITheme.textStyles.bodyXS,
-                color = scheme.labelSecondary,
+                kind = CouiTextKind.GroupFooter,
+                color = scheme.onSurfaceVariant,
             )
         }
     }
@@ -367,12 +339,13 @@ private fun TaskRow(
 /** 行尾小胶囊动作，仅用于"佩戴"这类轻量操作。 */
 @Composable
 private fun TaskActionChip(text: String, enabled: Boolean, onClick: () -> Unit) {
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = Modifier
             .couiPressable(
-                shape = CircleShape,
-                backgroundColor = scheme.primary.copy(alpha = 0.14f),
+                shape = CouiCapsuleShape,
+                backgroundColor = scheme.accent.copy(alpha = 0.14f),
+                spotlight = SpotlightPreset.ChipTab,
                 enabled = enabled,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
@@ -382,8 +355,8 @@ private fun TaskActionChip(text: String, enabled: Boolean, onClick: () -> Unit) 
     ) {
         Text(
             text = text,
-            style = COUITheme.textStyles.bodyXS,
-            color = if (enabled) scheme.primaryText else scheme.labelSecondary,
+            kind = CouiTextKind.GroupFooter,
+            color = if (enabled) scheme.accent else scheme.onSurfaceVariant,
         )
     }
 }

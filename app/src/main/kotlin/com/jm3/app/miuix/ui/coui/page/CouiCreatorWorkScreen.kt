@@ -6,13 +6,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -22,39 +26,56 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.itos.coui.layout.CouiPageDefaults
+import com.itos.coui.layout.Divider
+import com.itos.coui.layout.Footer
+import com.itos.coui.layout.Group
+import com.itos.coui.layout.Item
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.itos.coui.topappbar.CouiTopAppBarDefaults
+import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.LocalWideLayout
-import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
+import com.jm3.app.miuix.ui.ScreenLoadPhase
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
+import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
+import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiDetailSplitHandle
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
-import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
-import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
-import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
 import com.jm3.app.miuix.ui.coui.component.CouiWorkRowCard
-import com.jm3.app.miuix.ui.coui.component.couiPageScroll
-import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
-import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
+import com.jm3.app.miuix.ui.feedRowItems
+import com.jm3.app.miuix.ui.coui.component.couiPressable
+import com.jm3.app.miuix.ui.coui.component.couiScreenContentPadding
+import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
-import com.jm3.app.miuix.ui.feedRowItems
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.route.AppRoutes
@@ -62,12 +83,8 @@ import com.jm3.app.miuix.ui.skin.LocalSkin
 import com.jm3.core.model.CreatorRelatedWork
 import com.jm3.core.model.CreatorWork
 import com.jm3.core.session.SessionOutcome
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.preference.PagerFooterPreference
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
 
 /** 正文与图片正文区占位比例：作者作品多是长图配文，图片区保持 0.72 的画幅。 */
 private const val COUI_CREATOR_WORK_IMAGE_ASPECT = 0.72f
@@ -141,7 +158,7 @@ private fun CouiCreatorWorkBody(
     LaunchedEffect(workId) { load() }
 
     val work = (state as? CouiCreatorWorkState.Loaded)?.work
-    val scrollBehavior = rememberCouiPageScrollBehavior(
+    val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(
         canScroll = {
             if (twoPane) {
                 leftListState.canScrollForward || rightListState.canScrollForward
@@ -171,22 +188,15 @@ private fun CouiCreatorWorkBody(
                     item(key = "coui-work-content-empty") { CouiEmptyGroup(text = "暂无正文") }
                 } else {
                     item(key = "coui-work-content") {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            CouiGroupTitle(title = "正文")
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = CouiLayoutTokens.HorizontalMargin),
+                        Group(title = "正文") {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                             ) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                                ) {
-                                    CouiBodyText(
-                                        text = loaded.contentText,
-                                        color = COUITheme.colorScheme.labelPrimary,
-                                        textAlign = TextAlign.Start,
-                                    )
-                                }
+                                CouiBodyText(
+                                    text = loaded.contentText,
+                                    color = CouiKitTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Start,
+                                )
                             }
                         }
                     }
@@ -208,9 +218,7 @@ private fun CouiCreatorWorkBody(
                         val item = loaded.related[index]
                         CouiCreatorRelatedRow(item = item, onClick = { onOpenWork(item.id) })
                     }
-                    item(key = "coui-work-related-footer") {
-                        PagerFooterPreference(summary = "作者的其他作品", withExtraMarginBottom = false)
-                    }
+                    item(key = "coui-work-related-footer") { Footer(text = "作者的其他作品") }
                 }
             }
         }
@@ -235,7 +243,7 @@ private fun CouiCreatorWorkBody(
                     item(key = "coui-work-images-empty") {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             CouiEmptyGroup(text = "暂无图片")
-                            PagerFooterPreference(summary = "该作品还在补充中", withExtraMarginBottom = false)
+                            Footer(text = "该作品还在补充中")
                         }
                     }
                 } else {
@@ -251,71 +259,82 @@ private fun CouiCreatorWorkBody(
         }
     }
 
-    CouiPageScaffold(
-        title = work?.title ?: "作品详情",
-        onBack = onBack,
-        wide = isCouiWideWindow(),
-        floatingActionButton = {
-            CouiFab(
-                icon = CouiIcons.Refresh,
-                contentDescription = "刷新",
-                onClick = { load() },
+    Box(modifier = Modifier.fillMaxSize()) {
+        CouiAppScaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+            topBar = {
+                LargeTopAppBar(
+                    title = { CouiTopBarTitle(text = work?.title ?: "作品详情") },
+                    navigationIcon = { CouiTopBarBackButton(onClick = onBack) },
+                    scrollBehavior = scrollBehavior,
+                    colors = couiTopAppBarColors(),
+                )
+            },
+            floatingActionButton = {
+                CouiFab(
+                    icon = CouiIcons.Refresh,
+                    contentDescription = "刷新",
+                    onClick = { load() },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                )
+            },
+        ) { innerPadding ->
+            // 折叠位移留到测量期读取：组合期算成字面量会把首帧的顶栏高度冻结住
+            val contentPadding = couiScreenContentPadding(
+                scrollBehavior = scrollBehavior,
+                innerPadding = innerPadding,
+                horizontalPadding = null,
+                extraBottom = couiPageExtraBottomDp(hasFab = true).dp,
             )
-        },
-        scrollBehavior = scrollBehavior,
-        horizontalPadding = null,
-    ) { contentPadding ->
-        if (twoPane) {
-            // 比例随本页保存：拖过分隔条后重进本页仍记得，双击分隔条回到默认比例
-            var splitFraction by rememberSaveable {
-                mutableStateOf(wideLayout.defaultDetailSplitFraction)
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .readableWidth(),
-            ) {
-                LazyColumn(
-                    state = leftListState,
+            if (twoPane) {
+                // 比例随本页保存：拖过分隔条后重进本页仍记得，双击分隔条回到默认比例
+                var splitFraction by rememberSaveable {
+                    mutableStateOf(wideLayout.defaultDetailSplitFraction)
+                }
+                Row(
                     modifier = Modifier
-                        .weight(splitFraction)
-                        .fillMaxHeight()
-                        .couiPageScroll(),
+                        .fillMaxSize()
+                        .readableWidth()
+                        .consumeWindowInsets(innerPadding),
+                ) {
+                    LazyColumn(
+                        state = leftListState,
+                        modifier = Modifier.weight(splitFraction).fillMaxHeight(),
+                        contentPadding = contentPadding,
+                        overscrollEffect = rememberCouiOverscrollEffect(),
+                    ) {
+                        metaItems()
+                    }
+                    CouiDetailSplitHandle(
+                        fraction = splitFraction,
+                        defaultFraction = wideLayout.defaultDetailSplitFraction,
+                        availableWidthDp = wideLayout.contentWidthDp,
+                        onFractionChange = { splitFraction = it },
+                    )
+                    LazyColumn(
+                        state = rightListState,
+                        modifier = Modifier.weight(1f - splitFraction).fillMaxHeight(),
+                        contentPadding = contentPadding,
+                        overscrollEffect = rememberCouiOverscrollEffect(),
+                    ) {
+                        imageItems()
+                    }
+                }
+            } else {
+                LazyColumn(
+                    state = singleListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .readableWidth()
+                        .consumeWindowInsets(innerPadding),
                     contentPadding = contentPadding,
-                    flingBehavior = rememberCOUIFlingBehavior(),
+                    overscrollEffect = rememberCouiOverscrollEffect(),
                 ) {
                     metaItems()
-                }
-                CouiDetailSplitHandle(
-                    fraction = splitFraction,
-                    defaultFraction = wideLayout.defaultDetailSplitFraction,
-                    availableWidthDp = wideLayout.contentWidthDp,
-                    onFractionChange = { splitFraction = it },
-                )
-                LazyColumn(
-                    state = rightListState,
-                    modifier = Modifier
-                        .weight(1f - splitFraction)
-                        .fillMaxHeight()
-                        .couiPageScroll(),
-                    contentPadding = contentPadding,
-                    flingBehavior = rememberCOUIFlingBehavior(),
-                ) {
                     imageItems()
                 }
-            }
-        } else {
-            LazyColumn(
-                state = singleListState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .readableWidth()
-                    .couiPageScroll(),
-                contentPadding = contentPadding,
-                flingBehavior = rememberCOUIFlingBehavior(),
-            ) {
-                metaItems()
-                imageItems()
             }
         }
     }
@@ -325,56 +344,57 @@ private fun CouiCreatorWorkBody(
 /** 标题卡：作品名 + 作者 + 创作时间，信息量小所以只留一张卡。 */
 @Composable
 private fun CouiCreatorWorkMetaCard(work: CreatorWork) {
-    val colors = COUITheme.colorScheme
-    Card(
+    val scheme = CouiKitTheme.colorScheme
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-            .padding(top = CouiLayoutTokens.CategoryTopSpacing, bottom = CouiLayoutTokens.GroupSpacing),
-        insideMargin = PaddingValues(16.dp),
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
+            .padding(top = CouiPageDefaults.categoryTopSpacing, bottom = CouiPageDefaults.groupSpacing)
+            .clip(CouiPageDefaults.shape)
+            .background(scheme.card)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            CouiSectionTitleText(
-                text = work.title,
-                maxLines = 3,
+        CouiSectionTitleText(
+            text = work.title,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Start,
+        )
+        val author = work.authorName?.takeIf { it.isNotBlank() }
+        if (author != null) {
+            Text(
+                text = author,
+                kind = CouiTextKind.GroupFooter,
+                color = scheme.accent,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Start,
             )
-            val author = work.authorName?.takeIf { it.isNotBlank() }
-            if (author != null) {
-                Text(
-                    text = author,
-                    style = COUITheme.textStyles.bodyS,
-                    color = colors.primaryText,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Start,
-                )
-            }
-            val date = work.workDate?.takeIf { it.isNotBlank() }
-            Text(
-                text = date ?: "创作时间未知",
-                style = COUITheme.textStyles.bodyS,
-                color = colors.labelSecondary,
-                textAlign = TextAlign.Start,
-            )
         }
+        val date = work.workDate?.takeIf { it.isNotBlank() }
+        Text(
+            text = date ?: "创作时间未知",
+            kind = CouiTextKind.GroupFooter,
+            color = scheme.onSurfaceVariant,
+            textAlign = TextAlign.Start,
+        )
     }
 }
 
 /** 正文图片：按 0.72 画幅留位，Fit 保证长图不裁切。 */
 @Composable
 private fun CouiCreatorWorkImage(url: String, index: Int) {
-    val colors = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     val shape = RoundedCornerShape(LocalSkin.current.shapes.cardCorner)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
             .padding(bottom = 12.dp)
             .aspectRatio(COUI_CREATOR_WORK_IMAGE_ASPECT)
             .clip(shape)
-            .background(colors.container4),
+            .background(scheme.container),
     ) {
         AsyncImage(
             model = url,
@@ -391,7 +411,7 @@ private fun CouiCreatorRelatedRow(item: CreatorRelatedWork, onClick: () -> Unit)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiLayoutTokens.HorizontalMargin, vertical = 4.dp),
+            .padding(horizontal = CouiPageDefaults.horizontalMargin, vertical = 4.dp),
     ) {
         CouiWorkRowCard(
             coverUrl = item.coverUrl,

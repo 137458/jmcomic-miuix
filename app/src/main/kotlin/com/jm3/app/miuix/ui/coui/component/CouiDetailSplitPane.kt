@@ -16,8 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.itos.coui.theme.CouiTheme
 import com.jm3.core.layout.WideLayoutPolicy
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 详情页双栏之间的分隔条：28dp 触摸区 + 1dp 细线，双击回到默认比例。
@@ -73,7 +73,7 @@ fun CouiDetailSplitHandle(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(1.dp)
-                .background(COUITheme.colorScheme.divider),
+                .background(CouiTheme.colorScheme.outlineVariant),
         )
     }
 }

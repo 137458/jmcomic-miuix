@@ -24,9 +24,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogPlacement
+import com.itos.coui.dialog.Dialog
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.data.download.contentDescriptionRes
 import com.jm3.app.miuix.data.download.textRes
@@ -35,14 +39,12 @@ import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
-import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
-import com.jm3.app.miuix.ui.coui.component.couiDestructiveDialogAction
-import com.jm3.app.miuix.ui.coui.component.couiPageScroll
+import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
-import com.jm3.app.miuix.ui.coui.component.panelBlur
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -59,14 +61,7 @@ import com.jm3.app.miuix.ui.shelf.shelfSummary
 import com.jm3.core.CoverLocator
 import com.jm3.core.download.DownloadRow
 import com.jm3.core.download.presentRow
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.blur.MaterialBlurDefaults
-import io.github.suqi8.coui.kmp.layout.DialogButtonBar
-import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
-import io.github.suqi8.coui.kmp.layout.DialogDefaults
-import io.github.suqi8.coui.kmp.overlay.OverlayDialog
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
+import top.yukonga.miuix.kmp.basic.Icon
 
 /**
  * 本地书架（COUI 栅格版）：参数与旧 Miuix 页一比一，数据完全来自本机下载管理器，
@@ -85,16 +80,17 @@ internal fun CouiShelfScreen(
         val gridState = rememberLazyGridState()
         val columns = LocalWideLayout.current.gridColumns
 
+        // 账本订阅、封面域名、主操作分派与删除确认都在共享骨架上；这里只读状态、只画卡片
         val shelf = rememberShelfScaffoldState(deps)
         val records = shelf.records
         val pendingDeleteRecord = shelf.pendingDeleteRecord
         val imageHost = shelf.imageHost
+        // 首帧还没拿到下载快照：先给加载态，避免空列表一闪
         val loaded = shelf.loaded
 
-        CouiPageScaffold(
+        CouiScreenScaffold(
             title = SHELF_TITLE,
             onBack = onBack,
-            wide = isCouiWideWindow(),
         ) { innerPadding ->
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
@@ -102,12 +98,11 @@ internal fun CouiShelfScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .readableWidth()
-                    .couiPageScroll()
                     .consumeWindowInsets(innerPadding),
                 contentPadding = innerPadding,
                 horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
                 verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                flingBehavior = rememberCOUIFlingBehavior(),
+                overscrollEffect = rememberCouiOverscrollEffect(),
             ) {
                 when {
                     !loaded -> item(key = "coui-shelf-loading", span = { GridItemSpan(maxLineSpan) }) {
@@ -127,6 +122,7 @@ internal fun CouiShelfScreen(
                             val coverUrl = remember(albumId, imageHost) {
                                 albumId?.let { CoverLocator.of(imageHost).cover(it, "_3x4") }
                             }
+                            // 标签、进度条口径与主操作全部由 :core 的 presentRow 判定，这里只做渲染
                             val row = presentRow(record)
                             val label = stringResource(row.label.textRes())
                             Box(
@@ -146,6 +142,7 @@ internal fun CouiShelfScreen(
                             }
                         }
                         item(key = "coui-shelf-footer", span = { GridItemSpan(maxLineSpan) }) {
+                            // 本机快照无分页，页脚只表达「已到底」这一态
                             CouiLoadMoreFooter(
                                 loading = false,
                                 error = null,
@@ -156,32 +153,26 @@ internal fun CouiShelfScreen(
                     }
                 }
             }
+        }
 
-            val toDelete = rememberRetainedTarget(pendingDeleteRecord)
-            if (toDelete != null) {
-                val deleteBlur = panelBlur(MaterialBlurDefaults::dialog)
-                OverlayDialog(
-                    show = pendingDeleteRecord != null,
-                    title = SHELF_DELETE_TITLE,
-                    summary = shelfDeleteMessage(toDelete),
-                    backgroundModifier = deleteBlur?.backgroundModifier ?: Modifier,
-                    backgroundColor = deleteBlur?.backgroundColor ?: DialogDefaults.backgroundColor(),
-                    materialStroke = deleteBlur != null,
-                    onDismissRequest = { shelf.dismissDelete() },
-                ) {
-                    DialogButtonBar(
-                        negative = DialogButtonBarAction(
-                            text = SHELF_DELETE_DISMISS,
-                            onClick = { shelf.dismissDelete() },
-                        ),
-                        positive = null,
-                        neutral = couiDestructiveDialogAction(
-                            text = SHELF_DELETE_CONFIRM,
-                            onClick = { shelf.confirmDelete() },
-                        ),
-                    )
-                }
-            }
+        val toDelete = rememberRetainedTarget(pendingDeleteRecord)
+        if (toDelete != null) {
+            Dialog(
+                onDismissRequest = { shelf.dismissDelete() },
+                visible = pendingDeleteRecord != null,
+                material = couiDialogMaterial(),
+                title = SHELF_DELETE_TITLE,
+                message = shelfDeleteMessage(toDelete),
+                placement = CouiDialogPlacement.Center,
+                confirmAction = couiDestructiveConfirmAction(
+                    text = SHELF_DELETE_CONFIRM,
+                    onClick = { shelf.confirmDelete() },
+                ),
+                dismissAction = CouiDialogAction(
+                    text = SHELF_DELETE_DISMISS,
+                    onClick = { shelf.dismissDelete() },
+                ),
+            )
         }
     }
 }
@@ -198,7 +189,7 @@ private fun CouiShelfCard(
     onDelete: () -> Unit,
     actionLabel: String,
 ) {
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     CouiWorkGridCard(
         title = title,
         coverUrl = coverUrl,
@@ -220,8 +211,8 @@ private fun CouiShelfCard(
                 CouiShelfProgress(
                     donePages = row.donePages,
                     total = row.total,
-                    container = scheme.container4,
-                    accent = scheme.primary,
+                    container = scheme.container,
+                    accent = scheme.accent,
                 )
             }
         },
@@ -233,8 +224,8 @@ private fun CouiShelfCard(
 private fun ColumnScope.CouiShelfProgress(
     donePages: Int,
     total: Int,
-    container: Color,
-    accent: Color,
+    container: androidx.compose.ui.graphics.Color,
+    accent: androidx.compose.ui.graphics.Color,
 ) {
     val fraction = if (total > 0) (donePages.toFloat() / total).coerceIn(0f, 1f) else 0f
     Box(
@@ -261,12 +252,12 @@ private fun CouiShelfDeleteBadge(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
-                backgroundColor = scheme.container4,
+                backgroundColor = scheme.container,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -277,7 +268,7 @@ private fun CouiShelfDeleteBadge(
             imageVector = CouiIcons.Close,
             contentDescription = contentDescription,
             modifier = Modifier.size(14.dp),
-            tint = scheme.labelSecondary,
+            tint = scheme.onSurfaceVariant,
         )
     }
 }

@@ -2,7 +2,7 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
-import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
+import com.itos.coui.layout.CouiPageDefaults
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,7 +21,7 @@ class CouiWeeklyCardLayoutTest {
         assertFalse(spec.wrapInGroup)
         assertFalse(spec.showDivider)
         assertEquals(CouiWorkCardTokens.RowSpacing.value, spec.cardSpacingDp)
-        assertEquals(CouiLayoutTokens.HorizontalMargin.value, spec.horizontalMarginDp)
+        assertEquals(CouiPageDefaults.horizontalMargin.value, spec.horizontalMarginDp)
     }
 
     @Test

@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -32,6 +34,7 @@ import coil3.ImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.size.Size
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
 import com.jm3.app.miuix.reader.ReaderActions
 import com.jm3.app.miuix.reader.ReaderSession
 import com.jm3.app.miuix.reader.ReaderSpreadPage
@@ -47,9 +50,6 @@ import com.jm3.core.model.PageImage
 import com.jm3.core.model.PhotoPages
 import com.jm3.core.reader.ReaderSpreadPolicy
 import com.jm3.core.settings.ReaderImageQuality
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
-import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.flow.collectLatest
 import top.yukonga.miuix.kmp.utils.PagerGestureNestedScrollConnection
 import top.yukonga.miuix.kmp.utils.pagerGestureOverride
@@ -186,23 +186,19 @@ internal fun ReaderPageContent(
             }
         }
     } else {
-        // 竖向阅读使用 LazyColumn + COUI 原生弹簧滑动与回弹；
+        // 竖向阅读使用 LazyColumn + LocalFloatingBarContentPadding，避免混用 Miuix 滚动条；
         // 顶部让出 HUD 顶栏净空（首屏内容不被顶栏挡住），底部叠加浮栏与 HUD 尾项净空
         val floatingBarPadding = LocalFloatingBarContentPadding.current
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .readableWidth()
-                .scrollEndHaptic()
-                .overScrollVertical(),
+            modifier = Modifier.fillMaxSize().readableWidth(),
             contentPadding = PaddingValues(
                 start = contentInsets.calculateLeftPadding(layoutDirection),
                 top = contentInsets.calculateTopPadding() + ReaderHudTopHeight + ReaderHudBarVerticalMargin * 2,
                 end = contentInsets.calculateRightPadding(layoutDirection),
                 bottom = contentInsets.calculateBottomPadding() + floatingBarPadding,
             ),
-            flingBehavior = rememberCOUIFlingBehavior(),
+            overscrollEffect = rememberCouiOverscrollEffect(),
         ) {
             itemsIndexed(photo.images, key = { _, image -> image.index }) { index, image ->
                 // 布局比例优先本页已知比例、其次章节种子；请求尺寸只认解码比例，两者分开演进

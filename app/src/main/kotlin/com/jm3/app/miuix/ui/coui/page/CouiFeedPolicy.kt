@@ -2,7 +2,7 @@
 
 package com.jm3.app.miuix.ui.coui.page
 
-import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
+import com.itos.coui.layout.CouiPageDefaults
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.core.paging.PagedFeed
 import com.jm3.core.paging.shouldLoadMore
@@ -143,5 +143,5 @@ internal fun couiWeeklyCardLayoutSpec(inDialog: Boolean): CouiWeeklyCardLayoutSp
         wrapInGroup = false,
         showDivider = false,
         cardSpacingDp = CouiWorkCardTokens.RowSpacing.value,
-        horizontalMarginDp = if (inDialog) 0f else CouiLayoutTokens.HorizontalMargin.value,
+        horizontalMarginDp = if (inDialog) 0f else CouiPageDefaults.horizontalMargin.value,
     )

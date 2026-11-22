@@ -1,59 +1,76 @@
 package com.jm3.app.miuix.ui.coui.page
 
+import android.graphics.BlendMode
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.itos.coui.backdrop.CouiBackdrop
+import com.itos.coui.backdrop.rememberCouiBackdrop
+import com.itos.coui.diagnostic.renderDiagnosticProbe
+import com.itos.coui.effect.CouiFloatingMaterial
+import com.itos.coui.effect.CouiFloatingRenderer
+import com.itos.coui.effect.CouiFloatingShadow
+import com.itos.coui.effect.CouiFloatingSurface
+import com.itos.coui.effect.LocalCouiContourGlowEnabled
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.effect.couiFloatingSurface
+import com.itos.coui.effect.rememberCouiSpotlight
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.itos.coui.topappbar.CouiTopAppBarDefaults
+import com.itos.coui.topappbar.TopAppBarSurface
+import com.jm3.app.miuix.ui.coui.component.CouiLibraryNavBarMinSdk
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
-import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarBackButton
 import com.jm3.app.miuix.ui.coui.component.CouiSelectedContainerAlpha
-import com.jm3.app.miuix.ui.coui.component.LocalCouiBlurEnabled
-import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.shouldUseCouiBlur
+import com.jm3.app.miuix.ui.coui.component.couiSpotlightLight
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.core.model.Chapter
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.CardDefaults
-import io.github.suqi8.coui.kmp.basic.FloatingNavigationBarDefaults
-import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.blur.LayerBackdrop
-import io.github.suqi8.coui.kmp.blur.TopAppBarGlow
-import io.github.suqi8.coui.kmp.blur.TopAppBarGlowDefaults
-import io.github.suqi8.coui.kmp.blur.ViewBlurDefaults
-import io.github.suqi8.coui.kmp.blur.couiViewBlur
-import io.github.suqi8.coui.kmp.blur.isRuntimeShaderSupported
-import io.github.suqi8.coui.kmp.effect.LocalMaterialBackdrop
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.squircle.squircleBorder
-import io.github.suqi8.coui.kmp.theme.COUIRoundCorner
-import io.github.suqi8.coui.kmp.theme.COUITheme
+import top.yukonga.miuix.kmp.basic.Icon
 
 /** HUD 外间距常量：底栏、顶栏与 Snackbar 避让共用同一组数值。 */
 internal const val ReaderHudBarVerticalMarginDp = 8
@@ -69,154 +86,232 @@ internal val ReaderHudBottomHeight = ReaderHudBottomHeightDp.dp
 /** 降级底栏的不透明度：太实会挡住正文，太虚又读不清栏内文字。 */
 private const val ReaderHudFallbackAlpha = 0.92f
 
-/** HUD 胶囊形状：用于底栏外壳、动作槽与章节步进按钮。 */
-private val ReaderHudCapsuleShape = SquircleShape(
-    cornerRadius = COUIRoundCorner.Full,
-    weight = COUIRoundCorner.CapsuleWeight,
-)
-
-/**
- * 漫画与小说阅读器共用的 COUI 17 顶部 HUD 顶栏：
- * 基于 [SmallTopAppBar] 与 [TopAppBarGlow] 渐进凝光模糊（受 [LocalCouiBlurEnabled] 与 [isRuntimeShaderSupported] 门控）。
- */
+/** 创建带实色背景的 HUD 采样源：防止页边缘留白或加载态露出透明像素。 */
 @Composable
-internal fun BoxScope.ReaderTopAppBarShell(
-    visible: Boolean,
-    backdrop: LayerBackdrop?,
-    title: String,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-    subtitle: String = "",
-    actions: @Composable RowScope.() -> Unit = {},
-) {
-    if (!visible) return
-    val colors = COUITheme.colorScheme
-    val blurActive = shouldUseCouiBlur(
-        blurEnabled = LocalCouiBlurEnabled.current,
-        hasBackdrop = backdrop != null,
-        runtimeShaderSupported = isRuntimeShaderSupported(),
-    )
-    val barColor = if (blurActive) {
-        Color.Transparent
-    } else {
-        colors.backgroundWithCard.copy(alpha = ReaderHudFallbackAlpha)
-    }
-    val thresholdPx = with(LocalDensity.current) { TopAppBarGlowDefaults.AlphaScrollThreshold.toPx() }
-    val glow: (@Composable BoxScope.() -> Unit)? = if (blurActive && backdrop != null) {
-        {
-            TopAppBarGlow(
-                backdrop = backdrop,
-                scrollOffsetPx = thresholdPx,
-                isDark = colors.isDark,
-                baseColor = colors.backgroundWithCard,
-                enabled = true,
-            )
-        }
-    } else {
-        null
-    }
-    SmallTopAppBar(
-        title = title,
-        modifier = modifier.align(Alignment.TopCenter).fillMaxWidth(),
-        subtitle = subtitle,
-        color = barColor,
-        titleColor = colors.labelPrimary,
-        subtitleColor = colors.labelSecondaryVariant,
-        dividerColor = colors.divider,
-        showDivider = false,
-        glow = glow,
-        navigationIcon = {
-            CouiPageTopBarBackButton(onClick = onBack)
+internal fun rememberCouiReaderBackdrop(diagnosticName: String): CouiBackdrop {
+    val pageBackground = CouiKitTheme.colorScheme.background
+    return rememberCouiBackdrop(
+        diagnosticName = diagnosticName,
+        drawSource = {
+            drawRect(pageBackground)
+            drawContent()
         },
-        actions = actions,
     )
 }
 
 /**
- * HUD 浮动底栏的统一胶囊外壳：
- * 当 [LocalCouiBlurEnabled] 开启且 [isRuntimeShaderSupported] 满足时，优先通过 [LocalMaterialBackdrop]
- * 或 [Modifier.couiViewBlur] 启用 COUI 17 底栏材质模糊（`TYPE_FRAMEWORK_BOTTOM_BAR`）；
- * 否则回退为半透明 [Card] 胶囊（保留投影与柔和描边）。
+ * 漫画与小说阅读器共用的顶部渐变模糊承托：覆盖状态栏到浮栏下缘，消除内容硬切。
+ *
+ * 承托层本身参与命中，渐变区的空白处不会再把事件漏给下层页面。因此这里自带点按出口：
+ * 点承托层的非控件区域与点正文一致地收起或唤出工具栏；栏内按钮与页码入口先消费按下，
+ * [detectTapGestures] 只认未被消费的按下事件，不会与它们抢手势。
+ */
+@Composable
+internal fun BoxScope.ReaderTopAppBarSurface(
+    visible: Boolean,
+    backdrop: CouiBackdrop,
+    onTapChrome: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    if (!visible) return
+    val dark = CouiKitTheme.isDark
+    val background = CouiKitTheme.colorScheme.background
+    // 回调按最新值读取：调用点每帧新建 lambda，直接当 pointerInput 的 key 会反复重启手势协程
+    val tapChrome by rememberUpdatedState(onTapChrome)
+    val tapModifier = if (onTapChrome != null) {
+        Modifier.pointerInput(Unit) {
+            detectTapGestures(onTap = { tapChrome?.invoke() })
+        }
+    } else {
+        Modifier
+    }
+    TopAppBarSurface(
+        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().then(tapModifier),
+        backdrop = backdrop,
+        fadeHeight = CouiTopAppBarDefaults.fadeHeight,
+        bottomExtension = CouiTopAppBarDefaults.bottomExtension,
+        gradientSpeed = 3f,
+        gradientColor = background.copy(alpha = if (dark) 0.55f else 0.78f),
+        dark = dark,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = ReaderHudBarVerticalMargin),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
+    }
+}
+
+/**
+ * HUD 顶/底栏的统一胶囊外壳：API 34 起走库的浮动表面（透镜折射、投影与描边一次给全），
+ * 更低版本拿不到那套材质，退化成投影加半透明胶囊：容器色叠 0.92 不透明度，背后正文仍能透出来。
+ * 两条路径以 [height] 作为最小高度，字体放大或标题两行时可自然撑开而不裁剪。
  */
 @Composable
 internal fun ReaderHudBar(
-    backdrop: LayerBackdrop?,
+    backdrop: CouiBackdrop,
     modifier: Modifier = Modifier,
-    height: Dp = ReaderHudBottomHeight,
+    height: Dp,
+    placement: CouiReaderHudPlacement = CouiReaderHudPlacement.BOTTOM,
+    diagnosticName: String,
     content: @Composable () -> Unit,
 ) {
-    val colors = COUITheme.colorScheme
-    val dark = colors.isDark
-    val capsuleShape = remember { ReaderHudCapsuleShape }
-    val blurActive = shouldUseCouiBlur(
-        blurEnabled = LocalCouiBlurEnabled.current,
-        hasBackdrop = backdrop != null,
-        runtimeShaderSupported = isRuntimeShaderSupported(),
-    )
-    val materialBackdrop = if (blurActive) LocalMaterialBackdrop.current else null
-    val blurModifier = when {
-        !blurActive -> Modifier
-        materialBackdrop != null -> remember(materialBackdrop, dark, capsuleShape) {
-            materialBackdrop.materialBackdrop(
-                FloatingNavigationBarDefaults.backdropSpec(dark),
-                capsuleShape,
-            )
-        }
-        backdrop != null -> Modifier.couiViewBlur(
+    if (Build.VERSION.SDK_INT >= CouiLibraryNavBarMinSdk) {
+        ReaderHudFloatingBar(
             backdrop = backdrop,
-            style = ViewBlurDefaults.frameworkBottomBar(dark),
-            shape = capsuleShape,
+            modifier = modifier,
+            height = height,
+            placement = placement,
+            diagnosticName = diagnosticName,
+            content = content,
         )
-        else -> Modifier
+    } else {
+        Box(
+            modifier = modifier
+                .heightIn(min = height)
+                // 探针只在 CouiRenderDiagnostics 开启时生效，生产环境是空操作
+                .renderDiagnosticProbe(diagnosticName)
+                .dropShadow(
+                    shape = CouiCapsuleShape,
+                    shadow = Shadow(
+                        radius = 12.dp,
+                        color = Color.Black,
+                        alpha = if (CouiKitTheme.isDark) 0.5f else 0.16f,
+                    ),
+                )
+                .clip(CouiCapsuleShape)
+                .background(CouiKitTheme.colorScheme.container.copy(alpha = ReaderHudFallbackAlpha))
+                // 低版本拿不到库材质，但凝光门槛更低：垫完底色就补光，与 34+ 的观感差距只剩折射
+                .couiSpotlightLight(SpotlightPreset.TranslucentLarge1, interactive = true),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
     }
-    val fallbackColor = colors.bar.copy(alpha = ReaderHudFallbackAlpha)
-    val borderColor = colors.labelPrimary.copy(alpha = if (dark) 0.14f else 0.08f)
+}
+
+@RequiresApi(34)
+@Composable
+private fun ReaderHudFloatingBar(
+    backdrop: CouiBackdrop,
+    modifier: Modifier = Modifier,
+    height: Dp,
+    placement: CouiReaderHudPlacement,
+    diagnosticName: String,
+    content: @Composable () -> Unit,
+) {
+    val dark = CouiKitTheme.isDark
+    val contourGlowEnabled = LocalCouiContourGlowEnabled.current
+    val density = LocalDensity.current
+    val contentLayer = rememberGraphicsLayer()
+    // 一次只画一条栏，单主体渲染器就够；两处栏各自持有实例，互不共享坐标
+    val renderer = remember { CouiFloatingRenderer.standalone() }
+    val material = remember(dark, density) { with(density) { readerHudMaterial(dark) } }
+    val shadow = remember(placement, dark, contourGlowEnabled, density) {
+        with(density) { readerHudShadow(placement, dark, contourGlowEnabled) }
+    }
+    var bounds by remember { mutableStateOf(IntSize.Zero) }
+    // 库的浮动材质本身不带凝光：光只能在 beforeContent 里补，那里是「材质之后、内容之前」，
+    // 输入挂在外层并在 couiFloatingSurface 之前测量，外层不裁切阴影与前景合成区域
+    val light = rememberCouiSpotlight(
+        interactive = true,
+        preset = SpotlightPreset.TranslucentLarge1,
+        dark = dark,
+    )
 
     Box(
         modifier = modifier
             .heightIn(min = height)
-            .dropShadow(
-                shape = capsuleShape,
-                shadow = Shadow(
-                    radius = FloatingToolbarDefaults.ShadowElevation,
-                    color = Color.Black,
-                    alpha = if (dark) 0.45f else 0.16f,
-                ),
-            )
-            .then(blurModifier)
-            .pointerInput(Unit) {
-                detectTapGestures { /* 吞掉胶囊内部空白区点按，避免误触收起 HUD */ }
-            },
+            .renderDiagnosticProbe(diagnosticName)
+            .onSizeChanged { bounds = it }
+            .then(light.first)
+            .couiFloatingSurface(
+                backdrop = backdrop,
+                renderer = renderer,
+                material = material,
+                shadow = shadow,
+                shape = CouiCapsuleShape,
+                contentLayer = contentLayer,
+                contourGlowEnabled = contourGlowEnabled,
+                foregroundComposition = true,
+                beforeContent = { path ->
+                    clipPath(path) { light.second?.invoke(this) }
+                },
+                surface = {
+                    CouiFloatingSurface(
+                        bounds = Rect(0f, 0f, bounds.width.toFloat(), bounds.height.toFloat()),
+                        cornerWeight = 1f,
+                    )
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        Card(
+        // 内层负责把内容录进图层並按胶囊裁剪，浮动表面才有透明前景可以折射叠加
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = height)
-                .squircleBorder(
-                    width = 0.5.dp,
-                    color = borderColor,
-                    cornerRadius = COUIRoundCorner.Full,
-                    weight = COUIRoundCorner.CapsuleWeight,
-                ),
-            cornerRadius = COUIRoundCorner.Full,
-            insideMargin = PaddingValues(0.dp),
-            colors = CardDefaults.defaultColors(
-                color = if (blurActive) Color.Transparent else fallbackColor,
-                contentColor = colors.labelPrimary,
-                pressedColor = if (blurActive) Color.Transparent else fallbackColor,
-            ),
+                .drawWithContent { contentLayer.record { this@drawWithContent.drawContent() } }
+                .clip(CouiCapsuleShape),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = height),
-                contentAlignment = Alignment.Center,
-            ) {
-                content()
-            }
+            content()
         }
     }
+}
+
+/** 浮动表面的材质：深浅两套参数与 4dp 折射外扩取自库底栏，保证与首页底栏同质。 */
+private fun Density.readerHudMaterial(dark: Boolean): CouiFloatingMaterial = if (dark) {
+    CouiFloatingMaterial(
+        firstColor = Color(0x80666666),
+        firstBlendMode = BlendMode.OVERLAY,
+        secondColor = Color(0xB3262626),
+        edgeAlpha = 0.8f,
+        innerGlowAlpha = 0.03f,
+        extension = 4.dp.roundToPx(),
+    )
+} else {
+    CouiFloatingMaterial(
+        firstColor = Color(0xA3666666),
+        firstBlendMode = BlendMode.COLOR_DODGE,
+        secondColor = Color(0x80F0F0F0),
+        edgeAlpha = 0.25f,
+        innerGlowAlpha = 0.1f,
+        extension = 4.dp.roundToPx(),
+    )
+}
+
+/** 浮动表面的投影与焦散：按顶/底区分配置，顶栏关闭白色底晕，底栏复用 NavigationBar 胶囊焦散比例。 */
+private fun Density.readerHudShadow(
+    placement: CouiReaderHudPlacement,
+    dark: Boolean,
+    contourGlowEnabled: Boolean,
+): CouiFloatingShadow {
+    val spec = couiReaderHudShadowSpec(placement, dark, contourGlowEnabled)
+    fun pxSize(dp: Float): Float {
+        val px = dp * density
+        return (if (px >= 0f) px + 0.5f else px - 0.5f).toInt().toFloat()
+    }
+    fun pxOffset(dp: Float): Float = (dp * density).toInt().toFloat()
+    return CouiFloatingShadow(
+        elevation = pxSize(spec.elevationDp),
+        color = Color.Black.copy(alpha = spec.shadowAlpha),
+        lightY = pxSize(spec.lightYDp),
+        lightZ = if (spec.lightZDp == 0f) 0f else pxSize(spec.lightZDp),
+        lightRadius = pxSize(spec.lightRadiusDp),
+        causticColor = if (spec.causticAlpha > 0f) {
+            Color.White.copy(alpha = spec.causticAlpha)
+        } else {
+            Color.Transparent
+        },
+        layout = Rect(0f, 0f, 0f, pxOffset(spec.causticBottomDp)),
+        sdf = pxOffset(spec.causticSdfDp),
+        smoothCorner = spec.smoothCorner,
+    )
 }
 
 /** 顶栏的上一话/下一话：图标带极简文本标签以区分左侧返回键，无相邻章时置灰并保持 48dp 触区。 */
@@ -227,17 +322,18 @@ internal fun ReaderHudChapterStep(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val colors = COUITheme.colorScheme
     val tint = if (enabled) {
-        colors.labelPrimary
+        CouiKitTheme.colorScheme.onSurface
     } else {
-        colors.labelPrimary.copy(alpha = 0.3f)
+        CouiKitTheme.colorScheme.onSurface.copy(alpha = 0.3f)
     }
     Column(
         modifier = Modifier
+            // 所在 HUD 面板本身已有凝光，这里不再叠第二层；只保留按压反馈
             .couiPressable(
-                shape = ReaderHudCapsuleShape,
+                shape = CouiCapsuleShape,
                 enabled = enabled,
+                spotlight = null,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -247,7 +343,7 @@ internal fun ReaderHudChapterStep(
         Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(18.dp), tint = tint)
         Text(
             text = label,
-            style = COUITheme.textStyles.bodyXS,
+            kind = CouiTextKind.GroupFooter,
             color = tint,
             maxLines = 1,
         )
@@ -262,13 +358,14 @@ internal fun ReaderPageJumpStepper(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val colors = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = Modifier
             .couiPressable(
                 shape = CircleShape,
-                backgroundColor = couiDialogSurfaceColor(elevated = true),
+                backgroundColor = scheme.container,
                 enabled = enabled,
+                spotlight = if (enabled) SpotlightPreset.OpaqueSmall2 else null,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -279,7 +376,7 @@ internal fun ReaderPageJumpStepper(
             imageVector = icon,
             contentDescription = contentDescription,
             modifier = Modifier.size(16.dp),
-            tint = if (enabled) colors.labelPrimary else colors.labelPrimary.copy(alpha = 0.3f),
+            tint = if (enabled) scheme.onSurface else scheme.onSurface.copy(alpha = 0.3f),
         )
     }
 }
@@ -294,24 +391,26 @@ internal fun ReaderHudAction(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val colors = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     val tint = when {
-        !enabled -> colors.labelPrimary.copy(alpha = 0.3f)
-        active -> colors.primaryText
-        else -> colors.labelPrimary
+        !enabled -> scheme.onSurface.copy(alpha = 0.3f)
+        active -> scheme.accent
+        else -> scheme.onSurface
     }
     val containerColor = if (active && enabled) {
-        colors.primary.copy(alpha = CouiSelectedContainerAlpha)
+        scheme.accent.copy(alpha = CouiSelectedContainerAlpha)
     } else {
         Color.Transparent
     }
     Column(
         modifier = modifier
             .heightIn(min = 52.dp)
+            // 只在 HUD 面板内使用，光由面板统一给，项内不再叠第二层
             .couiPressable(
-                shape = ReaderHudCapsuleShape,
+                shape = CouiCapsuleShape,
                 backgroundColor = containerColor,
                 enabled = enabled,
+                spotlight = null,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -322,7 +421,7 @@ internal fun ReaderHudAction(
         Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(22.dp), tint = tint)
         Text(
             text = label,
-            style = COUITheme.textStyles.bodyXS,
+            kind = CouiTextKind.GroupFooter,
             color = tint,
             modifier = Modifier.padding(top = 2.dp),
             maxLines = 1,
@@ -330,58 +429,80 @@ internal fun ReaderHudAction(
     }
 }
 
-/** HUD 顶栏：返回、标题、页码入口与上下话步进，基于 [SmallTopAppBar] 与 [TopAppBarGlow] 渐进模糊。 */
+/** HUD 顶栏：返回、标题、页码入口与上下话步进，外包一层顶部渐进模糊。 */
 @Composable
 internal fun BoxScope.ReaderTopHudBar(
     visible: Boolean,
-    backdrop: LayerBackdrop?,
+    backdrop: CouiBackdrop,
     title: String,
     pageLabel: String,
+    accent: Color,
     onBack: () -> Unit,
     onOpenPageJump: () -> Unit,
     prevChapter: Chapter?,
     nextChapter: Chapter?,
     onOpenChapter: (String) -> Unit,
+    onToggleChrome: () -> Unit,
 ) {
-    ReaderTopAppBarShell(
+    ReaderTopAppBarSurface(
         visible = visible,
         backdrop = backdrop,
-        title = title,
-        onBack = onBack,
+        onTapChrome = onToggleChrome,
     ) {
-        Text(
-            text = pageLabel,
-            style = COUITheme.textStyles.buttonM,
-            color = COUITheme.colorScheme.primaryText,
+        ReaderHudBar(
+            backdrop = backdrop,
             modifier = Modifier
-                .couiPressable(
-                    shape = ReaderHudCapsuleShape,
-                    minTouchTarget = CouiMinTouchTarget,
-                    onClick = onOpenPageJump,
+                .fillMaxWidth()
+                .readableWidth(),
+            height = ReaderHudTopHeight,
+            placement = CouiReaderHudPlacement.TOP,
+            diagnosticName = "readerHud/top",
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // HUD 栏自带浮动材质与凝光，返回键不叠第二层凝光
+                CouiTopBarPlainBackButton(onClick = onBack, spotlight = null)
+                Text(
+                    text = title,
+                    kind = CouiTextKind.TopBar,
+                    modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            maxLines = 1,
-        )
-        ReaderHudChapterStep(
-            icon = CouiIcons.Back,
-            label = "上话",
-            enabled = prevChapter != null,
-            onClick = { prevChapter?.let { onOpenChapter(it.id) } },
-        )
-        ReaderHudChapterStep(
-            icon = CouiIcons.Forward,
-            label = "下话",
-            enabled = nextChapter != null,
-            onClick = { nextChapter?.let { onOpenChapter(it.id) } },
-        )
+                Text(
+                    text = pageLabel,
+                    kind = CouiTextKind.ItemValue,
+                    color = accent,
+                    modifier = Modifier
+                        // 所在 HUD 面板本身已有凝光，这里不再叠第二层
+                        .couiPressable(spotlight = null, minTouchTarget = CouiMinTouchTarget) { onOpenPageJump() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    maxLines = 1,
+                )
+                ReaderHudChapterStep(
+                    icon = CouiIcons.Back,
+                    label = "上话",
+                    enabled = prevChapter != null,
+                    onClick = { prevChapter?.let { onOpenChapter(it.id) } },
+                )
+                ReaderHudChapterStep(
+                    icon = CouiIcons.Forward,
+                    label = "下话",
+                    enabled = nextChapter != null,
+                    onClick = { nextChapter?.let { onOpenChapter(it.id) } },
+                )
+            }
+        }
     }
 }
 
-/** HUD 底栏：等分槽位匹配超椭圆胶囊指示器与触区。 */
+/** HUD 底栏：等分槽位匹配 CouiCapsuleShape 横向胶囊指示器与触区。 */
 @Composable
 internal fun BoxScope.ReaderBottomHudBar(
     visible: Boolean,
-    backdrop: LayerBackdrop?,
+    backdrop: CouiBackdrop,
     horizontal: Boolean,
     favorited: Boolean,
     liked: Boolean,
@@ -401,6 +522,8 @@ internal fun BoxScope.ReaderBottomHudBar(
             .fillMaxWidth()
             .readableWidth(),
         height = ReaderHudBottomHeight,
+        placement = CouiReaderHudPlacement.BOTTOM,
+        diagnosticName = "readerHud/bottom",
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),

@@ -2,19 +2,13 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.unit.dp
 import com.jm3.app.miuix.ui.glass.bottomBarTokens
 import com.jm3.core.settings.BottomBarForm
+import androidx.compose.ui.unit.dp
 import com.jm3.core.settings.BottomBarSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -115,27 +109,5 @@ class CouiNavigationBarBranchTest {
         assertEquals(null, couiPlainNavReleaseTarget(preview = 1, pending = null, down = 2, up = 2, cancelled = true))
         assertEquals(null, couiPlainNavReleaseTarget(preview = 1, pending = null, down = 1, up = 1, cancelled = false))
         assertEquals(null, couiPlainNavReleaseTarget(preview = 1, pending = null, down = null, up = null, cancelled = false))
-    }
-
-    @Test
-    fun `新版导航项默认选中图标回落原图标且无角标`() {
-        val icon = ImageVector.Builder(
-            name = "test",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f,
-        ).apply {
-            path(fill = SolidColor(Color.Black)) {
-                moveTo(0f, 0f)
-                lineTo(24f, 24f)
-            }
-        }.build()
-        val item = Coui2NavItem(label = "首页", icon = icon)
-        assertEquals("首页", item.label)
-        assertSame(icon, item.selectedIcon)
-        assertNull(item.badge)
-        assertEquals(88.dp, CouiRailWidth)
-        assertEquals(0.14f, CouiSelectedContainerAlpha)
     }
 }

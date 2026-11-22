@@ -22,9 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,8 +39,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itos.coui.backdrop.couiBackdrop
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.Dialog
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.Divider
+import com.itos.coui.picker.WheelPicker
+import com.itos.coui.scroll.couiVerticalScroll
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.reader.ReaderSession
 import com.jm3.app.miuix.ui.CommentItemNullableSaver
@@ -50,23 +60,19 @@ import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ReaderVolumeKeys
 import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.ScreenLoadPlan
+import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
-import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiSectionTitleText
-import com.jm3.app.miuix.ui.coui.component.LocalPageBackdrop
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarPlainBackButton
 import com.jm3.app.miuix.ui.coui.component.couiDialogListMaxHeight
-import com.jm3.app.miuix.ui.coui.component.couiDialogSurfaceColor
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.panelBlur
 import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
-import com.jm3.app.miuix.ui.coui.component.rememberMaterialBackdropProvider
-import com.jm3.app.miuix.ui.coui.component.rememberPageBackdrop
-import com.jm3.app.miuix.ui.coui.component.rememberPopupMaterialBlur
 import com.jm3.app.miuix.ui.coui.component.rememberRetainedTarget
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
@@ -86,33 +92,8 @@ import com.jm3.core.replacedBy
 import com.jm3.core.session.SessionOutcome
 import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.SettingsRepository
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.basic.NumberPicker
-import io.github.suqi8.coui.kmp.basic.Scaffold
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.blur.MaterialBlurDefaults
-import io.github.suqi8.coui.kmp.blur.layerBackdrop
-import io.github.suqi8.coui.kmp.effect.LocalMaterialBackdrop
-import io.github.suqi8.coui.kmp.effect.LocalPopupMaterialBlur
-import io.github.suqi8.coui.kmp.layout.BottomSheetDefaults
-import io.github.suqi8.coui.kmp.layout.DialogButtonBar
-import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
-import io.github.suqi8.coui.kmp.layout.DialogDefaults
-import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
-import io.github.suqi8.coui.kmp.overlay.OverlayDialog
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.theme.COUIRoundCorner
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
-import io.github.suqi8.coui.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-
-private val NovelHudCapsuleShape = SquircleShape(
-    cornerRadius = COUIRoundCorner.Full,
-    weight = COUIRoundCorner.CapsuleWeight,
-)
 
 /**
  * 小说阅读页的 COUI 版：正文独占整屏，顶栏与底栏是浮在正文之上的 HUD。
@@ -188,10 +169,8 @@ private fun CouiNovelReaderContent(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val bars = WindowInsets.systemBars.asPaddingValues()
-    val colors = COUITheme.colorScheme
-    val pageBackdrop = rememberPageBackdrop()
-    val materialBackdrop = rememberMaterialBackdropProvider(pageBackdrop)
-    val popupBlur = rememberPopupMaterialBlur(pageBackdrop)
+    val scheme = CouiKitTheme.colorScheme
+    val hudBackdrop = rememberCouiReaderBackdrop(diagnosticName = "novelHud")
 
     BindCouiReaderWindowEffects(
         keepScreenOn = keepScreenOn,
@@ -378,370 +357,355 @@ private fun CouiNovelReaderContent(
     val topHudVisible = chromeVisible || loading || failure != null || chapter == null
     val bottomHudVisible = chromeVisible && !loading
 
-    // COUI Scaffold 提供 COUIPopupHost，确保 OverlayDialog / OverlayBottomSheet 正常挂载与模糊采样
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = colors.background,
-    ) { _ ->
-        CompositionLocalProvider(
-            LocalPageBackdrop provides pageBackdrop,
-            LocalPopupMaterialBlur provides popupBlur,
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(scheme.background),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { viewportHeightPx = it.height }
+                .couiBackdrop(hudBackdrop),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(colors.background),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .onSizeChanged { viewportHeightPx = it.height }
-                        .then(if (pageBackdrop != null) Modifier.layerBackdrop(pageBackdrop) else Modifier),
+            // 正文上下各让出 HUD 高度，正文才能从浮栏下方穿过去；让位放在滚动容器内部，
+            // 只有第一屏和最后一屏能看到额外留白
+            val topInset = bars.calculateTopPadding() + ReaderHudTopHeight + ReaderHudBarVerticalMargin * 2 + 4.dp
+            val bottomInset = bars.calculateBottomPadding() + ReaderHudBottomHeight + ReaderHudBarVerticalMargin * 2 + 4.dp
+            when {
+                loading -> Box(
+                    modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    // 正文上下各让出 HUD 高度，正文才能从浮栏下方穿过去；让位放在滚动容器内部，
-                    // 只有第一屏和最后一屏能看到额外留白
-                    val topInset = bars.calculateTopPadding() + ReaderHudTopHeight + ReaderHudBarVerticalMargin * 2 + 4.dp
-                    val bottomInset = bars.calculateBottomPadding() + ReaderHudBottomHeight + ReaderHudBarVerticalMargin * 2 + 4.dp
-                    when {
-                        loading -> Box(
-                            modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CouiLoadingGroup(text = "正在加载章节…", modifier = Modifier.fillMaxWidth().readableWidth())
-                        }
-
-                        failure?.phase == ScreenLoadPhase.Expired -> Box(
-                            modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CouiFeedLoginGroup(
-                                message = failure?.message.orEmpty(),
-                                modifier = Modifier.fillMaxWidth().readableWidth(),
-                                onOpenLogin = ::openLoginFromModal,
-                            )
-                        }
-
-                        failure != null -> Box(
-                            modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CouiErrorGroup(
-                                message = failure?.message.orEmpty(),
-                                onRetry = { loadChapter(currentId, lang, showLoading = true) },
-                                modifier = Modifier.fillMaxWidth().readableWidth(),
-                            )
-                        }
-
-                        chapter == null -> Box(
-                            modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            CouiEmptyGroup(
-                                text = "章节不存在，可能已下架",
-                                modifier = Modifier.fillMaxWidth().readableWidth(),
-                            )
-                        }
-
-                        else -> chapter?.let { body ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .scrollEndHaptic()
-                                    .overScrollVertical()
-                                    .verticalScroll(
-                                        state = scrollState,
-                                        flingBehavior = rememberCOUIFlingBehavior(),
-                                    )
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                    ) { chromeVisible = !chromeVisible }
-                                    .readableWidth()
-                                    .padding(
-                                        start = 20.dp,
-                                        end = 20.dp,
-                                        top = topInset,
-                                        bottom = bottomInset,
-                                    ),
-                            ) {
-                                CouiSectionTitleText(
-                                    text = body.title,
-                                    textAlign = TextAlign.Start,
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                // 正文要跟字号设置走，用基础文本配主题行高
-                                BasicText(
-                                    text = body.contentText,
-                                    style = rememberCouiBodyTextStyle().copy(
-                                        color = colors.labelPrimary,
-                                        fontSize = fontSize.sp,
-                                        lineHeight = (fontSize * 1.75).sp,
-                                    ),
-                                )
-                            }
-                        }
-                    }
+                    CouiLoadingGroup(text = "正在加载章节…", modifier = Modifier.fillMaxWidth().readableWidth())
                 }
 
-                // HUD 顶底栏处在录制层之外，向按钮与浮动栏提供 LocalMaterialBackdrop
-                CompositionLocalProvider(LocalMaterialBackdrop provides materialBackdrop) {
-                    ReaderTopAppBarShell(
-                        visible = topHudVisible,
-                        backdrop = pageBackdrop,
-                        title = chapter?.title ?: "阅读",
-                        subtitle = detail?.name.orEmpty(),
-                        onBack = onBack,
+                failure?.phase == ScreenLoadPhase.Expired -> Box(
+                    modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CouiFeedLoginGroup(
+                        message = failure?.message.orEmpty(),
+                        modifier = Modifier.fillMaxWidth().readableWidth(),
+                        onOpenLogin = ::openLoginFromModal,
+                    )
+                }
+
+                failure != null -> Box(
+                    modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CouiErrorGroup(
+                        message = failure?.message.orEmpty(),
+                        onRetry = { loadChapter(currentId, lang, showLoading = true) },
+                        modifier = Modifier.fillMaxWidth().readableWidth(),
+                    )
+                }
+
+                chapter == null -> Box(
+                    modifier = Modifier.fillMaxSize().padding(top = topInset, bottom = bottomInset),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CouiEmptyGroup(
+                        text = "章节不存在，可能已下架",
+                        modifier = Modifier.fillMaxWidth().readableWidth(),
+                    )
+                }
+
+                else -> chapter?.let { body ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .couiVerticalScroll(scrollState)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) { chromeVisible = !chromeVisible }
+                            .readableWidth()
+                            .padding(
+                                start = 20.dp,
+                                end = 20.dp,
+                                top = topInset,
+                                bottom = bottomInset,
+                            ),
+                    ) {
+                        CouiSectionTitleText(
+                            text = body.title,
+                            textAlign = TextAlign.Start,
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        // 正文要跟字号设置走，文本件按 kind 固定字号，这里用基础文本配主题行高
+                        BasicText(
+                            text = body.contentText,
+                            style = rememberCouiBodyTextStyle().copy(
+                                color = scheme.onSurface,
+                                fontSize = fontSize.sp,
+                                lineHeight = (fontSize * 1.75).sp,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        ReaderTopAppBarSurface(
+            visible = topHudVisible,
+            backdrop = hudBackdrop,
+            // 顶栏承托层挡住下方正文后，空白区的点按仍要能收起 HUD
+            onTapChrome = { chromeVisible = !chromeVisible },
+        ) {
+            ReaderHudBar(
+                backdrop = hudBackdrop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .readableWidth(),
+                height = ReaderHudTopHeight,
+                placement = CouiReaderHudPlacement.TOP,
+                diagnosticName = "novelHud/top",
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // HUD 栏自带浮动材质与凝光，返回键不叠第二层凝光
+                    CouiTopBarPlainBackButton(onClick = onBack, spotlight = null)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
                     ) {
                         Text(
-                            text = if (lang == "tw") "繁" else "简",
-                            style = COUITheme.textStyles.buttonM,
-                            color = colors.primaryText,
-                            modifier = Modifier
-                                .couiPressable(
-                                    shape = NovelHudCapsuleShape,
-                                    minTouchTarget = CouiMinTouchTarget,
-                                ) {
-                                    changeLang(if (lang == "tw") "cn" else "tw")
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            text = chapter?.title ?: "阅读",
+                            kind = CouiTextKind.TopBar,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    }
-
-                    if (bottomHudVisible) {
-                        ReaderHudBar(
-                            backdrop = pageBackdrop,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .navigationBarsPadding()
-                                .padding(horizontal = 12.dp, vertical = ReaderHudBarVerticalMargin)
-                                .fillMaxWidth()
-                                .readableWidth(),
-                            height = ReaderHudBottomHeight,
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                ReaderHudAction(
-                                    icon = CouiIcons.Settings,
-                                    label = "字号",
-                                    modifier = Modifier.weight(1f),
-                                    onClick = { modalState = modalState.open(CouiReaderModal.FONT_SIZE) },
-                                )
-                                ReaderHudAction(
-                                    icon = CouiIcons.Back,
-                                    label = "上一章",
-                                    modifier = Modifier.weight(1f),
-                                    enabled = prevChapter != null,
-                                    onClick = { goTo(prevChapter) },
-                                )
-                                ReaderHudAction(
-                                    icon = CouiIcons.Forward,
-                                    label = "下一章",
-                                    modifier = Modifier.weight(1f),
-                                    enabled = nextChapter != null,
-                                    onClick = { goTo(nextChapter) },
-                                )
-                                ReaderHudAction(
-                                    icon = CouiIcons.Comment,
-                                    label = "评论",
-                                    modifier = Modifier.weight(1f),
-                                    onClick = {
-                                        commentsNotice = null
-                                        modalState = modalState.open(CouiReaderModal.COMMENTS)
-                                    },
-                                )
-                                ReaderHudAction(
-                                    icon = CouiIcons.Folder,
-                                    label = "收藏",
-                                    modifier = Modifier.weight(1f),
-                                    active = favorited,
-                                    onClick = ::toggleFavorite,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // 提示条随底栏显隐切换避让高度，始终位于系统导航栏之上
-                val snackbarBottomPaddingDp = couiReaderSnackbarBottomPaddingDp(
-                    hudVisible = bottomHudVisible,
-                    bottomBarHeightDp = ReaderHudBottomHeightDp,
-                    barVerticalMarginDp = ReaderHudBarVerticalMarginDp,
-                )
-                GlassSnackbarHost(
-                    state = snackbarHostState,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(bottom = snackbarBottomPaddingDp.dp),
-                )
-
-                val visibleModal = couiVisibleReaderModal(modalState, hasReplyTarget = replyTarget != null)
-
-                val fontBlur = panelBlur(MaterialBlurDefaults::dialog)
-                OverlayDialog(
-                    show = visibleModal == CouiReaderModal.FONT_SIZE,
-                    title = "字号",
-                    backgroundModifier = fontBlur?.backgroundModifier ?: Modifier,
-                    backgroundColor = fontBlur?.backgroundColor ?: DialogDefaults.backgroundColor(),
-                    materialStroke = fontBlur != null,
-                    onDismissRequest = { modalState = modalState.dismiss() },
-                    customContent = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 4.dp),
-                        ) {
+                        val novelName = detail?.name.orEmpty()
+                        if (novelName.isNotBlank()) {
                             Text(
-                                text = "当前字号 " + fontSize + "sp",
-                                style = COUITheme.textStyles.headlineXS,
-                                color = colors.labelPrimary,
-                                modifier = Modifier.fillMaxWidth(),
+                                text = novelName,
+                                kind = CouiTextKind.GroupFooter,
+                                color = scheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                            // 字号是离散档位，滚轮比滑杆更容易一档一档停准；不环回，避免从最大档直接跳回最小档
-                            NumberPicker(
-                                value = fontSize,
-                                onValueChange = { applyFontSize(it) },
-                                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                                range = SettingsRepository.NOVEL_FONT_SIZE_MIN..
-                                    SettingsRepository.NOVEL_FONT_SIZE_MAX,
-                                unit = "sp",
-                                wrapAround = false,
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                NovelFontStep(
-                                    label = "A-",
-                                    enabled = fontSize > SettingsRepository.NOVEL_FONT_SIZE_MIN,
-                                    onClick = { applyFontSize(fontSize - 1) },
-                                    modifier = Modifier.weight(1f),
-                                )
-                                NovelFontStep(
-                                    label = "A+",
-                                    enabled = fontSize < SettingsRepository.NOVEL_FONT_SIZE_MAX,
-                                    onClick = { applyFontSize(fontSize + 1) },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
                         }
-                    },
-                ) {
-                    DialogButtonBar(
-                        negative = null,
-                        positive = DialogButtonBarAction(
-                            text = "完成",
-                            recommended = true,
-                            onClick = { modalState = modalState.dismiss() },
-                        ),
-                    )
-                }
-
-                val commentsBlur = panelBlur(MaterialBlurDefaults::bottomSheet)
-                OverlayBottomSheet(
-                    show = visibleModal == CouiReaderModal.COMMENTS,
-                    title = "评论",
-                    showDragHandle = true,
-                    backgroundModifier = commentsBlur?.backgroundModifier ?: Modifier,
-                    backgroundColor = commentsBlur?.backgroundColor ?: BottomSheetDefaults.backgroundColor(),
-                    materialStroke = commentsBlur != null,
-                    endAction = {
-                        CouiPageTopBarAction(
-                            icon = CouiIcons.Close,
-                            contentDescription = "关闭",
-                            onClick = { modalState = modalState.dismiss() },
-                        )
-                    },
-                    onDismissRequest = { modalState = modalState.dismiss() },
-                ) {
-                    NovelCommentsPanel(
-                        deps = deps,
-                        novelId = novelId,
-                        notice = commentsNotice,
-                        refreshKey = commentsRefreshKey,
-                        onNoticeChange = { commentsNotice = it },
-                        onReply = { item ->
-                            if (user == null) {
-                                openLoginFromModal()
-                            } else {
-                                replyTarget = item
-                                replyDraft = ""
-                                replyNotice = null
-                                modalState = modalState.enterReply()
-                            }
-                        },
-                        onOpenLogin = ::openLoginFromModal,
-                        onLoginExpired = { message ->
-                            openLoginFromModal()
-                            scope.launch { snackbarHostState.showSnackbar(message) }
-                        },
+                    }
+                    Text(
+                        text = if (lang == "tw") "繁" else "简",
+                        kind = CouiTextKind.ItemValue,
+                        color = scheme.accent,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
-                    )
-                }
-
-                // 回复弹窗与评论弹窗保持同级互斥，直接承接 OverlayDialog 玻璃材质
-                val retainedReplyTarget = rememberRetainedTarget(replyTarget)
-                val replyBlur = panelBlur(MaterialBlurDefaults::dialog)
-                OverlayDialog(
-                    show = replyTarget != null,
-                    title = "回复 " + retainedReplyTarget?.author.orEmpty(),
-                    backgroundModifier = replyBlur?.backgroundModifier ?: Modifier,
-                    backgroundColor = replyBlur?.backgroundColor ?: DialogDefaults.backgroundColor(),
-                    materialStroke = replyBlur != null,
-                    onDismissRequest = {
-                        if (!replyBusy) {
-                            replyTarget = null
-                            replyNotice = null
-                            modalState = modalState.exitReply()
-                        }
-                    },
-                    customContent = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 4.dp),
-                        ) {
-                            ReaderCommentComposer(
-                                loggedIn = true,
-                                text = replyDraft,
-                                busy = replyBusy,
-                                notice = replyNotice,
-                                onTextChange = { replyDraft = couiClampCommentInput(it) },
-                                onLogin = {},
-                                onSend = ::submitReply,
-                                showSendButton = false,
-                            )
-                        }
-                    },
-                ) {
-                    DialogButtonBar(
-                        negative = DialogButtonBarAction(
-                            text = "取消",
-                            enabled = !replyBusy,
-                            onClick = {
-                                if (!replyBusy) {
-                                    replyTarget = null
-                                    replyNotice = null
-                                    modalState = modalState.exitReply()
-                                }
-                            },
-                        ),
-                        positive = DialogButtonBarAction(
-                            text = if (replyBusy) "发送中…" else "发送",
-                            enabled = !replyBusy && replyDraft.isNotBlank(),
-                            recommended = true,
-                            onClick = ::submitReply,
-                        ),
+                            // 所在 HUD 面板本身已有凝光，这里不再叠第二层
+                            .couiPressable(spotlight = null, minTouchTarget = CouiMinTouchTarget) {
+                                changeLang(if (lang == "tw") "cn" else "tw")
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        maxLines = 1,
                     )
                 }
             }
+        }
+
+        if (bottomHudVisible) {
+            ReaderHudBar(
+                backdrop = hudBackdrop,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = ReaderHudBarVerticalMargin)
+                    .fillMaxWidth()
+                    .readableWidth(),
+                height = ReaderHudBottomHeight,
+                placement = CouiReaderHudPlacement.BOTTOM,
+                diagnosticName = "novelHud/bottom",
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    ReaderHudAction(
+                        icon = CouiIcons.Settings,
+                        label = "字号",
+                        modifier = Modifier.weight(1f),
+                        onClick = { modalState = modalState.open(CouiReaderModal.FONT_SIZE) },
+                    )
+                    ReaderHudAction(
+                        icon = CouiIcons.Back,
+                        label = "上一章",
+                        modifier = Modifier.weight(1f),
+                        enabled = prevChapter != null,
+                        onClick = { goTo(prevChapter) },
+                    )
+                    ReaderHudAction(
+                        icon = CouiIcons.Forward,
+                        label = "下一章",
+                        modifier = Modifier.weight(1f),
+                        enabled = nextChapter != null,
+                        onClick = { goTo(nextChapter) },
+                    )
+                    ReaderHudAction(
+                        icon = CouiIcons.Comment,
+                        label = "评论",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            commentsNotice = null
+                            modalState = modalState.open(CouiReaderModal.COMMENTS)
+                        },
+                    )
+                    ReaderHudAction(
+                        icon = CouiIcons.Folder,
+                        label = "收藏",
+                        modifier = Modifier.weight(1f),
+                        active = favorited,
+                        onClick = ::toggleFavorite,
+                    )
+                }
+            }
+        }
+
+        // 提示条随底栏显隐切换避让高度，始终位于系统导航栏之上
+        val snackbarBottomPaddingDp = couiReaderSnackbarBottomPaddingDp(
+            hudVisible = bottomHudVisible,
+            bottomBarHeightDp = ReaderHudBottomHeightDp,
+            barVerticalMarginDp = ReaderHudBarVerticalMarginDp,
+        )
+        GlassSnackbarHost(
+            state = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = snackbarBottomPaddingDp.dp),
+        )
+    }
+
+    val visibleModal = couiVisibleReaderModal(modalState, hasReplyTarget = replyTarget != null)
+
+    Dialog(
+        onDismissRequest = { modalState = modalState.dismiss() },
+        visible = visibleModal == CouiReaderModal.FONT_SIZE,
+        material = couiDialogMaterial(),
+        title = "字号",
+        confirmAction = CouiDialogAction(text = "完成", onClick = { modalState = modalState.dismiss() }),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = "当前字号 " + fontSize + "sp",
+                kind = CouiTextKind.ItemTitle,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // 字号是离散档位，滚轮比滑杆更容易一档一档停准；不环回，避免从最大档直接跳回最小档
+            WheelPicker(
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                value = fontSize,
+                onValueChange = { applyFontSize(it) },
+                valueRange = SettingsRepository.NOVEL_FONT_SIZE_MIN..
+                    SettingsRepository.NOVEL_FONT_SIZE_MAX,
+                label = "字号",
+                wrap = false,
+                verticalFading = true,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                NovelFontStep(
+                    label = "A-",
+                    enabled = fontSize > SettingsRepository.NOVEL_FONT_SIZE_MIN,
+                    onClick = { applyFontSize(fontSize - 1) },
+                    modifier = Modifier.weight(1f),
+                )
+                NovelFontStep(
+                    label = "A+",
+                    enabled = fontSize < SettingsRepository.NOVEL_FONT_SIZE_MAX,
+                    onClick = { applyFontSize(fontSize + 1) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = { modalState = modalState.dismiss() },
+        visible = visibleModal == CouiReaderModal.COMMENTS,
+        material = couiDialogMaterial(),
+        title = "评论",
+        confirmAction = CouiDialogAction(text = "关闭", onClick = { modalState = modalState.dismiss() }),
+    ) {
+        NovelCommentsPanel(
+            deps = deps,
+            novelId = novelId,
+            notice = commentsNotice,
+            refreshKey = commentsRefreshKey,
+            onNoticeChange = { commentsNotice = it },
+            onReply = { item ->
+                if (user == null) {
+                    openLoginFromModal()
+                } else {
+                    replyTarget = item
+                    replyDraft = ""
+                    replyNotice = null
+                    modalState = modalState.enterReply()
+                }
+            },
+            onOpenLogin = ::openLoginFromModal,
+            onLoginExpired = { message ->
+                openLoginFromModal()
+                scope.launch { snackbarHostState.showSnackbar(message) }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+    // 回复弹窗与评论弹窗保持同级互斥，直接承接 Dialog 玻璃材质
+    val retainedReplyTarget = rememberRetainedTarget(replyTarget)
+    Dialog(
+        onDismissRequest = {
+            if (!replyBusy) {
+                replyTarget = null
+                replyNotice = null
+                modalState = modalState.exitReply()
+            }
+        },
+        visible = replyTarget != null,
+        material = couiDialogMaterial(),
+        title = "回复 " + retainedReplyTarget?.author.orEmpty(),
+        confirmAction = CouiDialogAction(
+            text = if (replyBusy) "发送中…" else "发送",
+            enabled = !replyBusy,
+            onClick = ::submitReply,
+        ),
+        dismissAction = CouiDialogAction(
+            text = "取消",
+            onClick = {
+                if (!replyBusy) {
+                    replyTarget = null
+                    replyNotice = null
+                    modalState = modalState.exitReply()
+                }
+            },
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            ReaderCommentComposer(
+                loggedIn = true,
+                text = replyDraft,
+                busy = replyBusy,
+                notice = replyNotice,
+                onTextChange = { replyDraft = couiClampCommentInput(it) },
+                onLogin = {},
+                onSend = ::submitReply,
+            )
         }
     }
 }
@@ -754,13 +718,14 @@ private fun NovelFontStep(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
             .couiPressable(
-                shape = NovelHudCapsuleShape,
-                backgroundColor = couiDialogSurfaceColor(elevated = true),
+                shape = CouiCapsuleShape,
+                backgroundColor = scheme.container,
                 enabled = enabled,
+                spotlight = if (enabled) SpotlightPreset.ChipTab else null,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -769,8 +734,8 @@ private fun NovelFontStep(
     ) {
         Text(
             text = label,
-            style = COUITheme.textStyles.headlineXS,
-            color = if (enabled) colors.primaryText else colors.labelSecondary,
+            kind = CouiTextKind.ItemTitle,
+            color = if (enabled) scheme.accent else scheme.onSurfaceVariant,
         )
     }
 }
@@ -890,7 +855,7 @@ private fun NovelCommentsPanel(
                         onReply = { onReply(item) },
                     )
                     if (item.id != feed.items.last().id || feed.hasMore || feed.loadingMore || feed.loadMoreFailed) {
-                        HorizontalDivider()
+                        Divider()
                     }
                 }
                 item(key = "novel-comments-footer") {
@@ -903,11 +868,11 @@ private fun NovelCommentsPanel(
                 }
             }
         }
-        HorizontalDivider()
+        Divider()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             ReaderCommentComposer(
                 loggedIn = user != null,

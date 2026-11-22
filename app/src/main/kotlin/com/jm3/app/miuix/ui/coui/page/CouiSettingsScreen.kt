@@ -3,39 +3,75 @@
 package com.jm3.app.miuix.ui.coui.page
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogPlacement
+import com.itos.coui.dialog.Dialog
+import com.itos.coui.layout.CouiPageDefaults
+import com.itos.coui.layout.Divider
+import com.itos.coui.layout.Group
+import com.itos.coui.layout.Item
+import com.itos.coui.menu.CouiMenuItem
+import com.itos.coui.menu.Menu
+import com.itos.coui.menu.couiMenuAnchor
+import com.itos.coui.menu.rememberCouiMenuAnchor
+import com.itos.coui.scroll.couiVerticalScroll
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.slider.Slider
+import com.itos.coui.switch.Switch
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiColor
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
+import com.itos.coui.topappbar.CouiTopAppBarDefaults
+import com.itos.coui.topappbar.LargeTopAppBar
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.ReaderSettingsState
+import com.jm3.app.miuix.ui.couiPageExtraBottomDp
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
-import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
-import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiAppScaffold
 import com.jm3.app.miuix.ui.coui.component.CouiSegmentedCapsules
-import com.jm3.app.miuix.ui.coui.component.couiDestructiveDialogAction
-import com.jm3.app.miuix.ui.coui.component.couiPageScroll
-import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
-import com.jm3.app.miuix.ui.coui.component.panelBlur
-import com.jm3.app.miuix.ui.coui.component.rememberCouiBodyTextStyle
-import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarBackButton
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarTitle
+import com.jm3.app.miuix.ui.coui.component.couiTopAppBarColors
+import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
+import com.jm3.app.miuix.ui.coui.component.couiSwitchRow
+import com.jm3.app.miuix.ui.coui.component.rememberCouiImeOccupiesPage
+import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
+import top.yukonga.miuix.kmp.basic.Icon
 import com.jm3.app.miuix.ui.prefetchPagesLabel
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.readerBrightnessLabel
@@ -63,42 +99,19 @@ import com.jm3.core.settings.ReaderPreferences
 import com.jm3.core.settings.ReaderSpreadMode
 import com.jm3.core.settings.ThemeMode
 import com.jm3.core.settings.UiSkin
-import io.github.suqi8.coui.kmp.basic.BasicComponent
-import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.CardListGroup
-import io.github.suqi8.coui.kmp.basic.CardListGroupScope
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.blur.MaterialBlurDefaults
-import io.github.suqi8.coui.kmp.layout.DialogButtonBar
-import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
-import io.github.suqi8.coui.kmp.layout.DialogDefaults
-import io.github.suqi8.coui.kmp.overlay.OverlayDialog
-import io.github.suqi8.coui.kmp.preference.ArrowPreference
-import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
-import io.github.suqi8.coui.kmp.preference.PreferenceCategory
-import io.github.suqi8.coui.kmp.preference.SliderPreference
-import io.github.suqi8.coui.kmp.preference.SwitchPreference
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /** 输入框与卡片同源的圆角：由库的卡片半径派生，避免另写字面量。 */
-private val SettingsInputShape = SquircleShape(
-    cornerRadius = CouiLayoutTokens.CardCorner / 2,
-    weight = CouiLayoutTokens.CardCornerWeight,
-)
+private val SettingsInputShape = CouiShape(radius = CouiPageDefaults.shape.radius / 2)
 
 /**
- * COUI 设置页：整页基于 `suqi8/coui` 2.1.0 偏好组件体系装配，业务语义与存储完全沿用现有实现。
+ * COUI 设置页：整页按 COUI-Kit 原厂语言重做，业务语义与存储完全沿用现有实现。
  *
- * 分组采用 [PreferenceCategory] + [Card] + [CardListGroup] + 偏好行（[SwitchPreference]、
- * [OverlayDropdownPreference]、[SliderPreference]、[ArrowPreference]、[BasicComponent]），
- * 主题模式使用胶囊分段控件 [CouiSegmentedCapsules]；
- * 状态编排、线路诊断四态、提交入口与全部说明文案来自共享骨架 [rememberSettingsScaffoldState]。
+ * 分组用 Group/Item 行、枚举选择用锚点气泡菜单、主题模式用胶囊分段控件；
+ * 状态编排、线路诊断四态、提交入口与全部说明文案来自共享骨架
+ * [rememberSettingsScaffoldState]，本页只保留 COUI 的控件与弹窗外观。
+ * 本页是独立路由，不在主框架内，所以自己持有一套 CouiTheme 与 Scaffold。
  */
 @Composable
 internal fun CouiSettingsScreen(
@@ -115,408 +128,303 @@ internal fun CouiSettingsScreen(
     snackbarHostState: SnackbarHostState,
 ) {
     CouiTheme {
-        val scheme = COUITheme.colorScheme
-        val scope = rememberCoroutineScope()
+        val scheme = CouiKitTheme.colorScheme
+        // 骨架持有状态机与提交动作；COUI 侧失败提示沿用既有「回显异常原文」的写法
         val scaffold = rememberSettingsScaffoldState(
             deps = deps,
             nav = nav,
             snackbarHostState = snackbarHostState,
             onBack = onBack,
             failureDetail = { error -> error?.message ?: "未知错误" },
+            // 颜色皮肤保持「5 秒未确认自动复位」的既有行为
             clearConfirmTimeoutMs = SETTINGS_CLEAR_CONFIRM_TIMEOUT_MS,
         )
+        // 分页/底栏形态/宽屏导航/阅读器双页的展示值由骨架按同一套窗口断点推导
         val layout = rememberSettingsLayout(deps)
         val diagnostics = scaffold.diagnostics.value
-        val scrollBehavior = rememberCouiPageScrollBehavior()
+
+        val scrollState = rememberScrollState()
+        // 折叠顶栏：正文自己消费滚动，顶栏按同一套回弹手势收起/展开
+        val scrollBehavior = CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            CouiPageScaffold(
-                title = SettingsSections.title,
-                onBack = scaffold.onBack,
-                wide = isCouiWideWindow(),
-                scrollBehavior = scrollBehavior,
-            ) { contentPadding ->
-                LazyColumn(
+            CouiAppScaffold(
+                modifier = Modifier.fillMaxSize(),
+                topBar = {
+                    // 顶栏必须写在 Scaffold 的 topBar 槽位：库在那里提供 backdrop，
+                    // 自己提到外面会拿不到采样源，直接抛 checkNotNull。
+                    LargeTopAppBar(
+                        title = { CouiTopBarTitle(text = SettingsSections.title, textAlign = TextAlign.Start) },
+                        navigationIcon = { CouiTopBarBackButton(onClick = scaffold.onBack) },
+                        scrollBehavior = scrollBehavior,
+                        colors = couiTopAppBarColors(),
+                    )
+                },
+            ) { innerPadding ->
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        // 宽屏下留出可读栏宽，和设置中心保持一致
                         .readableWidth()
-                        .couiPageScroll()
-                        .consumeWindowInsets(contentPadding),
-                    contentPadding = contentPadding,
-                    flingBehavior = rememberCOUIFlingBehavior(),
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        // 越界回弹走库默认实现，与其余 COUI 页面一致：库把甩动触边的回弹映射成
+                        // 最高 0.3731 屏高的视口位移，页面侧没有可调幅度或开关。
+                        .couiVerticalScroll(scrollState)
+                        // 顶栏的高与折叠位移由 state 参与计算，正文才会跟着顶栏一起让位
+                        .padding(scrollBehavior.state.contentPadding(innerPadding, LocalDensity.current))
+                        .consumeWindowInsets(innerPadding),
                 ) {
-                    item(key = "settings-theme") {
-                        PreferenceCategory(title = SettingsSections.sectionTheme)
-                        Card(
+                    Group(title = SettingsSections.sectionTheme) {
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.appearanceTitle) },
+                            summary = { SettingsRowSummary(themeModeSummary(themeMode)) },
+                        )
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-                                .padding(bottom = CouiLayoutTokens.GroupSpacing),
+                                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                         ) {
-                            CardListGroup {
-                                item(key = "appearance") {
-                                    BasicComponent(
-                                        title = SettingsSections.appearanceTitle,
-                                        summary = themeModeSummary(themeMode),
-                                        bottomAction = {
-                                            CouiSegmentedCapsules(
-                                                items = SettingsSections.themeMode.labels,
-                                                selectedIndex = SettingsSections.themeMode.indexOf(themeMode),
-                                                onSelect = { index ->
-                                                    SettingsSections.themeMode.valueAt(index)
-                                                        ?.takeIf { it != themeMode }
-                                                        ?.let(onThemeModeChange)
-                                                },
-                                                modifier = Modifier.fillMaxWidth(),
-                                            )
-                                        },
+                            CouiSegmentedCapsules(
+                                items = SettingsSections.themeMode.labels,
+                                selectedIndex = SettingsSections.themeMode.indexOf(themeMode),
+                                onSelect = { index ->
+                                    SettingsSections.themeMode.valueAt(index)
+                                        ?.takeIf { it != themeMode }
+                                        ?.let(onThemeModeChange)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Divider()
+                        CouiChoiceItem(
+                            title = SettingsSections.uiSkinTitle,
+                            summary = uiSkinSummary(uiSkin),
+                            value = uiSkin.label,
+                            options = SettingsSections.uiSkin,
+                            current = uiSkin,
+                            onSelect = onUiSkinChange,
+                        )
+                        // ColorOS 固定自有色板，动态取色在那边没有落点：整行不进列表，
+                        // 而不是留一个永远禁用的开关解释自己为何无效（HyperOS 分支行为不变）
+                        if (dynamicColorSupported) {
+                            Divider()
+                            Item(
+                                // 整行即开关：toggleable 提供点击、Role.Switch 与开/关播报，
+                                // Switch 只呈现状态，避免同一控件出现两份点击语义
+                                modifier = Modifier.couiSwitchRow(
+                                    value = dynamicColor,
+                                    onValueChange = onDynamicColorChange,
+                                ),
+                                title = { SettingsRowTitle(SettingsSections.dynamicColorTitle) },
+                                summary = { SettingsRowSummary(SettingsSections.dynamicColorSummary(dynamicColorSupported)) },
+                                trailing = {
+                                    Switch(
+                                        checked = dynamicColor,
+                                        onCheckedChange = null,
                                     )
-                                }
-                                item(key = "ui_skin") {
-                                    CouiChoiceItem(
-                                        title = SettingsSections.uiSkinTitle,
-                                        summary = uiSkinSummary(uiSkin),
-                                        options = SettingsSections.uiSkin,
-                                        current = uiSkin,
-                                        onSelect = onUiSkinChange,
-                                    )
-                                }
-                                if (dynamicColorSupported) {
-                                    item(key = "dynamic_color") {
-                                        SwitchPreference(
-                                            checked = dynamicColor,
-                                            onCheckedChange = onDynamicColorChange,
-                                            title = SettingsSections.dynamicColorTitle,
-                                            summary = SettingsSections.dynamicColorSummary(dynamicColorSupported),
-                                        )
-                                    }
-                                }
-                            }
+                                },
+                            )
                         }
                     }
 
-                    item(key = "settings-general") {
-                        PreferenceCategory(title = SettingsSections.sectionGeneral)
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-                                .padding(bottom = CouiLayoutTokens.GroupSpacing),
-                        ) {
-                            CardListGroup {
-                                item(key = "pagination") {
-                                    CouiChoiceItem(
-                                        title = SettingsSections.paginationTitle,
-                                        summary = paginationModeSummary(layout.paginationMode),
-                                        options = SettingsSections.paginationMode,
-                                        current = layout.paginationMode,
-                                        onSelect = { mode ->
-                                            scaffold.applyPaginationIndex(SettingsSections.paginationMode.indexOf(mode))
-                                        },
-                                    )
-                                }
-                                item(key = "bottom_bar") {
-                                    CouiChoiceItem(
-                                        title = SettingsSections.bottomBarFormTitle,
-                                        summary = bottomBarFormSummary(layout.bottomBarForm),
-                                        options = SettingsSections.bottomBarForm,
-                                        current = layout.bottomBarForm,
-                                        onSelect = scaffold::applyBottomBarForm,
-                                    )
-                                }
-                                if (layout.showWideScreenNavigation) {
-                                    item(key = "wide_nav") {
-                                        CouiChoiceItem(
-                                            title = SettingsSections.wideNavigationTitle,
-                                            summary = wideScreenNavigationSummary(layout.wideScreenNavigation),
-                                            options = SettingsSections.wideScreenNavigation,
-                                            current = layout.wideScreenNavigation,
-                                            onSelect = scaffold::applyWideScreenNavigation,
-                                        )
-                                    }
-                                }
-                            }
+                    Group(title = SettingsSections.sectionGeneral) {
+                        CouiChoiceItem(
+                            title = SettingsSections.paginationTitle,
+                            summary = paginationModeSummary(layout.paginationMode),
+                            value = layout.paginationMode.displayName,
+                            options = SettingsSections.paginationMode,
+                            current = layout.paginationMode,
+                            // 选择按枚举下标交给骨架复算，沿用「已是最新则不写盘」的既有语义
+                            onSelect = { mode ->
+                                scaffold.applyPaginationIndex(SettingsSections.paginationMode.indexOf(mode))
+                            },
+                        )
+                        Divider()
+                        CouiChoiceItem(
+                            title = SettingsSections.bottomBarFormTitle,
+                            summary = bottomBarFormSummary(layout.bottomBarForm),
+                            value = layout.bottomBarForm.label,
+                            options = SettingsSections.bottomBarForm,
+                            current = layout.bottomBarForm,
+                            onSelect = scaffold::applyBottomBarForm,
+                        )
+                        if (layout.showWideScreenNavigation) {
+                            Divider()
+                            CouiChoiceItem(
+                                title = SettingsSections.wideNavigationTitle,
+                                summary = wideScreenNavigationSummary(layout.wideScreenNavigation),
+                                value = layout.wideScreenNavigation.label,
+                                options = SettingsSections.wideScreenNavigation,
+                                current = layout.wideScreenNavigation,
+                                onSelect = scaffold::applyWideScreenNavigation,
+                            )
                         }
                     }
 
-                    item(key = "settings-reader") {
-                        PreferenceCategory(title = "阅读器")
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-                                .padding(bottom = CouiLayoutTokens.GroupSpacing),
-                        ) {
-                            CardListGroup {
-                                couiReaderSettingsItems(
-                                    state = scaffold.readerState,
-                                    spreadAllowed = layout.readerSpreadAllowed,
-                                    scope = scope,
+                    // 七项阅读器设置与设置中心共用同一份状态与写盘，本页只用 COUI 库控件渲染
+                    Group(title = "阅读器") {
+                        CouiReaderSettingsSection(
+                            state = scaffold.readerState,
+                            spreadAllowed = layout.readerSpreadAllowed,
+                        )
+                    }
+
+                    Group(title = SettingsSections.sectionLine) {
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.activeDomainsTitle) },
+                            summary = { SettingsRowSummary(scaffold.activeDomains.value.ifBlank { SETTINGS_DOMAINS_DEFAULT }) },
+                        )
+                        Divider()
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.usedDomainTitle) },
+                            summary = { SettingsRowSummary(diagnostics.usedDomain ?: SETTINGS_DOMAIN_UNRESOLVED) },
+                        )
+                        Divider()
+                        // 四态由骨架判定：只有内容态逐行列出延迟，其余三态共用一句占位文案
+                        if (!diagnostics.showsLatencyRows) {
+                            Item(
+                                title = { SettingsRowTitle(SettingsSections.latencyTitle) },
+                                summary = { SettingsRowSummary(SETTINGS_LATENCY_PLACEHOLDER) },
+                            )
+                        } else {
+                            diagnostics.latency.forEach { row ->
+                                Item(
+                                    title = { SettingsRowTitle(row.domain) },
+                                    trailing = { SettingsRowValue(SettingsSections.latencyValueText(row.latencyMs)) },
                                 )
+                                Divider()
                             }
                         }
-                    }
-
-                    item(key = "settings-line") {
-                        PreferenceCategory(title = SettingsSections.sectionLine)
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-                                .padding(bottom = CouiLayoutTokens.GroupSpacing),
-                        ) {
-                            CardListGroup {
-                                item(key = "active_domains") {
-                                    BasicComponent(
-                                        title = SettingsSections.activeDomainsTitle,
-                                        summary = scaffold.activeDomains.value.ifBlank { SETTINGS_DOMAINS_DEFAULT },
+                        diagnostics.errorMessage?.let { message ->
+                            Item(
+                                title = {
+                                    Text(
+                                        text = SettingsSections.diagnosticsFailureText(message),
+                                        kind = CouiTextKind.ItemSummary,
+                                        color = if (CouiKitTheme.isDark) CouiColor.Night.RED else CouiColor.Day.RED,
+                                        textAlign = TextAlign.Start,
                                     )
-                                }
-                                item(key = "used_domain") {
-                                    BasicComponent(
-                                        title = SettingsSections.usedDomainTitle,
-                                        summary = diagnostics.usedDomain ?: SETTINGS_DOMAIN_UNRESOLVED,
-                                    )
-                                }
-                                if (!diagnostics.showsLatencyRows) {
-                                    item(key = "latency_placeholder") {
-                                        BasicComponent(
-                                            title = SettingsSections.latencyTitle,
-                                            summary = SETTINGS_LATENCY_PLACEHOLDER,
-                                        )
-                                    }
-                                } else {
-                                    diagnostics.latency.forEach { row ->
-                                        item(key = "latency_${row.domain}") {
-                                            BasicComponent(
-                                                title = row.domain,
-                                                endActions = {
-                                                    SettingsRowValue(SettingsSections.latencyValueText(row.latencyMs))
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
-                                diagnostics.errorMessage?.let { message ->
-                                    item(key = "diag_error") {
-                                        BasicComponent(
-                                            title = SettingsSections.diagnosticsFailureText(message),
-                                            titleColor = BasicComponentDefaults.titleColor(
-                                                color = scheme.error,
-                                                disabledColor = scheme.errorDisabled,
-                                            ),
-                                        )
-                                    }
-                                }
-                                item(key = "reprobe") {
-                                    BasicComponent(
-                                        title = SettingsSections.reprobeTitle,
-                                        summary = SettingsSections.reprobeSummary(diagnostics.probing),
-                                        onClick = scaffold::requestReprobe,
-                                        enabled = diagnostics.canRetry,
-                                    )
-                                }
-                                item(key = "custom_domains") {
-                                    BasicComponent(
-                                        title = SettingsSections.customDomainsTitle,
-                                        summary = SettingsSections.customDomainsSummary,
-                                        bottomAction = {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(SettingsInputShape)
-                                                    .background(scheme.labelPrimary.copy(alpha = 0.06f))
-                                                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                                                    .heightIn(min = 84.dp),
-                                            ) {
-                                                BasicTextField(
-                                                    value = scaffold.domainsInput.value,
-                                                    onValueChange = { scaffold.domainsInput.value = it },
-                                                    textStyle = rememberCouiBodyTextStyle().copy(color = scheme.labelPrimary),
-                                                    cursorBrush = SolidColor(scheme.primary),
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .heightIn(min = 64.dp)
-                                                        .semantics { contentDescription = SettingsSections.customDomainsTitle },
-                                                    decorationBox = { innerTextField ->
-                                                        Box {
-                                                            if (scaffold.domainsInput.value.isEmpty()) {
-                                                                Text(
-                                                                    text = "每行一个域名，例如 api.example.com",
-                                                                    style = COUITheme.textStyles.bodyS,
-                                                                    color = scheme.labelSecondary,
-                                                                    textAlign = TextAlign.Start,
-                                                                )
-                                                            }
-                                                            innerTextField()
-                                                        }
-                                                    },
-                                                )
-                                            }
-                                        },
-                                    )
-                                }
-                                item(key = "apply_domains") {
-                                    BasicComponent(
-                                        title = SettingsSections.applyDomainsTitle,
-                                        summary = SettingsSections.applyDomainsSummary(scaffold.applying.value),
-                                        onClick = scaffold::applyDomains,
-                                        enabled = !scaffold.applying.value,
-                                    )
-                                }
-                            }
+                                },
+                            )
+                            Divider()
                         }
-                    }
-
-                    item(key = "settings-data") {
-                        PreferenceCategory(title = SettingsSections.sectionData)
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-                                .padding(bottom = CouiLayoutTokens.GroupSpacing),
-                        ) {
-                            CardListGroup {
-                                item(key = "clear_history") {
-                                    BasicComponent(
-                                        title = SettingsClearTarget.HISTORY.title,
-                                        summary = SettingsSections.clearSummary(SettingsClearTarget.HISTORY),
-                                        onClick = { scaffold.requestClear(SettingsClearTarget.HISTORY) },
-                                    )
-                                }
-                                item(key = "clear_downloads") {
-                                    BasicComponent(
-                                        title = SettingsClearTarget.DOWNLOADS.title,
-                                        summary = SettingsSections.clearSummary(SettingsClearTarget.DOWNLOADS),
-                                        onClick = { scaffold.requestClear(SettingsClearTarget.DOWNLOADS) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    item(key = "settings-about") {
-                        PreferenceCategory(title = SettingsSections.sectionAbout)
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-                                .padding(bottom = CouiLayoutTokens.GroupSpacing),
-                        ) {
-                            CardListGroup {
-                                item(key = "version") {
-                                    BasicComponent(
-                                        title = SettingsSections.versionTitle,
-                                        summary = scaffold.versionName,
-                                        onClick = scaffold::tapVersion,
-                                    )
-                                }
-                                item(key = "update") {
-                                    ArrowPreference(
-                                        title = SettingsSections.updateTitle,
-                                        summary = SettingsSections.updateSummary,
-                                        onClick = { scaffold.openUpdate() },
-                                    )
-                                }
-                                item(key = "open_source") {
-                                    BasicComponent(
-                                        title = SettingsSections.openSourceTitle,
-                                        summary = SETTINGS_OPEN_SOURCE_SUMMARY,
-                                    )
-                                }
-                                item(key = "disclaimer") {
-                                    BasicComponent(
-                                        title = SettingsSections.disclaimerTitle,
-                                        summary = SettingsSections.disclaimerSummary,
-                                        onClick = scaffold::showDisclaimer,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 隐藏诊断：版本号连点 5 次打开，只读汇总运行环境与线路状态
-                val diagBlur = panelBlur(MaterialBlurDefaults::dialog)
-                OverlayDialog(
-                    show = scaffold.diagnosticsVisible.value,
-                    title = SettingsSections.diagnosticsTitle,
-                    backgroundModifier = diagBlur?.backgroundModifier ?: Modifier,
-                    backgroundColor = diagBlur?.backgroundColor ?: DialogDefaults.backgroundColor(),
-                    materialStroke = diagBlur != null,
-                    onDismissRequest = scaffold::closeDiagnostics,
-                    customContent = {
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.reprobeTitle) },
+                            summary = {
+                                SettingsRowSummary(SettingsSections.reprobeSummary(diagnostics.probing))
+                            },
+                            onClick = scaffold::requestReprobe,
+                            enabled = diagnostics.canRetry,
+                        )
+                        Divider()
+                        // 多行线路输入：库的输入弹窗写死单行，用基础输入框套 COUI 分组卡片
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 10.dp),
+                                .padding(
+                                    horizontal = CouiPageDefaults.rowPadding,
+                                    vertical = CouiPageDefaults.contentPadding,
+                                ),
                         ) {
-                            scaffold.diagnosticLines(themeMode, dynamicColor && dynamicColorSupported).forEach { line ->
-                                CouiDiagnosticLine(label = line.label, value = line.value)
+                            SettingsRowTitle(SettingsSections.customDomainsTitle)
+                            SettingsRowSummary(SettingsSections.customDomainsSummary)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                                    .clip(SettingsInputShape)
+                                    .background(scheme.onSurface.copy(alpha = 0.06f))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .heightIn(min = 84.dp),
+                            ) {
+                                BasicTextField(
+                                    value = scaffold.domainsInput.value,
+                                    onValueChange = { scaffold.domainsInput.value = it },
+                                    textStyle = CouiKitTheme.typography.body.copy(color = scheme.onSurface),
+                                    cursorBrush = SolidColor(scheme.accent),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 64.dp)
+                                        .semantics { contentDescription = SettingsSections.customDomainsTitle },
+                                    decorationBox = { innerTextField ->
+                                        // 占位文案进装饰槽：视觉与读屏都归属同一个输入框
+                                        Box {
+                                            if (scaffold.domainsInput.value.isEmpty()) {
+                                                Text(
+                                                    text = "每行一个域名，例如 api.example.com",
+                                                    kind = CouiTextKind.ItemSummary,
+                                                    color = scheme.onSurfaceVariant,
+                                                    textAlign = TextAlign.Start,
+                                                )
+                                            }
+                                            innerTextField()
+                                        }
+                                    },
+                                )
                             }
                         }
-                    },
-                ) {
-                    DialogButtonBar(
-                        negative = null,
-                        positive = DialogButtonBarAction(
-                            text = SettingsSections.dialogAck,
-                            recommended = true,
-                            onClick = scaffold::closeDiagnostics,
-                        ),
-                    )
-                }
-
-                // 待确认的清空目标由骨架持有；文案取最近一次目标，退场窗口内仍可渲染
-                val pendingClear = scaffold.clearDialogTarget
-                if (pendingClear != null) {
-                    val clearBlur = panelBlur(MaterialBlurDefaults::dialog)
-                    OverlayDialog(
-                        show = scaffold.clearDialogVisible,
-                        title = pendingClear.title,
-                        summary = pendingClear.description,
-                        backgroundModifier = clearBlur?.backgroundModifier ?: Modifier,
-                        backgroundColor = clearBlur?.backgroundColor ?: DialogDefaults.backgroundColor(),
-                        materialStroke = clearBlur != null,
-                        onDismissRequest = scaffold::dismissClear,
-                    ) {
-                        DialogButtonBar(
-                            negative = DialogButtonBarAction(
-                                text = "取消",
-                                onClick = scaffold::dismissClear,
-                            ),
-                            positive = null,
-                            neutral = couiDestructiveDialogAction(
-                                text = SettingsSections.clearConfirmLabel(scaffold.clearing.value),
-                                enabled = !scaffold.clearing.value,
-                                onClick = { scaffold.confirmClear() },
-                            ),
+                        Divider()
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.applyDomainsTitle) },
+                            summary = {
+                                SettingsRowSummary(SettingsSections.applyDomainsSummary(scaffold.applying.value))
+                            },
+                            onClick = scaffold::applyDomains,
+                            enabled = !scaffold.applying.value,
                         )
                     }
-                }
 
-                val disclaimerBlur = panelBlur(MaterialBlurDefaults::dialog)
-                OverlayDialog(
-                    show = scaffold.disclaimerVisible.value,
-                    title = SettingsSections.disclaimerTitle,
-                    summary = SETTINGS_DISCLAIMER_TEXT,
-                    backgroundModifier = disclaimerBlur?.backgroundModifier ?: Modifier,
-                    backgroundColor = disclaimerBlur?.backgroundColor ?: DialogDefaults.backgroundColor(),
-                    materialStroke = disclaimerBlur != null,
-                    onDismissRequest = scaffold::hideDisclaimer,
-                ) {
-                    DialogButtonBar(
-                        negative = null,
-                        positive = DialogButtonBarAction(
-                            text = SettingsSections.dialogAck,
-                            recommended = true,
-                            onClick = scaffold::hideDisclaimer,
+                    Group(title = SettingsSections.sectionData) {
+                        Item(
+                            title = { SettingsRowTitle(SettingsClearTarget.HISTORY.title) },
+                            summary = { SettingsRowSummary(SettingsSections.clearSummary(SettingsClearTarget.HISTORY)) },
+                            onClick = { scaffold.requestClear(SettingsClearTarget.HISTORY) },
+                        )
+                        Divider()
+                        Item(
+                            title = { SettingsRowTitle(SettingsClearTarget.DOWNLOADS.title) },
+                            summary = { SettingsRowSummary(SettingsSections.clearSummary(SettingsClearTarget.DOWNLOADS)) },
+                            onClick = { scaffold.requestClear(SettingsClearTarget.DOWNLOADS) },
+                        )
+                    }
+
+                    Group(title = SettingsSections.sectionAbout) {
+                        // 版本行兼作隐藏诊断入口：2 秒内连点 5 次打开诊断面板
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.versionTitle) },
+                            summary = { SettingsRowSummary(scaffold.versionName) },
+                            onClick = scaffold::tapVersion,
+                        )
+                        Divider()
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.updateTitle) },
+                            summary = { SettingsRowSummary(SettingsSections.updateSummary) },
+                            onClick = { scaffold.openUpdate() },
+                        )
+                        Divider()
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.openSourceTitle) },
+                            summary = { SettingsRowSummary(SETTINGS_OPEN_SOURCE_SUMMARY) },
+                        )
+                        Divider()
+                        Item(
+                            title = { SettingsRowTitle(SettingsSections.disclaimerTitle) },
+                            summary = { SettingsRowSummary(SettingsSections.disclaimerSummary) },
+                            onClick = scaffold::showDisclaimer,
+                        )
+                    }
+                    Spacer(
+                        modifier = Modifier.height(
+                            couiPageExtraBottomDp(
+                            hasFab = false,
+                            imeOccupiesPage = rememberCouiImeOccupiesPage(),
+                        ).dp,
                         ),
                     )
                 }
             }
 
-            // 提示条叠在正文之上
+            // 提示条叠在正文之上：它不属于 Scaffold 槽位，不能进滚动内容，否则会跟着一起滚走
             GlassSnackbarHost(
                 state = snackbarHostState,
                 modifier = Modifier
@@ -524,7 +432,71 @@ internal fun CouiSettingsScreen(
                     .fillMaxWidth(),
             )
         }
+
+        // 隐藏诊断：版本号连点 5 次打开，只读汇总运行环境与线路状态
+        // 退场窗口由库持有：外层 if 会在关闭瞬间把弹窗抽走，动画来不及播
+        Dialog(
+            onDismissRequest = scaffold::closeDiagnostics,
+            visible = scaffold.diagnosticsVisible.value,
+            material = couiDialogMaterial(),
+            title = SettingsSections.diagnosticsTitle,
+            confirmAction = CouiDialogAction(text = SettingsSections.dialogAck, onClick = scaffold::closeDiagnostics),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                // 诊断只报真正生效的项：ColorOS 下取色开关即便存着 true 也不影响取色
+                scaffold.diagnosticLines(themeMode, dynamicColor && dynamicColorSupported).forEach { line ->
+                    CouiDiagnosticLine(label = line.label, value = line.value)
+                }
+            }
+        }
+
+        // 待确认的清空目标由骨架持有；文案取最近一次目标，退场窗口内仍可渲染
+        val pendingClear = scaffold.clearDialogTarget
+        if (pendingClear != null) {
+            Dialog(
+                onDismissRequest = scaffold::dismissClear,
+                visible = scaffold.clearDialogVisible,
+                material = couiDialogMaterial(),
+                title = pendingClear.title,
+                message = pendingClear.description,
+                placement = CouiDialogPlacement.Center,
+                confirmAction = couiDestructiveConfirmAction(
+                    text = SettingsSections.clearConfirmLabel(scaffold.clearing.value),
+                    enabled = !scaffold.clearing.value,
+                ) { scaffold.confirmClear() },
+                dismissAction = CouiDialogAction(text = "取消", onClick = scaffold::dismissClear),
+            )
+        }
+
+        Dialog(
+            onDismissRequest = scaffold::hideDisclaimer,
+            visible = scaffold.disclaimerVisible.value,
+            material = couiDialogMaterial(),
+            title = SettingsSections.disclaimerTitle,
+            message = SETTINGS_DISCLAIMER_TEXT,
+            confirmAction = CouiDialogAction(text = SettingsSections.dialogAck, onClick = scaffold::hideDisclaimer),
+        )
     }
+}
+
+/** 行标题统一走 PreferenceTitle 字阶，避免每行各写一份字号。 */
+@Composable
+private fun SettingsRowTitle(text: String, modifier: Modifier = Modifier) {
+    Text(text = text, kind = CouiTextKind.ItemTitle, modifier = modifier)
+}
+
+/** 行说明用次要色：与标题拉开层级，同时跟随皮肤深浅。 */
+@Composable
+private fun SettingsRowSummary(text: String) {
+    Text(
+        text = text,
+        kind = CouiTextKind.ItemSummary,
+        color = CouiKitTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** 行尾当前值：只显示不点击，点击语义由整行承担。 */
@@ -532,8 +504,8 @@ internal fun CouiSettingsScreen(
 private fun SettingsRowValue(text: String) {
     Text(
         text = text,
-        style = COUITheme.textStyles.bodyM,
-        color = COUITheme.colorScheme.labelTertiary,
+        kind = CouiTextKind.ItemValue,
+        color = CouiKitTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -543,8 +515,8 @@ private fun CouiDiagnosticLine(label: String, value: String) {
     Column(modifier = Modifier.padding(vertical = 5.dp)) {
         Text(
             text = label,
-            style = COUITheme.textStyles.bodyS,
-            color = COUITheme.colorScheme.labelSecondary,
+            kind = CouiTextKind.ItemSummary,
+            color = CouiKitTheme.colorScheme.onSurfaceVariant,
         )
         CouiBodyText(
             text = value,
@@ -555,108 +527,166 @@ private fun CouiDiagnosticLine(label: String, value: String) {
 
 /**
  * 阅读设置七项在 COUI 皮肤下的渲染：状态与写盘由 [ReaderSettingsState] 承载，
- * 装配进 [CardListGroup] 的各行（[OverlayDropdownPreference] / [SwitchPreference] / [SliderPreference]）。
+ * 这里只用库控件（Item/Switch/Slider/锚点菜单），不引 Miuix 偏好件。
  */
-private fun CardListGroupScope.couiReaderSettingsItems(
+@Composable
+private fun CouiReaderSettingsSection(
     state: ReaderSettingsState,
     spreadAllowed: Boolean,
-    scope: CoroutineScope,
 ) {
-    item(key = "reader_direction") {
-        CouiChoiceItem(
-            title = "默认阅读方向",
-            summary = if (state.horizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",
-            options = SettingsOptions(listOf(false, true)) { if (it) "左右翻页" else "纵向长图" },
-            current = state.horizontal,
-            onSelect = { horizontal -> scope.launch { state.applyHorizontal(horizontal) } },
-        )
-    }
+    val scope = rememberCoroutineScope()
+
+    CouiChoiceItem(
+        title = "默认阅读方向",
+        summary = if (state.horizontal) "新打开的章节按左右翻页" else "新打开的章节纵向连续滚动",
+        value = if (state.horizontal) "左右翻页" else "纵向长图",
+        options = SettingsOptions(listOf(false, true)) { if (it) "左右翻页" else "纵向长图" },
+        current = state.horizontal,
+        onSelect = { horizontal -> scope.launch { state.applyHorizontal(horizontal) } },
+    )
+    Divider()
+    // 双页是大屏横屏的附加排布：窗口不够宽或竖屏时整行不渲染
     if (spreadAllowed) {
-        item(key = "reader_spread") {
-            CouiChoiceItem(
-                title = "双页阅读",
-                summary = if (state.spread == ReaderSpreadMode.DOUBLE) {
-                    "大屏横屏下两页并排，按左右翻页生效"
-                } else {
-                    "单页显示，可按左右翻页"
-                },
-                options = SettingsOptions(ReaderSpreadMode.entries) { it.label },
-                current = state.spread,
-                onSelect = { mode -> scope.launch { state.applySpread(mode) } },
-            )
+        CouiChoiceItem(
+            title = "双页阅读",
+            summary = if (state.spread == ReaderSpreadMode.DOUBLE) {
+                "大屏横屏下两页并排，按左右翻页生效"
+            } else {
+                "单页显示，可按左右翻页"
+            },
+            value = state.spread.label,
+            options = SettingsOptions(ReaderSpreadMode.entries) { it.label },
+            current = state.spread,
+            onSelect = { mode -> scope.launch { state.applySpread(mode) } },
+        )
+        Divider()
+    }
+    Item(
+        // 整行即开关：开/关状态由 toggleable 播报，Switch 只呈现视觉
+        modifier = Modifier.couiSwitchRow(
+            value = state.volumeKeyPaging,
+            onValueChange = { checked -> scope.launch { state.applyVolumeKeyPaging(checked) } },
+        ),
+        title = { SettingsRowTitle("音量键翻页") },
+        summary = { SettingsRowSummary("关闭后音量键恢复调节系统音量") },
+        trailing = { Switch(checked = state.volumeKeyPaging, onCheckedChange = null) },
+    )
+    Divider()
+    Item(
+        modifier = Modifier.couiSwitchRow(
+            value = state.keepScreenOn,
+            onValueChange = { checked -> scope.launch { state.applyKeepScreenOn(checked) } },
+        ),
+        title = { SettingsRowTitle("阅读时保持亮屏") },
+        summary = { SettingsRowSummary("阅读页不自动息屏") },
+        trailing = { Switch(checked = state.keepScreenOn, onCheckedChange = null) },
+    )
+    Divider()
+    // 亮度拖动期间只改本地值，松手才落盘；0 表示跟随系统
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = CouiPageDefaults.rowPadding,
+                vertical = CouiPageDefaults.contentPadding,
+            ),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            SettingsRowTitle("阅读亮度", modifier = Modifier.weight(1f))
+            SettingsRowValue(readerBrightnessLabel(state.brightness))
         }
-    }
-    item(key = "reader_volume_paging") {
-        SwitchPreference(
-            checked = state.volumeKeyPaging,
-            onCheckedChange = { checked -> scope.launch { state.applyVolumeKeyPaging(checked) } },
-            title = "音量键翻页",
-            summary = "关闭后音量键恢复调节系统音量",
-        )
-    }
-    item(key = "reader_keep_screen_on") {
-        SwitchPreference(
-            checked = state.keepScreenOn,
-            onCheckedChange = { checked -> scope.launch { state.applyKeepScreenOn(checked) } },
-            title = "阅读时保持亮屏",
-            summary = "阅读页不自动息屏",
-        )
-    }
-    item(key = "reader_brightness") {
-        SliderPreference(
+        SettingsRowSummary("0 表示跟随系统亮度，只在阅读页生效")
+        Slider(
             value = readerBrightnessSliderValue(state.brightness),
             onValueChange = state::previewBrightness,
-            title = "阅读亮度",
-            summary = "0 表示跟随系统亮度，只在阅读页生效",
-            valueText = readerBrightnessLabel(state.brightness),
-            valueRange = 0f..ReaderPreferences.MAX_BRIGHTNESS.toFloat(),
             onValueChangeFinished = { scope.launch { state.commitBrightness() } },
+            valueRange = 0f..ReaderPreferences.MAX_BRIGHTNESS.toFloat(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
         )
     }
-    item(key = "reader_image_quality") {
-        CouiChoiceItem(
-            title = "图片质量",
-            summary = state.imageQuality.settingsSummary(),
-            options = SettingsOptions(ReaderImageQuality.entries) { it.label },
-            current = state.imageQuality,
-            onSelect = { quality -> scope.launch { state.applyImageQuality(quality) } },
-        )
-    }
-    item(key = "reader_prefetch") {
-        CouiChoiceItem(
-            title = "预取页数",
-            summary = if (state.prefetchPages == 0) {
-                "不提前加载后续页"
-            } else {
-                "提前加载当前页之后的 " + state.prefetchPages + " 页"
-            },
-            options = SettingsOptions(ReaderPreferences.PREFETCH_OPTIONS) { prefetchPagesLabel(it) },
-            current = state.prefetchPages,
-            onSelect = { pages -> scope.launch { state.applyPrefetchPages(pages) } },
-        )
-    }
+    Divider()
+    CouiChoiceItem(
+        title = "图片质量",
+        summary = state.imageQuality.settingsSummary(),
+        value = state.imageQuality.label,
+        options = SettingsOptions(ReaderImageQuality.entries) { it.label },
+        current = state.imageQuality,
+        onSelect = { quality -> scope.launch { state.applyImageQuality(quality) } },
+    )
+    Divider()
+    CouiChoiceItem(
+        title = "预取页数",
+        summary = if (state.prefetchPages == 0) {
+            "不提前加载后续页"
+        } else {
+            "提前加载当前页之后的 " + state.prefetchPages + " 页"
+        },
+        value = prefetchPagesLabel(state.prefetchPages),
+        options = SettingsOptions(ReaderPreferences.PREFETCH_OPTIONS) { prefetchPagesLabel(it) },
+        current = state.prefetchPages,
+        onSelect = { pages -> scope.launch { state.applyPrefetchPages(pages) } },
+    )
+
 }
 
 /**
- * 枚举型设置行：基于 [OverlayDropdownPreference]，跟手在触点弹出 COUI 17 菜单。
+ * 枚举型设置行：整行既是入口也是锚点，点击后贴着该行弹出 COUI 菜单。
+ *
+ * 每行各持一个 [com.itos.coui.menu.CouiMenuAnchor]，触点坐标随滚动与布局变化重算，
+ * 菜单因此总能贴住被点的那一行；选项点选即生效并收起，选中项以勾呈现。
  */
 @Composable
 private fun <T> CouiChoiceItem(
     title: String,
     summary: String,
+    value: String,
     options: SettingsOptions<T>,
     current: T,
     onSelect: (T) -> Unit,
 ) {
-    val selectedIndex = options.indexOf(current).coerceAtLeast(0)
-    OverlayDropdownPreference(
-        items = options.labels,
-        selectedIndex = selectedIndex,
-        title = title,
-        summary = summary,
-        onSelectedIndexChange = { index ->
-            val next = options.valueAt(index) ?: return@OverlayDropdownPreference
-            if (next != current) onSelect(next)
-        },
-    )
+    val anchor = rememberCouiMenuAnchor()
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .couiMenuAnchor(anchor),
+    ) {
+        Item(
+            title = { SettingsRowTitle(title) },
+            summary = { SettingsRowSummary(summary) },
+            trailing = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    SettingsRowValue(value)
+                    Icon(
+                        imageVector = CouiIcons.ChevronsUpDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = CouiKitTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            onClick = { anchor.open { expanded = true } },
+        )
+        Menu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            anchor = anchor,
+            headerText = title,
+            items = options.items.map { option ->
+                CouiMenuItem(value = option.value, text = option.label, selected = option.value == current)
+            },
+            onItemClick = { item ->
+                expanded = false
+                // 与原有弹窗一致：选中项重复点不重复写盘
+                if (item.value != current) onSelect(item.value)
+            },
+        )
+    }
 }
+
+/** 数据管理里的破坏性清空目标：文案与执行动作绑在同一处，避免魔法串分叉。 */

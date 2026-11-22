@@ -26,8 +26,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,38 +37,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.itos.coui.effect.SpotlightPreset
+import com.itos.coui.layout.CouiPageDefaults
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
+import com.itos.coui.shape.CouiCapsuleShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.text.rememberCouiTextStyle
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.ScreenLoadPhase
-import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
+import com.jm3.app.miuix.ui.coui.component.rememberCouiActionTextStyle
 import com.jm3.app.miuix.ui.coui.component.CouiCustomStyledText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
-import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFab
-import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
-import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarAction
-import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarSegmentedTabs
-import com.jm3.app.miuix.ui.coui.component.CouiPullToRefresh
 import com.jm3.app.miuix.ui.coui.component.CouiScreenFailureGroup
+import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarSegmentedTabs
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
-import com.jm3.app.miuix.ui.coui.component.couiPageScroll
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.couiScaledStyle
-import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
-import com.jm3.app.miuix.ui.coui.component.rememberCouiActionTextStyle
-import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiStrings
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
@@ -77,24 +76,21 @@ import com.jm3.app.miuix.ui.novelActionNotice
 import com.jm3.app.miuix.ui.planLoad
 import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
+import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.rememberSyncedTabPagerState
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.model.NovelMeta
 import com.jm3.core.model.NovelOrder
 import com.jm3.core.session.SessionOutcome
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
-import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
 /**
  * 小说列表（COUI 栅格版）：参数与旧 Miuix 页一比一，排序 / 关键词搜索 / 点赞 / 收藏全部沿用旧页口径。
  *
  * 旧页的胶囊搜索是玻璃浮层件，COUI 没有对应浮层槽位，改为正文内的胶囊输入行（IME 搜索键或右侧「搜索」提交）；
- * 网关按页返回 NovelPage 且旧页只取第 1 页，所以页脚固定为「已经到底了」，刷新走右下角 FAB 与下拉刷新。
+ * 网关按页返回 NovelPage 且旧页只取第 1 页，所以页脚固定为「已经到底了」，刷新走右下角 FAB。
  */
 @Composable
 internal fun CouiNovelListScreen(
@@ -252,30 +248,15 @@ internal fun CouiNovelListScreen(
             }
         }
 
-        val scheme = COUITheme.colorScheme
-        val activeCanScroll by remember(pagerState, gridStates) {
-            derivedStateOf {
-                val active = gridStates.getOrNull(pagerState.currentPage)
-                active != null && (active.canScrollForward || active.canScrollBackward)
-            }
-        }
-        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
-        CouiExpandTopAppBarEffect(
-            scrollBehavior = scrollBehavior,
-            activeTab = pagerState.currentPage,
-            canScroll = activeCanScroll,
-        )
+        val scheme = CouiKitTheme.colorScheme
 
         Box(modifier = Modifier.fillMaxSize()) {
-            CouiPageScaffold(
+            CouiScreenScaffold(
                 title = if (appliedQuery.isBlank()) "小说" else "小说搜索",
                 onBack = onBack,
-                wide = isCouiWideWindow(),
-                scrollBehavior = scrollBehavior,
-                attachScrollNestedScroll = false,
                 actions = {
                     if (appliedQuery.isNotBlank() || query.isNotBlank()) {
-                        CouiPageTopBarAction(
+                        CouiTopBarAction(
                             icon = CouiIcons.Close,
                             contentDescription = "清空搜索",
                             onClick = {
@@ -286,11 +267,11 @@ internal fun CouiNovelListScreen(
                     }
                 },
                 topBarBottom = {
-                    CouiPageTopBarSegmentedTabs(
+                    CouiTopBarSegmentedTabs(
                         items = orders.map { it.label },
                         selectedIndex = clampedOrderIndex,
                         onSelect = { index ->
-                            val next = orders.getOrNull(index) ?: return@CouiPageTopBarSegmentedTabs
+                            val next = orders.getOrNull(index) ?: return@CouiTopBarSegmentedTabs
                             if (next != order) orderName = next.name
                         },
                     )
@@ -321,110 +302,93 @@ internal fun CouiNovelListScreen(
                     val pageTotal = pageState.total
                     val pageFailure = pageState.failure
 
-                    CouiPullToRefresh(
-                        isRefreshing = refreshingTab == pageIdx,
-                        onRefresh = {
-                            refreshingTab = pageIdx
-                            val active = pageStates[pageIdx]
-                            load(
-                                targetOrderIdx = pageIdx,
-                                keyword = appliedQuery,
-                                showLoading = active == null || active.items.isEmpty(),
-                            )
-                        },
-                        scrollBehavior = scrollBehavior,
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
+                        state = gridStates[pageIdx],
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .readableWidth()
+                            .consumeWindowInsets(innerPadding),
                         contentPadding = innerPadding,
+                        horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+                        verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+                        overscrollEffect = rememberCouiOverscrollEffect(),
                     ) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(columns),
-                            state = gridStates[pageIdx],
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .readableWidth()
-                                .couiPageScroll()
-                                .consumeWindowInsets(innerPadding),
-                            contentPadding = innerPadding,
-                            horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                            verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                            flingBehavior = rememberCOUIFlingBehavior(),
-                        ) {
-                            when {
-                                pageState.loading -> item(key = "coui-novel-loading", span = { GridItemSpan(maxLineSpan) }) {
-                                    CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 24.dp))
-                                }
+                        when {
+                            pageState.loading -> item(key = "coui-novel-loading", span = { GridItemSpan(maxLineSpan) }) {
+                                CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 24.dp))
+                            }
 
-                                pageFailure != null -> item(key = "coui-novel-failed", span = { GridItemSpan(maxLineSpan) }) {
-                                    CouiScreenFailureGroup(
-                                        message = pageFailure.message,
-                                        expired = pageFailure.sessionExpired,
-                                        onRetry = { load(pageIdx, appliedQuery, showLoading = true) },
-                                        onOpenLogin = nav::login,
-                                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                                    )
-                                }
+                            pageFailure != null -> item(key = "coui-novel-failed", span = { GridItemSpan(maxLineSpan) }) {
+                                CouiScreenFailureGroup(
+                                    message = pageFailure.message,
+                                    expired = pageFailure.sessionExpired,
+                                    onRetry = { load(pageIdx, appliedQuery, showLoading = true) },
+                                    onOpenLogin = nav::login,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                )
+                            }
 
-                                else -> {
-                                    item(key = "coui-novel-search", span = { GridItemSpan(maxLineSpan) }) {
-                                        Box(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-                                            CouiNovelSearchField(
-                                                value = query,
-                                                onValueChange = { query = it },
-                                                onSubmit = { appliedQuery = query.trim() },
-                                                placeholder = "搜索小说",
+                            else -> {
+                                item(key = "coui-novel-search", span = { GridItemSpan(maxLineSpan) }) {
+                                    Box(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+                                        CouiNovelSearchField(
+                                            value = query,
+                                            onValueChange = { query = it },
+                                            onSubmit = { appliedQuery = query.trim() },
+                                            placeholder = "搜索小说",
+                                        )
+                                    }
+                                }
+                                if (pageItems.isEmpty()) {
+                                    item(key = "coui-novel-empty", span = { GridItemSpan(maxLineSpan) }) {
+                                        CouiEmptyGroup(
+                                            text = if (appliedQuery.isBlank()) "暂无小说" else "没有找到相关小说",
+                                            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                        )
+                                    }
+                                } else {
+                                    items(items = pageItems, key = { "coui-novel-" + it.id }) { item ->
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentAlignment = Alignment.TopCenter,
+                                        ) {
+                                            CouiNovelCard(
+                                                item = item,
+                                                dateFormat = dateFormat,
+                                                busy = busyId == item.id,
+                                                onClick = { nav.novelDetail(item.id) },
+                                                onLike = { like(item) },
+                                                onFavorite = { favorite(item) },
+                                                accent = scheme.accent,
+                                                onSurfaceVariant = scheme.onSurfaceVariant,
+                                                container = scheme.container,
                                             )
                                         }
                                     }
-                                    if (pageItems.isEmpty()) {
-                                        item(key = "coui-novel-empty", span = { GridItemSpan(maxLineSpan) }) {
-                                            CouiEmptyGroup(
-                                                text = if (appliedQuery.isBlank()) "暂无小说" else "没有找到相关小说",
-                                                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                    item(key = "coui-novel-total", span = { GridItemSpan(maxLineSpan) }) {
+                                        if (pageTotal > 0) {
+                                            Text(
+                                                text = "共 " + pageTotal + " 本",
+                                                kind = CouiTextKind.GroupFooter,
+                                                color = scheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                textAlign = TextAlign.Start,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = CouiPageDefaults.horizontalMargin)
+                                                    .padding(top = 8.dp),
                                             )
                                         }
-                                    } else {
-                                        items(items = pageItems, key = { "coui-novel-" + it.id }) { item ->
-                                            Box(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                contentAlignment = Alignment.TopCenter,
-                                            ) {
-                                                CouiNovelCard(
-                                                    item = item,
-                                                    dateFormat = dateFormat,
-                                                    busy = busyId == item.id,
-                                                    onClick = { nav.novelDetail(item.id) },
-                                                    onLike = { like(item) },
-                                                    onFavorite = { favorite(item) },
-                                                    accentText = scheme.primaryText,
-                                                    accentFill = scheme.primary,
-                                                    onSurfaceVariant = scheme.labelSecondary,
-                                                    container = scheme.cardBackground,
-                                                )
-                                            }
-                                        }
-                                        item(key = "coui-novel-total", span = { GridItemSpan(maxLineSpan) }) {
-                                            if (pageTotal > 0) {
-                                                Text(
-                                                    text = "共 " + pageTotal + " 本",
-                                                    style = COUITheme.textStyles.bodyS,
-                                                    color = scheme.labelSecondary,
-                                                    maxLines = 1,
-                                                    textAlign = TextAlign.Start,
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-                                                        .padding(top = 8.dp),
-                                                )
-                                            }
-                                        }
-                                        item(key = "coui-novel-footer", span = { GridItemSpan(maxLineSpan) }) {
-                                            // 网关按页返回、旧页只取第 1 页：本页没有下一页可拉
-                                            CouiLoadMoreFooter(
-                                                loading = false,
-                                                error = null,
-                                                endReached = true,
-                                                onRetry = {},
-                                            )
-                                        }
+                                    }
+                                    item(key = "coui-novel-footer", span = { GridItemSpan(maxLineSpan) }) {
+                                        // 网关按页返回、旧页只取第 1 页：本页没有下一页可拉
+                                        CouiLoadMoreFooter(
+                                            loading = false,
+                                            error = null,
+                                            endReached = true,
+                                            onRetry = {},
+                                        )
                                     }
                                 }
                             }
@@ -455,15 +419,14 @@ private data class Plan(val message: String, val sessionExpired: Boolean)
 @Composable
 private fun CouiNovelCard(
     item: NovelMeta,
-    dateFormat: DateTimeFormatter,
+    dateFormat: java.time.format.DateTimeFormatter,
     busy: Boolean,
     onClick: () -> Unit,
     onLike: () -> Unit,
     onFavorite: () -> Unit,
-    accentText: Color,
-    accentFill: Color,
-    onSurfaceVariant: Color,
-    container: Color,
+    accent: androidx.compose.ui.graphics.Color,
+    onSurfaceVariant: androidx.compose.ui.graphics.Color,
+    container: androidx.compose.ui.graphics.Color,
 ) {
     CouiWorkGridCard(
         title = item.name,
@@ -476,7 +439,7 @@ private fun CouiNovelCard(
             CouiNovelFavoriteBadge(
                 favorite = item.favorite,
                 enabled = !busy,
-                accent = accentFill,
+                accent = accent,
                 onSurfaceVariant = onSurfaceVariant,
                 container = container,
                 onClick = onFavorite,
@@ -490,13 +453,13 @@ private fun CouiNovelCard(
                 liked = item.liked,
                 likes = item.likes,
                 enabled = !busy,
-                accent = accentText,
+                accent = accent,
                 onSurfaceVariant = onSurfaceVariant,
                 onLike = onLike,
             )
             Text(
                 text = formatEpochSeconds(item.updateAt, dateFormat),
-                style = COUITheme.textStyles.bodyS,
+                kind = CouiTextKind.GroupFooter,
                 color = onSurfaceVariant,
                 maxLines = 1,
                 textAlign = TextAlign.Start,
@@ -512,8 +475,8 @@ private fun ColumnScope.CouiNovelActions(
     liked: Boolean,
     likes: String?,
     enabled: Boolean,
-    accent: Color,
-    onSurfaceVariant: Color,
+    accent: androidx.compose.ui.graphics.Color,
+    onSurfaceVariant: androidx.compose.ui.graphics.Color,
     onLike: () -> Unit,
 ) {
     Row(
@@ -522,25 +485,20 @@ private fun ColumnScope.CouiNovelActions(
     ) {
         Text(
             text = if (liked) "已赞" else "点赞",
-            style = COUITheme.textStyles.bodyS,
+            kind = CouiTextKind.GroupFooter,
             color = if (liked) onSurfaceVariant else accent,
             maxLines = 1,
             textAlign = TextAlign.Start,
             modifier = Modifier
-                .clip(CircleShape)
-                .couiPressable(
-                    shape = CircleShape,
-                    enabled = enabled,
-                    minTouchTarget = CouiMinTouchTarget,
-                    onClick = onLike,
-                )
+                .clip(CouiCapsuleShape)
+                .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, enabled = enabled, minTouchTarget = CouiMinTouchTarget, onClick = onLike)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         )
         if (!likes.isNullOrBlank()) {
             Spacer(modifier = Modifier.size(4.dp))
             Text(
                 text = "♥ " + likes,
-                style = COUITheme.textStyles.bodyS,
+                kind = CouiTextKind.GroupFooter,
                 color = onSurfaceVariant,
                 maxLines = 1,
                 textAlign = TextAlign.Start,
@@ -554,14 +512,14 @@ private fun ColumnScope.CouiNovelActions(
 private fun CouiNovelFavoriteBadge(
     favorite: Boolean,
     enabled: Boolean,
-    accent: Color,
-    onSurfaceVariant: Color,
-    container: Color,
+    accent: androidx.compose.ui.graphics.Color,
+    onSurfaceVariant: androidx.compose.ui.graphics.Color,
+    container: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val background = if (favorite) accent else container
-    val tint = if (favorite) COUITheme.colorScheme.onPrimary else onSurfaceVariant
+    val tint = if (favorite) CouiKitTheme.colorScheme.onAccent else onSurfaceVariant
     Box(
         modifier = modifier
             .couiPressable(
@@ -591,14 +549,13 @@ private fun CouiNovelSearchField(
     onSubmit: () -> Unit,
     placeholder: String,
 ) {
-    val scheme = COUITheme.colorScheme
-    val searchTextStyle = couiScaledStyle(COUITheme.textStyles.bodyL)
+    val scheme = CouiKitTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = CouiLayoutTokens.HorizontalMargin)
-            .clip(CircleShape)
-            .background(scheme.cardBackground)
+            .padding(horizontal = CouiPageDefaults.horizontalMargin)
+            .clip(CouiCapsuleShape)
+            .background(scheme.container)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -606,8 +563,8 @@ private fun CouiNovelSearchField(
             if (value.isEmpty()) {
                 Text(
                     text = placeholder,
-                    style = searchTextStyle,
-                    color = scheme.labelSecondary,
+                    kind = CouiTextKind.Search,
+                    color = scheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Start,
@@ -617,8 +574,8 @@ private fun CouiNovelSearchField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = searchTextStyle.copy(color = scheme.labelPrimary),
-                cursorBrush = SolidColor(scheme.primary),
+                textStyle = rememberCouiTextStyle(CouiTextKind.Search).copy(color = scheme.onSurface),
+                cursorBrush = SolidColor(scheme.accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
                 modifier = Modifier.fillMaxWidth(),
@@ -628,16 +585,12 @@ private fun CouiNovelSearchField(
             CouiCustomStyledText(
                 text = "搜索",
                 style = rememberCouiActionTextStyle(),
-                color = scheme.primaryText,
+                color = scheme.accent,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .couiPressable(
-                        shape = CircleShape,
-                        minTouchTarget = CouiMinTouchTarget,
-                        onClick = onSubmit,
-                    )
+                    .clip(CouiCapsuleShape)
+                    .couiPressable(shape = CouiCapsuleShape, spotlight = SpotlightPreset.ChipTab, minTouchTarget = CouiMinTouchTarget, onClick = onSubmit)
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }

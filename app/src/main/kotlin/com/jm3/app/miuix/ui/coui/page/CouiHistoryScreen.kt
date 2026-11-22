@@ -17,16 +17,20 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.itos.coui.dialog.CouiDialogAction
+import com.itos.coui.dialog.CouiDialogActionStyle
+import com.itos.coui.dialog.CouiDialogPlacement
+import com.itos.coui.dialog.Dialog
+import com.itos.coui.scroll.rememberCouiOverscrollEffect
+import com.itos.coui.shape.CouiShape
+import com.itos.coui.text.CouiTextKind
+import com.itos.coui.text.Text
+import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.LocalWideLayout
@@ -37,18 +41,14 @@ import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
 import com.jm3.app.miuix.ui.coui.component.CouiLoadingGroup
 import com.jm3.app.miuix.ui.coui.component.CouiMinTouchTarget
-import com.jm3.app.miuix.ui.coui.component.CouiPageScaffold
-import com.jm3.app.miuix.ui.coui.component.CouiPageTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiPagingGroup
-import com.jm3.app.miuix.ui.coui.component.CouiPullToRefresh
+import com.jm3.app.miuix.ui.coui.component.CouiScreenScaffold
+import com.jm3.app.miuix.ui.coui.component.CouiTopBarAction
 import com.jm3.app.miuix.ui.coui.component.CouiWorkCardTokens
 import com.jm3.app.miuix.ui.coui.component.CouiWorkGridCard
-import com.jm3.app.miuix.ui.coui.component.couiDestructiveDialogAction
-import com.jm3.app.miuix.ui.coui.component.couiPageScroll
+import com.jm3.app.miuix.ui.coui.component.couiDestructiveConfirmAction
+import com.jm3.app.miuix.ui.coui.component.couiDialogMaterial
 import com.jm3.app.miuix.ui.coui.component.couiPressable
-import com.jm3.app.miuix.ui.coui.component.isCouiWideWindow
-import com.jm3.app.miuix.ui.coui.component.panelBlur
-import com.jm3.app.miuix.ui.coui.component.rememberCouiPageScrollBehavior
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.coui.theme.CouiTheme
 import com.jm3.app.miuix.ui.formatEpochMillis
@@ -63,17 +63,8 @@ import com.jm3.app.miuix.ui.readableWidth
 import com.jm3.app.miuix.ui.rememberDateFormatter
 import com.jm3.app.miuix.ui.route.AppRoutes
 import com.jm3.core.settings.PaginationMode
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.blur.MaterialBlurDefaults
-import io.github.suqi8.coui.kmp.layout.DialogButtonBar
-import io.github.suqi8.coui.kmp.layout.DialogButtonBarAction
-import io.github.suqi8.coui.kmp.layout.DialogDefaults
-import io.github.suqi8.coui.kmp.overlay.OverlayDialog
-import io.github.suqi8.coui.kmp.squircle.SquircleShape
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.rememberCOUIFlingBehavior
 import java.time.format.DateTimeFormatter
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.SnackbarResult
 
@@ -111,30 +102,16 @@ internal fun CouiHistoryScreen(
 
         val albums = remember(history.feed.items) { history.feed.items.groupByAlbum() }
         val dateFormat = rememberDateFormatter()
-        var pulling by remember { mutableStateOf(false) }
-
-        LaunchedEffect(history.state) {
-            if (history.state != HistoryListState.Loading) {
-                pulling = false
-            }
-        }
 
         PaginationModeReloadEffect(mode) { history.loadFirstPage() }
 
-        val scrollBehavior = rememberCouiPageScrollBehavior {
-            gridState.canScrollForward || gridState.canScrollBackward
-        }
-
         Box(modifier = Modifier.fillMaxSize()) {
-            CouiPageScaffold(
+            CouiScreenScaffold(
                 title = "阅读历史",
                 onBack = onBack,
-                wide = isCouiWideWindow(),
-                scrollBehavior = scrollBehavior,
-                attachScrollNestedScroll = false,
                 actions = {
                     if (albums.isNotEmpty()) {
-                        CouiPageTopBarAction(
+                        CouiTopBarAction(
                             icon = CouiIcons.Close,
                             contentDescription = "清空阅读历史",
                             onClick = { history.requestClearConfirm() },
@@ -142,119 +119,100 @@ internal fun CouiHistoryScreen(
                     }
                 },
             ) { innerPadding ->
-                Box(modifier = Modifier.fillMaxSize()) {
-                    CouiPullToRefresh(
-                        isRefreshing = pulling && history.state == HistoryListState.Loading,
-                        onRefresh = {
-                            pulling = true
-                            history.loadFirstPage()
-                        },
-                        scrollBehavior = scrollBehavior,
-                        contentPadding = innerPadding,
-                    ) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(columns),
-                            state = gridState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .readableWidth()
-                                .couiPageScroll()
-                                .consumeWindowInsets(innerPadding),
-                            contentPadding = innerPadding,
-                            horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                            verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
-                            flingBehavior = rememberCOUIFlingBehavior(),
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    state = gridState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .readableWidth()
+                        .consumeWindowInsets(innerPadding),
+                    contentPadding = innerPadding,
+                    horizontalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+                    verticalArrangement = Arrangement.spacedBy(CouiWorkCardTokens.GridSpacing),
+                    overscrollEffect = rememberCouiOverscrollEffect(),
+                ) {
+                    when (val current = history.state) {
+                        HistoryListState.Loading -> item(
+                            key = "coui-history-loading",
+                            span = { GridItemSpan(maxLineSpan) },
                         ) {
-                            when (val current = history.state) {
-                                HistoryListState.Loading -> item(
-                                    key = "coui-history-loading",
-                                    span = { GridItemSpan(maxLineSpan) },
-                                ) {
-                                    CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 24.dp))
-                                }
+                            CouiLoadingGroup(modifier = Modifier.fillMaxWidth().padding(top = 24.dp))
+                        }
 
-                                is HistoryListState.Failed -> item(
-                                    key = "coui-history-failed",
-                                    span = { GridItemSpan(maxLineSpan) },
-                                ) {
-                                    CouiErrorGroup(
-                                        message = current.message,
-                                        onRetry = { history.loadFirstPage() },
+                        is HistoryListState.Failed -> item(
+                            key = "coui-history-failed",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            CouiErrorGroup(
+                                message = current.message,
+                                onRetry = { history.loadFirstPage() },
+                                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                            )
+                        }
+
+                        HistoryListState.Loaded -> {
+                            if (albums.isEmpty()) {
+                                item(key = "coui-history-empty", span = { GridItemSpan(maxLineSpan) }) {
+                                    CouiEmptyGroup(
+                                        text = "暂无阅读历史",
                                         modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
                                     )
                                 }
-
-                                HistoryListState.Loaded -> {
-                                    if (albums.isEmpty()) {
-                                        item(key = "coui-history-empty", span = { GridItemSpan(maxLineSpan) }) {
-                                            CouiEmptyGroup(
-                                                text = "暂无阅读历史",
-                                                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                                            )
-                                        }
+                            } else {
+                                items(items = albums, key = { "coui-history-" + it.albumId }) { album ->
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentAlignment = Alignment.TopCenter,
+                                    ) {
+                                        CouiHistoryCard(
+                                            album = album,
+                                            subtitle = couiHistorySubtitle(album, dateFormat),
+                                            onResume = { nav.reader(album.latest.photoId) },
+                                            onOpenDetail = { nav.album(album.albumId) },
+                                            onDelete = { history.removeAlbum(album.albumId) },
+                                        )
+                                    }
+                                }
+                                item(key = "coui-history-paging", span = { GridItemSpan(maxLineSpan) }) {
+                                    if (clickPaging) {
+                                        CouiPagingGroup(
+                                            page = history.feed.page,
+                                            pageCount = history.feed.pageCount,
+                                            hasMore = history.feed.hasMore,
+                                            onJumpPage = { target -> history.jumpToPage(target) },
+                                        )
                                     } else {
-                                        items(items = albums, key = { "coui-history-" + it.albumId }) { album ->
-                                            Box(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                contentAlignment = Alignment.TopCenter,
-                                            ) {
-                                                CouiHistoryCard(
-                                                    album = album,
-                                                    subtitle = couiHistorySubtitle(album, dateFormat),
-                                                    onResume = { nav.reader(album.latest.photoId) },
-                                                    onOpenDetail = { nav.album(album.albumId) },
-                                                    onDelete = { history.removeAlbum(album.albumId) },
-                                                )
-                                            }
-                                        }
-                                        item(key = "coui-history-paging", span = { GridItemSpan(maxLineSpan) }) {
-                                            if (clickPaging) {
-                                                CouiPagingGroup(
-                                                    page = history.feed.page,
-                                                    pageCount = history.feed.pageCount,
-                                                    hasMore = history.feed.hasMore,
-                                                    onJumpPage = { target -> history.jumpToPage(target) },
-                                                )
-                                            } else {
-                                                CouiAutoLoadMoreEffect(feed = history.feed, onLoadMore = { history.loadMore() })
-                                                CouiLoadMoreFooter(
-                                                    feed = history.feed,
-                                                    onRetry = { history.loadMore() },
-                                                )
-                                            }
-                                        }
+                                        CouiAutoLoadMoreEffect(feed = history.feed, onLoadMore = { history.loadMore() })
+                                        CouiLoadMoreFooter(
+                                            feed = history.feed,
+                                            onRetry = { history.loadMore() },
+                                        )
                                     }
                                 }
                             }
                         }
                     }
-
-                    val clearBlur = panelBlur(MaterialBlurDefaults::dialog)
-                    OverlayDialog(
-                        show = history.showClearConfirm,
-                        title = "清空阅读历史",
-                        summary = "将删除本机全部阅读记录，已下载的章节不受影响。",
-                        backgroundModifier = clearBlur?.backgroundModifier ?: Modifier,
-                        backgroundColor = clearBlur?.backgroundColor ?: DialogDefaults.backgroundColor(),
-                        materialStroke = clearBlur != null,
-                        onDismissRequest = { if (!history.clearing) history.dismissClearConfirm() },
-                    ) {
-                        DialogButtonBar(
-                            negative = DialogButtonBarAction(
-                                text = "取消",
-                                enabled = !history.clearing,
-                                onClick = { if (!history.clearing) history.dismissClearConfirm() },
-                            ),
-                            positive = null,
-                            neutral = couiDestructiveDialogAction(
-                                text = if (history.clearing) "清空中…" else "清空",
-                                enabled = !history.clearing,
-                                onClick = { history.clearAll() },
-                            ),
-                        )
-                    }
                 }
             }
+
+            Dialog(
+                onDismissRequest = { if (!history.clearing) history.dismissClearConfirm() },
+                visible = history.showClearConfirm,
+                material = couiDialogMaterial(),
+                title = "清空阅读历史",
+                message = "将删除本机全部阅读记录，已下载的章节不受影响。",
+                placement = CouiDialogPlacement.Center,
+                confirmAction = couiDestructiveConfirmAction(
+                    text = if (history.clearing) "清空中…" else "清空",
+                    enabled = !history.clearing,
+                    onClick = { history.clearAll() },
+                ),
+                dismissAction = CouiDialogAction(
+                    text = "取消",
+                    style = CouiDialogActionStyle.Secondary,
+                    onClick = { if (!history.clearing) history.dismissClearConfirm() },
+                ),
+            )
 
             GlassSnackbarHost(
                 state = snackbarHostState,
@@ -273,7 +231,7 @@ private fun CouiHistoryCard(
     onOpenDetail: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     CouiWorkGridCard(
         title = album.latest.title,
         coverUrl = album.latest.coverUrl,
@@ -292,7 +250,7 @@ private fun CouiHistoryCard(
         },
         footer = {
             CouiHistoryDetailLink(
-                accent = scheme.primaryText,
+                accent = scheme.accent,
                 onClick = onOpenDetail,
             )
         },
@@ -302,13 +260,13 @@ private fun CouiHistoryCard(
 /** footer 里的详情入口：卡宽只有 112dp，用一行小字承接详情跳转。 */
 @Composable
 private fun ColumnScope.CouiHistoryDetailLink(
-    accent: Color,
+    accent: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
 ) {
-    val linkShape = remember { SquircleShape(8.dp, 2f) }
+    val linkShape = CouiShape(radius = 8.dp, cornerWeight = 2f)
     Text(
         text = "详情",
-        style = COUITheme.textStyles.bodyS,
+        kind = CouiTextKind.GroupFooter,
         color = accent,
         maxLines = 1,
         modifier = Modifier
@@ -326,12 +284,12 @@ private fun CouiHistoryDeleteBadge(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scheme = COUITheme.colorScheme
+    val scheme = CouiKitTheme.colorScheme
     Box(
         modifier = modifier
             .couiPressable(
                 shape = CircleShape,
-                backgroundColor = scheme.cardBackground,
+                backgroundColor = scheme.container,
                 minTouchTarget = CouiMinTouchTarget,
                 onClick = onClick,
             )
@@ -342,7 +300,7 @@ private fun CouiHistoryDeleteBadge(
             imageVector = CouiIcons.Close,
             contentDescription = contentDescription,
             modifier = Modifier.size(14.dp),
-            tint = scheme.labelSecondary,
+            tint = scheme.onSurfaceVariant,
         )
     }
 }
