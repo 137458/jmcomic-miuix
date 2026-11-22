@@ -103,12 +103,14 @@ internal fun CouiWatchHistoryScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
             ) { innerPadding ->
                 Box(modifier = Modifier.fillMaxSize()) {
                     CouiPullToRefresh(
                         isRefreshing = snapshot.refreshing,
                         onRefresh = state::refresh,
                         scrollBehavior = scrollBehavior,
+                        contentPadding = innerPadding,
                     ) {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(columns),

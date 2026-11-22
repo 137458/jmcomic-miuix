@@ -199,6 +199,7 @@ private fun CouiSearchBody(
             onBack = onBack,
             wide = isCouiWideWindow(),
             scrollBehavior = scrollBehavior,
+            attachScrollNestedScroll = false,
             horizontalPadding = null,
             floatingActionButton = {
                 CouiFab(
@@ -212,6 +213,7 @@ private fun CouiSearchBody(
                 isRefreshing = snapshot.refreshing,
                 onRefresh = loader::refresh,
                 scrollBehavior = scrollBehavior,
+                contentPadding = contentPadding,
             ) {
                 LazyColumn(
                     state = lazyState,

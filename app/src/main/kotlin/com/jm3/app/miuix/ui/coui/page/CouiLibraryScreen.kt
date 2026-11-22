@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCustomStyledText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
+import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
@@ -202,10 +204,18 @@ internal fun CouiLibraryScreen(
             pageCount = COUI_LIBRARY_TABS.size,
             onTabSelected = { index -> if (index != tab) tab = index },
         )
-        val scrollBehavior = rememberCouiPageScrollBehavior {
-            val activeState = if (tab == 0) creatorGridState else workGridState
-            activeState.canScrollForward || activeState.canScrollBackward
+        val activeCanScroll by remember(pagerState, creatorGridState, workGridState) {
+            derivedStateOf {
+                val activeState = if (pagerState.currentPage == 0) creatorGridState else workGridState
+                activeState.canScrollForward || activeState.canScrollBackward
+            }
         }
+        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
+        CouiExpandTopAppBarEffect(
+            scrollBehavior = scrollBehavior,
+            activeTab = pagerState.currentPage,
+            canScroll = activeCanScroll,
+        )
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiPageScaffold(
@@ -213,6 +223,7 @@ internal fun CouiLibraryScreen(
                 wide = isCouiWideWindow(),
                 onBack = onBack,
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 topBarBottom = {
                     CouiPageTopBarSegmentedTabs(
                         items = COUI_LIBRARY_TABS,
@@ -259,6 +270,7 @@ internal fun CouiLibraryScreen(
                             isRefreshing = pageRefreshing,
                             onRefresh = pageLoader::refresh,
                             scrollBehavior = scrollBehavior,
+                            contentPadding = innerPadding,
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             LazyVerticalGrid(

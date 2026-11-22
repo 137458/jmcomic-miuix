@@ -332,6 +332,7 @@ internal fun CouiBrowseScreen(
             wide = isCouiWideWindow(),
             onBack = if (keyword != null) browse::closeTag else null,
             scrollBehavior = scrollBehavior,
+            attachScrollNestedScroll = false,
             actions = {
                 if (mode == BrowseMode.CATEGORY && keyword == null) {
                     CouiPageTopBarAction(
@@ -365,6 +366,7 @@ internal fun CouiBrowseScreen(
                     isRefreshing = activeRefreshing,
                     onRefresh = { refreshActive(byPull = true) },
                     scrollBehavior = scrollBehavior,
+                    contentPadding = innerPadding,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     LazyColumn(

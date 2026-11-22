@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,7 @@ import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
@@ -124,14 +126,22 @@ internal fun CouiNotificationsScreen(
     CouiTheme {
         val listStates = remember { List(NotificationTab.entries.size) { LazyListState() } }
         val clampedTabIndex = tabIndex.coerceIn(0, NotificationTab.entries.lastIndex)
-        val scrollBehavior = rememberCouiPageScrollBehavior {
-            val active = listStates[clampedTabIndex]
-            active.canScrollForward || active.canScrollBackward
-        }
         val pagerState = rememberSyncedTabPagerState(
             selectedTab = clampedTabIndex,
             pageCount = NotificationTab.entries.size,
             onTabSelected = { if (it != tabIndex) tabIndex = it },
+        )
+        val activeCanScroll by remember(pagerState, listStates) {
+            derivedStateOf {
+                val active = listStates.getOrNull(pagerState.currentPage)
+                active != null && (active.canScrollForward || active.canScrollBackward)
+            }
+        }
+        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
+        CouiExpandTopAppBarEffect(
+            scrollBehavior = scrollBehavior,
+            activeTab = pagerState.currentPage,
+            canScroll = activeCanScroll,
         )
         val tabLabels = scaffoldState.tabLabels
         val subtitle = scaffoldState.subtitle
@@ -142,6 +152,7 @@ internal fun CouiNotificationsScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 actions = {
                     CouiFeedRefreshAction(
                         refreshing = refreshing,
@@ -166,6 +177,7 @@ internal fun CouiNotificationsScreen(
                         isRefreshing = refreshing,
                         onRefresh = scaffoldState::refreshIfIdle,
                         scrollBehavior = scrollBehavior,
+                        contentPadding = contentPadding,
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(

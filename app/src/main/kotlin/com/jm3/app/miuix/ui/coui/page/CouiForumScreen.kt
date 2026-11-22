@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,6 +44,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiCommentFieldShape
 import com.jm3.app.miuix.ui.coui.component.CouiCommentRow
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
+import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
@@ -228,10 +230,6 @@ internal fun CouiForumScreen(
     }
 
     CouiTheme {
-        val scrollBehavior = rememberCouiPageScrollBehavior {
-            val active = listStates[clampedScopeIndex]
-            active.canScrollForward || active.canScrollBackward
-        }
         val pagerState = rememberSyncedTabPagerState(
             selectedTab = clampedScopeIndex,
             pageCount = ForumScope.entries.size,
@@ -242,6 +240,18 @@ internal fun CouiForumScreen(
                 }
             },
         )
+        val activeCanScroll by remember(pagerState, listStates) {
+            derivedStateOf {
+                val active = listStates.getOrNull(pagerState.currentPage)
+                active != null && (active.canScrollForward || active.canScrollBackward)
+            }
+        }
+        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
+        CouiExpandTopAppBarEffect(
+            scrollBehavior = scrollBehavior,
+            activeTab = pagerState.currentPage,
+            canScroll = activeCanScroll,
+        )
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiPageScaffold(
@@ -249,6 +259,7 @@ internal fun CouiForumScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 actions = {
                     CouiPageTopBarAction(
                         icon = CouiIcons.Comment,
@@ -305,6 +316,7 @@ internal fun CouiForumScreen(
                             isRefreshing = pageSnapshot.refreshing,
                             onRefresh = pageLoader::refresh,
                             scrollBehavior = scrollBehavior,
+                            contentPadding = contentPadding,
                         ) {
                             LazyColumn(
                                 modifier = Modifier

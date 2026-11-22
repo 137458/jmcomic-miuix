@@ -131,6 +131,7 @@ internal fun CouiHistoryScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 actions = {
                     if (albums.isNotEmpty()) {
                         CouiPageTopBarAction(
@@ -149,6 +150,7 @@ internal fun CouiHistoryScreen(
                             history.loadFirstPage()
                         },
                         scrollBehavior = scrollBehavior,
+                        contentPadding = innerPadding,
                     ) {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(columns),
