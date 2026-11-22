@@ -1339,38 +1339,44 @@ private fun CouiNovelReplyDialog(
         title = if (author != null) "回复 $author" else "回复",
         placement = CouiDialogPlacement.Bottom,
     ) {
-        BasicTextField(
-            value = replyText,
-            // 上限与评论区一致：回复走的也是小说评论接口，超长会被服务端整条拒掉
-            onValueChange = { replyText = it.take(NOVEL_COMMENT_MAX_LENGTH) },
-            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
-            cursorBrush = SolidColor(scheme.accent),
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 96.dp)
-                .clip(CouiCommentFieldShape)
-                .background(scheme.container)
-                .padding(12.dp),
-            decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (replyText.isEmpty()) {
-                        CouiBodyText(
-                            text = "写下你的回复（最多 $NOVEL_COMMENT_MAX_LENGTH 字）",
-                            color = scheme.onSurfaceVariant,
-                            textAlign = TextAlign.Start,
-                        )
+                .padding(horizontal = CouiDialogDefaults.buttonEdgePadding, vertical = 8.dp),
+        ) {
+            BasicTextField(
+                value = replyText,
+                // 上限与评论区一致：回复走的也是小说评论接口，超长会被服务端整条拒掉
+                onValueChange = { replyText = it.take(NOVEL_COMMENT_MAX_LENGTH) },
+                textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
+                cursorBrush = SolidColor(scheme.accent),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp)
+                    .clip(CouiCommentFieldShape)
+                    .background(scheme.container)
+                    .padding(12.dp),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (replyText.isEmpty()) {
+                            CouiBodyText(
+                                text = "写下你的回复（最多 $NOVEL_COMMENT_MAX_LENGTH 字）",
+                                color = scheme.onSurfaceVariant,
+                                textAlign = TextAlign.Start,
+                            )
+                        }
+                        innerTextField()
                     }
-                    innerTextField()
-                }
-            },
-        )
-        Text(
-            text = "${replyText.length}/$NOVEL_COMMENT_MAX_LENGTH",
-            kind = CouiTextKind.GroupFooter,
-            color = scheme.onSurfaceVariant,
-            textAlign = TextAlign.Start,
-            modifier = Modifier.padding(top = 6.dp),
-        )
+                },
+            )
+            Text(
+                text = "${replyText.length}/$NOVEL_COMMENT_MAX_LENGTH",
+                kind = CouiTextKind.GroupFooter,
+                color = scheme.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
     }
 }
 

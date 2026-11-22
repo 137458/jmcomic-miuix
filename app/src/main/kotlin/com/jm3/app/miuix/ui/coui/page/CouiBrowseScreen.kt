@@ -58,6 +58,7 @@ import com.itos.coui.chip.ChipTabRow
 import com.itos.coui.chip.CouiChipTabItem
 import com.itos.coui.dialog.CouiDialogAction
 import com.itos.coui.dialog.CouiDialogActionStyle
+import com.itos.coui.dialog.CouiDialogDefaults
 import com.itos.coui.dialog.CouiDialogPlacement
 import com.itos.coui.dialog.Dialog
 import com.itos.coui.effect.SpotlightPreset
@@ -1011,66 +1012,72 @@ private fun CouiWeeklyUpdatesDialog(
             style = CouiDialogActionStyle.Secondary,
         ),
     ) {
-        when {
-            loading && feed.items.isEmpty() -> CouiBodyText(
-                text = "正在加载每周更新…",
-                color = colors.onSurfaceVariant,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-            )
-
-            failure != null && feed.items.isEmpty() -> {
-                CouiBodyText(
-                    text = failure.message.ifBlank { "每周更新加载失败" },
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiDialogDefaults.buttonEdgePadding),
+        ) {
+            when {
+                loading && feed.items.isEmpty() -> CouiBodyText(
+                    text = "正在加载每周更新…",
                     color = colors.onSurfaceVariant,
                     textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                CouiTagChip(
-                    text = if (failure.sessionExpired) "去登录" else "重试",
-                    onClick = {
-                        if (failure.sessionExpired) onOpenLogin() else onRetry()
-                    },
-                )
-            }
 
-            feed.items.isEmpty() -> CouiBodyText(
-                text = "暂无每周更新",
-                color = colors.onSurfaceVariant,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-            )
-
-            else -> {
-                val layoutSpec = couiWeeklyCardLayoutSpec(inDialog = true)
-                feed.items.forEachIndexed { index, result ->
-                    if (index > 0) Spacer(modifier = Modifier.height(layoutSpec.cardSpacingDp.dp))
-                    CouiBrowseResultRow(
-                        result = result,
-                        rank = null,
-                        onClick = { onOpenAlbum(result.id) },
+                failure != null && feed.items.isEmpty() -> {
+                    CouiBodyText(
+                        text = failure.message.ifBlank { "每周更新加载失败" },
+                        color = colors.onSurfaceVariant,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    CouiTagChip(
+                        text = if (failure.sessionExpired) "去登录" else "重试",
+                        onClick = {
+                            if (failure.sessionExpired) onOpenLogin() else onRetry()
+                        },
                     )
                 }
-                when {
-                    feed.loadingMore -> Text(
-                        text = "正在加载更多…",
-                        kind = CouiTextKind.GroupFooter,
-                        color = colors.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    )
-                    feed.loadMoreFailed -> Box(
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CouiTagChip(text = WEEKLY_LOAD_MORE_FAILED, onClick = onLoadMore)
+
+                feed.items.isEmpty() -> CouiBodyText(
+                    text = "暂无每周更新",
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                )
+
+                else -> {
+                    val layoutSpec = couiWeeklyCardLayoutSpec(inDialog = true)
+                    feed.items.forEachIndexed { index, result ->
+                        if (index > 0) Spacer(modifier = Modifier.height(layoutSpec.cardSpacingDp.dp))
+                        CouiBrowseResultRow(
+                            result = result,
+                            rank = null,
+                            onClick = { onOpenAlbum(result.id) },
+                        )
                     }
-                    feed.hasMore -> Box(
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CouiTagChip(text = "加载更多", onClick = onLoadMore)
+                    when {
+                        feed.loadingMore -> Text(
+                            text = "正在加载更多…",
+                            kind = CouiTextKind.GroupFooter,
+                            color = colors.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        )
+                        feed.loadMoreFailed -> Box(
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CouiTagChip(text = WEEKLY_LOAD_MORE_FAILED, onClick = onLoadMore)
+                        }
+                        feed.hasMore -> Box(
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CouiTagChip(text = "加载更多", onClick = onLoadMore)
+                        }
                     }
                 }
             }

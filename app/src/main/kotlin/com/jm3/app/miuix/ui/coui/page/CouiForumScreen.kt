@@ -705,36 +705,42 @@ private fun CouiForumInputDialog(
         // 回复框是多行输入，贴底弹出更符合"从下往上写"的直觉；显式声明以免依赖库默认值
         placement = CouiDialogPlacement.Bottom,
     ) {
-        BasicTextField(
-            value = draft,
-            onValueChange = { draft = it.take(COMMENT_REPLY_MAX_LENGTH) },
-            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
-            cursorBrush = SolidColor(scheme.accent),
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 96.dp)
-                .clip(CouiShape(radius = 16.dp, cornerWeight = 3f))
-                .background(scheme.container)
-                .padding(12.dp),
-            decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (draft.isEmpty()) {
-                        CouiBodyText(
-                            text = placeholder,
-                            color = scheme.onSurfaceVariant,
-                            textAlign = TextAlign.Start,
-                        )
+                .padding(horizontal = CouiDialogDefaults.buttonEdgePadding, vertical = 8.dp),
+        ) {
+            BasicTextField(
+                value = draft,
+                onValueChange = { draft = it.take(COMMENT_REPLY_MAX_LENGTH) },
+                textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
+                cursorBrush = SolidColor(scheme.accent),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp)
+                    .clip(CouiShape(radius = 16.dp, cornerWeight = 3f))
+                    .background(scheme.container)
+                    .padding(12.dp),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (draft.isEmpty()) {
+                            CouiBodyText(
+                                text = placeholder,
+                                color = scheme.onSurfaceVariant,
+                                textAlign = TextAlign.Start,
+                            )
+                        }
+                        innerTextField()
                     }
-                    innerTextField()
-                }
-            },
-        )
-        Text(
-            text = draft.length.toString() + "/" + COMMENT_REPLY_MAX_LENGTH,
-            kind = CouiTextKind.GroupFooter,
-            color = scheme.onSurfaceVariant,
-            textAlign = TextAlign.Start,
-            modifier = Modifier.padding(top = 6.dp),
-        )
+                },
+            )
+            Text(
+                text = draft.length.toString() + "/" + COMMENT_REPLY_MAX_LENGTH,
+                kind = CouiTextKind.GroupFooter,
+                color = scheme.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
     }
 }

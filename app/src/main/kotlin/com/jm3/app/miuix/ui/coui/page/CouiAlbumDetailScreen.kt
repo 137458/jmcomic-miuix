@@ -1360,17 +1360,23 @@ private fun CouiFolderDialog(
         material = couiDialogMaterial(),
         title = if (favorited) "移动收藏夹" else "选择收藏夹",
     ) {
-        val allLabel = folders["0"] ?: "全部收藏"
-        CouiDialogRow(
-            title = allLabel,
-            summary = "默认收藏夹",
-            onClick = { onPick("0") },
-        )
-        folders.entries.filter { it.key != "0" }.forEach { entry ->
-            CouiDialogRow(title = entry.value, onClick = { onPick(entry.key) })
-        }
-        if (favorited) {
-            CouiDialogRow(title = "取消收藏", danger = true, onClick = onCancelFavorite)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = CouiDialogDefaults.buttonEdgePadding, vertical = 4.dp),
+        ) {
+            val allLabel = folders["0"] ?: "全部收藏"
+            CouiDialogRow(
+                title = allLabel,
+                summary = "默认收藏夹",
+                onClick = { onPick("0") },
+            )
+            folders.entries.filter { it.key != "0" }.forEach { entry ->
+                CouiDialogRow(title = entry.value, onClick = { onPick(entry.key) })
+            }
+            if (favorited) {
+                CouiDialogRow(title = "取消收藏", danger = true, onClick = onCancelFavorite)
+            }
         }
     }
 }
@@ -1453,38 +1459,44 @@ private fun CouiReplyDialog(
         material = couiDialogMaterial(),
         title = if (retainedAuthor != null) "回复 $retainedAuthor" else "回复",
     ) {
-        BasicTextField(
-            value = replyText,
-            onValueChange = { replyText = couiClampCommentInput(it) },
-            textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
-            cursorBrush = SolidColor(scheme.accent),
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 96.dp)
-                .clip(CouiCommentFieldShape)
-                .background(couiDialogSurfaceColor())
-                .border(couiDialogSurfaceBorder(), CouiCommentFieldShape)
-                .padding(12.dp),
-            decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (replyText.isEmpty()) {
-                        CouiBodyText(
-                            text = "写下你的回复（最多 $COMMENT_REPLY_MAX_LENGTH 字）",
-                            color = scheme.onSurfaceVariant,
-                            textAlign = TextAlign.Start,
-                        )
+                .padding(horizontal = CouiDialogDefaults.buttonEdgePadding, vertical = 8.dp),
+        ) {
+            BasicTextField(
+                value = replyText,
+                onValueChange = { replyText = couiClampCommentInput(it) },
+                textStyle = rememberCouiBodyTextStyle().copy(color = scheme.onSurface),
+                cursorBrush = SolidColor(scheme.accent),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp)
+                    .clip(CouiCommentFieldShape)
+                    .background(couiDialogSurfaceColor())
+                    .border(couiDialogSurfaceBorder(), CouiCommentFieldShape)
+                    .padding(12.dp),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (replyText.isEmpty()) {
+                            CouiBodyText(
+                                text = "写下你的回复（最多 $COMMENT_REPLY_MAX_LENGTH 字）",
+                                color = scheme.onSurfaceVariant,
+                                textAlign = TextAlign.Start,
+                            )
+                        }
+                        innerTextField()
                     }
-                    innerTextField()
-                }
-            },
-        )
-        Text(
-            text = "${replyText.length}/$COMMENT_REPLY_MAX_LENGTH",
-            kind = CouiTextKind.GroupFooter,
-            color = scheme.onSurfaceVariant,
-            textAlign = TextAlign.Start,
-            modifier = Modifier.padding(top = 6.dp),
-        )
+                },
+            )
+            Text(
+                text = "${replyText.length}/$COMMENT_REPLY_MAX_LENGTH",
+                kind = CouiTextKind.GroupFooter,
+                color = scheme.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
     }
 }
 
