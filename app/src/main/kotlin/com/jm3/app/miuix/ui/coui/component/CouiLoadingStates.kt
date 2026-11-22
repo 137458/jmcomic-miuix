@@ -38,6 +38,7 @@ fun CouiPullToRefresh(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     scrollBehavior: ScrollBehavior? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -45,6 +46,7 @@ fun CouiPullToRefresh(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
         modifier = modifier,
+        contentPadding = contentPadding,
         topAppBarScrollBehavior = scrollBehavior,
         content = content,
     )

@@ -110,6 +110,7 @@ internal fun CouiTrackingScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 actions = {
                     CouiFeedRefreshAction(
                         refreshing = snapshot.refreshing,
@@ -121,6 +122,7 @@ internal fun CouiTrackingScreen(
                     isRefreshing = snapshot.refreshing,
                     onRefresh = state::refresh,
                     scrollBehavior = scrollBehavior,
+                    contentPadding = contentPadding,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     LazyColumn(

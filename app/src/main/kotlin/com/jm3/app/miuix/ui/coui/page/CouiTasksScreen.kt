@@ -20,6 +20,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +34,7 @@ import com.jm3.app.miuix.ScreenDeps
 import com.jm3.app.miuix.ui.GlassSnackbarHost
 import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
+import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFeedRefreshAction
 import com.jm3.app.miuix.ui.coui.component.CouiGroupRow
 import com.jm3.app.miuix.ui.coui.component.CouiGroupTitle
@@ -107,10 +110,18 @@ internal fun CouiTasksScreen(
     )
 
     CouiTheme {
-        val scrollBehavior = rememberCouiPageScrollBehavior {
-            val active = listStates.getOrNull(scaffold.clampedTypeIndex)
-            active == null || active.canScrollForward || active.canScrollBackward
+        val activeCanScroll by remember(pagerState, listStates) {
+            derivedStateOf {
+                val active = listStates.getOrNull(pagerState.currentPage)
+                active != null && (active.canScrollForward || active.canScrollBackward)
+            }
         }
+        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
+        CouiExpandTopAppBarEffect(
+            scrollBehavior = scrollBehavior,
+            activeTab = pagerState.currentPage,
+            canScroll = activeCanScroll,
+        )
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiPageScaffold(
@@ -118,6 +129,7 @@ internal fun CouiTasksScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 actions = {
                     CouiFeedRefreshAction(
                         refreshing = snapshots[scaffold.clampedTypeIndex].refreshing,
@@ -146,6 +158,7 @@ internal fun CouiTasksScreen(
                         isRefreshing = pageSnapshot.refreshing,
                         onRefresh = pageLoader::refresh,
                         scrollBehavior = scrollBehavior,
+                        contentPadding = innerPadding,
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(

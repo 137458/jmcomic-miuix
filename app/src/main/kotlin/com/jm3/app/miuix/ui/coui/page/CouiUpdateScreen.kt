@@ -707,9 +707,10 @@ private fun UpdateBottomActionBar(
     val progressFraction = couiUpdateProgressFraction(downloadState)
     val isDownloading = mode == CouiUpdateActionBarMode.DOWNLOADING
     val enabled = mode != CouiUpdateActionBarMode.CHECKING && !isDownloading
+    val materialBackdrop = LocalMaterialBackdrop.current
     val hasFloatingSurface = couiFloatingSurfaceEnabled(
         sdkInt = Build.VERSION.SDK_INT,
-        hasBackdrop = LocalMaterialBackdrop.current != null,
+        hasBackdrop = materialBackdrop != null,
     )
 
     val containerModifier = if (hasFloatingSurface) {
@@ -734,54 +735,60 @@ private fun UpdateBottomActionBar(
             .padding(horizontal = 24.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
-            modifier = Modifier
-                .readableWidth()
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        // API 33 上 isRuntimeShaderSupported() 为真，但悬浮底栏门控仍为 false（底栏绘制不透明渐变遮罩）；
+        // 显式清空 LocalMaterialBackdrop，避免子按钮渲染为透明毛玻璃盖在实色遮罩上。
+        CompositionLocalProvider(
+            LocalMaterialBackdrop provides if (hasFloatingSurface) materialBackdrop else null,
         ) {
-            CouiInstallProgressButton(
-                text = label,
-                enabled = enabled,
-                progress = progressFraction,
-                isProgressActive = isDownloading,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    when (mode) {
-                        CouiUpdateActionBarMode.READY_TO_INSTALL -> {
-                            (downloadState as? UpdateDownloadState.Done)?.let { onInstall(it.file) }
+            Row(
+                modifier = Modifier
+                    .readableWidth()
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CouiInstallProgressButton(
+                    text = label,
+                    enabled = enabled,
+                    progress = progressFraction,
+                    isProgressActive = isDownloading,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        when (mode) {
+                            CouiUpdateActionBarMode.READY_TO_INSTALL -> {
+                                (downloadState as? UpdateDownloadState.Done)?.let { onInstall(it.file) }
+                            }
+                            CouiUpdateActionBarMode.DOWNLOAD_FAILED -> {
+                                val asset = (state as? UpdateOutcome.Available)?.release?.apk
+                                if (asset != null) onStartDownload(asset) else onResetDownload()
+                            }
+                            CouiUpdateActionBarMode.AVAILABLE_IDLE -> {
+                                val release = (state as? UpdateOutcome.Available)?.release ?: return@CouiInstallProgressButton
+                                val asset = release.apk
+                                if (asset != null) onStartDownload(asset) else onOpenRelease(release.htmlUrl)
+                            }
+                            CouiUpdateActionBarMode.CHECK_FAILED,
+                            CouiUpdateActionBarMode.UP_TO_DATE,
+                            -> onRecheck()
+                            CouiUpdateActionBarMode.CHECKING,
+                            CouiUpdateActionBarMode.DOWNLOADING,
+                            -> Unit
                         }
-                        CouiUpdateActionBarMode.DOWNLOAD_FAILED -> {
-                            val asset = (state as? UpdateOutcome.Available)?.release?.apk
-                            if (asset != null) onStartDownload(asset) else onResetDownload()
-                        }
-                        CouiUpdateActionBarMode.AVAILABLE_IDLE -> {
-                            val release = (state as? UpdateOutcome.Available)?.release ?: return@CouiInstallProgressButton
-                            val asset = release.apk
-                            if (asset != null) onStartDownload(asset) else onOpenRelease(release.htmlUrl)
-                        }
-                        CouiUpdateActionBarMode.CHECK_FAILED,
-                        CouiUpdateActionBarMode.UP_TO_DATE,
-                        -> onRecheck()
-                        CouiUpdateActionBarMode.CHECKING,
-                        CouiUpdateActionBarMode.DOWNLOADING,
-                        -> Unit
-                    }
-                },
-            )
-            if (isDownloading) {
-                CouiCircleActionButton(
-                    icon = CouiIcons.Close,
-                    contentDescription = "取消下载",
-                    onClick = onCancelDownload,
+                    },
                 )
-            } else if (mode == CouiUpdateActionBarMode.READY_TO_INSTALL) {
-                CouiCircleActionButton(
-                    icon = CouiIcons.Refresh,
-                    contentDescription = "重新下载",
-                    onClick = onResetDownload,
-                )
+                if (isDownloading) {
+                    CouiCircleActionButton(
+                        icon = CouiIcons.Close,
+                        contentDescription = "取消下载",
+                        onClick = onCancelDownload,
+                    )
+                } else if (mode == CouiUpdateActionBarMode.READY_TO_INSTALL) {
+                    CouiCircleActionButton(
+                        icon = CouiIcons.Refresh,
+                        contentDescription = "重新下载",
+                        onClick = onResetDownload,
+                    )
+                }
             }
         }
     }

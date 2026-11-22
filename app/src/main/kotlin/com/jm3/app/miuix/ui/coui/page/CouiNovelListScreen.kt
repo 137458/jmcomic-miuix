@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +50,7 @@ import com.jm3.app.miuix.ui.ScreenLoadPhase
 import com.jm3.app.miuix.ui.components.rememberSelectionHaptic
 import com.jm3.app.miuix.ui.coui.component.CouiCustomStyledText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
+import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFab
 import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
@@ -251,10 +253,18 @@ internal fun CouiNovelListScreen(
         }
 
         val scheme = COUITheme.colorScheme
-        val scrollBehavior = rememberCouiPageScrollBehavior {
-            val active = gridStates[clampedOrderIndex]
-            active.canScrollForward || active.canScrollBackward
+        val activeCanScroll by remember(pagerState, gridStates) {
+            derivedStateOf {
+                val active = gridStates.getOrNull(pagerState.currentPage)
+                active != null && (active.canScrollForward || active.canScrollBackward)
+            }
         }
+        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
+        CouiExpandTopAppBarEffect(
+            scrollBehavior = scrollBehavior,
+            activeTab = pagerState.currentPage,
+            canScroll = activeCanScroll,
+        )
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiPageScaffold(
@@ -262,6 +272,7 @@ internal fun CouiNovelListScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 actions = {
                     if (appliedQuery.isNotBlank() || query.isNotBlank()) {
                         CouiPageTopBarAction(
@@ -322,6 +333,7 @@ internal fun CouiNovelListScreen(
                             )
                         },
                         scrollBehavior = scrollBehavior,
+                        contentPadding = innerPadding,
                     ) {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(columns),

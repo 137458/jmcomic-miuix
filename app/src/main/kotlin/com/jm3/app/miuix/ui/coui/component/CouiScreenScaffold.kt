@@ -2,6 +2,9 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.animateTo
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,9 +133,38 @@ fun Modifier.couiPageScroll(scrollBehavior: ScrollBehavior? = null): Modifier = 
     )
 
 /**
+ * 多页签共用同一个 [ScrollBehavior] 时，切到不可滚动的空态或短列表页签后展开顶栏，
+ * 避免顶栏卡在折叠态无法通过下拉恢复。
+ */
+@Composable
+fun CouiExpandTopAppBarEffect(
+    scrollBehavior: ScrollBehavior,
+    activeTab: Any?,
+    canScroll: Boolean,
+) {
+    LaunchedEffect(scrollBehavior, activeTab, canScroll) {
+        if (!canScroll && (scrollBehavior.state.heightOffset < 0f || scrollBehavior.state.contentOffset != 0f)) {
+            val startOffset = scrollBehavior.state.displayedHeightOffset
+            if (startOffset < 0f) {
+                AnimationState(initialValue = startOffset).animateTo(
+                    targetValue = 0f,
+                    animationSpec = scrollBehavior.snapAnimationSpec ?: spring(),
+                ) {
+                    scrollBehavior.state.heightOffset = value
+                }
+            } else {
+                scrollBehavior.state.heightOffset = 0f
+            }
+            scrollBehavior.state.contentOffset = 0f
+        }
+    }
+}
+
+/**
  * 基于 `suqi8/coui` 2.1.0 的二级页面脚手架：折叠/固定顶栏 + 凝光模糊 + 底栏净空 + FAB + 延迟测量正文留白。
  *
- * 1. `nestedScroll` 只在脚手架根部挂一次；
+ * 1. `nestedScroll` 默认在脚手架根部挂一次；使用 [CouiPullToRefresh] 接管 `scrollBehavior` 时传
+ *    `attachScrollNestedScroll = false`，避免同一条滚动链对 `heightOffset` / `contentOffset` 重复计数；
  * 2. [content] 拿到的 [PaddingValues] 在测量期才读 `innerPadding`，跟随顶栏折叠无一帧滞后；
  * 3. 页内录制源通过 [LocalPageBackdrop]、[LocalPopupMaterialBlur] 与 [LocalMaterialBackdrop] 自动桥接。
  */
@@ -153,6 +186,7 @@ fun CouiPageScaffold(
     floatingToolbar: @Composable () -> Unit = {},
     floatingToolbarPosition: ToolbarPosition = ToolbarPosition.BottomCenter,
     scrollBehavior: ScrollBehavior = rememberCouiPageScrollBehavior(),
+    attachScrollNestedScroll: Boolean = true,
     horizontalPadding: Dp? = 0.dp,
     extraBottom: Dp = couiPageExtraBottomDp(
         hasFab = floatingActionButton != null,
@@ -180,7 +214,13 @@ fun CouiPageScaffold(
         },
         modifier = modifier
             .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
+            .then(
+                if (attachScrollNestedScroll) {
+                    Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
+                } else {
+                    Modifier
+                },
+            ),
         snackbarHostState = snackbarHostState,
         floatingActionButton = floatingActionButton,
         floatingActionButtonPosition = floatingActionButtonPosition,

@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ import com.jm3.app.miuix.ui.coui.component.CouiAutoLoadMoreEffect
 import com.jm3.app.miuix.ui.coui.component.CouiBodyText
 import com.jm3.app.miuix.ui.coui.component.CouiEmptyGroup
 import com.jm3.app.miuix.ui.coui.component.CouiErrorGroup
+import com.jm3.app.miuix.ui.coui.component.CouiExpandTopAppBarEffect
 import com.jm3.app.miuix.ui.coui.component.CouiFeedLoginGroup
 import com.jm3.app.miuix.ui.coui.component.CouiLayoutTokens
 import com.jm3.app.miuix.ui.coui.component.CouiLoadMoreFooter
@@ -217,10 +219,18 @@ internal fun CouiFavoritesScreen(
             pageCount = state.tabs.size,
             onTabSelected = { index -> state.selectTab(index) },
         )
-        val scrollBehavior = rememberCouiPageScrollBehavior {
-            val activeState = if (state.tabIndex == FAVORITE_TAB_FOLDERS) gridState else tagsGridState
-            activeState.canScrollForward || activeState.canScrollBackward
+        val activeCanScroll by remember(pagerState, gridState, tagsGridState) {
+            derivedStateOf {
+                val activeState = if (pagerState.currentPage == FAVORITE_TAB_FOLDERS) gridState else tagsGridState
+                activeState.canScrollForward || activeState.canScrollBackward
+            }
         }
+        val scrollBehavior = rememberCouiPageScrollBehavior { activeCanScroll }
+        CouiExpandTopAppBarEffect(
+            scrollBehavior = scrollBehavior,
+            activeTab = pagerState.currentPage,
+            canScroll = activeCanScroll,
+        )
 
         Box(modifier = Modifier.fillMaxSize()) {
             CouiPageScaffold(
@@ -228,6 +238,7 @@ internal fun CouiFavoritesScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 topBarBottom = {
                     CouiPageTopBarSegmentedTabs(
                         items = state.tabs,
@@ -264,6 +275,7 @@ internal fun CouiFavoritesScreen(
                                 }
                             },
                             scrollBehavior = scrollBehavior,
+                            contentPadding = innerPadding,
                         ) {
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(columns),

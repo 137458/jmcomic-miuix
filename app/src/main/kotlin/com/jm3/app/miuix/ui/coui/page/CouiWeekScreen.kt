@@ -111,6 +111,7 @@ internal fun CouiWeekScreen(
                 onBack = onBack,
                 wide = isCouiWideWindow(),
                 scrollBehavior = scrollBehavior,
+                attachScrollNestedScroll = false,
                 actions = {
                     CouiFeedRefreshAction(
                         refreshing = week.refreshing,
@@ -125,6 +126,7 @@ internal fun CouiWeekScreen(
                     isRefreshing = week.refreshing,
                     onRefresh = { if (!week.refreshing) week.refresh() },
                     scrollBehavior = scrollBehavior,
+                    contentPadding = innerPadding,
                 ) {
                     LazyColumn(
                         modifier = Modifier

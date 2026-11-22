@@ -222,6 +222,7 @@ fun CouiHomeScreen(
             topBarStyle = CouiTopBarStyle.SettingsHome,
             wide = isCouiWideWindow(),
             scrollBehavior = scrollBehavior,
+            attachScrollNestedScroll = false,
             topBarSearchState = topBarSearchState,
             topBarBottom = {
                 TopAppBarSearchBar(
@@ -269,25 +270,26 @@ fun CouiHomeScreen(
             },
         ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize()) {
-                CouiPullToRefresh(
-                    isRefreshing = state.refreshing,
-                    onRefresh = state::refresh,
-                    scrollBehavior = scrollBehavior,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        if (topBarSearchState.isContentVisible) {
-                            LazyColumn(
-                                state = homeListState,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .readableWidth()
-                                    .couiPageScroll()
-                                    .topAppBarSearchContent(topBarSearchState)
-                                    .consumeWindowInsets(innerPadding),
-                                contentPadding = innerPadding,
-                                flingBehavior = rememberCOUIFlingBehavior(),
-                            ) {
+                if (topBarSearchState.isContentVisible) {
+                    CouiPullToRefresh(
+                        isRefreshing = state.refreshing,
+                        onRefresh = state::refresh,
+                        scrollBehavior = scrollBehavior,
+                        contentPadding = innerPadding,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .topAppBarSearchContent(topBarSearchState),
+                    ) {
+                        LazyColumn(
+                            state = homeListState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .readableWidth()
+                                .couiPageScroll()
+                                .consumeWindowInsets(innerPadding),
+                            contentPadding = innerPadding,
+                            flingBehavior = rememberCOUIFlingBehavior(),
+                        ) {
                                 item(key = "coui-home-head") {
                                     CouiTagRow(
                                         tags = state.hotTags,
@@ -427,19 +429,21 @@ fun CouiHomeScreen(
                                 }
                             }
                         }
+                    }
+                }
 
-                        if (topBarSearchState.isResultsVisible) {
-                            LazyColumn(
-                                state = searchListState,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .readableWidth()
-                                    .couiPageScroll()
-                                    .topAppBarSearchResults(topBarSearchState)
-                                    .consumeWindowInsets(innerPadding),
-                                contentPadding = innerPadding,
-                                flingBehavior = rememberCOUIFlingBehavior(),
-                            ) {
+                if (topBarSearchState.isResultsVisible) {
+                    LazyColumn(
+                        state = searchListState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .readableWidth()
+                            .couiPageScroll(scrollBehavior)
+                            .topAppBarSearchResults(topBarSearchState)
+                            .consumeWindowInsets(innerPadding),
+                        contentPadding = innerPadding,
+                        flingBehavior = rememberCOUIFlingBehavior(),
+                    ) {
                                 if (state.searching) {
                                     item(key = "coui-search-head") {
                                         CouiSearchHeader(
@@ -592,8 +596,6 @@ fun CouiHomeScreen(
                                 }
                             }
                         }
-                    }
-                }
 
                 // 弹窗放在 LazyColumn 外侧，随页面采样源获得 COUI 17 材质模糊，且不因列表滚动被卸载
                 CouiSearchHelpDialog(
