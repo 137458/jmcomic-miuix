@@ -10,8 +10,8 @@
     <!-- 应用内安装 APK：受限权限，声明本身不会授予，实际开关在系统"安装未知应用"设置里 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- miuix-blur 声明 minSdk 33；模糊仅在高版本启用，低版本运行时已降级为纯色 -->
-    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
+    <!-- miuix-blur 与 coui-blur 声明 minSdk 33；模糊仅在高版本启用，低版本运行时已降级为纯色 -->
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur,io.github.suqi8.coui.kmp.blur" />
 
     <application
         android:name=".Jm3Application"

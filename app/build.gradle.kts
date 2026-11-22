@@ -131,6 +131,11 @@ dependencies {
     implementation(libs.miuix.squircle)
 
     implementation(libs.coui)
+    implementation(libs.coui2.ui)
+    implementation(libs.coui2.preference)
+    implementation(libs.coui2.icons)
+    implementation(libs.coui2.blur)
+    implementation(libs.coui2.squircle)
 
     // 无 AWT 的 Android 环境必须提供 ImageProcessor SPI 实现
     implementation(libs.jmcomic.android.support) {
