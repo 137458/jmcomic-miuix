@@ -4,7 +4,6 @@ package com.jm3.app.miuix.ui.coui.component
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -24,7 +23,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,11 +30,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.itos.coui.effect.SpotlightPreset
-import com.itos.coui.topappbar.CouiTopAppBarDefaults
-import com.itos.coui.topappbar.CouiTopAppBarScrollBehavior
-import com.itos.coui.topappbar.LargeTopAppBar
-import com.itos.coui.topappbar.TopAppBarButtonGroup
 import com.jm3.app.miuix.ui.LocalWideLayout
 import com.jm3.app.miuix.ui.coui.icon.CouiIcons
 import com.jm3.app.miuix.ui.couiPageExtraBottomDp
@@ -411,63 +404,6 @@ fun CouiPageTopBarSegmentedTabs(
 }
 
 /**
- * 过渡期旧版二级页面骨架：保留供未迁移页面使用，Wave 3 移除。
- */
-@Deprecated("Wave 3 removal")
-@Suppress("DEPRECATION")
-@Composable
-fun CouiScreenScaffold(
-    title: String,
-    modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null,
-    backContentDescription: String = "返回",
-    actions: (@Composable RowScope.() -> Unit)? = null,
-    topBarBottom: (@Composable () -> Unit)? = null,
-    floatingActionButton: (@Composable BoxScope.() -> Unit)? = null,
-    scrollBehavior: CouiTopAppBarScrollBehavior = rememberCouiScreenScrollBehavior(),
-    horizontalPadding: Dp = 0.dp,
-    extraBottom: Dp = couiPageExtraBottomDp(
-        hasFab = floatingActionButton != null,
-        imeOccupiesPage = rememberCouiImeOccupiesPage(),
-    ).dp,
-    content: @Composable (PaddingValues) -> Unit,
-) {
-    CouiAppScaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
-        contentBackdrop = null,
-        topBar = {
-            val topAppBar = @Composable {
-                LargeTopAppBar(
-                    title = { CouiTopBarTitle(text = title) },
-                    navigationIcon = {
-                        if (onBack != null) {
-                            CouiTopBarBackButton(onClick = onBack, contentDescription = backContentDescription)
-                        }
-                    },
-                    actions = {
-                        val slot = actions
-                        if (slot != null) {
-                            TopAppBarButtonGroup { slot() }
-                        }
-                    },
-                    scrollBehavior = scrollBehavior,
-                    colors = couiTopAppBarColors(),
-                )
-            }
-            Column(modifier = Modifier.fillMaxWidth()) {
-                topAppBar()
-                if (topBarBottom != null) topBarBottom()
-            }
-        },
-        floatingActionButton = floatingActionButton,
-    ) { innerPadding ->
-        content(couiScreenContentPadding(scrollBehavior, innerPadding, horizontalPadding, extraBottom))
-    }
-}
-
-/**
  * 固定在顶栏下方的分段胶囊栏：委托至新版 [CouiPageTopBarSegmentedTabs]。
  */
 @Composable
@@ -487,45 +423,6 @@ fun CouiTopBarSegmentedTabs(
         small = small,
         enabled = enabled,
     )
-}
-
-/**
- * 过渡期旧版折叠行为记忆函数，Wave 3 移除。
- */
-@Deprecated("Wave 3 removal")
-@Composable
-fun rememberCouiScreenScrollBehavior(canScroll: () -> Boolean = { true }): CouiTopAppBarScrollBehavior =
-    CouiTopAppBarDefaults.exitUntilCollapsedScrollBehavior(canScroll)
-
-/**
- * 过渡期旧版折叠留白换算，Wave 3 移除。
- */
-@Deprecated("Wave 3 removal")
-@Composable
-fun couiScreenContentPadding(
-    scrollBehavior: CouiTopAppBarScrollBehavior,
-    innerPadding: PaddingValues,
-    horizontalPadding: Dp? = 0.dp,
-    extraBottom: Dp = couiPageExtraBottomDp(
-        hasFab = false,
-        imeOccupiesPage = rememberCouiImeOccupiesPage(),
-    ).dp,
-): PaddingValues {
-    val density = LocalDensity.current
-    return remember(scrollBehavior, innerPadding, density, horizontalPadding, extraBottom) {
-        val corrected = scrollBehavior.state.contentPadding(innerPadding, density)
-        object : PaddingValues {
-            override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
-                horizontalPadding ?: corrected.calculateLeftPadding(layoutDirection)
-
-            override fun calculateRightPadding(layoutDirection: LayoutDirection): Dp =
-                horizontalPadding ?: corrected.calculateRightPadding(layoutDirection)
-
-            override fun calculateTopPadding(): Dp = corrected.calculateTopPadding()
-
-            override fun calculateBottomPadding(): Dp = corrected.calculateBottomPadding() + extraBottom
-        }
-    }
 }
 
 /**
@@ -594,20 +491,6 @@ internal fun CouiTopBarPlainBackButton(
         )
     }
 }
-
-/** 过渡期重载：兼容显式传入 `spotlight` 的未迁移调用方，Wave 3 移除。 */
-@Deprecated("Wave 3 removal")
-@Composable
-internal fun CouiTopBarPlainBackButton(
-    onClick: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") spotlight: SpotlightPreset?,
-    modifier: Modifier = Modifier,
-    contentDescription: String = "返回",
-) = CouiTopBarPlainBackButton(
-    onClick = onClick,
-    modifier = modifier,
-    contentDescription = contentDescription,
-)
 
 /**
  * 顶栏动作按钮：已迁移至 `suqi8/coui` [IconButton]。

@@ -41,7 +41,7 @@ android {
 
     defaultConfig {
         applicationId = "com.jm3.app.miuix"
-        // COUI-Kit 要求 Android 12（API 31）；浮动材质组件（底栏/FAB/ChipTab）需 API 34，低版本走兼容分支。
+        // 应用基准要求 Android 12（API 31）；模糊组件低版本已通过 manifest tools:overrideLibrary 降级兼容。
         minSdk = 31
         targetSdk = 36
         versionCode = 20000
@@ -130,7 +130,6 @@ dependencies {
     implementation(libs.miuix.blur)
     implementation(libs.miuix.squircle)
 
-    implementation(libs.coui)
     implementation(libs.coui2.ui)
     implementation(libs.coui2.preference)
     implementation(libs.coui2.icons)

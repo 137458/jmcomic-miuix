@@ -63,11 +63,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.itos.coui.backdrop.CouiBackdrop
-import com.itos.coui.dialog.CouiDialogAction
-import com.itos.coui.dialog.CouiDialogActionStyle
-import com.itos.coui.dialog.CouiDialogDefaults
-import com.itos.coui.theme.CouiTheme as LegacyCouiTheme
 import io.github.suqi8.coui.kmp.basic.Button
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.ButtonMaterial
@@ -121,26 +116,6 @@ private fun CouiSwitchHapticEffect(
             }
         }
     }
-}
-
-/**
- * 破坏性确认按钮（旧版弹窗过渡垫片，Wave 3 移除；新弹窗请使用 [couiDestructiveDialogAction]）。
- */
-@Deprecated("Wave 3 removal")
-@Composable
-fun couiDestructiveConfirmAction(
-    text: String,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-): CouiDialogAction {
-    val destructive = CouiDialogDefaults.themeColors(LegacyCouiTheme.isDark).destructive
-    return CouiDialogAction(
-        text = text,
-        enabled = enabled,
-        style = CouiDialogActionStyle.Primary,
-        colors = CouiDialogDefaults.primaryActionColors(destructive),
-        onClick = onClick,
-    )
 }
 
 /**
@@ -369,7 +344,6 @@ fun CouiHeaderCapsuleAction(
     modifier: Modifier = Modifier,
     trailingIcon: ImageVector? = null,
     tinted: Boolean = true,
-    @Suppress("UNUSED_PARAMETER") backdrop: CouiBackdrop? = null,
 ) {
     val dark = COUITheme.isDark
     val scheme = COUITheme.colorScheme
@@ -796,7 +770,6 @@ internal fun CouiInstallProgressButton(
     enabled: Boolean = true,
     progress: Float? = null,
     isProgressActive: Boolean = false,
-    @Suppress("UNUSED_PARAMETER") backdrop: CouiBackdrop? = null,
 ) {
     val dark = COUITheme.isDark
     val scheme = COUITheme.colorScheme
@@ -888,7 +861,6 @@ internal fun CouiCircleActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     tint: Color = Color.Unspecified,
-    @Suppress("UNUSED_PARAMETER") backdrop: CouiBackdrop? = null,
 ) {
     val dark = COUITheme.isDark
     val scheme = COUITheme.colorScheme

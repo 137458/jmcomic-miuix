@@ -2,7 +2,6 @@
 
 package com.jm3.app.miuix.ui.coui.component
 
-import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -15,10 +14,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.itos.coui.dialog.CouiDialogDefaults
-import com.itos.coui.dialog.CouiDialogMaterial
-import com.itos.coui.menu.rememberCouiWindowBackdrop
-import com.itos.coui.theme.CouiTheme as CouiKitTheme
 import io.github.suqi8.coui.kmp.blur.Backdrop
 import io.github.suqi8.coui.kmp.blur.LayerBackdrop
 import io.github.suqi8.coui.kmp.blur.MaterialBlendMode
@@ -158,29 +153,6 @@ private fun MaterialBlurSpec.toMaterialBlurStyle(): MaterialBlurStyle = Material
         MaterialBlurBlendMode.GlowColorDodge -> MaterialBlendMode.GlowColorDodge
     },
 )
-
-/**
- * 弹窗材质的可用性判定（Wave 1-2 双版本共存过渡垫片，Wave 3 移除）。
- *
- * 库侧对材质的契约是两项硬前提：系统 Android 13 及以上，且宿主窗口已提供不含弹窗自身的采样源。
- * 任一缺失都会在组合期直接抛异常，因此这里先判再用，缺源时退回不透明弹窗。
- */
-@Deprecated("Remove in Wave 3")
-internal object CouiDialogPolicy {
-
-    fun shouldUseMaterial(sdkInt: Int, hasBackdrop: Boolean): Boolean = sdkInt >= 33 && hasBackdrop
-}
-
-/** 当前窗口是否满足材质前提；满足时返回材质，否则返回 null 让库走不透明弹窗。 */
-@Deprecated("Remove in Wave 3")
-@Suppress("DEPRECATION")
-@Composable
-internal fun couiDialogMaterial(): CouiDialogMaterial? =
-    if (CouiDialogPolicy.shouldUseMaterial(sdkInt = Build.VERSION.SDK_INT, hasBackdrop = rememberCouiWindowBackdrop() != null)) {
-        CouiDialogDefaults.material(CouiKitTheme.isDark)
-    } else {
-        null
-    }
 
 /** 玻璃弹窗内输入区/列表行使用的半透明表面底色，直接承接弹窗玻璃而不叠不透明卡片。 */
 @Composable
